@@ -1,0 +1,224 @@
+import React from 'react';
+import { Users, Coins, BookOpen, TrendingUp, Star, Zap, MessageSquare, Target, Leaf, ArrowRight } from 'lucide-react';
+import { getDruidTree } from '../utils/druidHoroscope';
+
+const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate }) => {
+
+    // Calculate Stats
+    const totalMeetings = meetings.length;
+    const totalEarnings = meetings.reduce((acc, m) => acc + (parseInt(m.income) || 0), 0);
+    const totalGuests = meetings.reduce((acc, m) => acc + (parseInt(m.guests) || 0), 0);
+    const totalReflections = meetings.filter(m => m.keep || m.change).length;
+    const totalClients = clients.length;
+    const totalPractices = practices ? practices.length : 0;
+    const totalScenarios = scenarios ? scenarios.length : 0;
+
+    // Tree Logic
+    const seeds = user.seeds || 0;
+    const druidTree = getDruidTree(user.dob);
+
+    const getTreeStage = (s) => {
+        if (s < 150) return { name: 'Семечко', next: 150, image: '/trees/tree-1.png' };
+        if (s < 500) return { name: 'Росток', next: 500, image: '/trees/tree-2.png' };
+        if (s < 1500) return { name: 'Саженец', next: 1500, image: '/trees/tree-3.png' };
+        if (s < 3500) return { name: 'Молодое дерево', next: 3500, image: '/trees/tree-4.png' };
+        if (s < 7000) return { name: 'Крепкое дерево', next: 7000, image: '/trees/tree-5.png' };
+        if (s < 12000) return { name: 'Раскидистое дерево', next: 12000, image: '/trees/tree-6.png' };
+        return { name: 'Плодоносящее дерево', next: 100000, image: '/trees/tree-7.png' };
+    };
+    const stage = getTreeStage(seeds);
+
+    // Tenure Logic
+    const getTenure = () => {
+        // Fallback to today if join_date is missing to avoid "reset" panic, assume new user
+        const start = user.join_date ? new Date(user.join_date) : new Date();
+        const now = new Date();
+        const diffTime = now - start;
+        const diffDays = Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24))); // Min 1 day
+
+        if (diffDays < 30) return { value: diffDays, label: 'дн.' };
+        const months = Math.floor(diffDays / 30.44); // approx
+        if (months < 12) return { value: months, label: 'мес.' };
+
+        const years = Math.floor(months / 12);
+        const remMonths = months % 12;
+        if (remMonths === 0) return { value: years, label: 'лет' };
+        return { value: `${years}.${remMonths}`, label: 'лет' };
+    };
+    const tenure = getTenure();
+
+    // Airy Stat Card
+    const AiryCard = ({ icon: Icon, label, value, onClick, delay = 0 }) => (
+        <div
+            onClick={onClick}
+            className={`bg-white/80 backdrop-blur-xl rounded-[2rem] p-6 border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-500 cursor-pointer flex flex-col items-center justify-center text-center gap-3 group animate-in fade-in slide-in-from-bottom-4 fill-mode-both`}
+            style={{ animationDelay: `${delay}ms` }}
+        >
+            <div className="text-slate-400 group-hover:text-blue-500 transition-colors duration-500">
+                <Icon size={24} strokeWidth={1.5} />
+            </div>
+            <div>
+                <div className="text-3xl font-light text-slate-800 mb-1 tracking-tight group-hover:scale-105 transition-transform duration-500">{value}</div>
+                <div className="text-xs font-medium text-slate-400 uppercase tracking-widest">{label}</div>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="min-h-full pb-20 pt-6 px-4 lg:px-0 font-sans text-slate-600">
+            {/* Ambient Background */}
+            {/* Ambient Background removed - now global in UserApp */}
+
+            {/* Header */}
+            <div className="flex justify-between items-end mb-8 animate-in fade-in duration-700">
+                <div>
+                    <h1 className="text-4xl font-light text-slate-800 tracking-tight">Мой сад</h1>
+                    {/* <p className="text-slate-400 mt-1 font-light">Пространство роста</p> */}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                {/* 1. HERO: TREE CARD (Sky Aesthetic) */}
+                <div className="lg:col-span-2 relative min-h-[320px] h-auto rounded-[2.5rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(59,130,246,0.3)] group animate-in zoom-in-95 duration-700 flex flex-col md:block">
+                    {/* Sky Gradient Background */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-[#89C4F4] to-[#4A90E2] transition-transform duration-[10s] group-hover:scale-110" />
+
+                    {/* Clouds / Texture Overlay */}
+                    <div className="absolute inset-0 opacity-30 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay" />
+
+                    {/* Content */}
+                    <div className="relative z-10 flex flex-col md:flex-row items-stretch h-full p-6 md:p-0">
+                        {/* Left Side: Info */}
+                        <div className="w-full md:w-1/3 md:p-8 flex flex-col justify-between text-white relative z-20 gap-6 md:gap-0">
+                            <div className="pt-2 md:pt-4">
+                                <h2 className="text-3xl md:text-4xl font-light tracking-tight leading-none mb-3">{user.name.split(' ')[0]}</h2>
+                                <p className="text-base md:text-lg font-medium opacity-90 text-blue-50 leading-snug">
+                                    Ваше дерево сейчас<span className="whitespace-nowrap">&nbsp;—</span> <br className="md:hidden" /> <span className="lowercase">{stage.name}</span>
+                                </p>
+                            </div>
+
+                            <div>
+                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-60 block mb-2">Собрано семян</span>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-5xl md:text-6xl font-extralight tracking-tighter leading-none">{seeds}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right Side: Tree Image (Dominant) */}
+                        <div className="flex-1 relative flex items-center justify-center md:justify-end md:p-8 md:pr-16 mt-4 md:mt-0">
+                            {/* Circular Mask */}
+                            <div className="relative w-48 h-48 md:w-64 md:h-64 rounded-full overflow-hidden border-4 border-white/20 shadow-2xl shrink-0">
+                                <img
+                                    src={stage.image}
+                                    alt={stage.name}
+                                    className="w-full h-full object-cover transform hover:scale-110 transition-transform duration-700"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. GOALS (Airy List) */}
+                <div
+                    onClick={() => onNavigate('mastery')}
+                    className="bg-white/60 backdrop-blur-md rounded-[2.5rem] p-8 border border-white/50 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col animate-in slide-in-from-right-8 duration-700"
+                >
+                    <div className="flex justify-between items-center mb-8">
+                        <div className="flex items-center gap-3 text-slate-700">
+                            <Target size={20} strokeWidth={1.5} />
+                            <h3 className="text-lg font-medium">Главные цели</h3>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
+                            <ArrowRight size={14} />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 space-y-4">
+                        {goals && goals.filter(g => !g.completed).slice(0, 3).map((goal, i) => (
+                            <div key={goal.id} className="group flex items-start gap-4">
+                                <div className={`mt-2 w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-300 ${i === 0 ? 'bg-blue-400' : 'bg-slate-300 group-hover:bg-blue-300'}`} />
+                                <div>
+                                    <p className="text-sm font-medium text-slate-700 leading-snug group-hover:text-blue-600 transition-colors">
+                                        {goal.title}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 mt-1 truncate max-w-[180px]">
+                                        {goal.related_tags?.[0] || 'В процессе'}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+                        {(!goals || goals.filter(g => !g.completed).length === 0) && (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-400 text-sm opacity-60">
+                                <span>Пока тишина...</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-slate-100/50 flex justify-between items-center text-xs text-slate-400">
+                        <span>Активных: {goals ? goals.filter(g => !g.completed).length : 0}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. METRICS GRID (Airy Cards) */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
+                <AiryCard
+                    icon={Coins}
+                    label="Общий доход"
+                    value={totalEarnings.toLocaleString() + ' ₽'}
+                    onClick={() => onNavigate('meetings')}
+                    delay={50}
+                />
+                <AiryCard
+                    icon={Zap}
+                    label="Встречи"
+                    value={totalMeetings}
+                    onClick={() => onNavigate('meetings')}
+                    delay={100}
+                />
+                <AiryCard
+                    icon={Users}
+                    label="Гости"
+                    value={totalGuests}
+                    onClick={() => onNavigate('meetings')}
+                    delay={200}
+                />
+                <AiryCard
+                    icon={Star}
+                    label="Клиенты"
+                    value={totalClients}
+                    onClick={() => onNavigate('crm')}
+                    delay={300}
+                />
+                <AiryCard
+                    icon={MessageSquare}
+                    label="Инсайты"
+                    value={totalReflections}
+                    onClick={() => onNavigate('mastery')}
+                    delay={400}
+                />
+            </div>
+
+            {/* 4. BOTTOM TILES (Smaller) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4 opacity-80">
+                <div onClick={() => onNavigate('practices')} className="bg-white/40 hover:bg-white/80 transition-colors rounded-3xl p-5 flex items-center gap-3 cursor-pointer border border-transparent hover:border-white">
+                    <BookOpen size={18} className="text-slate-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Практики ({totalPractices})</span>
+                </div>
+                <div onClick={() => onNavigate('builder')} className="bg-white/40 hover:bg-white/80 transition-colors rounded-3xl p-5 flex items-center gap-3 cursor-pointer border border-transparent hover:border-white">
+                    <Zap size={18} className="text-slate-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Сценарии ({totalScenarios})</span>
+                </div>
+                <div onClick={() => onNavigate('profile')} className="bg-white/40 hover:bg-white/80 transition-colors rounded-3xl p-5 flex items-center gap-3 cursor-pointer border border-transparent hover:border-white col-span-2 sm:col-span-1">
+                    <TrendingUp size={18} className="text-slate-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">В Лиге {tenure.value} {tenure.label}</span>
+                </div>
+            </div>
+
+        </div>
+    );
+};
+
+export default StatsDashboardView;

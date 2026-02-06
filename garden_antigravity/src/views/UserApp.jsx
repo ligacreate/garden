@@ -1,0 +1,622 @@
+import React, { useState, useEffect } from 'react';
+import {
+    Shield, LogOut, X, TreePine, Globe, BookOpen, Sparkles, Users, User, Bell,
+    TrendingUp, Calendar, Leaf, LayoutGrid, Map, Settings, Menu, CalendarRange,
+    GraduationCap, LogIn
+} from 'lucide-react';
+import Button from '../components/Button';
+import UserAvatar from '../components/UserAvatar';
+import StatsDashboardView from './StatsDashboardView';
+import MeetingsView from './MeetingsView';
+import PracticesView from './PracticesView';
+import CourseLibraryView from './CourseLibraryView';
+import BuilderView from './BuilderView';
+import CRMView from './CRMView';
+import MarketView from './MarketView';
+import MapView from './MapView';
+import ProfileView from './ProfileView';
+import NewsView from './NewsView';
+import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
+import { ROLES, ROLES_CONFIG, hasAccess, getRoleLabel } from '../utils/roles';
+import { api } from '../services/dataService';
+
+// Sidebar Item Component
+const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
+    <button
+        onClick={onClick}
+        className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all duration-300 group relative select-none
+        ${active
+                ? 'bg-blue-50 text-blue-600 border border-blue-100/50'
+                : 'text-slate-500 hover:bg-slate-100/50 hover:text-slate-900 active:scale-[0.98]'
+            }`}
+    >
+        <Icon
+            size={22}
+            className={`stroke-[1.5px] transition-transform duration-300 ${active ? 'scale-105' : 'group-hover:scale-105'}`}
+            width={24}
+        />
+        <span className={`font-medium tracking-wide text-[15px] ${active ? 'font-semibold' : ''}`}>{label}</span>
+        {badge && (
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white animate-pulse" />
+        )}
+    </button>
+);
+
+const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onSendRay, onMarkAsRead }) => {
+    const [view, setView] = useState('dashboard');
+    const [practices, setPractices] = useState([]);
+    const [meetings, setMeetings] = useState([]);
+    const [timeline, setTimeline] = useState([]);
+    const [scenarios, setScenarios] = useState([]);
+    const [goals, setGoals] = useState([]);
+    const [clients, setClients] = useState(INITIAL_CLIENTS);
+    const [notificationModal, setNotificationModal] = useState(null);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    // Determines if user has a birthday message
+    const hasBirthday = news && news.some(n => n.type === 'birthday' && !n.read);
+
+    // Load initial data
+    useEffect(() => {
+        const loadData = async () => {
+            if (user?.id) {
+                try {
+                    const [meetingsData, practicesData, scenariosData, goalsData] = await Promise.all([
+                        api.getMeetings(user.id),
+                        api.getPractices(user.id),
+                        api.getScenarios(user.id),
+                        api.getGoals(user.id)
+                    ]);
+                    setMeetings(meetingsData || []);
+                    if (!practicesData || practicesData.length === 0) {
+                        setPractices(INITIAL_PRACTICES);
+                    } else {
+                        setPractices(practicesData);
+                    }
+                    setScenarios(scenariosData || []);
+                    setGoals(goalsData || []);
+                } catch (e) {
+                    console.error("Failed to load data", e);
+                }
+            }
+        };
+        loadData();
+    }, [user?.id]);
+    // Recalculate seeds if they are 0 but user has content (Migration/Fix)
+    useEffect(() => {
+        // Only run if user is loaded and seeds count looks suspicious (0) given the content
+        if (user && (user.seeds === 0 || user.seeds === undefined)) {
+            const hasContent = meetings.length > 0 || practices.length > 0 || scenarios.length > 0 || clients.length > 0 || goals.length > 0;
+
+            if (hasContent) {
+                let totalSeeds = 0;
+
+                // Scenarios: 100 per scenario (simplified)
+                totalSeeds += scenarios.length * 100;
+
+                // Practices: 80 per practice
+                totalSeeds += practices.length * 80;
+
+                // Clients: 10 per client
+                totalSeeds += clients.length * 10;
+
+                // Goals: 30 created + 100 completed
+                goals.forEach(g => {
+                    totalSeeds += 30;
+                    if (g.completed) totalSeeds += 100;
+                });
+
+                // Meetings (Complex calc)
+                meetings.forEach(m => {
+                    let s = 50; // Base
+                    s += (parseInt(m.guests) || 0) * 5;
+                    s += (parseInt(m.new_guests) || 0) * 15;
+                    const inc = parseInt(m.income) || 0;
+                    s += Math.min(100, Math.floor(inc / 1000) * 10);
+                    totalSeeds += s;
+                });
+
+                if (totalSeeds > 0) {
+                    // console.log("Recalculating seeds...", totalSeeds);
+                    onUpdateUser({ ...user, seeds: totalSeeds });
+                    // onNotify(`Ваши семена пересчитаны: ${totalSeeds}`);
+                }
+            }
+        }
+    }, [meetings.length, practices.length, scenarios.length, clients.length, goals.length, user?.id]);
+    const [initialTab, setInitialTab] = useState('meetings');
+
+    const handleViewChange = (newView, tab = null) => {
+
+
+        if (newView === 'mastery') {
+            setView('meetings');
+            setInitialTab('mastery');
+        } else {
+            setView(newView);
+            // Default to 'meetings' tab unless specified otherwise
+            setInitialTab(tab || 'meetings');
+        }
+
+        setMobileMenuOpen(false);
+    };
+
+    const handleUpdateProfile = async (updated) => {
+        try {
+            // Optimistic update
+            onUpdateUser(updated);
+
+            // Persist to backend
+            await api.updateUser(updated);
+            onNotify("Профиль сохранен");
+        } catch (e) {
+            console.error("Failed to update profile:", e);
+            onNotify("Ошибка сохранения профиля");
+        }
+    };
+
+    const handleAddMeeting = async (meetingData) => {
+        try {
+            // Seed Calculation System
+            // 1. Base: +50
+            let seedsEarned = 50;
+
+            // 2. Participants: +5 each
+            const guests = parseInt(meetingData.guests) || 0;
+            seedsEarned += guests * 5;
+
+            // 3. New Participants: +15 each
+            const newGuests = parseInt(meetingData.new_guests) || 0;
+            seedsEarned += newGuests * 15;
+
+            // 4. Income: +10 per 1000 (max 100)
+            const income = parseInt(meetingData.income) || 0;
+            const incomeBonus = Math.min(100, Math.floor(income / 1000) * 10);
+            seedsEarned += incomeBonus;
+
+            // 5. Regularity (Bonus +20) - Simple check: if last meeting was within 30 days
+            // (Skipping complex check for now to ensure stability, or assume simplistic check)
+
+            const { title: _, ...dbMeetingData } = meetingData;
+            const newMeeting = { ...dbMeetingData, user_id: user.id };
+
+            const saved = await api.addMeeting(newMeeting);
+            const localMeeting = { ...saved, title: meetingData.title };
+
+            setMeetings([localMeeting, ...meetings]);
+
+            const updatedUser = { ...user, seeds: (user.seeds || 0) + seedsEarned };
+            onUpdateUser(updatedUser);
+            onNotify(`Встреча сохранена! +${seedsEarned} семян`);
+
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка сохранения встречи: " + e.message);
+        }
+    };
+
+    const handleUpdateMeeting = async (updatedMeeting) => {
+        try {
+            const { title, ...dbData } = updatedMeeting;
+            const saved = await api.updateMeeting(dbData);
+            const localUpdated = { ...saved, title };
+            setMeetings(meetings.map(m => m.id === localUpdated.id ? localUpdated : m));
+            onNotify("Встреча обновлена");
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка обновления встречи");
+        }
+    };
+
+    const handleDeleteMeeting = async (meetingId) => {
+        try {
+            await api.deleteMeeting(meetingId);
+            setMeetings(meetings.filter(m => m.id !== meetingId));
+            onNotify("Встреча удалена");
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка удаления встречи");
+        }
+    };
+
+    const handleAddPractice = async (practice) => {
+        try {
+            const newPractice = { ...practice, user_id: user.id };
+            const saved = await api.addPractice(newPractice);
+            setPractices([saved, ...practices]);
+
+            // Seed Bonus: +80
+            const seedsEarned = 80;
+            onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+            onNotify(`Практика добавлена! +${seedsEarned} семян`);
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка сохранения практики: " + e.message);
+        }
+    };
+
+    const handleUpdatePractice = async (updatedPractice) => {
+        try {
+            await api.updatePractice(updatedPractice);
+            setPractices(practices.map(p => p.id === updatedPractice.id ? updatedPractice : p));
+            onNotify("Практика обновлена");
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка обновления: " + e.message);
+        }
+    };
+
+    const handleDeletePractice = async (practiceId) => {
+        try {
+            await api.deletePractice(practiceId);
+            setPractices(practices.filter(p => p.id !== practiceId));
+            onNotify("Практика удалена");
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка удаления практики");
+        }
+    };
+
+    // Notification handling
+    useEffect(() => {
+        if (user.notifications) {
+            const unread = user.notifications.find(n => !n.read);
+            if (unread) {
+                setNotificationModal(unread);
+            }
+        }
+    }, [user.notifications]);
+
+    const handleCloseNotification = () => {
+        if (notificationModal) {
+            onMarkAsRead(notificationModal.id);
+            setNotificationModal(null);
+        }
+    };
+
+    const handleScenarioAdded = (isPublic) => {
+        const seedsEarned = isPublic ? 150 : 100;
+        onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+        onNotify(isPublic ? `Сценарий опубликован в Лиге! +${seedsEarned} семян` : `Сценарий сохранен! +${seedsEarned} семян`);
+    };
+
+    const handleUpdateClient = async (updatedClient) => {
+        try {
+            // Find old client to compare notes
+            const oldClient = clients.find(c => c.id === updatedClient.id);
+
+            // Assume API update happens here if we had one specific for clients, 
+            // for now we trust the CRMView handled the layout, but ideally we move API calls here.
+            // Since CRMView calls this to update LOCAL state, we just do that.
+            // If CRMView calls api.updateClient inside it (it doesn't seems so from my earlier read, it just calls onUpdateClient),
+            // wait, let's check CRMView again.
+            // CRMView: "if (editingId) { onUpdateClient({ ...clientForm, id: editingId }); ... }"
+            // It effectively expects parent to handle storage/state.
+            // But checking other handlers, e.g. handleUpdateMeeting, they CALL api.updateMeeting.
+            // CRMView DOES NOT call api. So I need to call api.updateClient here if it exists.
+            // checking handleAddClient, it didn't call api.
+            // So for now, we just update state.
+
+            setClients(clients.map(old => old.id === updatedClient.id ? updatedClient : old));
+
+            // Seed Bonus for Notes: +5
+            if (oldClient && updatedClient.notes && updatedClient.notes !== oldClient.notes) {
+                const seedsEarned = 5;
+                onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+                onNotify(`Заметка обновлена! +${seedsEarned} семян`);
+            } else {
+                onNotify("Клиент обновлен");
+            }
+
+            // Sync with backend (mock or real)
+            if (api.updateClient) await api.updateClient(updatedClient);
+
+
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка обновления клиента");
+        }
+    };
+
+    const handleAddClient = (client) => {
+        // Local Logic for now
+        const newClient = { id: Date.now(), ...client };
+        setClients([...clients, newClient]);
+
+        // Seed Bonus: +10
+        const seedsEarned = 10;
+        onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+        onNotify(`Клиент добавлен! +${seedsEarned} семян`);
+    };
+
+    const handleDeleteClient = async (clientId) => {
+        try {
+            await api.deleteClient(clientId);
+            setClients(clients.filter(c => c.id !== clientId));
+            onNotify("Клиент удален");
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка удаления клиента");
+        }
+    };
+
+    const handleAddGoal = async (goal) => {
+        try {
+            const newGoal = { ...goal, user_id: user.id };
+            const saved = await api.addGoal(newGoal);
+            setGoals([saved, ...goals]);
+
+            // Seed Bonus: +30
+            const seedsEarned = 30;
+            onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+            onNotify(`Цель создана! +${seedsEarned} семян`);
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка создания цели: " + e.message);
+        }
+    };
+
+    const handleUpdateGoal = async (updatedGoal) => {
+        try {
+            const oldGoal = goals.find(g => g.id === updatedGoal.id);
+            const saved = await api.updateGoal(updatedGoal);
+            setGoals(goals.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+
+            // Check for completion bonus: +100
+            if (updatedGoal.completed && (!oldGoal || !oldGoal.completed)) {
+                const seedsEarned = 100;
+                onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+                onNotify(`Цель достигнута! +${seedsEarned} семян`);
+            } else {
+                onNotify("Цель обновлена");
+            }
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка обновления цели");
+        }
+    };
+
+    const handleDeleteGoal = async (goalId) => {
+        try {
+            await api.deleteGoal(goalId);
+            setGoals(goals.filter(g => g.id !== goalId));
+            onNotify("Цель удалена");
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка удаления цели");
+        }
+    };
+
+    return (
+        <div className="flex h-screen bg-[#F5F5F7] overflow-hidden selection:bg-blue-100 selection:text-blue-900 font-sans">
+            {/* Desktop Sidebar - The Glass Dock */}
+            <div className={`hidden md:flex flex-col w-80 h-full p-6 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative z-50`}>
+                <div className="flex-1 bg-white/80 backdrop-blur-2xl px-4 pt-8 pb-8 rounded-[2.5rem] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.08)] border border-white/50 flex flex-col relative overflow-hidden ring-1 ring-white/60">
+
+                    {/* Fixed Avatar / Profile Section */}
+                    <div className="flex-shrink-0">
+                        <div className="flex items-center gap-4 px-4 mb-6 group cursor-pointer" onClick={() => handleViewChange('profile')}>
+                            <div className="relative">
+                                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                                <div className="relative transform group-hover:scale-105 transition-transform duration-500 ease-out">
+                                    <UserAvatar user={user} size="md" />
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
+                                    <div className={`w-2.5 h-2.5 rounded-full border border-white ${user.role === ROLES.ADMIN ? 'bg-purple-500' : 'bg-green-500'}`}></div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="font-bold text-slate-800 tracking-tight group-hover:text-blue-600 transition-colors duration-300">{user.name}</span>
+                                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{getRoleLabel(user.role)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Scrollable Navigation */}
+                    <div className="flex-1 overflow-y-auto min-h-0 py-2 custom-scrollbar -mx-2 px-2">
+                        <nav className="space-y-1">
+                            <SidebarItem
+                                icon={LayoutGrid}
+                                label="Дашборд"
+                                active={view === 'dashboard'}
+                                onClick={() => handleViewChange('dashboard')}
+                            />
+                            <SidebarItem
+                                icon={CalendarRange}
+                                label="Встречи"
+                                active={view === 'meetings'}
+                                onClick={() => handleViewChange('meetings')}
+                            />
+                            <SidebarItem
+                                icon={Map}
+                                label="Сад ведущих"
+                                active={view === 'map'}
+                                onClick={() => handleViewChange('map')}
+                            />
+                            <SidebarItem
+                                icon={BookOpen}
+                                label="Практики"
+                                active={view === 'practices'}
+                                onClick={() => handleViewChange('practices')}
+                            />
+                            <SidebarItem
+                                icon={Sparkles}
+                                label="Сценарии"
+                                active={view === 'builder'}
+                                onClick={() => handleViewChange('builder')}
+                            />
+                            <SidebarItem
+                                icon={GraduationCap}
+                                label="Библиотека"
+                                active={view === 'library'}
+                                onClick={() => handleViewChange('library')}
+                            />
+                            {hasAccess(user.role, 'leader') && (
+                                <>
+                                    <SidebarItem
+                                        icon={Users}
+                                        label="Люди"
+                                        active={view === 'crm'}
+                                        onClick={() => handleViewChange('crm')}
+                                    />
+                                </>
+                            )}
+                            {user.role === ROLES.ADMIN && (
+                                <SidebarItem
+                                    icon={Shield}
+                                    label="Админка"
+                                    onClick={onSwitchToAdmin}
+                                />
+                            )}
+                            <SidebarItem
+                                icon={Bell}
+                                label="Новости"
+                                active={view === 'news'}
+                                onClick={() => handleViewChange('news')}
+                                badge={hasBirthday ? "!" : null}
+                            />
+                        </nav>
+                    </div>
+
+                    {/* Fixed Bottom Actions */}
+                    <div className="flex-shrink-0 space-y-1 pt-6 border-t border-slate-100/50 mt-auto">
+                        <SidebarItem
+                            icon={Settings}
+                            label="Настройки"
+                            active={view === 'profile'}
+                            onClick={() => handleViewChange('profile')}
+                        />
+                        <button
+                            onClick={onLogout}
+                            className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-400 hover:text-red-500 hover:text-red-500 hover:bg-red-50/50 transition-all duration-300 group select-none"
+                        >
+                            <LogOut size={22} className="stroke-[1.5px] group-hover:scale-110 transition-transform duration-300" />
+                            <span className="font-medium tracking-wide text-[15px]">Выйти</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Mobile Header - Glass Strip */}
+            <div className="md:hidden fixed top-0 w-full bg-white/80 backdrop-blur-xl border-b border-white/20 z-50 px-6 py-4 flex justify-between items-center shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white shadow-blue-500/30 shadow-lg">
+                        <Leaf size={18} strokeWidth={2.5} />
+                    </div>
+                    <span className="font-bold text-slate-800 text-lg tracking-tight">Сад ведущих</span>
+                </div>
+                {/* Hamburger removed, moved to bottom nav */}
+            </div>
+
+            {/* Mobile Menu Overlay */}
+            {mobileMenuOpen && (
+                <div className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm animate-in fade-in duration-300 md:hidden">
+                    <div className="absolute right-0 top-0 bottom-0 w-3/4 max-w-sm bg-white/95 backdrop-blur-xl shadow-2xl p-6 flex flex-col animate-in slide-in-from-right duration-300">
+                        <div className="flex justify-between items-center mb-8">
+                            <h2 className="text-2xl font-light text-slate-900">Меню</h2>
+                            <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <nav className="space-y-2 flex-1 overflow-y-auto">
+                            <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
+                            <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
+                            <SidebarItem icon={Map} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
+                            <SidebarItem icon={Bell} label="Новости" active={view === 'news'} onClick={() => handleViewChange('news')} />
+                            <div className="h-px bg-slate-100 my-4"></div>
+                            <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
+                            <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
+                            <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
+                            {hasAccess(user.role, 'leader') && (
+                                <>
+                                    <SidebarItem icon={Users} label="Люди" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
+                                </>
+                            )}
+                            <div className="h-px bg-slate-100 my-4"></div>
+                            {user.role === ROLES.ADMIN && (
+                                <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
+                            )}
+                            <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />
+                            <div onClick={onLogout} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 active:bg-slate-50">
+                                <LogOut size={22} className="stroke-[1.5px]" />
+                                <span className="font-medium tracking-wide text-[15px]">Выйти</span>
+                            </div>
+                        </nav>
+                    </div>
+                </div>
+            )}
+
+
+            {/* Main Content Area */}
+            <div className="flex-1 overflow-y-auto pb-24 md:pb-6 md:pt-6 pt-20 relative isolate">
+                {/* Ambient Background - Global */}
+                <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-white to-indigo-50/50 -z-50" />
+
+                <div className="p-6 max-w-6xl mx-auto min-h-full animate-in fade-in duration-500">
+                    {view === 'dashboard' && <StatsDashboardView user={user} meetings={meetings} knowledgeBase={knowledgeBase} clients={clients} practices={practices} scenarios={scenarios} goals={goals} onNavigate={handleViewChange} />}
+                    {view === 'meetings' && <MeetingsView user={user} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
+                    {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
+                    {view === 'library' && <CourseLibraryView user={user} knowledgeBase={knowledgeBase} />}
+                    {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} />}
+                    {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
+                    {view === 'market' && <MarketView />}
+                    {view === 'map' && <MapView users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} currentUser={user} onSendRay={onSendRay} />}
+                    {view === 'news' && <NewsView news={news} users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} />}
+                    {view === 'profile' && <ProfileView user={user} onUpdateProfile={handleUpdateProfile} onLogout={onLogout} onDeleteAccount={() => { if (confirm('Удалить?')) onLogout(); }} onNotify={onNotify} />}
+                </div>
+            </div>
+
+            {/* Mobile Bottom Navigation - Added as requested to show "menu buttons" */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 z-50 flex justify-around items-center px-4 py-3 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                <button
+                    onClick={() => handleViewChange('dashboard')}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'dashboard' ? 'text-blue-600' : 'text-slate-400'}`}
+                >
+                    <LayoutGrid size={24} strokeWidth={view === 'dashboard' ? 2 : 1.5} />
+                    <span className="text-[10px] font-medium">Дашборд</span>
+                </button>
+
+                <button
+                    onClick={() => handleViewChange('meetings')}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'meetings' ? 'text-blue-600' : 'text-slate-400'}`}
+                >
+                    <CalendarRange size={24} strokeWidth={view === 'meetings' ? 2 : 1.5} />
+                    <span className="text-[10px] font-medium">Встречи</span>
+                </button>
+
+                <button
+                    onClick={() => handleViewChange('practices')}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'practices' ? 'text-blue-600' : 'text-slate-400'}`}
+                >
+                    <BookOpen size={24} strokeWidth={view === 'practices' ? 2 : 1.5} />
+                    <span className="text-[10px] font-medium">Практики</span>
+                </button>
+
+                <button
+                    onClick={() => setMobileMenuOpen(true)}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-blue-600' : 'text-slate-400'}`}
+                >
+                    <Menu size={24} strokeWidth={1.5} />
+                    <span className="text-[10px] font-medium">Меню</span>
+                </button>
+            </div>
+
+            {/* Notification Modal */}
+            {notificationModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 w-full max-w-sm shadow-2xl text-center relative animate-in zoom-in-95 duration-300 border border-white/50 ring-1 ring-black/5">
+                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                            <Sparkles size={32} className="text-blue-500" />
+                        </div>
+                        <h3 className="text-xl font-light text-slate-900 mb-2">Вам пришел лучик!</h3>
+                        <p className="text-slate-500 mb-6">От: <span className="font-medium text-slate-800">{notificationModal.from}</span></p>
+                        <p className="text-sm text-slate-500 italic mb-8 bg-slate-50 p-4 rounded-xl">"{notificationModal.message}"</p>
+                        <Button onClick={handleCloseNotification} className="w-full py-4 text-base shadow-lg shadow-blue-500/20">Принять с благодарностью</Button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default UserApp;

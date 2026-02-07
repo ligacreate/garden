@@ -85,7 +85,7 @@ export const INITIAL_KNOWLEDGE = [
 ];
 
 export const INITIAL_USERS = [
-    { id: 100, email: "olga@skrebeyko.com", password: "12345", name: "Ольга Скребейко", city: "Сад", role: "admin", tree: "Дуб", seeds: 9999, avatar: null, emoji: "👩🏼‍🌾", x: 50, y: 50, directions: ["Стратегия", "Медиа"], skills: ["Фасилитация", "Психология"] },
+    { id: 100, email: "olga@skrebeyko.com", password: "12345", name: "Ольга Скребейко", city: "Сад", role: "admin", tree: "Дуб", seeds: 9999, avatar: null, emoji: "👩🏼‍🌾", x: 50, y: 50, skills: ["Фасилитация", "Психология"] },
 ];
 
 export const INITIAL_PRACTICES = [

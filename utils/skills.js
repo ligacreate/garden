@@ -8,7 +8,7 @@ export const normalizeSkills = (...values) => {
 
   const flat = raw
     .flatMap((tag) => String(tag).split(','))
-    .map((t) => t.trim())
+    .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
 
   return [...new Set(flat)];

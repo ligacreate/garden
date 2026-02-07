@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users, Bell,
     Leaf, LayoutGrid, Map, Settings, Menu, CalendarRange,
@@ -18,6 +18,7 @@ import ProfileView from './ProfileView';
 import NewsView from './NewsView';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
+import { normalizeSkills } from '../utils/skills';
 import { api } from '../services/dataService';
 
 // Sidebar Item Component
@@ -52,6 +53,18 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
     const [clients, setClients] = useState(INITIAL_CLIENTS);
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const skillOptions = useMemo(() => {
+        const map = new Map();
+        users.forEach((u) => {
+            normalizeSkills(u.skills).forEach((s) => {
+                const label = String(s || '').trim();
+                if (!label) return;
+                const key = label.toLowerCase();
+                if (!map.has(key)) map.set(key, label);
+            });
+        });
+        return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ru'));
+    }, [users]);
 
     // Determines if user has a birthday message
     const hasBirthday = news && news.some(n => n.type === 'birthday' && !n.read);
@@ -82,10 +95,13 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
         };
         loadData();
     }, [user?.id]);
-    // Recalculate seeds if they are 0 but user has content (Migration/Fix)
+    // One-time seed backfill (avoid jumping values)
     useEffect(() => {
-        // Only run if user is loaded and seeds count looks suspicious (0) given the content
-        if (user && (user.seeds === 0 || user.seeds === undefined)) {
+        if (!user?.id) return;
+        const flagKey = `garden_seeds_backfill_${user.id}`;
+        const alreadyBackfilled = localStorage.getItem(flagKey) === '1';
+        // Only run if seeds are missing (null/undefined) and we haven't backfilled yet
+        if (!alreadyBackfilled && (user.seeds === null || user.seeds === undefined)) {
             const hasContent = meetings.length > 0 || practices.length > 0 || scenarios.length > 0 || clients.length > 0 || goals.length > 0;
 
             if (hasContent) {
@@ -115,8 +131,8 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                 });
 
                 if (totalSeeds > 0) {
-                    // console.log("Recalculating seeds...", totalSeeds);
                     onUpdateUser({ ...user, seeds: totalSeeds });
+                    localStorage.setItem(flagKey, '1');
                     // onNotify(`Ваши семена пересчитаны: ${totalSeeds}`);
                 }
             }
@@ -586,7 +602,16 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                     {view === 'market' && <MarketView />}
                     {view === 'map' && <MapView users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} currentUser={user} onSendRay={onSendRay} />}
                     {view === 'news' && <NewsView news={news} users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} />}
-                    {view === 'profile' && <ProfileView user={user} onUpdateProfile={handleUpdateProfile} onLogout={onLogout} onDeleteAccount={onLogout} onNotify={onNotify} />}
+                    {view === 'profile' && (
+                        <ProfileView
+                            user={user}
+                            onUpdateProfile={handleUpdateProfile}
+                            onLogout={onLogout}
+                            onDeleteAccount={onLogout}
+                            onNotify={onNotify}
+                            skillOptions={skillOptions}
+                        />
+                    )}
                 </div>
             </div>
 

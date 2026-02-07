@@ -9,11 +9,11 @@ import { getDruidTree } from '../utils/druidHoroscope';
 import { normalizeSkills } from '../utils/skills';
 import ConfirmationModal from '../components/ConfirmationModal';
 
-const TagsInput = ({ label, value = [], onChange, placeholder = "Добавить..." }) => {
+const TagsInput = ({ label, value = [], onChange, placeholder = "Добавить...", options = [] }) => {
     const [input, setInput] = useState('');
 
     const commitTag = (raw) => {
-        const cleaned = raw.replace(/,+$/, '');
+        const cleaned = raw.replace(/,+$/, '').toLowerCase();
         const parts = cleaned
             .split(',')
             .map(t => t.trim())
@@ -48,6 +48,38 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
         onChange(value.filter(tag => tag !== tagToRemove));
     };
 
+    const normalizedInput = input.trim().toLowerCase();
+    const suggestions = normalizedInput
+        ? options
+            .map((opt) => String(opt || '').trim())
+            .filter(Boolean)
+            .filter((opt) => !value.includes(opt))
+            .filter((opt) => opt.toLowerCase().includes(normalizedInput))
+            .slice(0, 8)
+        : [];
+
+    const addSuggestion = (suggestion) => {
+        if (!suggestion) return;
+        if (!value.includes(suggestion)) onChange([...value, suggestion]);
+        setInput('');
+    };
+
+    const renderHighlighted = (text) => {
+        if (!normalizedInput) return text;
+        const idx = text.toLowerCase().indexOf(normalizedInput);
+        if (idx === -1) return text;
+        const before = text.slice(0, idx);
+        const match = text.slice(idx, idx + normalizedInput.length);
+        const after = text.slice(idx + normalizedInput.length);
+        return (
+            <>
+                {before}
+                <span className="text-blue-600 font-semibold">{match}</span>
+                {after}
+            </>
+        );
+    };
+
     return (
         <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">{label}</label>
@@ -75,12 +107,29 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
                 />
                 <Button variant="secondary" onClick={addTag} className="!p-2" icon={Plus} />
             </div>
+            {suggestions.length > 0 && (
+                <div className="bg-white border border-slate-100 rounded-xl shadow-sm p-2 flex flex-wrap gap-2">
+                    {suggestions.map((opt) => (
+                        <button
+                            key={opt}
+                            type="button"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                addSuggestion(opt);
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-sm bg-slate-50 border border-slate-100 text-slate-700 hover:border-blue-200 hover:text-blue-700 transition-colors"
+                        >
+                            {renderHighlighted(opt)}
+                        </button>
+                    ))}
+                </div>
+            )}
             <p className="text-[10px] text-slate-400">Можно нажать Enter, Tab или поставить запятую</p>
         </div>
     );
 };
 
-const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify }) => {
+const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify, skillOptions = [] }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ next: '', confirm: '', loading: false });
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -311,6 +360,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                             placeholder="Коучинг, психология, нейрографика, игропрактика, дизайн..."
                                             value={form.skills}
                                             onChange={newTags => setForm({ ...form, skills: newTags })}
+                                            options={skillOptions}
                                         />
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700">Чем я могу быть полезна другим участникам?</label>

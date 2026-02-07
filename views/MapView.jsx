@@ -35,6 +35,8 @@ const FilterSelect = ({ icon: Icon, value, onChange, options, placeholder }) => 
 const UserCard = ({ user }) => {
     // Competencies list
     const allTags = normalizeSkills(user.skills);
+    const offerText = String(user.offer || '').trim();
+    const superpowerText = String(user.unique_abilities || user.uniqueAbilities || '').trim();
 
     // Tenure Logic with correct Russian declension
     const tenureCaption = getTenureText(user.join_date);
@@ -75,23 +77,23 @@ const UserCard = ({ user }) => {
             )}
 
             {/* Offer / About with Subtitle - Unified Style */}
-            {user.offer && (
+            {offerText && (
                 <div className="mb-4">
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 opacity-80">Чем могу помочь</div>
                     <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-                        {user.offer}
+                        {offerText}
                     </p>
                 </div>
             )}
 
             {/* Superpower - Unified Style to match Competencies/Offer but with Amber hint */}
-            {user.unique_abilities && (
+            {superpowerText && (
                 <div className="mb-4">
                     <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-2 opacity-90 flex items-center gap-1">
                         <Zap size={10} /> Суперсила
                     </div>
                     <p className="text-xs text-slate-700 font-medium line-clamp-2 leading-relaxed">
-                        {user.unique_abilities}
+                        {superpowerText}
                     </p>
                 </div>
             )}
@@ -109,6 +111,8 @@ const UserCard = ({ user }) => {
 
 const UserModal = ({ user, onClose }) => {
     if (!user) return null;
+    const offerText = String(user.offer || '').trim();
+    const superpowerText = String(user.unique_abilities || user.uniqueAbilities || '').trim();
     return (
         <ModalShell
             isOpen={!!user}
@@ -170,17 +174,17 @@ const UserModal = ({ user, onClose }) => {
                     </div>
                 )}
 
-                {user.offer && (
+                {offerText && (
                     <div className="bg-slate-50 p-5 rounded-3xl">
                         <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Чем могу быть полезна</h4>
-                        <p className="text-slate-700 leading-relaxed">{user.offer}</p>
+                        <p className="text-slate-700 leading-relaxed">{offerText}</p>
                     </div>
                 )}
 
-                {user.unique_abilities && (
+                {superpowerText && (
                     <div className="bg-slate-50 p-5 rounded-3xl">
                         <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Суперсила</h4>
-                        <p className="text-slate-700 leading-relaxed">{user.unique_abilities}</p>
+                        <p className="text-slate-700 leading-relaxed">{superpowerText}</p>
                     </div>
                 )}
             </div>

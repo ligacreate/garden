@@ -12,7 +12,8 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 
     // Filter meetings by period and only completed
     const filteredMeetings = meetings.filter(m => {
-        if (m.status !== 'completed') return false;
+        const status = String(m.status || '').toLowerCase();
+        if (status !== 'completed') return false;
         if (period === 'all') return true;
         const date = new Date(m.date);
         const now = new Date();

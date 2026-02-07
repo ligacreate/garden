@@ -63,7 +63,7 @@ const UserCard = ({ user }) => {
             {allTags.length > 0 && (
                 <div className="mb-4">
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 opacity-80">Компетенции</div>
-                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
                         {allTags.map((tag, i) => (
                             <span
                                 key={i}

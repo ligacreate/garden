@@ -689,6 +689,30 @@ class SupabaseService {
         }
 
         if (data) {
+            // Best-effort hydrate missing fields from auth metadata (one-time sync)
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                const meta = authUser?.user_metadata || {};
+                const metaOffer = typeof meta.offer === 'string' ? meta.offer.trim() : '';
+                const metaUnique = typeof meta.unique_abilities === 'string'
+                    ? meta.unique_abilities.trim()
+                    : (typeof meta.uniqueAbilities === 'string' ? meta.uniqueAbilities.trim() : '');
+                const offerMissing = !data.offer || String(data.offer).trim() === '';
+                const uniqueMissing = !data.unique_abilities || String(data.unique_abilities).trim() === '';
+                if ((offerMissing && metaOffer) || (uniqueMissing && metaUnique)) {
+                    const patch = {};
+                    if (offerMissing && metaOffer) patch.offer = metaOffer;
+                    if (uniqueMissing && metaUnique) patch.unique_abilities = metaUnique;
+                    if (Object.keys(patch).length > 0) {
+                        await supabase.from('profiles').update(patch).eq('id', userId);
+                        data.offer = patch.offer ?? data.offer;
+                        data.unique_abilities = patch.unique_abilities ?? data.unique_abilities;
+                    }
+                }
+            } catch (e) {
+                console.warn("Profile metadata hydrate failed:", e);
+            }
+
             // Map DB columns to UI expected keys (single source of truth)
             return {
                 ...data,

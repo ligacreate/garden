@@ -10,8 +10,9 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     const [period, setPeriod] = useState('month'); // 'month', 'year', 'all', 'custom'
     const [customRange, setCustomRange] = useState({ from: '', to: '' });
 
-    // Filter meetings by period
+    // Filter meetings by period and only completed
     const filteredMeetings = meetings.filter(m => {
+        if (m.status !== 'completed') return false;
         if (period === 'all') return true;
         const date = new Date(m.date);
         const now = new Date();

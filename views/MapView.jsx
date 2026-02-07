@@ -61,15 +61,15 @@ const UserCard = ({ user }) => {
             {allTags.length > 0 && (
                 <div className="mb-4">
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 opacity-80">Компетенции</div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {allTags.slice(0, 4).map((tag, i) => (
-                            <span key={i} className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] text-slate-600 font-medium whitespace-nowrap">
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                        {allTags.map((tag, i) => (
+                            <span
+                                key={i}
+                                className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] text-slate-600 font-medium max-w-full whitespace-normal break-words"
+                            >
                                 {tag}
                             </span>
                         ))}
-                        {allTags.length > 4 && (
-                            <span className="px-1.5 py-1 text-[10px] text-slate-400 font-medium">+{allTags.length - 4}</span>
-                        )}
                     </div>
                 </div>
             )}
@@ -194,15 +194,19 @@ const MapView = ({ users, currentUser, onSendRay }) => {
     const [selectedSkill, setSelectedSkill] = useState('');
     const [selectedUser, setSelectedUser] = useState(null);
     const [isGardenMode, setIsGardenMode] = useState(false);
+    const normalizeKey = (value) => String(value || '').trim().toLowerCase();
 
     // Filter Logic
     const filteredUsers = useMemo(() => {
         return users.filter(user => {
             const userName = user.name || '';
             const matchSearch = userName.toLowerCase().includes(search.toLowerCase());
-            const matchCity = !selectedCity || user.city === selectedCity;
-            const normalizedSkills = normalizeSkills(user.skills);
-            const matchSkill = !selectedSkill || normalizedSkills.includes(selectedSkill);
+            const matchCity = !selectedCity || normalizeKey(user.city) === normalizeKey(selectedCity);
+            const normalizedSkills = normalizeSkills(user.skills).map(normalizeKey).filter(Boolean);
+            const selectedSkillKey = normalizeKey(selectedSkill);
+            const matchSkill = !selectedSkill || normalizedSkills.some((s) =>
+                s === selectedSkillKey || s.includes(selectedSkillKey) || selectedSkillKey.includes(s)
+            );
 
             // Also exclude suspended/deleted if needed, but current dataService handles that mostly.
             // Let's hide users without names or "ghosts"
@@ -213,8 +217,28 @@ const MapView = ({ users, currentUser, onSendRay }) => {
     }, [users, search, selectedCity, selectedSkill]);
 
     // Extract Options for Selects
-    const cities = useMemo(() => [...new Set(users.map(u => u.city).filter(Boolean))].sort(), [users]);
-    const skills = useMemo(() => [...new Set(users.flatMap(u => normalizeSkills(u.skills)))].sort(), [users]);
+    const cities = useMemo(() => {
+        const map = new Map();
+        users.forEach((u) => {
+            const city = (u.city || '').trim();
+            if (!city) return;
+            const key = normalizeKey(city);
+            if (!map.has(key)) map.set(key, city);
+        });
+        return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ru'));
+    }, [users]);
+    const skills = useMemo(() => {
+        const map = new Map();
+        users.forEach((u) => {
+            normalizeSkills(u.skills).forEach((s) => {
+                const label = String(s || '').trim();
+                if (!label) return;
+                const key = normalizeKey(label);
+                if (!map.has(key)) map.set(key, label);
+            });
+        });
+        return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ru'));
+    }, [users]);
 
     const resetFilters = () => {
         setSearch('');

@@ -440,6 +440,7 @@ class SupabaseService {
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        await this._ensureProfile(data.user);
         return this._fetchProfile(data.user.id);
     }
 
@@ -459,8 +460,7 @@ class SupabaseService {
     async register(userData) {
         const { email, password, isNew, ...rest } = userData;
 
-        // Prepare metadata for auth.users (backup/primary if profile write fails)
-        const meta = {
+        const profileDraft = {
             name: this._sanitizeIfString(rest.name),
             city: this._sanitizeIfString(rest.city),
             role: email === 'olga@skrebeyko.com' ? 'admin' : (rest.role || 'applicant'),
@@ -479,7 +479,8 @@ class SupabaseService {
             email,
             password,
             options: {
-                data: meta
+                // Temporary storage until profile row is created (email confirmation flow)
+                data: profileDraft
             }
         });
 
@@ -510,10 +511,9 @@ class SupabaseService {
 
         // 3. If we have a session (Email auto-confirm is ON or similar), create profile
         if (data.user && data.session) {
-            const profileData = { ...meta };
+            const profileData = { ...profileDraft };
             // Fix keys for DB
-            if (profileData.avatar) { profileData.avatar_url = profileData.avatar; delete profileData.avatar; }
-            if (meta.treeDesc) { profileData.tree_desc = meta.treeDesc; delete profileData.treeDesc; }
+            if (profileDraft.treeDesc) { profileData.tree_desc = profileDraft.treeDesc; delete profileData.treeDesc; }
 
             try {
                 const { error: profileError } = await supabase
@@ -534,8 +534,8 @@ class SupabaseService {
             return {
                 id: data.user.id,
                 email,
-                ...meta,
-                tree_desc: meta.treeDesc || meta.tree_desc
+                ...profileDraft,
+                tree_desc: profileDraft.treeDesc || profileDraft.tree_desc
             };
         }
     }
@@ -623,7 +623,52 @@ class SupabaseService {
     async getCurrentUser() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return null;
+        await this._ensureProfile(session.user);
         return this._fetchProfile(session.user.id);
+    }
+
+    async _ensureProfile(user) {
+        if (!user?.id) return;
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('id', user.id)
+                .single();
+            if (data && data.id) return;
+            if (error && error.code && error.code !== 'PGRST116') {
+                console.warn("Profile check failed:", error);
+                return;
+            }
+
+            const meta = user.user_metadata || {};
+            const draft = {
+                id: user.id,
+                email: user.email,
+                name: meta.name || null,
+                city: meta.city || null,
+                role: user.email === 'olga@skrebeyko.com' ? 'admin' : (meta.role || 'applicant'),
+                tree: meta.tree || null,
+                tree_desc: meta.tree_desc || meta.treeDesc || null,
+                seeds: meta.seeds || 0,
+                avatar_url: meta.avatar_url || meta.avatar || null,
+                dob: meta.dob || null,
+                x: meta.x || (Math.random() * 80 + 10),
+                y: meta.y || (Math.random() * 80 + 10),
+                skills: Array.isArray(meta.skills) ? meta.skills.map(String) : [],
+                offer: meta.offer || null,
+                unique_abilities: meta.unique_abilities || null,
+                join_date: meta.join_date || null,
+                status: meta.status || 'active'
+            };
+
+            const { error: insertError } = await supabase
+                .from('profiles')
+                .upsert([draft]);
+            if (insertError) console.warn("Profile upsert failed:", insertError);
+        } catch (e) {
+            console.warn("Profile ensure failed:", e);
+        }
     }
 
     async _fetchProfile(userId) {
@@ -644,55 +689,19 @@ class SupabaseService {
         }
 
         if (data) {
-            // Fetch metadata to fallback for fields that might be missing in 'profiles' table (e.g. seeds, dob)
-            const { data: { user } } = await supabase.auth.getUser();
-            const meta = user?.user_metadata || {};
-
-            // Map DB columns to UI expected keys, with robust fallback to metadata
+            // Map DB columns to UI expected keys (single source of truth)
             return {
                 ...data,
-                avatar: data.avatar_url || meta.avatar || meta.avatar_url, // Map avatar_url -> avatar with fallback
-                city: data.city || meta.city, // Fallback for city which was missing before
+                avatar: data.avatar_url, // Map avatar_url -> avatar
                 treeDesc: data.tree_desc, // Map tree_desc -> treeDesc
                 // Ensure role is respected
                 role: data.email === 'olga@skrebeyko.com' ? 'admin' : data.role,
-                // Fallback to metadata if DB field is missing (undefined/null)
-                dob: data.dob || meta.dob,
-                // Prioritize metadata for seeds as we write there reliably, and DB might be missing the column
-                seeds: meta.seeds !== undefined ? meta.seeds : (data.seeds || 0),
-                // Fix: Check for length to validly fall back to metadata if DB has empty array but meta has data
-                skills: (data.skills && data.skills.length > 0) ? data.skills : (meta.skills || []),
-                offer: data.offer || meta.offer || '',
-                unique_abilities: data.unique_abilities || meta.unique_abilities || '',
-                join_date: data.join_date || meta.join_date
-            };
-        }
-
-        // Fallback: Check auth metadata if profile table is empty/inaccessible
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && user.id === userId && user.user_metadata) {
-            const meta = user.user_metadata;
-            // Return shape matching profiles table
-            return {
-                id: user.id,
-                email: user.email,
-                name: meta.name,
-                city: meta.city,
-                avatar: meta.avatar_url || meta.avatar, // support both
-                role: user.email === 'olga@skrebeyko.com' ? ROLES.ADMIN : (meta.role || ROLES.APPLICANT),
-                tree: meta.tree,
-                tree_desc: meta.tree_desc || meta.treeDesc,
-                seeds: meta.seeds || 0,
-                avatar: meta.avatar_url || null, // UI expects 'avatar'
-                x: meta.x,
-                y: meta.y,
-                y: meta.y,
-                status: meta.status || 'active',
-                dob: meta.dob,
-                skills: meta.skills || [],
-                offer: meta.offer || '',
-                unique_abilities: meta.unique_abilities || '',
-                join_date: meta.join_date
+                dob: data.dob,
+                seeds: data.seeds || 0,
+                skills: Array.isArray(data.skills) ? data.skills : [],
+                offer: data.offer || '',
+                unique_abilities: data.unique_abilities || '',
+                join_date: data.join_date
             };
         }
 
@@ -705,9 +714,7 @@ class SupabaseService {
         return (data || []).map((profile) => ({
             ...profile,
             avatar: profile.avatar_url || profile.avatar,
-            skills: (profile.skills && profile.skills.length > 0)
-                ? profile.skills
-                : [],
+            skills: Array.isArray(profile.skills) ? profile.skills : [],
             offer: profile.offer || '',
             unique_abilities: profile.unique_abilities || ''
         }));
@@ -732,42 +739,7 @@ class SupabaseService {
             avatar_url: this._sanitizeIfString(updatedUser.avatar_url)
         };
 
-        let isSelfUpdate = false;
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            isSelfUpdate = !!session?.user?.id && session.user.id === updatedUser.id;
-        } catch (e) {
-            console.warn("Failed to determine current session for user update", e);
-        }
-
-        // 1. Update Auth Metadata (Primary source for new flexible fields)
-        // We do this FIRST or concurrently to ensure at least this works.
-        if (isSelfUpdate) {
-            try {
-                const meta = {};
-                if (safeDob !== undefined) meta.dob = safeDob;
-                if (hasField(updatedUser, 'city')) meta.city = clean.city;
-                if (hasField(updatedUser, 'name')) meta.name = clean.name;
-                if (hasField(updatedUser, 'avatar')) meta.avatar_url = clean.avatar;
-                if (hasField(updatedUser, 'treeDesc')) meta.tree_desc = clean.treeDesc;
-                if (hasField(updatedUser, 'seeds')) meta.seeds = updatedUser.seeds;
-                if (safeSkills !== undefined) meta.skills = safeSkills;
-                if (hasField(updatedUser, 'offer')) meta.offer = clean.offer;
-                if (hasField(updatedUser, 'unique_abilities')) meta.unique_abilities = clean.unique_abilities;
-                if (safeJoinDate !== undefined) meta.join_date = safeJoinDate;
-                if (hasField(updatedUser, 'role')) meta.role = updatedUser.role;
-                if (hasField(updatedUser, 'status')) meta.status = updatedUser.status;
-
-                const { error: paramError } = await supabase.auth.updateUser({
-                    data: meta
-                });
-                if (paramError) console.warn("Metadata update warning:", paramError);
-            } catch (e) {
-                console.warn("Failed to update auth metadata", e);
-            }
-        }
-
-        // 2. Update role/status first (keep it minimal to avoid missing-column failures)
+        // 1. Update role/status first
         try {
             const roleStatusUpdate = {};
             if (hasField(updatedUser, 'role')) roleStatusUpdate.role = updatedUser.role;
@@ -785,27 +757,8 @@ class SupabaseService {
             throw e;
         }
 
-        // 3. Try to update other profile fields (Best effort)
+        // 2. Update profile fields
         try {
-            // First: minimal update for fields we need to persist reliably
-            try {
-                const minimal = {};
-                if (safeJoinDate !== undefined) minimal.join_date = safeJoinDate;
-                if (safeSkills !== undefined) minimal.skills = safeSkills;
-
-                if (Object.keys(minimal).length > 0) {
-                    const { error: minimalError } = await supabase
-                        .from('profiles')
-                        .update(minimal)
-                        .eq('id', updatedUser.id);
-                    if (minimalError) {
-                        console.warn("Minimal profile update failed:", minimalError);
-                    }
-                }
-            } catch (e) {
-                console.warn("Minimal profile update exception:", e);
-            }
-
             const dbUser = { id: updatedUser.id };
             if (hasField(updatedUser, 'name')) dbUser.name = clean.name;
             if (hasField(updatedUser, 'city')) dbUser.city = clean.city;
@@ -831,9 +784,8 @@ class SupabaseService {
                 .eq('id', dbUser.id);
 
             if (error) {
-                console.warn("Profile table update failed (likely missing columns), but metadata saved.", error);
+                console.warn("Profile table update failed.", error);
                 // Optional: Retry with only safe fields? 
-                // For now, we trust metadata is enough for the app to function.
             }
         } catch (e) {
             console.warn("Profile update exception:", e);
@@ -1012,7 +964,8 @@ class SupabaseService {
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
             duration: toIntOrNull(cleaned.duration),
-            co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : []
+            co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
+            seeds_awarded: cleaned.seeds_awarded
         };
         // Remove undefined keys to let DB defaults work
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
@@ -1059,7 +1012,8 @@ class SupabaseService {
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
             duration: toIntOrNull(cleaned.duration),
-            co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : []
+            co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
+            seeds_awarded: cleaned.seeds_awarded
         };
 
         // Remove undefined keys to avoid sending empty updates for partial objects

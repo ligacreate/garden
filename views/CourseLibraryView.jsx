@@ -47,7 +47,7 @@ const COURSES = [
     }
 ];
 
-const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotify }) => {
+const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotify, resetToken = 0 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
     const [selectedTag, setSelectedTag] = useState('Все');
@@ -100,6 +100,12 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
     }, [courseMaterials, selectedTag]);
 
     const [completedIds, setCompletedIds] = useState(new Set());
+
+    useEffect(() => {
+        setSelectedCourseId(null);
+        setSelectedTag('Все');
+        setSelectedMaterial(null);
+    }, [resetToken]);
 
     const completedCount = selectedCourse ? courseMaterials.filter(m => completedIds.has(String(m.id))).length : 0;
     const totalCount = selectedCourse ? courseMaterials.length : 0;

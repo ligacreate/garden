@@ -1284,33 +1284,31 @@ const MeetingsView = ({
                 size="md"
             >
                 <div className="space-y-5 mb-8">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <Input type="number" label="Всего гостей" value={formData.guests} onChange={e => setFormData({ ...formData, guests: e.target.value })} />
-                                    <Input type="number" label="Из них новых" value={formData.new_guests} onChange={e => setFormData({ ...formData, new_guests: e.target.value })} />
-                                </div>
-                                <Input type="number" label="Доход (₽)" value={formData.income} onChange={e => setFormData({ ...formData, income: e.target.value })} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input type="number" label="Всего гостей" value={formData.guests} onChange={e => setFormData({ ...formData, guests: e.target.value })} />
+                        <Input type="number" label="Из них новых" value={formData.new_guests} onChange={e => setFormData({ ...formData, new_guests: e.target.value })} />
+                    </div>
+                    <Input type="number" label="Доход (₽)" value={formData.income} onChange={e => setFormData({ ...formData, income: e.target.value })} />
 
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1 flex items-center gap-2"><span className="text-green-500">✨</span> Что получилось классно?</label>
-                                    <textarea
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 min-h-[80px]"
-                                        value={formData.keep_notes}
-                                        onChange={e => setFormData({ ...formData, keep_notes: e.target.value })}
-                                        placeholder="Ваши победы и инсайты..."
-                                    />
-                                </div>
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2 ml-1 flex items-center gap-2"><span className="text-green-500">✨</span> Что получилось классно?</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 min-h-[80px]"
+                            value={formData.keep_notes}
+                            onChange={e => setFormData({ ...formData, keep_notes: e.target.value })}
+                            placeholder="Ваши победы и инсайты..."
+                        />
+                    </div>
 
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1 flex items-center gap-2"><span className="text-amber-500">🎯</span> Что можно улучшить?</label>
-                                    <textarea
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 min-h-[80px]"
-                                        value={formData.change_notes}
-                                        onChange={e => setFormData({ ...formData, change_notes: e.target.value })}
-                                        placeholder="Зоны роста на будущее..."
-                                    />
-                                </div>
-                            </div>
-
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2 ml-1 flex items-center gap-2"><span className="text-amber-500">🎯</span> Что можно улучшить?</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 min-h-[80px]"
+                            value={formData.change_notes}
+                            onChange={e => setFormData({ ...formData, change_notes: e.target.value })}
+                            placeholder="Зоны роста на будущее..."
+                        />
+                    </div>
                 </div>
                 <Button onClick={handleSaveResult} disabled={isSaving} className="w-full justify-center">
                     {isSaving ? 'Сохранение...' : 'Сохранить результат'}
@@ -1325,36 +1323,34 @@ const MeetingsView = ({
                 size="sm"
             >
                 <div className="space-y-4 mb-8">
-                                <p className="text-slate-500 text-sm">Встреча: <strong>{formData.title}</strong></p>
+                    <p className="text-slate-500 text-sm">Встреча: <strong>{formData.title}</strong></p>
 
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Почему не состоялась?</label>
-                                    <textarea
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/20 min-h-[80px]"
-                                        value={formData.fail_reason}
-                                        onChange={e => setFormData({ ...formData, fail_reason: e.target.value })}
-                                        placeholder="Например: перенесли, заболела..."
-                                    />
-                                </div>
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Почему не состоялась?</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/20 min-h-[80px]"
+                            value={formData.fail_reason}
+                            onChange={e => setFormData({ ...formData, fail_reason: e.target.value })}
+                            placeholder="Например: перенесли, заболела..."
+                        />
+                    </div>
 
-                                <div className="bg-blue-50 p-4 rounded-xl flex items-start gap-3">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.reschedule}
-                                        onChange={e => setFormData({ ...formData, reschedule: e.target.checked })}
-                                        className="mt-1 w-5 h-5 rounded text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <div className="flex-1">
-                                        <label className="block text-sm font-bold text-slate-900 mb-1">Перенести встречу</label>
-                                        <p className="text-xs text-slate-500 leading-tight mb-2">Создать новую карточку с новой датой</p>
+                    <div className="bg-blue-50 p-4 rounded-xl flex items-start gap-3">
+                        <input
+                            type="checkbox"
+                            checked={formData.reschedule}
+                            onChange={e => setFormData({ ...formData, reschedule: e.target.checked })}
+                            className="mt-1 w-5 h-5 rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="flex-1">
+                            <label className="block text-sm font-bold text-slate-900 mb-1">Перенести встречу</label>
+                            <p className="text-xs text-slate-500 leading-tight mb-2">Создать новую карточку с новой датой</p>
 
-                                        {formData.reschedule && (
-                                            <Input type="date" value={formData.new_date} onChange={e => setFormData({ ...formData, new_date: e.target.value })} className="bg-white" />
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
+                            {formData.reschedule && (
+                                <Input type="date" value={formData.new_date} onChange={e => setFormData({ ...formData, new_date: e.target.value })} className="bg-white" />
+                            )}
+                        </div>
+                    </div>
                 </div>
                 <Button onClick={handleSaveCancel} variant="secondary" className="w-full justify-center">Подтвердить отмену</Button>
             </ModalShell>
@@ -1391,44 +1387,42 @@ const MeetingsView = ({
                 size="md"
             >
                 <div className="space-y-4 mb-8">
-                                <Input
-                                    label="Название цели"
-                                    value={goalFormData.title}
-                                    onChange={e => setGoalFormData({ ...goalFormData, title: e.target.value })}
-                                    placeholder="Например: Улучшить тайминг"
-                                />
+                    <Input
+                        label="Название цели"
+                        value={goalFormData.title}
+                        onChange={e => setGoalFormData({ ...goalFormData, title: e.target.value })}
+                        placeholder="Например: Улучшить тайминг"
+                    />
 
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2 ml-1">План действий / Описание</label>
-                                    <textarea
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-h-[100px]"
-                                        value={goalFormData.description}
-                                        onChange={e => setGoalFormData({ ...goalFormData, description: e.target.value })}
-                                        placeholder="Что конкретно нужно сделать?"
-                                    />
-                                </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2 ml-1">План действий / Описание</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 min-h-[100px]"
+                            value={goalFormData.description}
+                            onChange={e => setGoalFormData({ ...goalFormData, description: e.target.value })}
+                            placeholder="Что конкретно нужно сделать?"
+                        />
+                    </div>
 
-                                {/* Link to Meeting */}
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2 ml-1">Привязать к встрече (попробовать на практике)</label>
-                                    <select
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none"
-                                        value={goalFormData.linked_meeting_id || ''}
-                                        onChange={e => setGoalFormData({ ...goalFormData, linked_meeting_id: e.target.value })}
-                                    >
-                                        <option value="">Не привязывать</option>
-                                        {meetings
-                                            .filter(m => m.status === 'planned' && new Date(m.date) >= new Date().setHours(0, 0, 0, 0))
-                                            .map(m => (
-                                                <option key={m.id} value={m.id}>
-                                                    {new Date(m.date).toLocaleDateString()} — {m.title}
-                                                </option>
-                                            ))
-                                        }
-                                    </select>
-                                </div>
-                            </div>
-
+                    {/* Link to Meeting */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2 ml-1">Привязать к встрече (попробовать на практике)</label>
+                        <select
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none"
+                            value={goalFormData.linked_meeting_id || ''}
+                            onChange={e => setGoalFormData({ ...goalFormData, linked_meeting_id: e.target.value })}
+                        >
+                            <option value="">Не привязывать</option>
+                            {meetings
+                                .filter(m => m.status === 'planned' && new Date(m.date) >= new Date().setHours(0, 0, 0, 0))
+                                .map(m => (
+                                    <option key={m.id} value={m.id}>
+                                        {new Date(m.date).toLocaleDateString()} — {m.title}
+                                    </option>
+                                ))
+                            }
+                        </select>
+                    </div>
                 </div>
                 <Button onClick={handleSaveGoal} disabled={isSaving} className="w-full justify-center">
                     {isSaving ? 'Сохранение...' : 'Сохранить цели'}

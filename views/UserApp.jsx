@@ -106,14 +106,12 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                     if (g.completed) totalSeeds += 100;
                 });
 
-                // Meetings (Complex calc)
+                // Meetings (New rules)
                 meetings.forEach(m => {
-                    let s = 50; // Base
-                    s += (parseInt(m.guests) || 0) * 5;
-                    s += (parseInt(m.new_guests) || 0) * 15;
-                    const inc = parseInt(m.income) || 0;
-                    s += Math.min(100, Math.floor(inc / 1000) * 10);
-                    totalSeeds += s;
+                    totalSeeds += 5; // meeting created
+                    if (m.status === 'completed') {
+                        totalSeeds += 25; // meeting completed
+                    }
                 });
 
                 if (totalSeeds > 0) {
@@ -125,6 +123,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
         }
     }, [meetings.length, practices.length, scenarios.length, clients.length, goals.length, user?.id]);
     const [initialTab, setInitialTab] = useState('meetings');
+    const [libraryResetToken, setLibraryResetToken] = useState(0);
 
     const handleViewChange = (newView, tab = null) => {
 
@@ -136,6 +135,10 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             setView(newView);
             // Default to 'meetings' tab unless specified otherwise
             setInitialTab(tab || 'meetings');
+        }
+
+        if (newView === 'library') {
+            setLibraryResetToken((v) => v + 1);
         }
 
         setMobileMenuOpen(false);
@@ -157,27 +160,9 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
 
     const handleAddMeeting = async (meetingData) => {
         try {
-            // Seed Calculation System
-            // 1. Base: +50
-            let seedsEarned = 50;
+            const seedsEarned = 5; // Meeting created
 
-            // 2. Participants: +5 each
-            const guests = parseInt(meetingData.guests) || 0;
-            seedsEarned += guests * 5;
-
-            // 3. New Participants: +15 each
-            const newGuests = parseInt(meetingData.new_guests) || 0;
-            seedsEarned += newGuests * 15;
-
-            // 4. Income: +10 per 1000 (max 100)
-            const income = parseInt(meetingData.income) || 0;
-            const incomeBonus = Math.min(100, Math.floor(income / 1000) * 10);
-            seedsEarned += incomeBonus;
-
-            // 5. Regularity (Bonus +20) - Simple check: if last meeting was within 30 days
-            // (Skipping complex check for now to ensure stability, or assume simplistic check)
-
-            const newMeeting = { ...meetingData, user_id: user.id };
+            const newMeeting = { ...meetingData, user_id: user.id, seeds_awarded: false };
 
             const saved = await api.addMeeting(newMeeting);
             const localMeeting = { ...saved, title: meetingData.title };
@@ -206,10 +191,37 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
 
     const handleUpdateMeeting = async (updatedMeeting) => {
         try {
-            const saved = await api.updateMeeting(updatedMeeting);
+            const prevMeeting = meetings.find(m => m.id === updatedMeeting.id);
+            const wasCompleted = prevMeeting?.status === 'completed';
+            const willBeCompleted = updatedMeeting.status === 'completed';
+            const alreadyAwarded = !!(prevMeeting?.seeds_awarded || updatedMeeting.seeds_awarded);
+            const nextPayload = (!wasCompleted && willBeCompleted && !alreadyAwarded)
+                ? { ...updatedMeeting, seeds_awarded: true }
+                : updatedMeeting;
+            const saved = await api.updateMeeting(nextPayload);
             const localUpdated = { ...saved, title: updatedMeeting.title };
             setMeetings(meetings.map(m => m.id === localUpdated.id ? localUpdated : m));
-            onNotify("Встреча обновлена");
+
+            if (!wasCompleted && willBeCompleted && !alreadyAwarded) {
+                const seedsEarned = 25;
+                onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+                onNotify(`Встреча проведена! +${seedsEarned} семян`);
+
+                const coHosts = Array.isArray(updatedMeeting.co_hosts) && updatedMeeting.co_hosts.length > 0
+                    ? updatedMeeting.co_hosts
+                    : (Array.isArray(prevMeeting?.co_hosts) ? prevMeeting.co_hosts : []);
+                if (coHosts.length > 0) {
+                    try {
+                        await api.incrementUserSeeds(coHosts, seedsEarned);
+                        onNotify("Со-ведущим начислены семена");
+                    } catch (e) {
+                        console.warn("Failed to add seeds for co-hosts:", e);
+                        onNotify("Не удалось начислить семена со-ведущим");
+                    }
+                }
+            } else {
+                onNotify("Встреча обновлена");
+            }
         } catch (e) {
             console.error(e);
             onNotify("Ошибка обновления встречи");
@@ -568,7 +580,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                     {view === 'dashboard' && <StatsDashboardView user={user} meetings={meetings} knowledgeBase={knowledgeBase} clients={clients} practices={practices} scenarios={scenarios} goals={goals} onNavigate={handleViewChange} />}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
-                    {view === 'library' && <CourseLibraryView user={user} knowledgeBase={knowledgeBase} onCompleteLesson={handleLessonCompleted} onNotify={onNotify} />}
+                    {view === 'library' && <CourseLibraryView user={user} knowledgeBase={knowledgeBase} onCompleteLesson={handleLessonCompleted} onNotify={onNotify} resetToken={libraryResetToken} />}
                     {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} />}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
                     {view === 'market' && <MarketView />}

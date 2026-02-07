@@ -5,13 +5,10 @@ import Button from '../components/Button';
 import TreeIcon from '../components/TreeIcon';
 import { getRoleLabel, getTreeByName, getSeason } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
+import { normalizeSkills } from '../utils/skills';
+import { getTenureText } from '../utils/tenure';
+import ModalShell from '../components/ModalShell';
 import LivingTree from '../components/LivingTree';
-
-const normalizeSkills = (skills) => {
-    if (!Array.isArray(skills)) return [];
-    const flat = skills.flatMap((tag) => String(tag).split(',').map((t) => t.trim()).filter(Boolean));
-    return [...new Set(flat)];
-};
 
 // Internal Components for the Directory
 const FilterSelect = ({ icon: Icon, value, onChange, options, placeholder }) => (
@@ -40,41 +37,7 @@ const UserCard = ({ user }) => {
     const allTags = normalizeSkills(user.skills);
 
     // Tenure Logic with correct Russian declension
-    const getTenure = () => {
-        if (!user.join_date) return null; // Don't show anything if date is missing
-        const start = new Date(user.join_date);
-        const now = new Date();
-        const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-
-        if (diffDays < 30) return 'Новичок';
-
-        const totalMonths = Math.floor(diffDays / 30.44);
-
-        if (totalMonths < 12) {
-            return `${totalMonths} мес. в Лиге`;
-        }
-
-        const years = Math.floor(totalMonths / 12);
-        const remMonths = totalMonths % 12;
-
-        const pluralizeYears = (n) => {
-            const lastDigit = n % 10;
-            const lastTwoDigits = n % 100;
-            if (lastTwoDigits >= 11 && lastTwoDigits <= 19) return 'лет';
-            if (lastDigit === 1) return 'год';
-            if (lastDigit >= 2 && lastDigit <= 4) return 'года';
-            return 'лет';
-        };
-
-        const yearWord = pluralizeYears(years);
-        if (remMonths === 0) {
-            return `${years} ${yearWord} в Лиге`;
-        }
-
-        return `${years} ${yearWord} ${remMonths} мес. в Лиге`;
-    };
-
-    const tenureCaption = getTenure();
+    const tenureCaption = getTenureText(user.join_date);
 
     return (
         <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col h-full relative overflow-hidden text-left">
@@ -85,6 +48,12 @@ const UserCard = ({ user }) => {
                     {/* Allow name to wrap */}
                     <h3 className="text-sm font-bold text-slate-800 leading-tight mb-1">{user.name}</h3>
                     <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold truncate">{getRoleLabel(user.role)}</p>
+                    {user.city && (
+                        <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                            <MapPin size={12} className="text-slate-400" />
+                            {user.city}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -92,15 +61,15 @@ const UserCard = ({ user }) => {
             {allTags.length > 0 && (
                 <div className="mb-4">
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 opacity-80">Компетенции</div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {allTags.slice(0, 4).map((tag, i) => (
-                            <span key={i} className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] text-slate-600 font-medium whitespace-nowrap">
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                        {allTags.map((tag, i) => (
+                            <span
+                                key={i}
+                                className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] text-slate-600 font-medium max-w-full whitespace-normal break-words"
+                            >
                                 {tag}
                             </span>
                         ))}
-                        {allTags.length > 4 && (
-                            <span className="px-1.5 py-1 text-[10px] text-slate-400 font-medium">+{allTags.length - 4}</span>
-                        )}
                     </div>
                 </div>
             )}
@@ -141,21 +110,17 @@ const UserCard = ({ user }) => {
 const UserModal = ({ user, onClose }) => {
     if (!user) return null;
     return (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-white w-full max-w-lg rounded-[2rem] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] relative" onClick={e => e.stopPropagation()}>
-
-                {/* Header Actions */}
-                <div className="flex justify-end p-4 absolute top-0 right-0 z-10 w-full pointer-events-none">
-                    <button onClick={onClose} className="p-2 bg-white/80 hover:bg-slate-100 text-slate-400 rounded-full backdrop-blur-md transition-colors pointer-events-auto shadow-sm"><X size={20} /></button>
-                </div>
-
-                <div className="p-8 pb-4 overflow-y-auto custom-scrollbar">
-                    {/* Minimalist Header */}
-                    <div className="flex flex-col items-center text-center mb-8 mt-4">
-                        <UserAvatar user={user} size="xl" className="border-4 border-white shadow-lg mb-4" />
-                        <h2 className="text-3xl font-light text-slate-900 mb-1">{user.name}</h2>
-                        <div className="flex flex-wrap gap-2 justify-center items-center text-sm text-slate-500">
-                            <span className={`px-2 py-0.5 rounded-full font-medium text-xs uppercase tracking-wider ${['admin', 'curator'].includes(user.role) ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+        <ModalShell
+            isOpen={!!user}
+            onClose={onClose}
+            size="md"
+            header={
+                <div className="flex items-center gap-4">
+                    <UserAvatar user={user} size="lg" className="border-4 border-white shadow-lg" />
+                    <div className="min-w-0">
+                        <h2 className="text-2xl font-display font-semibold text-slate-900 leading-tight">{user.name}</h2>
+                        <div className="flex flex-wrap gap-2 items-center text-sm text-slate-500 mt-1">
+                            <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] uppercase tracking-wider ${['admin', 'curator'].includes(user.role) ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
                                 {getRoleLabel(user.role)}
                             </span>
                             {user.city && (
@@ -163,71 +128,63 @@ const UserModal = ({ user, onClose }) => {
                             )}
                         </div>
                     </div>
+                </div>
+            }
+            footer={
+                <div className="pt-4 border-t border-slate-100 flex flex-col items-center">
+                    <div className="text-xs uppercase tracking-widest text-slate-400 mb-2">Стаж в Лиге</div>
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 px-6 py-3 rounded-2xl border border-blue-100/50 shadow-sm">
+                        <span className="text-blue-700 font-bold text-lg tracking-tight">
+                            {(() => {
+                                if (!user.join_date) return 'Недавно присоединился';
+                                const start = new Date(user.join_date);
+                                const now = new Date();
+                                const diffTime = now - start;
+                                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-                    <div className="space-y-6">
+                                if (diffDays < 1) return 'Первый день';
+                                if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? 'день' : (diffDays < 5 ? 'дня' : 'дней')}`;
 
+                                const months = Math.floor(diffDays / 30.44);
+                                if (months < 12) return `${months} мес.`;
 
-                        {/* Competencies */}
-                        {normalizeSkills(user.skills).length > 0 && (
-                            <div className="space-y-6">
-                                <div className="text-center">
-                                    <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Компетенции</h4>
-                                    <div className="flex flex-wrap gap-3 justify-center">
-                                        {normalizeSkills(user.skills).map((tag, i) => (
-                                            <span key={i} className="px-4 py-2 bg-white border border-dashed border-slate-300 rounded-full text-slate-700 text-sm font-medium hover:border-blue-400 transition-colors cursor-default">{tag}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* About - Offer */}
-                        {user.offer && (
-                            <div className="bg-slate-50 p-6 rounded-3xl text-center">
-                                <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Чем могу быть полезна</h4>
-                                <p className="text-slate-700 leading-relaxed">{user.offer}</p>
-                            </div>
-                        )}
-
-                        {/* Superpower */}
-                        {user.unique_abilities && (
-                            <div className="bg-slate-50 p-6 rounded-3xl text-center">
-                                <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Суперсила</h4>
-                                <p className="text-slate-700 leading-relaxed">{user.unique_abilities}</p>
-                            </div>
-                        )}
-
-                        {/* Tree Block - Re-integrated correctly */}
-                        {/* Tenure Block */}
-                        <div className="pt-6 border-t border-slate-100 flex flex-col items-center">
-                            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Стаж в Лиге</h4>
-                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 px-8 py-4 rounded-2xl border border-blue-100/50 shadow-sm">
-                                <span className="text-blue-700 font-bold text-xl tracking-tight">
-                                    {(() => {
-                                        if (!user.join_date) return 'Недавно присоединился';
-                                        const start = new Date(user.join_date);
-                                        const now = new Date();
-                                        const diffTime = now - start;
-                                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-                                        if (diffDays < 1) return 'Первый день';
-                                        if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? 'день' : (diffDays < 5 ? 'дня' : 'дней')}`;
-
-                                        const months = Math.floor(diffDays / 30.44);
-                                        if (months < 12) return `${months} мес.`;
-
-                                        const years = Math.floor(months / 12);
-                                        const remMonths = months % 12;
-                                        if (remMonths === 0) return `${years} ${years === 1 ? 'год' : (years < 5 ? 'года' : 'лет')}`;
-                                        return `${years}.${remMonths} лет`;
-                                    })()}
-                                </span>
-                            </div>
-                        </div>
+                                const years = Math.floor(months / 12);
+                                const remMonths = months % 12;
+                                if (remMonths === 0) return `${years} ${years === 1 ? 'год' : (years < 5 ? 'года' : 'лет')}`;
+                                return `${years}.${remMonths} лет`;
+                            })()}
+                        </span>
                     </div>
                 </div>
+            }
+        >
+            <div className="space-y-6">
+                {normalizeSkills(user.skills).length > 0 && (
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Компетенции</h4>
+                        <div className="flex flex-wrap gap-2">
+                            {normalizeSkills(user.skills).map((tag, i) => (
+                                <span key={i} className="px-3 py-1 bg-white border border-dashed border-slate-300 rounded-full text-slate-700 text-sm font-medium hover:border-blue-400 transition-colors cursor-default">{tag}</span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {user.offer && (
+                    <div className="bg-slate-50 p-5 rounded-3xl">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Чем могу быть полезна</h4>
+                        <p className="text-slate-700 leading-relaxed">{user.offer}</p>
+                    </div>
+                )}
+
+                {user.unique_abilities && (
+                    <div className="bg-slate-50 p-5 rounded-3xl">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Суперсила</h4>
+                        <p className="text-slate-700 leading-relaxed">{user.unique_abilities}</p>
+                    </div>
+                )}
             </div>
-        </div>
+        </ModalShell>
     );
 };
 
@@ -237,15 +194,19 @@ const MapView = ({ users, currentUser, onSendRay }) => {
     const [selectedSkill, setSelectedSkill] = useState('');
     const [selectedUser, setSelectedUser] = useState(null);
     const [isGardenMode, setIsGardenMode] = useState(false);
+    const normalizeKey = (value) => String(value || '').trim().toLowerCase();
 
     // Filter Logic
     const filteredUsers = useMemo(() => {
         return users.filter(user => {
             const userName = user.name || '';
             const matchSearch = userName.toLowerCase().includes(search.toLowerCase());
-            const matchCity = !selectedCity || user.city === selectedCity;
-            const normalizedSkills = normalizeSkills(user.skills);
-            const matchSkill = !selectedSkill || normalizedSkills.includes(selectedSkill);
+            const matchCity = !selectedCity || normalizeKey(user.city) === normalizeKey(selectedCity);
+            const normalizedSkills = normalizeSkills(user.skills).map(normalizeKey).filter(Boolean);
+            const selectedSkillKey = normalizeKey(selectedSkill);
+            const matchSkill = !selectedSkill || normalizedSkills.some((s) =>
+                s === selectedSkillKey || s.includes(selectedSkillKey) || selectedSkillKey.includes(s)
+            );
 
             // Also exclude suspended/deleted if needed, but current dataService handles that mostly.
             // Let's hide users without names or "ghosts"
@@ -256,8 +217,28 @@ const MapView = ({ users, currentUser, onSendRay }) => {
     }, [users, search, selectedCity, selectedSkill]);
 
     // Extract Options for Selects
-    const cities = useMemo(() => [...new Set(users.map(u => u.city).filter(Boolean))].sort(), [users]);
-    const skills = useMemo(() => [...new Set(users.flatMap(u => normalizeSkills(u.skills)))].sort(), [users]);
+    const cities = useMemo(() => {
+        const map = new Map();
+        users.forEach((u) => {
+            const city = (u.city || '').trim();
+            if (!city) return;
+            const key = normalizeKey(city);
+            if (!map.has(key)) map.set(key, city);
+        });
+        return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ru'));
+    }, [users]);
+    const skills = useMemo(() => {
+        const map = new Map();
+        users.forEach((u) => {
+            normalizeSkills(u.skills).forEach((s) => {
+                const label = String(s || '').trim();
+                if (!label) return;
+                const key = normalizeKey(label);
+                if (!map.has(key)) map.set(key, label);
+            });
+        });
+        return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ru'));
+    }, [users]);
 
     const resetFilters = () => {
         setSearch('');

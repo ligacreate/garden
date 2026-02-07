@@ -3,11 +3,14 @@ import { UserPlus, Edit2, X } from 'lucide-react';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import Input from '../components/Input';
+import ConfirmationModal from '../components/ConfirmationModal';
+import ModalShell from '../components/ModalShell';
 
 const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotify }) => {
     const [isClientModalOpen, setIsClientModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [viewClient, setViewClient] = useState(null);
+    const [deleteClientId, setDeleteClientId] = useState(null);
     const [clientForm, setClientForm] = useState({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '' });
 
     const handleOpenAdd = () => { setEditingId(null); setClientForm({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '' }); setIsClientModalOpen(true); };
@@ -96,54 +99,46 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
                     );
                 })}
             </div>
-            {isClientModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-medium text-slate-900">{editingId ? 'Редактировать клиента' : 'Новый клиент'}</h3>
-                            <button onClick={() => setIsClientModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                <X size={20} />
-                            </button>
+            <ModalShell
+                isOpen={isClientModalOpen}
+                onClose={() => setIsClientModalOpen(false)}
+                title={editingId ? 'Редактировать клиента' : 'Новый клиент'}
+                size="sm"
+            >
+                <div className="space-y-3">
+                    <Input placeholder="Имя и фамилия" value={clientForm.name} onChange={e => setClientForm({ ...clientForm, name: e.target.value })} />
+                    <Input placeholder="Контакты" value={clientForm.contact} onChange={e => setClientForm({ ...clientForm, contact: e.target.value })} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label className="text-xs text-slate-400 ml-1 mb-1 block">Дата рождения</label>
+                            <Input type="date" value={clientForm.birthDate} onChange={e => setClientForm({ ...clientForm, birthDate: e.target.value })} />
                         </div>
-                        <div className="space-y-3">
-                            <Input placeholder="Имя и фамилия" value={clientForm.name} onChange={e => setClientForm({ ...clientForm, name: e.target.value })} />
-                            <Input placeholder="Контакты" value={clientForm.contact} onChange={e => setClientForm({ ...clientForm, contact: e.target.value })} />
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="text-xs text-slate-400 ml-1 mb-1 block">Дата рождения</label>
-                                    <Input type="date" value={clientForm.birthDate} onChange={e => setClientForm({ ...clientForm, birthDate: e.target.value })} />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-400 ml-1 mb-1 block">Последний контакт</label>
-                                    <Input type="date" value={clientForm.lastContact} onChange={e => setClientForm({ ...clientForm, lastContact: e.target.value })} />
-                                </div>
-                            </div>
-                            <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none h-20 resize-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" placeholder="Заметки..." value={clientForm.notes} onChange={e => setClientForm({ ...clientForm, notes: e.target.value })} />
-                            <div className="flex gap-2">
-                                {editingId && (
-                                    <Button variant="danger" icon={X} className="!w-auto" onClick={() => {
-                                        if (confirm('Удалить клиента?')) {
-                                            if (onDeleteClient) onDeleteClient(editingId);
-                                            setIsClientModalOpen(false);
-                                        }
-                                    }} />
-                                )}
-                                <Button onClick={handleSave} className="w-full">{editingId ? 'Сохранить изменения' : 'Добавить'}</Button>
-                            </div>
+                        <div>
+                            <label className="text-xs text-slate-400 ml-1 mb-1 block">Последний контакт</label>
+                            <Input type="date" value={clientForm.lastContact} onChange={e => setClientForm({ ...clientForm, lastContact: e.target.value })} />
                         </div>
                     </div>
+                    <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none h-20 resize-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" placeholder="Заметки..." value={clientForm.notes} onChange={e => setClientForm({ ...clientForm, notes: e.target.value })} />
+                    <div className="flex gap-2">
+                        {editingId && (
+                            <Button
+                                variant="danger"
+                                icon={X}
+                                className="!w-auto"
+                                onClick={() => setDeleteClientId(editingId)}
+                            />
+                        )}
+                        <Button onClick={handleSave} className="w-full">{editingId ? 'Сохранить изменения' : 'Добавить'}</Button>
+                    </div>
                 </div>
-            )}
-            {viewClient && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setViewClient(null)}>
-                    <div className="bg-white rounded-[2rem] w-full max-w-lg p-8 shadow-2xl animate-in zoom-in-95 border border-white/50 relative" onClick={e => e.stopPropagation()}>
-                        <button
-                            onClick={() => setViewClient(null)}
-                            className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-all"
-                        >
-                            <X size={24} />
-                        </button>
-
+            </ModalShell>
+            <ModalShell
+                isOpen={!!viewClient}
+                onClose={() => setViewClient(null)}
+                size="md"
+            >
+                {viewClient && (
+                    <>
                         <div className="flex items-center gap-6 mb-8">
                             <div className="text-4xl font-bold text-slate-600 bg-slate-50 w-24 h-24 rounded-3xl flex items-center justify-center border border-slate-100 shadow-sm flex-shrink-0">
                                 {viewClient.name.charAt(0).toUpperCase()}
@@ -161,7 +156,7 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
 
                         <div className="space-y-6">
                             {(viewClient.birthDate || viewClient.lastVisit || viewClient.lastContact) && (
-                                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <div>
                                         <div className="text-xs text-slate-400 mb-1">Дата рождения</div>
                                         <div className="font-medium text-slate-700">{viewClient.birthDate ? new Date(viewClient.birthDate).toLocaleDateString() : '—'}</div>
@@ -185,9 +180,23 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
                             <Button variant="secondary" onClick={() => { setViewClient(null); handleOpenEdit(viewClient); }}>Редактировать</Button>
                             <Button onClick={() => setViewClient(null)}>Закрыть</Button>
                         </div>
-                    </div>
-                </div>
-            )}
+                    </>
+                )}
+            </ModalShell>
+
+            <ConfirmationModal
+                isOpen={!!deleteClientId}
+                onClose={() => setDeleteClientId(null)}
+                onConfirm={() => {
+                    if (onDeleteClient && deleteClientId) onDeleteClient(deleteClientId);
+                    setIsClientModalOpen(false);
+                    setDeleteClientId(null);
+                }}
+                title="Удалить клиента?"
+                message="Это действие невозможно отменить."
+                confirmText="Удалить"
+                confirmVariant="danger"
+            />
         </div >
     );
 };

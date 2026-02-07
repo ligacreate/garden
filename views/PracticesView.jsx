@@ -3,11 +3,14 @@ import { Search, Plus, Filter, Pencil, X } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import { getRoleLabel } from '../utils/roles';
+import ConfirmationModal from '../components/ConfirmationModal';
+import ModalShell from '../components/ModalShell';
 
 const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDeletePractice, onNotify }) => {
     const [search, setSearch] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [viewPractice, setViewPractice] = useState(null); // The practice currently being viewed
+    const [deletePracticeId, setDeletePracticeId] = useState(null);
     const [formData, setFormData] = useState({ id: null, title: '', time: '', type: '', description: '', icon: '📄' });
     const [selectedCategory, setSelectedCategory] = useState('Все');
     const [timeFilter, setTimeFilter] = useState('all');
@@ -198,82 +201,79 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
             )}
 
             {/* Edit/Create Modal */}
-            {isEditModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-white rounded-[2rem] w-full max-w-lg p-8 shadow-2xl animate-in zoom-in-95 border border-white/50">
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">{formData.id ? 'Редактировать' : 'Новая практика'}</h2>
-                        <div className="space-y-4">
-                            <Input
-                                label="Название"
-                                value={formData.title}
-                                onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                placeholder="Например: Утренняя настройка"
-                            />
-                            <div className="grid grid-cols-2 gap-4">
-                                <Input
-                                    label="Время"
-                                    value={formData.time}
-                                    onChange={e => setFormData({ ...formData, time: e.target.value })}
-                                    placeholder="15 мин"
-                                />
-                                <Input
-                                    label="Тема"
-                                    value={formData.type}
-                                    onChange={e => setFormData({ ...formData, type: e.target.value })}
-                                    placeholder="Отношения, рост"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-slate-700 mb-2 block">Иконка</label>
-                                <div className="grid grid-cols-5 gap-2">
-                                    {['📄', '🎥', '🧘‍♀️', '✨', '🎧', '⚡️', '🌱', '🔮', '🧠', '❤️'].map(ico => (
-                                        <button
-                                            key={ico}
-                                            onClick={() => setFormData({ ...formData, icon: ico })}
-                                            className={`h-10 rounded-xl border flex items-center justify-center text-lg transition-all ${formData.icon === ico ? 'border-blue-500 bg-blue-50 scale-105' : 'border-slate-200 hover:border-slate-300'}`}
-                                        >
-                                            {ico}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-slate-700 mb-2 block">Описание</label>
-                                <textarea
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-32 resize-none text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                                    placeholder="Описание практики, физический и смысловой результат, вопросы для рефлексивного отклика"
-                                    value={formData.description}
-                                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                />
-                            </div>
-                            <div className="flex gap-3 pt-2">
-                                {formData.id && (
-                                    <Button variant="danger" className="!w-auto" icon={X} onClick={() => {
-                                        if (confirm('Удалить практику?')) {
-                                            if (onDeletePractice) onDeletePractice(formData.id);
-                                            setIsEditModalOpen(false);
-                                        }
-                                    }} />
-                                )}
-                                <Button variant="secondary" onClick={() => setIsEditModalOpen(false)} className="flex-1">Отмена</Button>
-                                <Button onClick={handleSave} className="flex-1">Сохранить</Button>
-                            </div>
+            <ModalShell
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                title={formData.id ? 'Редактировать практику' : 'Новая практика'}
+                size="md"
+            >
+                <div className="space-y-4">
+                    <Input
+                        label="Название"
+                        value={formData.title}
+                        onChange={e => setFormData({ ...formData, title: e.target.value })}
+                        placeholder="Например: Утренняя настройка"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input
+                            label="Время"
+                            value={formData.time}
+                            onChange={e => setFormData({ ...formData, time: e.target.value })}
+                            placeholder="15 мин"
+                        />
+                        <Input
+                            label="Тема"
+                            value={formData.type}
+                            onChange={e => setFormData({ ...formData, type: e.target.value })}
+                            placeholder="Отношения, рост"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Иконка</label>
+                        <div className="grid grid-cols-5 gap-2">
+                            {['📄', '🎥', '🧘‍♀️', '✨', '🎧', '⚡️', '🌱', '🔮', '🧠', '❤️'].map(ico => (
+                                <button
+                                    key={ico}
+                                    onClick={() => setFormData({ ...formData, icon: ico })}
+                                    className={`h-10 rounded-xl border flex items-center justify-center text-lg transition-all ${formData.icon === ico ? 'border-blue-500 bg-blue-50 scale-105' : 'border-slate-200 hover:border-slate-300'}`}
+                                >
+                                    {ico}
+                                </button>
+                            ))}
                         </div>
                     </div>
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Описание</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-32 resize-none text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            placeholder="Описание практики, физический и смысловой результат, вопросы для рефлексивного отклика"
+                            value={formData.description}
+                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                        />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        {formData.id && (
+                            <Button
+                                variant="danger"
+                                className="!w-auto"
+                                icon={X}
+                                onClick={() => setDeletePracticeId(formData.id)}
+                            />
+                        )}
+                        <Button variant="secondary" onClick={() => setIsEditModalOpen(false)} className="flex-1">Отмена</Button>
+                        <Button onClick={handleSave} className="flex-1">Сохранить</Button>
+                    </div>
                 </div>
-            )}
+            </ModalShell>
 
             {/* View Full Practice Modal */}
-            {viewPractice && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setViewPractice(null)}>
-                    <div className="bg-white rounded-[2rem] w-full max-w-3xl p-10 shadow-2xl animate-in zoom-in-95 border border-white/50 relative" onClick={e => e.stopPropagation()}>
-                        <button
-                            onClick={() => setViewPractice(null)}
-                            className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-all"
-                        >
-                            <X size={24} />
-                        </button>
-
+            <ModalShell
+                isOpen={!!viewPractice}
+                onClose={() => setViewPractice(null)}
+                size="lg"
+            >
+                {viewPractice && (
+                    <>
                         <div className="flex items-start gap-6 mb-8">
                             <div className="text-5xl bg-blue-50 w-24 h-24 rounded-3xl flex items-center justify-center border border-blue-100 shadow-sm flex-shrink-0">
                                 {viewPractice.icon || '📄'}
@@ -301,9 +301,23 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                             )}
                             <Button onClick={() => setViewPractice(null)}>Закрыть</Button>
                         </div>
-                    </div>
-                </div>
-            )}
+                    </>
+                )}
+            </ModalShell>
+
+            <ConfirmationModal
+                isOpen={!!deletePracticeId}
+                onClose={() => setDeletePracticeId(null)}
+                onConfirm={() => {
+                    if (onDeletePractice && deletePracticeId) onDeletePractice(deletePracticeId);
+                    setIsEditModalOpen(false);
+                    setDeletePracticeId(null);
+                }}
+                title="Удалить практику?"
+                message="Это действие невозможно отменить."
+                confirmText="Удалить"
+                confirmVariant="danger"
+            />
         </div>
     );
 };

@@ -5,6 +5,7 @@ import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, F
 import Button from '../components/Button';
 import { api } from '../services/dataService';
 import ConfirmationModal from '../components/ConfirmationModal';
+import ModalShell from '../components/ModalShell';
 
 const CheckBoxLine = ({ text }) => (
     <div className="flex items-start gap-4 mb-3">
@@ -15,15 +16,15 @@ const CheckBoxLine = ({ text }) => (
 
 const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify }) => {
     return (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-2xl h-[90vh] rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 relative">
-                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 backdrop-blur-md sticky top-0 z-10">
-                    <div>
-                        <h2 className="text-lg font-serif text-slate-900">{type === 'workbook' ? 'Воркбук участницы' : 'Сценарий ведущей'}</h2>
-                        <p className="text-xs text-slate-500">Предпросмотр документа</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={Download} onClick={async () => {
+        <ModalShell
+            isOpen
+            onClose={onClose}
+            size="lg"
+            title={type === 'workbook' ? 'Воркбук участницы' : 'Сценарий ведущей'}
+            description="Предпросмотр документа"
+        >
+            <div className="flex justify-end gap-2 mb-4">
+                <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={Download} onClick={async () => {
                             try {
                                 const element = document.getElementById('preview-content');
                                 if (!element) throw new Error('Preview content not found');
@@ -84,7 +85,7 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify }
                                 alert('Ошибка при создании PDF: ' + e.message);
                             }
                         }}>PDF</Button>
-                        <Button variant="secondary" className="!px-3 !py-2 text-xs" icon={Printer} onClick={() => {
+                <Button variant="secondary" className="!px-3 !py-2 text-xs" icon={Printer} onClick={() => {
                             try {
                                 onNotify('Подготовка к печати...');
                                 const content = document.getElementById('preview-content');
@@ -116,10 +117,9 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify }
                                 alert('Ошибка печати: ' + e.message);
                             }
                         }}>Печать</Button>
-                        <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors cursor-pointer"><X size={20} /></button>
-                    </div >
-                </div >
-                <div id="preview-content" className="flex-1 overflow-y-auto p-12 bg-white text-slate-800">
+                <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={X} onClick={onClose}>Закрыть</Button>
+            </div>
+            <div id="preview-content" className="max-h-[70vh] overflow-y-auto p-6 bg-white text-slate-800">
                     {type === 'workbook' ? (
                         <div className="space-y-12 max-w-md mx-auto">
                             <div className="text-center space-y-4 border-b pb-8">
@@ -182,9 +182,8 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify }
                             </div>
                         </div>
                     )}
-                </div>
-            </div >
-        </div >
+            </div>
+        </ModalShell>
     )
 };
 
@@ -195,16 +194,14 @@ const SaveScenarioModal = ({ onSave, checkActionTimer, onClose, user, onNotify }
     const canPublish = user?.role !== 'applicant' && user?.role !== 'intern';
 
     return (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-sm rounded-3xl flex flex-col shadow-2xl p-6 animate-in zoom-in-95 duration-200">
-                <h2 className="text-lg font-medium text-slate-900 mb-4">Сохранить сценарий</h2>
-                <input
-                    autoFocus
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    placeholder="Название сценария"
-                />
+        <ModalShell isOpen onClose={onClose} title="Сохранить сценарий" size="sm">
+            <input
+                autoFocus
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Название сценария"
+            />
 
                 {canPublish ? (
                     <div onClick={() => setIsPublic(!isPublic)} className="flex items-center gap-3 mb-6 cursor-pointer p-2 hover:bg-slate-50 rounded-xl transition-colors">
@@ -229,12 +226,11 @@ const SaveScenarioModal = ({ onSave, checkActionTimer, onClose, user, onNotify }
                     </div>
                 )}
 
-                <div className="flex gap-2">
-                    <Button variant="secondary" onClick={onClose}>Отмена</Button>
-                    <Button onClick={() => onSave(title, isPublic)} disabled={!title.trim()}>Сохранить</Button>
-                </div>
+            <div className="flex gap-2">
+                <Button variant="secondary" onClick={onClose}>Отмена</Button>
+                <Button onClick={() => onSave(title, isPublic)} disabled={!title.trim()}>Сохранить</Button>
             </div>
-        </div>
+        </ModalShell>
     );
 };
 

@@ -1,0 +1,59 @@
+import React from 'react';
+import { X } from 'lucide-react';
+
+const ModalShell = ({
+    isOpen,
+    onClose,
+    title,
+    description,
+    header,
+    footer,
+    children,
+    size = 'md',
+    align = 'center',
+    showClose = true,
+    zIndex = 'z-50'
+}) => {
+    if (!isOpen) return null;
+
+    const sizeClass = {
+        sm: 'max-w-sm',
+        md: 'max-w-lg',
+        lg: 'max-w-3xl',
+        xl: 'max-w-5xl'
+    }[size] || 'max-w-lg';
+
+    const alignClass = align === 'start' ? 'items-start pt-10' : 'items-center';
+
+    return (
+        <div className={`fixed inset-0 ${zIndex} flex ${alignClass} justify-center p-4 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-200`}>
+            <div className={`surface-card w-full ${sizeClass} overflow-hidden animate-in zoom-in-95 duration-200 relative`}>
+                {showClose && (
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                        aria-label="Закрыть"
+                    >
+                        <X size={18} />
+                    </button>
+                )}
+                {header ? (
+                    <div className="px-8 pt-8">{header}</div>
+                ) : (
+                    (title || description) && (
+                        <div className="px-8 pt-8">
+                            {title && <h2 className="text-2xl font-display font-semibold text-slate-900">{title}</h2>}
+                            {description && <p className="text-sm text-slate-500 mt-2">{description}</p>}
+                        </div>
+                    )
+                )}
+                <div className="px-8 py-8">{children}</div>
+                {footer && (
+                    <div className="px-8 pb-8 pt-0">{footer}</div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default ModalShell;

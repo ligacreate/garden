@@ -9,7 +9,7 @@ const Input = ({ label, type = "text", placeholder, value, onChange, className =
     return (
         <div className={`flex flex-col gap-1.5 ${className}`}>
             {label && (
-                <label className="text-sm font-medium text-slate-700 ml-1">
+                <label className="text-xs font-semibold uppercase tracking-widest text-slate-400 ml-1">
                     {label}
                 </label>
             )}
@@ -19,7 +19,7 @@ const Input = ({ label, type = "text", placeholder, value, onChange, className =
                     value={value}
                     onChange={onChange}
                     placeholder={placeholder}
-                    className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 transition-all pr-10 ${inputClassName}`}
+                    className={`input-field pr-10 ${inputClassName}`}
                     {...props}
                 />
                 {isPassword && (

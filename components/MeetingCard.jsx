@@ -60,7 +60,7 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
 
     return (
         <div
-            className={`bg-white rounded-[2.5rem] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.06)] border border-slate-50 relative overflow-hidden transition-all duration-300 ${status === 'cancelled' ? 'opacity-75' : 'hover:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1'}`}
+            className={`surface-card p-6 relative overflow-hidden transition-all duration-300 ${status === 'cancelled' ? 'opacity-75' : 'hover:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.08)] hover:-translate-y-1'}`}
         >
             {/* Header Row */}
             <div
@@ -77,7 +77,7 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                             {new Date(meeting.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
                         </div>
                     </div>
-                    <h3 className={`text-xl font-bold text-slate-900 mb-1 ${status === 'cancelled' ? 'line-through text-slate-400' : ''}`}>
+                    <h3 className={`text-xl font-display font-semibold text-slate-900 mb-1 ${status === 'cancelled' ? 'line-through text-slate-400' : ''}`}>
                         {meeting.title || 'Без названия'}
                     </h3>
                     {coHostNames.length > 0 && (

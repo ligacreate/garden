@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, Star, Video } from 'lucide-react';
+import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
 import { hasAccess, ROLES } from '../utils/roles';
 import { api } from '../services/dataService';
@@ -10,7 +10,6 @@ const COURSES = [
         title: "Пиши, веди, люби",
         description: "Курс для ведущих встреч с письменными практиками. Освойте искусство бережной модерации и создания смыслов.",
         image: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=800",
-        access: "Доступен для абитуриентов, стажеров, ведущих",
         tag: "Курсы",
         minRole: ROLES.APPLICANT
     },
@@ -19,7 +18,6 @@ const COURSES = [
         title: "Начало пути",
         description: "Курс для стажеров: первые шаги, опоры и базовые навыки ведущей.",
         image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=800",
-        access: "Доступен для стажеров и ведущих",
         tag: "Курсы",
         minRole: ROLES.INTERN
     },
@@ -28,7 +26,6 @@ const COURSES = [
         title: "Расти",
         description: "Курс для развития личного бренда ведущей. Как проявляться, привлекать своих людей и монетизировать талант.",
         image: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=800",
-        access: "Доступен для стажеров, ведущих",
         tag: "Курсы",
         minRole: ROLES.INTERN
     },
@@ -37,7 +34,6 @@ const COURSES = [
         title: "Промты, ассистенты, лайфхаки",
         description: "Полезные рекомендации для ведущих. Коллекция проверенных инструментов для упрощения работы.",
         image: "https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?auto=format&fit=crop&q=80&w=800",
-        access: "Доступен для стажеров, ведущих",
         tag: "Полезное",
         minRole: ROLES.INTERN
     },
@@ -46,13 +42,12 @@ const COURSES = [
         title: "Менторский курс",
         description: "Курс для кураторов ПВЛ. Углубленное обучение наставничеству и поддержке других ведущих.",
         image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=800",
-        access: "Доступен для ведущих",
         tag: "Курсы",
         minRole: ROLES.LEADER
     }
 ];
 
-const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotify }) => {
+const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotify, resetToken = 0 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
     const [selectedTag, setSelectedTag] = useState('Все');
@@ -105,6 +100,12 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
     }, [courseMaterials, selectedTag]);
 
     const [completedIds, setCompletedIds] = useState(new Set());
+
+    useEffect(() => {
+        setSelectedCourseId(null);
+        setSelectedTag('Все');
+        setSelectedMaterial(null);
+    }, [resetToken]);
 
     const completedCount = selectedCourse ? courseMaterials.filter(m => completedIds.has(String(m.id))).length : 0;
     const totalCount = selectedCourse ? courseMaterials.length : 0;
@@ -217,11 +218,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
 
                                 <p className="text-slate-500 text-sm mb-6 leading-relaxed">{course.description}</p>
 
-                                <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between gap-3">
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
-                                        <Star size={12} className="fill-blue-700" />
-                                        {course.access}
-                                    </span>
+                                <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-end gap-3">
                                     <Button
                                         variant="primary"
                                         className="!py-2 !px-4 text-xs"

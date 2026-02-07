@@ -92,7 +92,7 @@ const UserCard = ({ user }) => {
                     <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-2 opacity-90 flex items-center gap-1">
                         <Zap size={10} /> Суперсила
                     </div>
-                    <p className="text-xs text-slate-700 font-medium line-clamp-2 leading-relaxed">
+                    <p className="text-xs text-slate-700 font-medium line-clamp-3 leading-relaxed">
                         {superpowerText}
                     </p>
                 </div>

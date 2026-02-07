@@ -80,7 +80,7 @@ const UserCard = ({ user }) => {
             {offerText && (
                 <div className="mb-4">
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 opacity-80">Чем могу помочь</div>
-                    <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                    <p className="text-xs text-slate-600 line-clamp-4 leading-relaxed">
                         {offerText}
                     </p>
                 </div>
@@ -92,7 +92,7 @@ const UserCard = ({ user }) => {
                     <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-2 opacity-90 flex items-center gap-1">
                         <Zap size={10} /> Суперсила
                     </div>
-                    <p className="text-xs text-slate-700 font-medium line-clamp-3 leading-relaxed">
+                    <p className="text-xs text-slate-700 font-medium line-clamp-4 leading-relaxed">
                         {superpowerText}
                     </p>
                 </div>

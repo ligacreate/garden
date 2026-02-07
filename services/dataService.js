@@ -400,6 +400,7 @@ class SupabaseService {
             tree_desc: rest.treeDesc,
             seeds: rest.seeds || 0,
             avatar_url: rest.avatar || null,
+            dob: rest.dob || null,
             x: rest.x || (Math.random() * 80 + 10),
             y: rest.y || (Math.random() * 80 + 10),
         };

@@ -66,7 +66,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         setIsEditModalOpen(true);
     };
 
-    const isAdmin = user.role !== 'applicant';
+    const canEditPractices = true;
 
     return (
         <div className="h-full flex flex-col animate-in fade-in duration-700 pb-20 pt-6 px-4 lg:px-0">
@@ -155,7 +155,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                     </div>
 
                                     {/* Edit Button (Instead of Rating) */}
-                                    {isAdmin && (
+                                    {canEditPractices && (
                                         <button
                                             onClick={(e) => openEditModal(practice, e)}
                                             className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
@@ -186,7 +186,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
             </div>
 
             {/* Admin Add Button */}
-            {isAdmin && (
+            {canEditPractices && (
                 <div className="fixed bottom-8 right-8 z-30">
                     <button
                         onClick={openAddModal}

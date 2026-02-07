@@ -5,6 +5,8 @@ import Input from '../components/Input';
 import MeetingCard from '../components/MeetingCard';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
+import { getCostAmount, getCostCurrency } from '../utils/cost';
+import ModalShell from '../components/ModalShell';
 
 // --- Sub-Components ---
 
@@ -1023,18 +1025,13 @@ const MeetingsView = ({
             )}
 
             {/* --- MODALS (Shared) --- */}
-            {
-                isPlanModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-[2rem] p-0 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                            <div className="p-8 border-b border-slate-100 flex justify-between items-center shrink-0">
-                                <h2 className="text-2xl font-bold text-slate-800">
-                                    {formData.id ? 'Редактировать встречу' : 'Запланировать встречу'}
-                                </h2>
-                                <button onClick={() => setIsPlanModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
-                            </div>
-
-                            <div className="p-8 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+            <ModalShell
+                isOpen={isPlanModalOpen}
+                onClose={() => setIsPlanModalOpen(false)}
+                title={formData.id ? 'Редактировать встречу' : 'Запланировать встречу'}
+                size="lg"
+            >
+                <div className="max-h-[70vh] overflow-y-auto custom-scrollbar space-y-6">
                                 {/* Top Row: Basic Info */}
                                 <div className="space-y-4">
                                     <Input label="Название" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Например: Женский круг" />
@@ -1168,42 +1165,45 @@ const MeetingsView = ({
                                                     placeholder="Москва, Бали, Онлайн..."
                                                 />
 
-                                                <div>
-                                                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Стоимость</label>
-                                                    <div className="flex gap-2">
-                                                        <select
-                                                            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[120px]"
-                                                            value={['Бесплатно', 'Free'].includes(formData.cost) ? 'free' : ['Донат', 'Donation'].includes(formData.cost) ? 'donation' : 'paid'}
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                if (val === 'free') setFormData({ ...formData, cost: 'Бесплатно' });
-                                                                else if (val === 'donation') setFormData({ ...formData, cost: 'Донат' });
-                                                                else setFormData({ ...formData, cost: '1000 рублей' });
-                                                            }}
-                                                        >
-                                                            <option value="paid">Платное</option>
-                                                            <option value="free">Бесплатное</option>
-                                                            <option value="donation">Донат</option>
-                                                        </select>
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Стоимость</label>
+                                                        <div className="flex flex-col sm:flex-row gap-2">
+                                                            <select
+                                                                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none sm:min-w-[120px] w-full sm:w-auto"
+                                                                value={['Бесплатно', 'Free'].includes(formData.cost) ? 'free' : ['Донат', 'Donation'].includes(formData.cost) ? 'donation' : 'paid'}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    if (val === 'free') setFormData({ ...formData, cost: 'Бесплатно' });
+                                                                    else if (val === 'donation') setFormData({ ...formData, cost: 'Донат' });
+                                                                    else setFormData({ ...formData, cost: '1000 рублей' });
+                                                                }}
+                                                            >
+                                                                <option value="paid">Платное</option>
+                                                                <option value="free">Бесплатное</option>
+                                                                <option value="donation">Донат</option>
+                                                            </select>
 
                                                         {!['Бесплатно', 'Free', 'Донат', 'Donation'].includes(formData.cost) && (
                                                             <>
                                                                 <input
-                                                                    type="number"
+                                                                    type="text"
+                                                                    inputMode="numeric"
+                                                                    pattern="[0-9]*"
                                                                     className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                                                                     placeholder="Сумма"
-                                                                    value={parseInt(formData.cost) || ''}
+                                                                    value={getCostAmount(formData.cost)}
                                                                     onChange={(e) => {
-                                                                        const currency = formData.cost?.split(' ')[1] || 'рублей';
-                                                                        setFormData({ ...formData, cost: `${e.target.value} ${currency}` })
+                                                                        const currency = getCostCurrency(formData.cost);
+                                                                        const raw = e.target.value.replace(/[^\d]/g, '');
+                                                                        setFormData({ ...formData, cost: raw ? `${raw} ${currency}` : '' });
                                                                     }}
                                                                 />
                                                                 <select
-                                                                    className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-2 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none text-center"
-                                                                    value={formData.cost?.split(' ')[1] || 'рублей'}
+                                                                    className="w-full sm:w-24 bg-slate-50 border border-slate-200 rounded-xl px-2 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none text-center"
+                                                                    value={getCostCurrency(formData.cost)}
                                                                     onChange={(e) => {
-                                                                        const amount = parseInt(formData.cost) || 0;
-                                                                        setFormData({ ...formData, cost: `${amount} ${e.target.value}` })
+                                                                        const amount = getCostAmount(formData.cost);
+                                                                        setFormData({ ...formData, cost: amount ? `${amount} ${e.target.value}` : '' });
                                                                     }}
                                                                 >
                                                                     <option value="рублей">рублей</option>
@@ -1266,32 +1266,24 @@ const MeetingsView = ({
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                </div>
 
-                            <div className="p-6 border-t border-slate-100 shrink-0">
-                                <Button onClick={handleSavePlan} disabled={isSaving} className="w-full justify-center">
-                                    {isSaving ? 'Сохранение...' : 'Сохранить и запланировать'}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+                <div className="pt-6 border-t border-slate-100">
+                    <Button onClick={handleSavePlan} disabled={isSaving} className="w-full justify-center">
+                        {isSaving ? 'Сохранение...' : 'Сохранить и запланировать'}
+                    </Button>
+                </div>
+            </ModalShell>
 
             {/* 2. Result Modal */}
-            {
-                isResultModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="flex justify-between items-center mb-6">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-slate-800">Итоги встречи</h2>
-                                    <p className="text-slate-400 text-sm mt-1">{formData.title}</p>
-                                </div>
-                                <button onClick={() => setIsResultModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
-                            </div>
-
-                            <div className="space-y-5 mb-8">
+            <ModalShell
+                isOpen={isResultModalOpen}
+                onClose={() => setIsResultModalOpen(false)}
+                title="Итоги встречи"
+                description={formData.title}
+                size="md"
+            >
+                <div className="space-y-5 mb-8">
                                 <div className="grid grid-cols-2 gap-4">
                                     <Input type="number" label="Всего гостей" value={formData.guests} onChange={e => setFormData({ ...formData, guests: e.target.value })} />
                                     <Input type="number" label="Из них новых" value={formData.new_guests} onChange={e => setFormData({ ...formData, new_guests: e.target.value })} />
@@ -1319,25 +1311,20 @@ const MeetingsView = ({
                                 </div>
                             </div>
 
-                            <Button onClick={handleSaveResult} disabled={isSaving} className="w-full justify-center">
-                                {isSaving ? 'Сохранение...' : 'Сохранить результат'}
-                            </Button>
-                        </div>
-                    </div>
-                )
-            }
+                </div>
+                <Button onClick={handleSaveResult} disabled={isSaving} className="w-full justify-center">
+                    {isSaving ? 'Сохранение...' : 'Сохранить результат'}
+                </Button>
+            </ModalShell>
 
             {/* 3. Cancel Modal */}
-            {
-                isCancelModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-slate-800">Отмена встречи</h2>
-                                <button onClick={() => setIsCancelModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
-                            </div>
-
-                            <div className="space-y-4 mb-8">
+            <ModalShell
+                isOpen={isCancelModalOpen}
+                onClose={() => setIsCancelModalOpen(false)}
+                title="Отмена встречи"
+                size="sm"
+            >
+                <div className="space-y-4 mb-8">
                                 <p className="text-slate-500 text-sm">Встреча: <strong>{formData.title}</strong></p>
 
                                 <div>
@@ -1368,51 +1355,42 @@ const MeetingsView = ({
                                 </div>
                             </div>
 
-                            <Button onClick={handleSaveCancel} variant="secondary" className="w-full justify-center">Подтвердить отмену</Button>
-                        </div>
-                    </div>
-                )
-            }
+                </div>
+                <Button onClick={handleSaveCancel} variant="secondary" className="w-full justify-center">Подтвердить отмену</Button>
+            </ModalShell>
 
             {/* 4. Delete Confirmation Modal */}
-            {
-                isDeleteModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                        <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="text-center mb-6">
-                                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Trash2 size={32} />
-                                </div>
-                                <h2 className="text-xl font-bold text-slate-900 mb-2">Удалить встречу?</h2>
-                                <p className="text-slate-500 text-sm">Это действие нельзя будет отменить.</p>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)} className="flex-1 justify-center">
-                                    Отмена
-                                </Button>
-                                <Button onClick={handleConfirmDelete} className="flex-1 justify-center bg-red-500 hover:bg-red-600 text-white shadow-red-500/20">
-                                    Удалить
-                                </Button>
-                            </div>
-                        </div>
+            <ModalShell
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                size="sm"
+            >
+                <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Trash2 size={32} />
                     </div>
-                )
-            }
+                    <h2 className="text-xl font-bold text-slate-900 mb-2">Удалить встречу?</h2>
+                    <p className="text-slate-500 text-sm">Это действие нельзя будет отменить.</p>
+                </div>
+
+                <div className="flex gap-3">
+                    <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)} className="flex-1 justify-center">
+                        Отмена
+                    </Button>
+                    <Button onClick={handleConfirmDelete} className="flex-1 justify-center bg-red-500 hover:bg-red-600 text-white shadow-red-500/20">
+                        Удалить
+                    </Button>
+                </div>
+            </ModalShell>
 
             {/* 5. Goal Modal */}
-            {
-                isGoalModalOpen && (
-                    <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-slate-800">
-                                    {goalFormData.id ? 'Редактировать цель' : 'Новая цель'}
-                                </h2>
-                                <button onClick={() => setIsGoalModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
-                            </div>
-
-                            <div className="space-y-4 mb-8">
+            <ModalShell
+                isOpen={isGoalModalOpen}
+                onClose={() => setIsGoalModalOpen(false)}
+                title={goalFormData.id ? 'Редактировать цель' : 'Новая цель'}
+                size="md"
+            >
+                <div className="space-y-4 mb-8">
                                 <Input
                                     label="Название цели"
                                     value={goalFormData.title}
@@ -1451,13 +1429,11 @@ const MeetingsView = ({
                                 </div>
                             </div>
 
-                            <Button onClick={handleSaveGoal} disabled={isSaving} className="w-full justify-center">
-                                {isSaving ? 'Сохранение...' : 'Сохранить цели'}
-                            </Button>
-                        </div>
-                    </div>
-                )
-            }
+                </div>
+                <Button onClick={handleSaveGoal} disabled={isSaving} className="w-full justify-center">
+                    {isSaving ? 'Сохранение...' : 'Сохранить цели'}
+                </Button>
+            </ModalShell>
 
             {/* 6. Delete Goal Confirmation Modal */}
             <ConfirmationModal

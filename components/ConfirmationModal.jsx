@@ -6,8 +6,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
     if (!isOpen) return null;
 
     return (
-        <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200`}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative">
+        <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-200`}>
+            <div className="surface-card w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative">
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
@@ -23,7 +23,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
                         <Icon size={32} />
                     </div>
 
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">
+                    <h3 className="text-xl font-display font-semibold text-slate-900 mb-2">
                         {title}
                     </h3>
 

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight } from 'lucide-react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
-import { ROLES, ROLES_CONFIG } from '../utils/roles';
 
 const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     const [period, setPeriod] = useState('month'); // 'month', 'year', 'all', 'custom'
@@ -65,18 +64,18 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header / Filter */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <TrendingUp className="text-blue-600" />
+            <div className="flex justify-between items-center surface-card p-4">
+                <h2 className="text-xl font-display font-semibold text-slate-800 flex items-center gap-2">
+                    <TrendingUp className="text-blue-700" />
                     Статистика
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                    <div className="flex bg-slate-100/80 p-1 rounded-xl">
                         {['month', 'year', 'all', 'custom'].map(p => (
                             <button
                                 key={p}
                                 onClick={() => setPeriod(p)}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${period === p ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${period === p ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 {p === 'month' ? 'Этот месяц' : p === 'year' ? 'Этот год' : p === 'custom' ? 'Период' : 'Все время'}
                             </button>
@@ -104,21 +103,21 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 
             {/* Key Metrics Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-3xl text-white shadow-lg shadow-blue-500/20 relative overflow-hidden group">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-6 rounded-3xl text-white shadow-[0_20px_40px_-24px_rgba(47,111,84,0.6)] relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><Calendar size={64} /></div>
                     <div className="relative z-10">
                         <div className="text-blue-100 text-sm font-medium mb-1">Проведено встреч</div>
                         <div className="text-4xl font-bold tracking-tight">{totalMeetings}</div>
                     </div>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group">
+                <div className="surface-card p-6 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-4 text-slate-100 group-hover:scale-110 transition-transform"><Users size={64} /></div>
                     <div className="relative z-10">
                         <div className="text-slate-400 text-sm font-medium mb-1 flex items-center gap-2"><ArrowUpRight size={14} className="text-green-500" /> Гостей пришло</div>
                         <div className="text-4xl font-bold text-slate-800 tracking-tight">{totalGuests}</div>
                     </div>
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group">
+                <div className="surface-card p-6 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-4 text-slate-100 group-hover:scale-110 transition-transform"><BarChart size={64} /></div>
                     <div className="relative z-10">
                         <div className="text-slate-400 text-sm font-medium mb-1">Общий доход (rub)</div>
@@ -130,9 +129,9 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
             {/* Charts Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Cities */}
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm min-h-[300px]">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
-                        <MapPin size={20} className="text-rose-500" />
+                <div className="surface-card p-6 min-h-[300px]">
+                    <h3 className="text-lg font-display font-semibold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
+                        <MapPin size={20} className="text-rose-600" />
                         Активные города
                     </h3>
                     <div className="space-y-4">
@@ -154,9 +153,9 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
                 </div>
 
                 {/* Top Leaders */}
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm min-h-[300px]">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
-                        <Users size={20} className="text-indigo-500" />
+                <div className="surface-card p-6 min-h-[300px]">
+                    <h3 className="text-lg font-display font-semibold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
+                        <Users size={20} className="text-indigo-600" />
                         Топ ведущих
                     </h3>
                     <div className="space-y-4">
@@ -233,27 +232,27 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
             <div className="max-w-4xl mx-auto space-y-6">
                 <div className="flex justify-between items-end mb-8 animate-in fade-in duration-700">
                     <div>
-                        <h1 className="text-4xl font-light text-slate-800 tracking-tight">Админ-панель</h1>
-                        <p className="text-slate-400 mt-1 font-light">Управление приложением</p>
+                        <h1 className="text-4xl font-display font-semibold text-slate-900 tracking-tight">Админ-панель</h1>
+                        <p className="text-slate-500 mt-1 font-light">Управление приложением</p>
                     </div>
                     <Button variant="ghost" icon={LogOut} onClick={onExit}>Выйти</Button>
                 </div>
 
                 {/* App Switcher */}
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-3xl flex justify-between items-center">
+                <div className="bg-blue-50/80 border border-blue-100 p-4 rounded-3xl flex justify-between items-center">
                     <span className="text-sm text-blue-800 font-medium">Хотите посмотреть, как выглядит сад?</span>
                     <Button variant="primary" className="!py-2 !px-4 text-xs" onClick={onSwitchToApp}>Открыть приложение</Button>
                 </div>
 
                 <div className="flex gap-2 items-center justify-between">
-                    <div className="bg-slate-100/50 p-1 rounded-2xl flex gap-1 w-fit">
+                    <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
                         {['stats', 'users', 'content', 'news'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => setTab(t)}
-                                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === t
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
                                 {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : 'Новости'}
                             </button>
@@ -267,11 +266,11 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                 )}
 
                 {tab === 'news' && (
-                    <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-sm border border-white/50">
-                        <h3 className="font-bold text-slate-900 mb-4">Новости ({news.length})</h3>
+                    <div className="surface-card p-8">
+                        <h3 className="font-display font-semibold text-slate-900 mb-4">Новости ({news.length})</h3>
                         <div className="space-y-4 mb-8">
                             {news.map(n => (
-                                <div key={n.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-start group">
+                                <div key={n.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
                                     <div>
                                         <div className="font-bold text-slate-800">{n.title}</div>
                                         <div className="text-sm text-slate-600 mt-1" dangerouslySetInnerHTML={{ __html: n.body }} />
@@ -295,7 +294,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                             ))}
                         </div>
 
-                        <h3 className="font-bold text-slate-900 mb-4">{newContent.id ? 'Редактировать новость' : 'Добавить новость'}</h3>
+                        <h3 className="font-display font-semibold text-slate-900 mb-4">{newContent.id ? 'Редактировать новость' : 'Добавить новость'}</h3>
                         <div className="space-y-4">
                             <Input placeholder="Заголовок новости" value={newContent.title} onChange={e => setNewContent({ ...newContent, title: e.target.value })} />
                             <RichEditor
@@ -318,8 +317,8 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
 
                         <div className="border-t border-slate-100 my-8"></div>
 
-                        <h3 className="font-bold text-slate-900 mb-4">Шаблоны поздравлений</h3>
-                        <div className="bg-blue-50 p-4 rounded-xl mb-6 text-sm text-blue-800">
+                        <h3 className="font-display font-semibold text-slate-900 mb-4">Шаблоны поздравлений</h3>
+                        <div className="bg-blue-50/80 p-4 rounded-xl mb-6 text-sm text-blue-800">
                             Используйте <b>{'{name}'}</b> чтобы вставить имя именинника автоматически.<br />
                             Пример: <i>"С днем рождения, {'{name}'}!"</i>
                         </div>
@@ -340,7 +339,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                 )}
 
                 {tab === 'users' ? (
-                    <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-sm border border-white/50 overflow-hidden">
+                    <div className="surface-card p-8 overflow-hidden">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="border-b border-slate-100 text-xs uppercase text-slate-400">
@@ -427,8 +426,8 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                 ) : tab === 'content' && (
                     <div className="space-y-6">
                         {/* List of Knowledge Base Items */}
-                        <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-sm border border-white/50">
-                            <h3 className="font-bold text-slate-900 mb-4">База знаний ({knowledgeBase.length})</h3>
+                        <div className="surface-card p-8">
+                            <h3 className="font-display font-semibold text-slate-900 mb-4">База знаний ({knowledgeBase.length})</h3>
                             <div className="space-y-3 max-h-[420px] overflow-y-auto mb-6">
                                 {Object.entries(
                                     (knowledgeBase || []).reduce((acc, item) => {
@@ -483,7 +482,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
 
                             <hr className="border-slate-100 my-6" />
 
-                            <h3 className="font-bold text-slate-900 mb-4">{newContent.id ? 'Редактировать материал' : 'Добавить материал'}</h3>
+                            <h3 className="font-display font-semibold text-slate-900 mb-4">{newContent.id ? 'Редактировать материал' : 'Добавить материал'}</h3>
                             <div className="space-y-4">
                                 <Input placeholder="Название" value={newContent.title} onChange={e => setNewContent({ ...newContent, title: e.target.value })} />
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -511,7 +510,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                         </select>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div className="space-y-1">
                                         <label className="text-xs text-slate-500 ml-1">Доступ</label>
                                         <select className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700" value={newContent.role} onChange={e => setNewContent({ ...newContent, role: e.target.value })}>
@@ -520,7 +519,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                             <option value="leader">Ведущие+</option>
                                         </select>
                                     </div>
-                                    <div className="md:col-span-2">
+                                    <div className="md:col-span-3">
                                         <Input
                                             placeholder="Теги (через запятую)"
                                             value={newContent.tags || ''}

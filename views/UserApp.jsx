@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Shield, LogOut, X, TreePine, Globe, BookOpen, Sparkles, Users, User, Bell,
-    TrendingUp, Calendar, Leaf, LayoutGrid, Map, Settings, Menu, CalendarRange,
-    GraduationCap, LogIn
+    Shield, LogOut, X, BookOpen, Sparkles, Users, Bell,
+    Leaf, LayoutGrid, Map, Settings, Menu, CalendarRange,
+    GraduationCap
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -17,7 +17,7 @@ import MapView from './MapView';
 import ProfileView from './ProfileView';
 import NewsView from './NewsView';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
-import { ROLES, ROLES_CONFIG, hasAccess, getRoleLabel } from '../utils/roles';
+import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { api } from '../services/dataService';
 
 // Sidebar Item Component
@@ -26,13 +26,13 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
         onClick={onClick}
         className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all duration-300 group relative select-none
         ${active
-                ? 'bg-blue-50 text-blue-600 border border-blue-100/50'
-                : 'text-slate-500 hover:bg-slate-100/50 hover:text-slate-900 active:scale-[0.98]'
+                ? 'bg-blue-50 text-blue-700 border border-blue-100 shadow-[0_6px_16px_-12px_rgba(47,111,84,0.5)]'
+                : 'text-slate-600 hover:bg-white/80 hover:text-slate-900 active:scale-[0.98]'
             }`}
     >
         <Icon
             size={22}
-            className={`stroke-[1.5px] transition-transform duration-300 ${active ? 'scale-105' : 'group-hover:scale-105'}`}
+            className={`stroke-[1.6px] transition-transform duration-300 ${active ? 'scale-105' : 'group-hover:scale-105'}`}
             width={24}
         />
         <span className={`font-medium tracking-wide text-[15px] ${active ? 'font-semibold' : ''}`}>{label}</span>
@@ -403,16 +403,16 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
     };
 
     return (
-        <div className="flex h-screen bg-[#F5F5F7] overflow-hidden selection:bg-blue-100 selection:text-blue-900 font-sans">
+        <div className="flex h-screen bg-transparent overflow-hidden selection:bg-blue-100 selection:text-blue-900 font-sans text-slate-700">
             {/* Desktop Sidebar - The Glass Dock */}
             <div className={`hidden md:flex flex-col w-80 h-full p-6 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative z-50`}>
-                <div className="flex-1 bg-white/80 backdrop-blur-2xl px-4 pt-8 pb-8 rounded-[2.5rem] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.08)] border border-white/50 flex flex-col relative overflow-hidden ring-1 ring-white/60">
+                <div className="flex-1 surface-card px-4 pt-8 pb-8 flex flex-col relative overflow-hidden ring-1 ring-white/70">
 
                     {/* Fixed Avatar / Profile Section */}
                     <div className="flex-shrink-0">
                         <div className="flex items-center gap-4 px-4 mb-6 group cursor-pointer" onClick={() => handleViewChange('profile')}>
                             <div className="relative">
-                                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                                <div className="absolute inset-0 bg-blue-500/15 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                                 <div className="relative transform group-hover:scale-105 transition-transform duration-500 ease-out">
                                     <UserAvatar user={user} size="md" />
                                 </div>
@@ -421,8 +421,8 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                 </div>
                             </div>
                             <div className="flex flex-col">
-                                <span className="font-bold text-slate-800 tracking-tight group-hover:text-blue-600 transition-colors duration-300">{user.name}</span>
-                                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{getRoleLabel(user.role)}</span>
+                                <span className="font-semibold text-slate-900 tracking-tight group-hover:text-blue-700 transition-colors duration-300">{user.name}</span>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.3em]">{getRoleLabel(user.role)}</span>
                             </div>
                         </div>
                     </div>
@@ -490,35 +490,32 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                 onClick={() => handleViewChange('news')}
                                 badge={hasBirthday ? "!" : null}
                             />
+                            <div className="h-px bg-slate-100/60 my-3"></div>
+                            <SidebarItem
+                                icon={Settings}
+                                label="Настройки"
+                                active={view === 'profile'}
+                                onClick={() => handleViewChange('profile')}
+                            />
+                            <button
+                                onClick={onLogout}
+                                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 hover:text-rose-600 hover:bg-rose-50/60 transition-all duration-300 group select-none"
+                            >
+                                <LogOut size={22} className="stroke-[1.5px] group-hover:scale-110 transition-transform duration-300" />
+                                <span className="font-medium tracking-wide text-[15px]">Выйти</span>
+                            </button>
                         </nav>
-                    </div>
-
-                    {/* Fixed Bottom Actions */}
-                    <div className="flex-shrink-0 space-y-1 pt-6 border-t border-slate-100/50 mt-auto">
-                        <SidebarItem
-                            icon={Settings}
-                            label="Настройки"
-                            active={view === 'profile'}
-                            onClick={() => handleViewChange('profile')}
-                        />
-                        <button
-                            onClick={onLogout}
-                            className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-400 hover:text-red-500 hover:text-red-500 hover:bg-red-50/50 transition-all duration-300 group select-none"
-                        >
-                            <LogOut size={22} className="stroke-[1.5px] group-hover:scale-110 transition-transform duration-300" />
-                            <span className="font-medium tracking-wide text-[15px]">Выйти</span>
-                        </button>
                     </div>
                 </div>
             </div>
 
             {/* Mobile Header - Glass Strip */}
-            <div className="md:hidden fixed top-0 w-full bg-white/80 backdrop-blur-xl border-b border-white/20 z-50 px-6 py-4 flex justify-between items-center shadow-sm">
+            <div className="md:hidden fixed top-0 w-full bg-white/90 backdrop-blur-xl border-b border-white/40 z-50 px-6 py-4 flex justify-between items-center shadow-[0_10px_30px_-20px_rgba(21,17,12,0.6)]">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white shadow-blue-500/30 shadow-lg">
+                    <div className="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-[0_10px_20px_-10px_rgba(47,111,84,0.7)]">
                         <Leaf size={18} strokeWidth={2.5} />
                     </div>
-                    <span className="font-bold text-slate-800 text-lg tracking-tight">Сад ведущих</span>
+                    <span className="font-display font-semibold text-slate-900 text-lg tracking-tight">Сад ведущих</span>
                 </div>
                 {/* Hamburger removed, moved to bottom nav */}
             </div>
@@ -526,9 +523,9 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             {/* Mobile Menu Overlay */}
             {mobileMenuOpen && (
                 <div className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm animate-in fade-in duration-300 md:hidden">
-                    <div className="absolute right-0 top-0 bottom-0 w-3/4 max-w-sm bg-white/95 backdrop-blur-xl shadow-2xl p-6 flex flex-col animate-in slide-in-from-right duration-300">
+                    <div className="absolute right-0 top-0 bottom-0 w-3/4 max-w-sm bg-white/95 backdrop-blur-xl shadow-[0_24px_60px_-32px_rgba(21,17,12,0.8)] p-6 flex flex-col animate-in slide-in-from-right duration-300">
                         <div className="flex justify-between items-center mb-8">
-                            <h2 className="text-2xl font-light text-slate-900">Меню</h2>
+                            <h2 className="text-2xl font-display font-semibold text-slate-900">Меню</h2>
                             <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500">
                                 <X size={24} />
                             </button>
@@ -565,7 +562,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto pb-24 md:pb-6 md:pt-6 pt-20 relative isolate">
                 {/* Ambient Background - Global */}
-                <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-white to-indigo-50/50 -z-50" />
+                <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(63,139,107,0.18),_transparent_55%),radial-gradient(circle_at_20%_20%,_rgba(143,127,106,0.15),_transparent_40%),linear-gradient(180deg,_#fbf9f3_0%,_#f7f3ea_100%)] -z-50" />
 
                 <div className="p-6 max-w-6xl mx-auto min-h-full animate-in fade-in duration-500">
                     {view === 'dashboard' && <StatsDashboardView user={user} meetings={meetings} knowledgeBase={knowledgeBase} clients={clients} practices={practices} scenarios={scenarios} goals={goals} onNavigate={handleViewChange} />}
@@ -577,15 +574,15 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                     {view === 'market' && <MarketView />}
                     {view === 'map' && <MapView users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} currentUser={user} onSendRay={onSendRay} />}
                     {view === 'news' && <NewsView news={news} users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} />}
-                    {view === 'profile' && <ProfileView user={user} onUpdateProfile={handleUpdateProfile} onLogout={onLogout} onDeleteAccount={() => { if (confirm('Удалить?')) onLogout(); }} onNotify={onNotify} />}
+                    {view === 'profile' && <ProfileView user={user} onUpdateProfile={handleUpdateProfile} onLogout={onLogout} onDeleteAccount={onLogout} onNotify={onNotify} />}
                 </div>
             </div>
 
             {/* Mobile Bottom Navigation - Added as requested to show "menu buttons" */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 z-50 flex justify-around items-center px-4 py-3 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-white/60 z-50 flex justify-around items-center px-4 py-3 pb-6 shadow-[0_-10px_30px_-20px_rgba(21,17,12,0.6)]">
                 <button
                     onClick={() => handleViewChange('dashboard')}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'dashboard' ? 'text-blue-600' : 'text-slate-400'}`}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'dashboard' ? 'text-blue-700' : 'text-slate-400'}`}
                 >
                     <LayoutGrid size={24} strokeWidth={view === 'dashboard' ? 2 : 1.5} />
                     <span className="text-[10px] font-medium">Дашборд</span>
@@ -593,7 +590,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
 
                 <button
                     onClick={() => handleViewChange('meetings')}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'meetings' ? 'text-blue-600' : 'text-slate-400'}`}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'meetings' ? 'text-blue-700' : 'text-slate-400'}`}
                 >
                     <CalendarRange size={24} strokeWidth={view === 'meetings' ? 2 : 1.5} />
                     <span className="text-[10px] font-medium">Встречи</span>
@@ -601,7 +598,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
 
                 <button
                     onClick={() => handleViewChange('practices')}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'practices' ? 'text-blue-600' : 'text-slate-400'}`}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'practices' ? 'text-blue-700' : 'text-slate-400'}`}
                 >
                     <BookOpen size={24} strokeWidth={view === 'practices' ? 2 : 1.5} />
                     <span className="text-[10px] font-medium">Практики</span>
@@ -609,7 +606,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
 
                 <button
                     onClick={() => setMobileMenuOpen(true)}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-blue-600' : 'text-slate-400'}`}
+                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-blue-700' : 'text-slate-400'}`}
                 >
                     <Menu size={24} strokeWidth={1.5} />
                     <span className="text-[10px] font-medium">Меню</span>
@@ -619,14 +616,14 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             {/* Notification Modal */}
             {notificationModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-                    <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 w-full max-w-sm shadow-2xl text-center relative animate-in zoom-in-95 duration-300 border border-white/50 ring-1 ring-black/5">
+                    <div className="surface-card p-8 w-full max-w-sm text-center relative animate-in zoom-in-95 duration-300 ring-1 ring-black/5">
                         <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                            <Sparkles size={32} className="text-blue-500" />
+                            <Sparkles size={32} className="text-blue-600" />
                         </div>
-                        <h3 className="text-xl font-light text-slate-900 mb-2">Вам пришел лучик!</h3>
+                        <h3 className="text-xl font-display font-semibold text-slate-900 mb-2">Вам пришел лучик!</h3>
                         <p className="text-slate-500 mb-6">От: <span className="font-medium text-slate-800">{notificationModal.from}</span></p>
-                        <p className="text-sm text-slate-500 italic mb-8 bg-slate-50 p-4 rounded-xl">"{notificationModal.message}"</p>
-                        <Button onClick={handleCloseNotification} className="w-full py-4 text-base shadow-lg shadow-blue-500/20">Принять с благодарностью</Button>
+                        <p className="text-sm text-slate-600 italic mb-8 bg-slate-50/80 p-4 rounded-2xl">"{notificationModal.message}"</p>
+                        <Button onClick={handleCloseNotification} className="w-full py-4 text-base shadow-[0_18px_30px_-18px_rgba(47,111,84,0.6)]">Принять с благодарностью</Button>
                     </div>
                 </div>
             )}

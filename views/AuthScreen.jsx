@@ -91,14 +91,14 @@ const AuthScreen = ({ onLogin, onNotify }) => {
         }
     };
 
-    if (showForgot) return (<div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6"><div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl space-y-4"><button onClick={() => setShowForgot(false)} className="text-slate-400"><ArrowLeft size={20} /></button><h2 className="text-xl font-medium">Восстановление</h2><Input placeholder="Email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} /><Button onClick={handleForgot} className="w-full">Сбросить пароль</Button></div></div>);
+    if (showForgot) return (<div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6"><div className="w-full max-w-sm surface-card p-8 space-y-4"><button onClick={() => setShowForgot(false)} className="text-slate-400"><ArrowLeft size={20} /></button><h2 className="text-2xl font-display font-semibold text-slate-900">Восстановление</h2><Input placeholder="Email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} /><Button onClick={handleForgot} className="w-full">Сбросить пароль</Button></div></div>);
 
-    if (authMode === 'welcome') return (<div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden"><div className="absolute top-0 left-0 w-full h-1/2 bg-blue-500/5 blur-3xl rounded-full translate-y-[-50%]" /><div className="w-full max-w-sm relative z-10 space-y-8 animate-in fade-in zoom-in duration-500"><div className="text-center space-y-4"><div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mx-auto text-blue-600 mb-6"><Leaf size={40} /></div><h1 className="text-3xl font-light text-slate-900">Сад ведущих</h1><p className="text-slate-500">Пространство роста для ведущих</p></div><div className="space-y-3"><Button onClick={() => setAuthMode('login')} variant="secondary" className="w-full shadow-sm">Войти</Button><Button onClick={() => setAuthMode('register')} variant="primary" className="w-full">Создать аккаунт</Button></div></div></div>);
+    if (authMode === 'welcome') return (<div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6 relative overflow-hidden"><div className="absolute top-0 left-0 w-full h-1/2 bg-blue-500/8 blur-3xl rounded-full translate-y-[-50%]" /><div className="w-full max-w-sm relative z-10 space-y-8 animate-in fade-in zoom-in duration-500"><div className="text-center space-y-4"><div className="w-20 h-20 bg-white/90 rounded-[2rem] shadow-[0_18px_40px_-24px_rgba(21,17,12,0.6)] flex items-center justify-center mx-auto text-blue-700 mb-6 border border-white/70"><Leaf size={40} /></div><h1 className="text-3xl font-display font-semibold text-slate-900">Сад ведущих</h1><p className="text-slate-600">Пространство роста для ведущих</p></div><div className="space-y-3"><Button onClick={() => setAuthMode('login')} variant="secondary" className="w-full">Войти</Button><Button onClick={() => setAuthMode('register')} variant="primary" className="w-full">Создать аккаунт</Button></div></div></div>);
 
-    if (authMode === 'register') return (<div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden"><div className="w-full max-w-md relative z-10">{step === 1 ? (<div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 space-y-4 animate-in slide-in-from-right-8 duration-500"><div className="flex items-center gap-2 mb-4"><button onClick={() => setAuthMode('welcome')}><ArrowLeft size={20} className="text-slate-400" /></button><h2 className="text-xl font-medium text-slate-900">Регистрация</h2></div><div className="space-y-3"><Input placeholder="Имя и фамилия" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} /><Input placeholder="Email" value={regData.email} onChange={e => setRegData({ ...regData, email: e.target.value })} /><Input type="password" placeholder="Пароль" value={regData.password} onChange={e => setRegData({ ...regData, password: e.target.value })} /><Input label="Введите дату рождения" type="date" value={regData.dob} max={new Date().toISOString().split("T")[0]} onChange={e => setRegData({ ...regData, dob: e.target.value })} /><p className="text-[10px] text-slate-400">Нужна для определения вашего дерева.</p></div><Button onClick={handleRegisterCalculate} className="w-full mt-4" disabled={!regData.email}>{isProcessing ? "Магия..." : "Далее"}</Button></div>) : (
+    if (authMode === 'register') return (<div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6 relative overflow-hidden"><div className="w-full max-w-md relative z-10">{step === 1 ? (<div className="surface-card p-8 space-y-4 animate-in slide-in-from-right-8 duration-500"><div className="flex items-center gap-2 mb-4"><button onClick={() => setAuthMode('welcome')}><ArrowLeft size={20} className="text-slate-400" /></button><h2 className="text-2xl font-display font-semibold text-slate-900">Регистрация</h2></div><div className="space-y-3"><Input placeholder="Имя и фамилия" value={regData.name} onChange={e => setRegData({ ...regData, name: e.target.value })} /><Input placeholder="Email" value={regData.email} onChange={e => setRegData({ ...regData, email: e.target.value })} /><Input type="password" placeholder="Пароль" value={regData.password} onChange={e => setRegData({ ...regData, password: e.target.value })} /><Input label="Введите дату рождения" type="date" value={regData.dob} max={new Date().toISOString().split("T")[0]} onChange={e => setRegData({ ...regData, dob: e.target.value })} /><p className="text-[10px] text-slate-400">Нужна для определения вашего дерева.</p></div><Button onClick={handleRegisterCalculate} className="w-full mt-4" disabled={!regData.email}>{isProcessing ? "Магия..." : "Далее"}</Button></div>) : (
         <div className="w-full max-w-sm mx-auto animate-in zoom-in duration-700">
             {/* Bento Card */}
-            <div className="bg-white rounded-[2rem] overflow-hidden shadow-2xl mb-8">
+            <div className="surface-card overflow-hidden mb-8">
                 {/* Top: Image Area */}
                 <div className="relative h-80 bg-slate-100">
                     {treeResult?.image ? (
@@ -114,12 +114,12 @@ const AuthScreen = ({ onLogin, onNotify }) => {
                     )}
 
                     {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
 
                     {/* Text Overlay */}
                     <div className="absolute bottom-6 left-6 text-white">
                         <p className="text-[10px] uppercase font-bold tracking-widest opacity-80 mb-1">Ваш покровитель</p>
-                        <h1 className="text-4xl font-light tracking-tight">{treeResult?.name}</h1>
+                        <h1 className="text-4xl font-display font-semibold tracking-tight">{treeResult?.name}</h1>
                     </div>
                 </div>
 
@@ -134,7 +134,7 @@ const AuthScreen = ({ onLogin, onNotify }) => {
 
                     {/* Decorative "Map" Element */}
                     <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0">
-                        <Leaf size={24} className="text-blue-500" />
+                        <Leaf size={24} className="text-blue-600" />
                     </div>
                 </div>
             </div>
@@ -142,7 +142,7 @@ const AuthScreen = ({ onLogin, onNotify }) => {
             <Button
                 onClick={handleRegisterComplete}
                 variant="primary"
-                className="w-full py-4 text-lg shadow-blue-500/30 shadow-xl rounded-2xl"
+                className="w-full py-4 text-lg shadow-[0_18px_30px_-18px_rgba(47,111,84,0.6)] rounded-2xl"
                 icon={ArrowRight}
                 disabled={isProcessing}
             >
@@ -152,15 +152,15 @@ const AuthScreen = ({ onLogin, onNotify }) => {
     )}</div></div>);
 
     if (authMode === 'login') return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-            <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl border border-slate-100 space-y-4">
+        <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6">
+            <div className="w-full max-w-sm surface-card p-8 space-y-4">
                 <div className="flex items-center gap-2 mb-4">
                     <button onClick={() => setAuthMode('welcome')}><ArrowLeft size={20} className="text-slate-400" /></button>
-                    <h2 className="text-xl font-medium">Вход</h2>
+                    <h2 className="text-2xl font-display font-semibold">Вход</h2>
                 </div>
                 <Input placeholder="Email" value={loginData.email} onChange={e => setLoginData({ ...loginData, email: e.target.value })} />
                 <Input type="password" placeholder="Пароль" value={loginData.password} onChange={e => setLoginData({ ...loginData, password: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleLoginSubmit()} />
-                <button onClick={() => setShowForgot(true)} className="text-xs text-blue-600 block w-full text-right">Забыли пароль?</button>
+                <button onClick={() => setShowForgot(true)} className="text-xs text-blue-700 block w-full text-right">Забыли пароль?</button>
                 <Button onClick={handleLoginSubmit} className="w-full mt-4" disabled={!loginData.email || isProcessing}>{isProcessing ? "Входим..." : "Войти"}</Button>
             </div>
         </div>

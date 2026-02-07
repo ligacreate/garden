@@ -84,11 +84,13 @@ export default function App() {
         if (!userToUpdate) return;
 
         try {
-            const updated = await api.updateUser({ ...userToUpdate, role });
+            await api.updateUser({ id, role });
+            const updated = { ...userToUpdate, role };
             setUsers(users.map(u => u.id === id ? updated : u));
             if (currentUser?.id === id) setCurrentUser(updated);
             showNotification("Роль обновлена");
         } catch (e) {
+            console.error(e);
             showNotification("Ошибка обновления роли");
         }
     };
@@ -143,11 +145,11 @@ export default function App() {
         }
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600">Загрузка...</div>;
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600 font-sans">Загрузка...</div>;
 
     return (
-        <div className={`min-h-screen bg-slate-50 font-sans text-slate-600 selection:bg-blue-100 selection:text-blue-800 flex justify-center relative`}>
-            <div className="w-full max-w-[448px] md:max-w-full bg-slate-50 min-h-screen shadow-2xl relative flex flex-col">
+        <div className={`min-h-screen bg-transparent font-sans text-slate-700 selection:bg-blue-100 selection:text-blue-900 flex justify-center relative`}>
+            <div className="w-full max-w-[480px] md:max-w-full bg-transparent min-h-screen relative flex flex-col">
                 <Toast message={notification} onClose={() => setNotification(null)} />
                 {!currentUser ? <AuthScreen onLogin={handleLogin} onNotify={showNotification} />
                     : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} knowledgeBase={knowledgeBase} news={news} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {

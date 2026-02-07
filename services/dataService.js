@@ -82,6 +82,36 @@ class LocalStorageService {
         return DOMPurify.sanitize(dirty); // Allow safe HTML for rich text
     }
 
+    _sanitizeFields(source, { plain = [], rich = [] } = {}) {
+        const next = { ...source };
+        plain.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) {
+                next[key] = this._sanitize(next[key]);
+            }
+        });
+        rich.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) {
+                next[key] = this._sanitizeRich(next[key]);
+            }
+        });
+        return next;
+    }
+
+    _sanitizeFields(source, { plain = [], rich = [] } = {}) {
+        const next = { ...source };
+        plain.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) {
+                next[key] = this._sanitize(next[key]);
+            }
+        });
+        rich.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) {
+                next[key] = this._sanitizeRich(next[key]);
+            }
+        });
+        return next;
+    }
+
     checkRateLimit() {
         const now = Date.now();
         const windowMs = 60 * 1000; // 1 minute
@@ -129,14 +159,26 @@ class LocalStorageService {
     }
 
     async updateUser(updatedUser) {
-        this.users = this.users.map(u => u.id === updatedUser.id ? updatedUser : u);
+        const sanitizeIfString = (val) => (typeof val === 'string' ? this._sanitize(val) : val);
+        const sanitizedUser = {
+            ...updatedUser,
+            name: sanitizeIfString(updatedUser.name),
+            city: sanitizeIfString(updatedUser.city),
+            offer: sanitizeIfString(updatedUser.offer),
+            unique_abilities: sanitizeIfString(updatedUser.unique_abilities),
+            tree: sanitizeIfString(updatedUser.tree),
+            tree_desc: sanitizeIfString(updatedUser.tree_desc),
+            treeDesc: sanitizeIfString(updatedUser.treeDesc)
+        };
+
+        this.users = this.users.map(u => u.id === sanitizedUser.id ? sanitizedUser : u);
         this._saveUsers();
         // If updating current user, update session too
         const current = await this.getCurrentUser();
-        if (current && current.id === updatedUser.id) {
-            localStorage.setItem('garden_currentUser', JSON.stringify(updatedUser));
+        if (current && current.id === sanitizedUser.id) {
+            localStorage.setItem('garden_currentUser', JSON.stringify(sanitizedUser));
         }
-        return updatedUser;
+        return sanitizedUser;
     }
 
     async incrementUserSeeds() {
@@ -167,11 +209,14 @@ class LocalStorageService {
 
     async addMeeting(meeting) {
         const allMeetings = JSON.parse(localStorage.getItem('garden_meetings')) || [];
+        const sanitized = this._sanitizeFields(meeting, {
+            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
+        });
         const newMeeting = {
-            ...meeting,
+            ...sanitized,
             id: Date.now(),
-            title: this._sanitize(meeting.title),
-            description: this._sanitize(meeting.description)
+            title: this._sanitize(sanitized.title),
+            description: this._sanitize(sanitized.description)
         };
         allMeetings.push(newMeeting);
         localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
@@ -182,7 +227,10 @@ class LocalStorageService {
         const allMeetings = JSON.parse(localStorage.getItem('garden_meetings')) || [];
         const index = allMeetings.findIndex(m => m.id === meeting.id);
         if (index !== -1) {
-            allMeetings[index] = { ...allMeetings[index], ...meeting };
+            const sanitized = this._sanitizeFields(meeting, {
+                plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
+            });
+            allMeetings[index] = { ...allMeetings[index], ...sanitized };
             localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
             return allMeetings[index];
         }
@@ -205,7 +253,8 @@ class LocalStorageService {
 
     async addPractice(practice) {
         const practices = await this.getPractices();
-        const newPractice = { ...practice, id: Date.now() };
+        const sanitized = this._sanitizeFields(practice, { plain: ['title', 'description'] });
+        const newPractice = { ...sanitized, id: Date.now() };
         practices.unshift(newPractice);
         localStorage.setItem('garden_practices', JSON.stringify(practices));
         return newPractice;
@@ -215,7 +264,8 @@ class LocalStorageService {
         const practices = await this.getPractices();
         const index = practices.findIndex(p => p.id === practice.id);
         if (index !== -1) {
-            practices[index] = { ...practices[index], ...practice };
+            const sanitized = this._sanitizeFields(practice, { plain: ['title', 'description'] });
+            practices[index] = { ...practices[index], ...sanitized };
             localStorage.setItem('garden_practices', JSON.stringify(practices));
         }
         return practice;
@@ -229,12 +279,10 @@ class LocalStorageService {
     async addNews(item) {
         const news = await this.getNews();
         // Use sanitizeRich for news body as it might contain formatting
-        const sanitizedNews = {
+        const sanitizedNews = this._sanitizeFields({
             ...item,
-            id: Date.now(),
-            title: this._sanitize(item.title),
-            body: this._sanitizeRich(item.body)
-        };
+            id: Date.now()
+        }, { plain: ['title'], rich: ['body'] });
         news.unshift(sanitizedNews);
         localStorage.setItem('garden_news', JSON.stringify(news));
         return true;
@@ -273,7 +321,8 @@ class LocalStorageService {
 
     async addScenario(scenario) {
         const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
-        const newScenario = { ...scenario, id: Date.now(), created_at: new Date().toISOString() };
+        const sanitized = this._sanitizeFields(scenario, { plain: ['title', 'author_name'] });
+        const newScenario = { ...sanitized, id: Date.now(), created_at: new Date().toISOString() };
         allScenarios.push(newScenario);
         localStorage.setItem('garden_scenarios', JSON.stringify(allScenarios));
         return newScenario;
@@ -369,6 +418,25 @@ class SupabaseService {
         return DOMPurify.sanitize(dirty);
     }
 
+    _sanitizeIfString(value) {
+        return typeof value === 'string' ? this._sanitize(value) : value;
+    }
+
+    _sanitizeFields(source, { plain = [], rich = [] } = {}) {
+        const next = { ...source };
+        plain.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) {
+                next[key] = this._sanitize(next[key]);
+            }
+        });
+        rich.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) {
+                next[key] = this._sanitizeRich(next[key]);
+            }
+        });
+        return next;
+    }
+
     async login(email, password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -393,13 +461,13 @@ class SupabaseService {
 
         // Prepare metadata for auth.users (backup/primary if profile write fails)
         const meta = {
-            name: rest.name,
-            city: rest.city,
+            name: this._sanitizeIfString(rest.name),
+            city: this._sanitizeIfString(rest.city),
             role: email === 'olga@skrebeyko.com' ? 'admin' : (rest.role || 'applicant'),
-            tree: rest.tree,
-            tree_desc: rest.treeDesc,
+            tree: this._sanitizeIfString(rest.tree),
+            tree_desc: this._sanitizeIfString(rest.treeDesc),
             seeds: rest.seeds || 0,
-            avatar_url: rest.avatar || null,
+            avatar_url: this._sanitizeIfString(rest.avatar) || null,
             dob: rest.dob || null,
             x: rest.x || (Math.random() * 80 + 10),
             y: rest.y || (Math.random() * 80 + 10),
@@ -593,7 +661,6 @@ class SupabaseService {
                 // Prioritize metadata for seeds as we write there reliably, and DB might be missing the column
                 seeds: meta.seeds !== undefined ? meta.seeds : (data.seeds || 0),
                 // Fix: Check for length to validly fall back to metadata if DB has empty array but meta has data
-                directions: (data.directions && data.directions.length > 0) ? data.directions : (meta.directions || []),
                 skills: (data.skills && data.skills.length > 0) ? data.skills : (meta.skills || []),
                 offer: data.offer || meta.offer || '',
                 unique_abilities: data.unique_abilities || meta.unique_abilities || '',
@@ -622,7 +689,6 @@ class SupabaseService {
                 y: meta.y,
                 status: meta.status || 'active',
                 dob: meta.dob,
-                directions: meta.directions || [],
                 skills: meta.skills || [],
                 offer: meta.offer || '',
                 unique_abilities: meta.unique_abilities || '',
@@ -636,74 +702,128 @@ class SupabaseService {
     async getUsers() {
         const { data, error } = await supabase.from('profiles').select('*');
         if (error) throw error;
-        return data;
+        return (data || []).map((profile) => ({
+            ...profile,
+            avatar: profile.avatar_url || profile.avatar,
+            skills: (profile.skills && profile.skills.length > 0)
+                ? profile.skills
+                : [],
+            offer: profile.offer || '',
+            unique_abilities: profile.unique_abilities || ''
+        }));
     }
 
     async updateUser(updatedUser) {
-        // 1. Update Auth Metadata (Primary source for new flexible fields)
-        // We do this FIRST or concurrently to ensure at least this works.
-        try {
-            const safeSkills = Array.isArray(updatedUser.skills) ? updatedUser.skills.map(String) : [];
-            const safeDob = updatedUser.dob || null;
-            const safeJoinDate = updatedUser.join_date || null;
+        const hasField = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+        const safeSkills = hasField(updatedUser, 'skills') && Array.isArray(updatedUser.skills)
+            ? updatedUser.skills.map(String)
+            : undefined;
+        const safeDob = hasField(updatedUser, 'dob') ? (updatedUser.dob || null) : undefined;
+        const safeJoinDate = hasField(updatedUser, 'join_date') ? (updatedUser.join_date || null) : undefined;
+        const clean = {
+            name: this._sanitizeIfString(updatedUser.name),
+            city: this._sanitizeIfString(updatedUser.city),
+            offer: this._sanitizeIfString(updatedUser.offer),
+            unique_abilities: this._sanitizeIfString(updatedUser.unique_abilities),
+            tree: this._sanitizeIfString(updatedUser.tree),
+            tree_desc: this._sanitizeIfString(updatedUser.tree_desc),
+            treeDesc: this._sanitizeIfString(updatedUser.treeDesc),
+            avatar: this._sanitizeIfString(updatedUser.avatar),
+            avatar_url: this._sanitizeIfString(updatedUser.avatar_url)
+        };
 
-            const { error: paramError } = await supabase.auth.updateUser({
-                data: {
-                    dob: safeDob,
-                    city: updatedUser.city,
-                    name: updatedUser.name,
-                    avatar_url: updatedUser.avatar,
-                    tree_desc: updatedUser.treeDesc,
-                    seeds: updatedUser.seeds,
-                    skills: safeSkills,
-                    offer: updatedUser.offer,
-                    unique_abilities: updatedUser.unique_abilities,
-                    join_date: safeJoinDate
-                }
-            });
-            if (paramError) console.warn("Metadata update warning:", paramError);
+        let isSelfUpdate = false;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            isSelfUpdate = !!session?.user?.id && session.user.id === updatedUser.id;
         } catch (e) {
-            console.warn("Failed to update auth metadata", e);
+            console.warn("Failed to determine current session for user update", e);
         }
 
-        // 2. Try to update 'profiles' table (Best effort)
+        // 1. Update Auth Metadata (Primary source for new flexible fields)
+        // We do this FIRST or concurrently to ensure at least this works.
+        if (isSelfUpdate) {
+            try {
+                const meta = {};
+                if (safeDob !== undefined) meta.dob = safeDob;
+                if (hasField(updatedUser, 'city')) meta.city = clean.city;
+                if (hasField(updatedUser, 'name')) meta.name = clean.name;
+                if (hasField(updatedUser, 'avatar')) meta.avatar_url = clean.avatar;
+                if (hasField(updatedUser, 'treeDesc')) meta.tree_desc = clean.treeDesc;
+                if (hasField(updatedUser, 'seeds')) meta.seeds = updatedUser.seeds;
+                if (safeSkills !== undefined) meta.skills = safeSkills;
+                if (hasField(updatedUser, 'offer')) meta.offer = clean.offer;
+                if (hasField(updatedUser, 'unique_abilities')) meta.unique_abilities = clean.unique_abilities;
+                if (safeJoinDate !== undefined) meta.join_date = safeJoinDate;
+                if (hasField(updatedUser, 'role')) meta.role = updatedUser.role;
+                if (hasField(updatedUser, 'status')) meta.status = updatedUser.status;
+
+                const { error: paramError } = await supabase.auth.updateUser({
+                    data: meta
+                });
+                if (paramError) console.warn("Metadata update warning:", paramError);
+            } catch (e) {
+                console.warn("Failed to update auth metadata", e);
+            }
+        }
+
+        // 2. Update role/status first (keep it minimal to avoid missing-column failures)
+        try {
+            const roleStatusUpdate = {};
+            if (hasField(updatedUser, 'role')) roleStatusUpdate.role = updatedUser.role;
+            if (hasField(updatedUser, 'status')) roleStatusUpdate.status = updatedUser.status;
+
+            if (Object.keys(roleStatusUpdate).length > 0) {
+                const { error: roleError } = await supabase
+                    .from('profiles')
+                    .update(roleStatusUpdate)
+                    .eq('id', updatedUser.id);
+                if (roleError) throw roleError;
+            }
+        } catch (e) {
+            console.warn("Role/status update failed:", e);
+            throw e;
+        }
+
+        // 3. Try to update other profile fields (Best effort)
         try {
             // First: minimal update for fields we need to persist reliably
             try {
-                const { error: minimalError } = await supabase
-                    .from('profiles')
-                    .update({ join_date: safeJoinDate, skills: safeSkills })
-                    .eq('id', updatedUser.id);
-                if (minimalError) {
-                    console.warn("Minimal profile update failed:", minimalError);
+                const minimal = {};
+                if (safeJoinDate !== undefined) minimal.join_date = safeJoinDate;
+                if (safeSkills !== undefined) minimal.skills = safeSkills;
+
+                if (Object.keys(minimal).length > 0) {
+                    const { error: minimalError } = await supabase
+                        .from('profiles')
+                        .update(minimal)
+                        .eq('id', updatedUser.id);
+                    if (minimalError) {
+                        console.warn("Minimal profile update failed:", minimalError);
+                    }
                 }
             } catch (e) {
                 console.warn("Minimal profile update exception:", e);
             }
 
-            const dbUser = {
-                id: updatedUser.id,
-                name: updatedUser.name,
-                city: updatedUser.city,
-                role: updatedUser.role,
-                tree: updatedUser.tree,
-                tree_desc: updatedUser.tree_desc || updatedUser.treeDesc,
-                seeds: updatedUser.seeds,
-                avatar_url: updatedUser.avatar || updatedUser.avatar_url,
-                x: updatedUser.x,
-                y: updatedUser.y,
-                status: updatedUser.status,
-                dob: safeDob,
-                // We try to save these, but if table lacks columns, it might fail.
-                // We will catch that error and ignore it to prevent UI crash.
-                skills: safeSkills,
-                offer: updatedUser.offer,
-                unique_abilities: updatedUser.unique_abilities,
-                join_date: safeJoinDate
-            };
-
-            // Remove undefined keys
-            Object.keys(dbUser).forEach(key => dbUser[key] === undefined && delete dbUser[key]);
+            const dbUser = { id: updatedUser.id };
+            if (hasField(updatedUser, 'name')) dbUser.name = clean.name;
+            if (hasField(updatedUser, 'city')) dbUser.city = clean.city;
+            if (hasField(updatedUser, 'tree')) dbUser.tree = clean.tree;
+            if (hasField(updatedUser, 'tree_desc') || hasField(updatedUser, 'treeDesc')) {
+                dbUser.tree_desc = clean.tree_desc || clean.treeDesc;
+            }
+            if (hasField(updatedUser, 'seeds')) dbUser.seeds = updatedUser.seeds;
+            if (hasField(updatedUser, 'avatar') || hasField(updatedUser, 'avatar_url')) {
+                dbUser.avatar_url = clean.avatar || clean.avatar_url;
+            }
+            if (hasField(updatedUser, 'x')) dbUser.x = updatedUser.x;
+            if (hasField(updatedUser, 'y')) dbUser.y = updatedUser.y;
+            if (safeDob !== undefined) dbUser.dob = safeDob;
+            if (safeSkills !== undefined) dbUser.skills = safeSkills;
+            if (hasField(updatedUser, 'offer')) dbUser.offer = clean.offer;
+            if (hasField(updatedUser, 'unique_abilities')) dbUser.unique_abilities = clean.unique_abilities;
+            if (safeJoinDate !== undefined) dbUser.join_date = safeJoinDate;
 
             const { error } = await supabase
                 .from('profiles')
@@ -760,11 +880,10 @@ class SupabaseService {
     async addKnowledge(item) {
         // Sanitize
         this.checkActionTimer();
-        const sanitized = {
-            ...item,
-            title: this._sanitize(item.title),
-            description: this._sanitize(item.description)
-        };
+        const sanitized = this._sanitizeFields(
+            { ...item, content: item.content || item.body || '' },
+            { plain: ['title', 'description'], rich: ['content'] }
+        );
         const { id, ...rest } = sanitized;
         const { error } = await supabase.from('knowledge_base').insert([rest]);
         if (error) throw error;
@@ -865,32 +984,35 @@ class SupabaseService {
             const n = parseInt(value, 10);
             return Number.isNaN(n) ? null : n;
         };
+        const cleaned = this._sanitizeFields(meeting, {
+            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
+        });
         const sanitized = {
-            user_id: meeting.user_id,
-            title: this._sanitize(meeting.title),
-            description: this._sanitize(meeting.description),
-            date: meeting.date,
-            time: meeting.time,
-            guests: toIntOrNull(meeting.guests),
-            new_guests: toIntOrNull(meeting.new_guests),
-            income: toIntOrNull(meeting.income),
-            keep_notes: this._sanitize(meeting.keep_notes),
-            change_notes: this._sanitize(meeting.change_notes),
-            fail_reason: this._sanitize(meeting.fail_reason),
-            status: meeting.status || 'planned',
-            checklist: meeting.checklist || [],
-            scenario_id: meeting.scenario_id,
-            tags: meeting.tags,
-            rescheduled_to: meeting.rescheduled_to,
+            user_id: cleaned.user_id,
+            title: cleaned.title,
+            description: cleaned.description,
+            date: cleaned.date,
+            time: cleaned.time,
+            guests: toIntOrNull(cleaned.guests),
+            new_guests: toIntOrNull(cleaned.new_guests),
+            income: toIntOrNull(cleaned.income),
+            keep_notes: cleaned.keep_notes,
+            change_notes: cleaned.change_notes,
+            fail_reason: cleaned.fail_reason,
+            status: cleaned.status || 'planned',
+            checklist: cleaned.checklist || [],
+            scenario_id: cleaned.scenario_id,
+            tags: cleaned.tags,
+            rescheduled_to: cleaned.rescheduled_to,
             // New Public Schedule Fields
-            is_public: meeting.is_public,
-            cost: this._sanitize(meeting.cost),
-            address: this._sanitize(meeting.address),
-            city: this._sanitize(meeting.city),
-            payment_link: this._sanitize(meeting.payment_link),
-            cover_image: meeting.cover_image,
-            duration: toIntOrNull(meeting.duration),
-            co_hosts: Array.isArray(meeting.co_hosts) ? meeting.co_hosts : []
+            is_public: cleaned.is_public,
+            cost: cleaned.cost,
+            address: cleaned.address,
+            city: cleaned.city,
+            payment_link: cleaned.payment_link,
+            cover_image: cleaned.cover_image,
+            duration: toIntOrNull(cleaned.duration),
+            co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : []
         };
         // Remove undefined keys to let DB defaults work
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
@@ -911,30 +1033,33 @@ class SupabaseService {
             const n = parseInt(value, 10);
             return Number.isNaN(n) ? null : n;
         };
+        const cleaned = this._sanitizeFields(rest, {
+            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
+        });
         // Sanitize fields
         const sanitized = {
-            title: this._sanitize(rest.title),
-            description: this._sanitize(rest.description),
-            keep_notes: this._sanitize(rest.keep_notes),
-            change_notes: this._sanitize(rest.change_notes),
-            fail_reason: this._sanitize(rest.fail_reason),
-            status: rest.status,
-            date: rest.date,
-            time: rest.time,
-            guests: toIntOrNull(rest.guests),
-            new_guests: toIntOrNull(rest.new_guests),
-            income: toIntOrNull(rest.income),
-            scenario_id: rest.scenario_id === '' ? null : rest.scenario_id,
-            checklist: rest.checklist,
+            title: cleaned.title,
+            description: cleaned.description,
+            keep_notes: cleaned.keep_notes,
+            change_notes: cleaned.change_notes,
+            fail_reason: cleaned.fail_reason,
+            status: cleaned.status,
+            date: cleaned.date,
+            time: cleaned.time,
+            guests: toIntOrNull(cleaned.guests),
+            new_guests: toIntOrNull(cleaned.new_guests),
+            income: toIntOrNull(cleaned.income),
+            scenario_id: cleaned.scenario_id === '' ? null : cleaned.scenario_id,
+            checklist: cleaned.checklist,
             // New Public Schedule Fields
-            is_public: rest.is_public,
-            cost: this._sanitize(rest.cost),
-            address: this._sanitize(rest.address),
-            city: this._sanitize(rest.city),
-            payment_link: this._sanitize(rest.payment_link),
-            cover_image: rest.cover_image,
-            duration: toIntOrNull(rest.duration),
-            co_hosts: Array.isArray(rest.co_hosts) ? rest.co_hosts : []
+            is_public: cleaned.is_public,
+            cost: cleaned.cost,
+            address: cleaned.address,
+            city: cleaned.city,
+            payment_link: cleaned.payment_link,
+            cover_image: cleaned.cover_image,
+            duration: toIntOrNull(cleaned.duration),
+            co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : []
         };
 
         // Remove undefined keys to avoid sending empty updates for partial objects
@@ -988,9 +1113,10 @@ class SupabaseService {
         // Since we used Date.now() for IDs locally, we should let DB handle it for persistence
         // OR we can keep using BIGINT if we want. Let's let DB handle it.
         const { id, ...rest } = practice;
+        const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
         const { data, error } = await supabase
             .from('practices')
-            .insert([rest])
+            .insert([sanitized])
             .select()
             .single();
         if (error) throw error;
@@ -999,9 +1125,10 @@ class SupabaseService {
 
     async updatePractice(practice) {
         const { id, ...rest } = practice;
+        const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
         const { error } = await supabase
             .from('practices')
-            .update(rest)
+            .update(sanitized)
             .eq('id', id);
         if (error) throw error;
         return true;
@@ -1062,17 +1189,13 @@ class SupabaseService {
 
     async addNews(item) {
         this.checkActionTimer();
-        const sanitized = {
-            ...item,
-            title: this._sanitize(item.title),
-            body: this._sanitizeRich(item.body)
-        };
+        const sanitized = this._sanitizeFields(item, { plain: ['title'], rich: ['body'] });
         const { id, ...rest } = sanitized;
         const { error } = await supabase.from('news').insert([rest]);
         if (error) {
             console.warn("News insert failed, saving locally", error);
             const localNews = JSON.parse(localStorage.getItem('garden_news')) || [];
-            localNews.unshift(item);
+            localNews.unshift(sanitized);
             localStorage.setItem('garden_news', JSON.stringify(localNews));
             return true;
         }
@@ -1081,9 +1204,10 @@ class SupabaseService {
 
     async updateNews(item) {
         const { id, ...rest } = item;
+        const sanitized = this._sanitizeFields(rest, { plain: ['title'], rich: ['body'] });
         const { error } = await supabase
             .from('news')
-            .update(rest)
+            .update(sanitized)
             .eq('id', id);
         if (error) throw error;
         return true;
@@ -1183,13 +1307,13 @@ class SupabaseService {
 
     async addScenario(scenario) {
         this.checkActionTimer();
-        const sanitized = {
+        const sanitized = this._sanitizeFields({
             user_id: scenario.user_id,
             title: this._sanitize(scenario.title),
             timeline: scenario.timeline, // JSONB
             is_public: scenario.is_public || false,
-            author_name: this._sanitize(scenario.author_name)
-        };
+            author_name: scenario.author_name
+        }, { plain: ['title', 'author_name'] });
 
         const { data, error } = await supabase
             .from('scenarios')
@@ -1202,7 +1326,7 @@ class SupabaseService {
             // Local storage fallback
             const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
             const newScenario = {
-                ...scenario,
+                ...sanitized,
                 id: Date.now(),
                 created_at: new Date().toISOString()
             };
@@ -1247,12 +1371,10 @@ class SupabaseService {
     }
 
     async addGoal(goal) {
-        const sanitized = {
-            ...goal,
-            title: this._sanitize(goal.title),
-            description: this._sanitize(goal.description),
-            related_tags: goal.related_tags || []
-        };
+        const sanitized = this._sanitizeFields(
+            { ...goal, related_tags: goal.related_tags || [] },
+            { plain: ['title', 'description'] }
+        );
         const { id, ...rest } = sanitized; // Ensure no ID is sent for insert
         const { data, error } = await supabase
             .from('goals')
@@ -1265,11 +1387,7 @@ class SupabaseService {
 
     async updateGoal(goal) {
         const { id, user_id, created_at, ...rest } = goal; // Exclude immutable fields
-        const sanitized = {
-            ...rest,
-            title: this._sanitize(rest.title),
-            description: this._sanitize(rest.description)
-        };
+        const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
         const { data, error } = await supabase
             .from('goals')
             .update(sanitized)

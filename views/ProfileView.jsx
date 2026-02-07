@@ -6,12 +6,8 @@ import Input from '../components/Input';
 import UserAvatar from '../components/UserAvatar';
 import { getRoleLabel } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
-
-const normalizeSkills = (skills) => {
-    if (!Array.isArray(skills)) return [];
-    const flat = skills.flatMap((tag) => String(tag).split(',').map((t) => t.trim()).filter(Boolean));
-    return [...new Set(flat)];
-};
+import { normalizeSkills } from '../utils/skills';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 const TagsInput = ({ label, value = [], onChange, placeholder = "Добавить..." }) => {
     const [input, setInput] = useState('');
@@ -87,6 +83,7 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
 const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ next: '', confirm: '', loading: false });
+    const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
     // Initialize form with safe defaults, ensuring arrays for tags
     const [form, setForm] = useState({
@@ -397,11 +394,24 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Управление аккаунтом</h3>
                         <div className="flex gap-3">
                             <Button variant="secondary" icon={LogOut} onClick={onLogout} className="!text-xs !py-2 !px-4">Выйти</Button>
-                            <Button variant="danger" icon={Trash2} onClick={onDeleteAccount} className="!text-xs !py-2 !px-4 hover:bg-red-50 hover:text-red-600 hover:border-red-200">Удалить профиль</Button>
+                            <Button variant="danger" icon={Trash2} onClick={() => setIsDeleteOpen(true)} className="!text-xs !py-2 !px-4 hover:bg-red-50 hover:text-red-600 hover:border-red-200">Удалить профиль</Button>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <ConfirmationModal
+                isOpen={isDeleteOpen}
+                onClose={() => setIsDeleteOpen(false)}
+                onConfirm={() => {
+                    setIsDeleteOpen(false);
+                    if (onDeleteAccount) onDeleteAccount();
+                }}
+                title="Удалить профиль?"
+                message="Это действие невозможно отменить."
+                confirmText="Удалить"
+                confirmVariant="danger"
+            />
         </div>
     );
 };

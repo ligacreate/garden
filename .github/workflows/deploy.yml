@@ -31,5 +31,5 @@ jobs:
           port: ${{ secrets.FTP_PORT }}
           protocol: ftp
           local-dir: dist/
-          server-dir: /www/liga.skrebeyko.ru/
+          server-dir: /   # FTP user home is already /www/liga.skrebeyko.ru
           dangerous-clean-slate: true

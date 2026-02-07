@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users, Bell,
-    Leaf, LayoutGrid, Map, Settings, Menu, CalendarRange,
+    Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap
 } from 'lucide-react';
 import Button from '../components/Button';
@@ -54,16 +54,16 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const skillOptions = useMemo(() => {
-        const map = new Map();
+        const skillMap = new Map();
         users.forEach((u) => {
             normalizeSkills(u.skills).forEach((s) => {
                 const label = String(s || '').trim();
                 if (!label) return;
                 const key = label.toLowerCase();
-                if (!map.has(key)) map.set(key, label);
+                if (!skillMap.has(key)) skillMap.set(key, label);
             });
         });
-        return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'ru'));
+        return Array.from(skillMap.values()).sort((a, b) => a.localeCompare(b, 'ru'));
     }, [users]);
 
     // Determines if user has a birthday message
@@ -471,7 +471,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                 onClick={() => handleViewChange('meetings')}
                             />
                             <SidebarItem
-                                icon={Map}
+                                icon={MapIcon}
                                 label="Сад ведущих"
                                 active={view === 'map'}
                                 onClick={() => handleViewChange('map')}
@@ -561,7 +561,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                         <nav className="space-y-2 flex-1 overflow-y-auto">
                             <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
                             <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
-                            <SidebarItem icon={Map} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
+                            <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
                             <SidebarItem icon={Bell} label="Новости" active={view === 'news'} onClick={() => handleViewChange('news')} />
                             <div className="h-px bg-slate-100 my-4"></div>
                             <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />

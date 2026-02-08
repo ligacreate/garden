@@ -484,6 +484,7 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                         draggable
                                         onDragStart={(e) => {
                                             e.dataTransfer.setData('application/x-garden-practice', JSON.stringify(practice));
+                                            e.dataTransfer.setData('text/plain', String(practice.id));
                                             e.dataTransfer.effectAllowed = 'copy';
                                             setIsDraggingFromLibrary(true);
                                         }}
@@ -522,13 +523,23 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                     ) : (
                                         timeline.map((item, index) => (
                                             <div key={item.uniqueId} className="relative">
-                                                {dragOverIndex === index && (
-                                                    <div className="absolute -top-1 left-8 right-3 h-0.5 rounded-full bg-blue-400/80 shadow-[0_0_0_3px_rgba(191,219,254,0.6)]" />
-                                                )}
+                                                <div
+                                                    className="h-3"
+                                                    onDragOver={(e) => {
+                                                        e.preventDefault();
+                                                        setDragOverIndex(index);
+                                                    }}
+                                                    onDrop={(e) => handleTimelineDrop(e, index)}
+                                                >
+                                                    {dragOverIndex === index && (
+                                                        <div className="h-0.5 rounded-full bg-blue-400/80 shadow-[0_0_0_3px_rgba(191,219,254,0.6)]" />
+                                                    )}
+                                                </div>
                                                 <div
                                                     draggable
                                                     onDragStart={(e) => {
                                                         e.dataTransfer.setData('application/x-garden-timeline', String(item.uniqueId));
+                                                        e.dataTransfer.setData('text/plain', String(item.uniqueId));
                                                         e.dataTransfer.effectAllowed = 'move';
                                                         setDraggedTimelineId(item.uniqueId);
                                                     }}
@@ -560,6 +571,20 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                                 </div>
                                             </div>
                                         ))
+                                    )}
+                                    {timeline.length > 0 && (
+                                        <div
+                                            className="h-4"
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                setDragOverIndex(timeline.length);
+                                            }}
+                                            onDrop={(e) => handleTimelineDrop(e, timeline.length)}
+                                        >
+                                            {dragOverIndex === timeline.length && (
+                                                <div className="h-0.5 rounded-full bg-blue-400/80 shadow-[0_0_0_3px_rgba(191,219,254,0.6)]" />
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-slate-200 bg-slate-50 z-10">

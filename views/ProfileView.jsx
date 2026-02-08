@@ -129,7 +129,7 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
     );
 };
 
-const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify, skillOptions = [] }) => {
+const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ next: '', confirm: '', loading: false });
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -143,7 +143,10 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
         skills: normalizeSkills(user.skills),
         offer: user.offer || '',
         unique_abilities: user.unique_abilities || '',
-        join_date: user.join_date ? new Date(user.join_date).toISOString().split('T')[0] : ''
+        join_date: user.join_date ? new Date(user.join_date).toISOString().split('T')[0] : '',
+        leader_signature: user.leader_signature || '',
+        leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : [],
+        telegram: user.telegram || ''
     });
 
     const fileInputRef = useRef(null);
@@ -404,6 +407,59 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                                 <p className="text-slate-800 text-sm whitespace-pre-wrap leading-relaxed">{user.unique_abilities || '—'}</p>
                                             </div>
                                         </div>
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+
+                        <Card title="Страница ведущей" className="!rounded-[2rem]">
+                            <div className="space-y-6">
+                                {isEditing ? (
+                                    <>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700">Ссылка на Telegram</label>
+                                            <Input
+                                                value={form.telegram}
+                                                onChange={e => setForm({ ...form, telegram: e.target.value })}
+                                                placeholder="https://t.me/username"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700">Что я хочу, чтобы вы про меня знали</label>
+                                            <textarea
+                                                className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm min-h-[120px]"
+                                                value={form.leader_signature}
+                                                onChange={e => setForm({ ...form, leader_signature: e.target.value })}
+                                                placeholder="Поделитесь тем, что важно знать участницам о вас"
+                                            />
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button
+                                                variant="secondary"
+                                                className="!rounded-xl"
+                                                onClick={() => onOpenLeaderPage && onOpenLeaderPage()}
+                                            >
+                                                Открыть страницу ведущей
+                                            </Button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Telegram</label>
+                                            <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.telegram || '—'}</p>
+                                        </div>
+                                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Что я хочу, чтобы вы про меня знали</label>
+                                            <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.leader_signature || '—'}</p>
+                                        </div>
+                                        <Button
+                                            variant="secondary"
+                                            className="!rounded-xl w-full md:w-auto"
+                                            onClick={() => onOpenLeaderPage && onOpenLeaderPage()}
+                                        >
+                                            Открыть страницу ведущей
+                                        </Button>
                                     </div>
                                 )}
                             </div>

@@ -166,6 +166,9 @@ class LocalStorageService {
             city: sanitizeIfString(updatedUser.city),
             offer: sanitizeIfString(updatedUser.offer),
             unique_abilities: sanitizeIfString(updatedUser.unique_abilities),
+            leader_about: sanitizeIfString(updatedUser.leader_about),
+            leader_signature: sanitizeIfString(updatedUser.leader_signature),
+            telegram: sanitizeIfString(updatedUser.telegram),
             tree: sanitizeIfString(updatedUser.tree),
             tree_desc: sanitizeIfString(updatedUser.tree_desc),
             treeDesc: sanitizeIfString(updatedUser.treeDesc)
@@ -216,7 +219,8 @@ class LocalStorageService {
             ...sanitized,
             id: Date.now(),
             title: this._sanitize(sanitized.title),
-            description: this._sanitize(sanitized.description)
+            description: this._sanitize(sanitized.description),
+            timezone: meeting.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
         };
         allMeetings.push(newMeeting);
         localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
@@ -230,7 +234,11 @@ class LocalStorageService {
             const sanitized = this._sanitizeFields(meeting, {
                 plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
             });
-            allMeetings[index] = { ...allMeetings[index], ...sanitized };
+            allMeetings[index] = {
+                ...allMeetings[index],
+                ...sanitized,
+                timezone: meeting.timezone || allMeetings[index].timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+            };
             localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
             return allMeetings[index];
         }
@@ -658,6 +666,10 @@ class SupabaseService {
                 skills: Array.isArray(meta.skills) ? meta.skills.map(String) : [],
                 offer: meta.offer || null,
                 unique_abilities: meta.unique_abilities || null,
+                leader_about: meta.leader_about || null,
+                leader_signature: meta.leader_signature || null,
+                leader_reviews: Array.isArray(meta.leader_reviews) ? meta.leader_reviews : [],
+                telegram: meta.telegram || null,
                 join_date: meta.join_date || null,
                 status: meta.status || 'active'
             };
@@ -699,14 +711,35 @@ class SupabaseService {
                     : (typeof meta.uniqueAbilities === 'string' ? meta.uniqueAbilities.trim() : '');
                 const offerMissing = !data.offer || String(data.offer).trim() === '';
                 const uniqueMissing = !data.unique_abilities || String(data.unique_abilities).trim() === '';
-                if ((offerMissing && metaOffer) || (uniqueMissing && metaUnique)) {
+                const leaderAboutMissing = !data.leader_about || String(data.leader_about).trim() === '';
+                const leaderSignatureMissing = !data.leader_signature || String(data.leader_signature).trim() === '';
+                const metaLeaderAbout = typeof meta.leader_about === 'string' ? meta.leader_about.trim() : '';
+                const metaLeaderSignature = typeof meta.leader_signature === 'string' ? meta.leader_signature.trim() : '';
+                const metaLeaderReviews = Array.isArray(meta.leader_reviews) ? meta.leader_reviews : null;
+                const metaTelegram = typeof meta.telegram === 'string' ? meta.telegram.trim() : '';
+                if (
+                    (offerMissing && metaOffer) ||
+                    (uniqueMissing && metaUnique) ||
+                    (leaderAboutMissing && metaLeaderAbout) ||
+                    (leaderSignatureMissing && metaLeaderSignature) ||
+                    (!Array.isArray(data.leader_reviews) && metaLeaderReviews) ||
+                    (!data.telegram && metaTelegram)
+                ) {
                     const patch = {};
                     if (offerMissing && metaOffer) patch.offer = metaOffer;
                     if (uniqueMissing && metaUnique) patch.unique_abilities = metaUnique;
+                    if (leaderAboutMissing && metaLeaderAbout) patch.leader_about = metaLeaderAbout;
+                    if (leaderSignatureMissing && metaLeaderSignature) patch.leader_signature = metaLeaderSignature;
+                    if (!Array.isArray(data.leader_reviews) && metaLeaderReviews) patch.leader_reviews = metaLeaderReviews;
+                    if (!data.telegram && metaTelegram) patch.telegram = metaTelegram;
                     if (Object.keys(patch).length > 0) {
                         await supabase.from('profiles').update(patch).eq('id', userId);
                         data.offer = patch.offer ?? data.offer;
                         data.unique_abilities = patch.unique_abilities ?? data.unique_abilities;
+                        data.leader_about = patch.leader_about ?? data.leader_about;
+                        data.leader_signature = patch.leader_signature ?? data.leader_signature;
+                        data.leader_reviews = patch.leader_reviews ?? data.leader_reviews;
+                        data.telegram = patch.telegram ?? data.telegram;
                     }
                 }
             } catch (e) {
@@ -725,6 +758,10 @@ class SupabaseService {
                 skills: Array.isArray(data.skills) ? data.skills : [],
                 offer: data.offer || '',
                 unique_abilities: data.unique_abilities || '',
+                leader_about: data.leader_about || '',
+                leader_signature: data.leader_signature || '',
+                leader_reviews: Array.isArray(data.leader_reviews) ? data.leader_reviews : [],
+                telegram: data.telegram || '',
                 join_date: data.join_date
             };
         }
@@ -740,7 +777,11 @@ class SupabaseService {
             avatar: profile.avatar_url || profile.avatar,
             skills: Array.isArray(profile.skills) ? profile.skills : [],
             offer: profile.offer || '',
-            unique_abilities: profile.unique_abilities || ''
+            unique_abilities: profile.unique_abilities || '',
+            leader_about: profile.leader_about || '',
+            leader_signature: profile.leader_signature || '',
+            leader_reviews: Array.isArray(profile.leader_reviews) ? profile.leader_reviews : [],
+            telegram: profile.telegram || ''
         }));
     }
 
@@ -756,6 +797,9 @@ class SupabaseService {
             city: this._sanitizeIfString(updatedUser.city),
             offer: this._sanitizeIfString(updatedUser.offer),
             unique_abilities: this._sanitizeIfString(updatedUser.unique_abilities),
+            leader_about: this._sanitizeIfString(updatedUser.leader_about),
+            leader_signature: this._sanitizeIfString(updatedUser.leader_signature),
+            telegram: this._sanitizeIfString(updatedUser.telegram),
             tree: this._sanitizeIfString(updatedUser.tree),
             tree_desc: this._sanitizeIfString(updatedUser.tree_desc),
             treeDesc: this._sanitizeIfString(updatedUser.treeDesc),
@@ -800,6 +844,10 @@ class SupabaseService {
             if (safeSkills !== undefined) dbUser.skills = safeSkills;
             if (hasField(updatedUser, 'offer')) dbUser.offer = clean.offer;
             if (hasField(updatedUser, 'unique_abilities')) dbUser.unique_abilities = clean.unique_abilities;
+            if (hasField(updatedUser, 'leader_about')) dbUser.leader_about = clean.leader_about;
+            if (hasField(updatedUser, 'leader_signature')) dbUser.leader_signature = clean.leader_signature;
+            if (hasField(updatedUser, 'leader_reviews')) dbUser.leader_reviews = updatedUser.leader_reviews;
+            if (hasField(updatedUser, 'telegram')) dbUser.telegram = clean.telegram;
             if (safeJoinDate !== undefined) dbUser.join_date = safeJoinDate;
 
             const { error } = await supabase
@@ -989,7 +1037,8 @@ class SupabaseService {
             cover_image: cleaned.cover_image,
             duration: toIntOrNull(cleaned.duration),
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
-            seeds_awarded: cleaned.seeds_awarded
+            seeds_awarded: cleaned.seeds_awarded,
+            timezone: cleaned.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
         };
         // Remove undefined keys to let DB defaults work
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
@@ -1037,7 +1086,8 @@ class SupabaseService {
             cover_image: cleaned.cover_image,
             duration: toIntOrNull(cleaned.duration),
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
-            seeds_awarded: cleaned.seeds_awarded
+            seeds_awarded: cleaned.seeds_awarded,
+            timezone: cleaned.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
         };
 
         // Remove undefined keys to avoid sending empty updates for partial objects

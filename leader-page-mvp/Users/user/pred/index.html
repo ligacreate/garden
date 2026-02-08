@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Страница ведущей — Сад</title>
+  <style>
+    :root {
+      --bg: #f7f6f3;
+      --ink: #1c1c1c;
+      --muted: #6f6f6f;
+      --card: #ffffff;
+      --shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 14px rgba(0,0,0,0.06);
+      --radius: 14px;
+      --accent: #3a6d57;
+      --accent-soft: #e7efe9;
+      --c1: #ffffff; /* milk */
+      --c2: #fff9f2; /* sand */
+      --c3: #f7f6f3; /* beige */
+      --c4: #f8fffb; /* mint */
+      --c5: #f3f6f4; /* mist */
+      --c6: #f6f2ed; /* powder */
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #fff3e6 0%, transparent 60%),
+        radial-gradient(900px 500px at 100% 10%, #eaf4ef 0%, transparent 55%),
+        radial-gradient(800px 600px at 40% 100%, #eef2ff 0%, transparent 55%),
+        var(--bg);
+      font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+      line-height: 1.45;
+    }
+
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 48px 20px 120px;
+      animation: fadeUp 700ms ease-out;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 24px;
+      align-items: center;
+      background: var(--card);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .avatar {
+      width: 120px;
+      height: 120px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #e9e1d8, #fefbf8);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      color: #8c7c70;
+      font-size: 28px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-family: "Iowan Old Style", "Palatino", "Georgia", serif;
+      font-weight: 600;
+      font-size: 36px;
+      letter-spacing: 0.2px;
+    }
+
+    .role {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+    }
+
+    .about {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 520px;
+    }
+
+    .meta-actions {
+      display: grid;
+      gap: 10px;
+      align-items: start;
+      justify-items: end;
+    }
+
+    .btn {
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: #1c1c1c;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn.secondary {
+      background: #f0efec;
+      color: #2b2b2b;
+    }
+
+    .section {
+      margin-top: 36px;
+      background: var(--card);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .section h2 {
+      margin: 0 0 16px;
+      font-size: 18px;
+      letter-spacing: 2px;
+      color: #8a8a8a;
+      text-transform: uppercase;
+    }
+
+    .signature {
+      font-family: "Iowan Old Style", "Palatino", "Georgia", serif;
+      font-size: 22px;
+      color: #262626;
+      max-width: 760px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .stat {
+      background: #faf9f7;
+      border-radius: 16px;
+      padding: 18px;
+      border: 1px solid #efede8;
+    }
+
+    .stat .label {
+      color: #8a8a8a;
+      font-size: 13px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .stat .value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+
+    .league-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .league-list a {
+      display: block;
+      padding: 12px 14px;
+      background: #f6f5f2;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #1f1f1f;
+      border: 1px solid #ece7df;
+    }
+
+    .reviews-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .reviews-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .review-card {
+      background: var(--c1);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      min-height: 220px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .review-text {
+      font-size: 16px;
+      color: #1f1f1f;
+    }
+
+    .review-author {
+      font-weight: 600;
+      color: #2c2c2c;
+    }
+
+    .review-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .chip {
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      background: #efefee;
+      color: #333;
+    }
+
+    .form {
+      margin-top: 26px;
+      display: grid;
+      gap: 16px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+    }
+
+    label {
+      font-size: 12px;
+      color: #6c6c6c;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    input, textarea {
+      width: 100%;
+      border: 1px solid #e3e0da;
+      border-radius: 12px;
+      padding: 12px;
+      font-family: inherit;
+      font-size: 15px;
+      background: #fff;
+    }
+
+    textarea { min-height: 120px; }
+
+    .palette {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .swatch {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
+    }
+
+    .swatch.active {
+      border-color: #222;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .preview {
+      border-radius: 14px;
+      padding: 16px;
+      min-height: 240px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 10px;
+    }
+
+    .preview .review-text { font-size: 14px; }
+
+    .hint { color: #8a8a8a; font-size: 13px; }
+
+    @media (max-width: 960px) {
+      .hero { grid-template-columns: 1fr; }
+      .meta-actions { justify-items: start; }
+      .stats { grid-template-columns: 1fr; }
+      .reviews-grid { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="avatar">М.И.</div>
+      <div>
+        <h1>Мария Иванова</h1>
+        <span class="role">Ментор</span>
+        <p class="about">Веду письменные практики о внимании к себе и мягкой опоре. Люблю формат коротких, ясных встреч.</p>
+      </div>
+      <div class="meta-actions">
+        <button class="btn">Написать ведущей</button>
+        <button class="btn secondary">Сохранить страницу</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Почерк ведущей</h2>
+      <div class="signature">Я работаю с короткими практиками, где важно слышать себя. Встречи строю так, чтобы каждая участница успевала прожить опыт бережно и в своём темпе.</div>
+    </section>
+
+    <section class="section">
+      <h2>Вклад</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="label">Практик собрано</div>
+          <div class="value">24</div>
+        </div>
+        <div class="stat">
+          <div class="label">Сценариев создано</div>
+          <div class="value">12</div>
+        </div>
+        <div class="stat">
+          <div class="label">Опубликовано в “Сценарии лиги”</div>
+          <div class="value">7</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Сценарии лиги</h2>
+      <div class="league-list">
+        <a href="#">Тёплый переход: от тревоги к опоре</a>
+        <a href="#">Письмо себе из будущего</a>
+        <a href="#">Маленькие шаги и большие силы</a>
+        <a href="#">Тихий вечер и ясные мысли</a>
+      </div>
+      <p class="hint" style="margin-top: 12px;">Смотреть все сценарии</p>
+    </section>
+
+    <section class="section">
+      <div class="reviews-head">
+        <div>
+          <h2>Отзывы</h2>
+          <div class="hint">Показаны последние 4 отзыва</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn secondary">Показать все отзывы</button>
+          <button class="btn">Добавить отзыв</button>
+        </div>
+      </div>
+
+      <div class="reviews-grid">
+        <div class="review-card" style="background: var(--c1)">
+          <div class="review-text">После встречи стало легче дышать, будто внутри появился порядок.</div>
+          <div class="review-author">Мария Л.</div>
+          <div class="review-actions">
+            <span class="chip">Редактировать</span>
+            <span class="chip">Скачать карточку</span>
+          </div>
+        </div>
+        <div class="review-card" style="background: var(--c6)">
+          <div class="review-text">Тёплая, ясная встреча. Я унесла с собой чувство опоры и мягкой силы.</div>
+          <div class="review-author">Софья М.</div>
+          <div class="review-actions">
+            <span class="chip">Редактировать</span>
+            <span class="chip">Скачать карточку</span>
+          </div>
+        </div>
+        <div class="review-card" style="background: var(--c4)">
+          <div class="review-text">Очень бережный формат и точные вопросы — я будто наконец услышала себя.</div>
+          <div class="review-author">Анна К.</div>
+          <div class="review-actions">
+            <span class="chip">Редактировать</span>
+            <span class="chip">Скачать карточку</span>
+          </div>
+        </div>
+        <div class="review-card" style="background: var(--c2)">
+          <div class="review-text">С удивлением заметила, что стала спокойнее уже в процессе практики.</div>
+          <div class="review-author">Елена П.</div>
+          <div class="review-actions">
+            <span class="chip">Редактировать</span>
+            <span class="chip">Скачать карточку</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form">
+        <div class="form-row">
+          <div>
+            <label>Текст отзыва</label>
+            <textarea placeholder="Например: эта встреча помогла мне мягко прожить тревогу..."></textarea>
+
+            <div style="height: 12px;"></div>
+
+            <label>Имя участницы</label>
+            <input type="text" placeholder="Например: Анна К." />
+
+            <div style="height: 12px;"></div>
+
+            <label>Цвет карточки</label>
+            <div class="palette" id="palette">
+              <button class="swatch active" data-color="var(--c1)" style="background: var(--c1)"></button>
+              <button class="swatch" data-color="var(--c2)" style="background: var(--c2)"></button>
+              <button class="swatch" data-color="var(--c3)" style="background: var(--c3)"></button>
+              <button class="swatch" data-color="var(--c4)" style="background: var(--c4)"></button>
+              <button class="swatch" data-color="var(--c5)" style="background: var(--c5)"></button>
+              <button class="swatch" data-color="var(--c6)" style="background: var(--c6)"></button>
+            </div>
+
+            <div style="height: 14px;"></div>
+
+            <div style="display:flex; gap:10px; flex-wrap: wrap;">
+              <button class="btn">Сохранить</button>
+              <button class="btn secondary">Создать карточку</button>
+            </div>
+          </div>
+
+          <div>
+            <label>Превью карточки</label>
+            <div class="preview" id="preview" style="background: var(--c1)">
+              <div class="review-text">После встречи стало легче дышать, будто внутри появился порядок.</div>
+              <div class="review-author">Мария Л.</div>
+            </div>
+            <div class="hint" style="margin-top: 8px;">Цвет выбранной карточки применится при экспорте.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const palette = document.getElementById('palette');
+    const preview = document.getElementById('preview');
+    palette.addEventListener('click', (e) => {
+      const swatch = e.target.closest('.swatch');
+      if (!swatch) return;
+      palette.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+      const color = getComputedStyle(swatch).backgroundColor;
+      preview.style.background = color;
+    });
+  </script>
+</body>
+</html>

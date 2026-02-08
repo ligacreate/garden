@@ -2,12 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { Search, MapPin, Sparkles, X, Zap } from 'lucide-react';
 import UserAvatar from '../components/UserAvatar';
 import Button from '../components/Button';
-import TreeIcon from '../components/TreeIcon';
-import { getRoleLabel, getTreeByName, getSeason } from '../data/data';
+import { getRoleLabel, getSeason } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { normalizeSkills } from '../utils/skills';
 import { getTenureText } from '../utils/tenure';
-import ModalShell from '../components/ModalShell';
 import LivingTree from '../components/LivingTree';
 
 // Internal Components for the Directory
@@ -35,7 +33,6 @@ const FilterSelect = ({ icon: Icon, value, onChange, options, placeholder }) => 
 const UserCard = ({ user }) => {
     // Competencies list
     const allTags = normalizeSkills(user.skills);
-    const offerText = String(user.offer || '').trim();
     const superpowerText = String(user.unique_abilities || user.uniqueAbilities || '').trim();
 
     // Tenure Logic with correct Russian declension
@@ -76,16 +73,6 @@ const UserCard = ({ user }) => {
                 </div>
             )}
 
-            {/* Offer / About with Subtitle - Unified Style */}
-            {offerText && (
-                <div className="mb-4">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 opacity-80">Чем могу помочь</div>
-                    <p className="text-xs text-slate-600 line-clamp-4 leading-relaxed">
-                        {offerText}
-                    </p>
-                </div>
-            )}
-
             {/* Superpower - Unified Style to match Competencies/Offer but with Amber hint */}
             {superpowerText && (
                 <div className="mb-4">
@@ -109,94 +96,10 @@ const UserCard = ({ user }) => {
     );
 };
 
-const UserModal = ({ user, onClose }) => {
-    if (!user) return null;
-    const offerText = String(user.offer || '').trim();
-    const superpowerText = String(user.unique_abilities || user.uniqueAbilities || '').trim();
-    return (
-        <ModalShell
-            isOpen={!!user}
-            onClose={onClose}
-            size="md"
-            header={
-                <div className="flex items-center gap-4">
-                    <UserAvatar user={user} size="lg" className="border-4 border-white shadow-lg" />
-                    <div className="min-w-0">
-                        <h2 className="text-2xl font-display font-semibold text-slate-900 leading-tight">{user.name}</h2>
-                        <div className="flex flex-wrap gap-2 items-center text-sm text-slate-500 mt-1">
-                            <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] uppercase tracking-wider ${['admin', 'curator'].includes(user.role) ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
-                                {getRoleLabel(user.role)}
-                            </span>
-                            {user.city && (
-                                <span className="flex items-center gap-1 text-slate-400"><MapPin size={14} /> {user.city}</span>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            }
-            footer={
-                <div className="pt-4 border-t border-slate-100 flex flex-col items-center">
-                    <div className="text-xs uppercase tracking-widest text-slate-400 mb-2">Стаж в Лиге</div>
-                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 px-6 py-3 rounded-2xl border border-blue-100/50 shadow-sm">
-                        <span className="text-blue-700 font-bold text-lg tracking-tight">
-                            {(() => {
-                                if (!user.join_date) return 'Недавно присоединился';
-                                const start = new Date(user.join_date);
-                                const now = new Date();
-                                const diffTime = now - start;
-                                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-                                if (diffDays < 1) return 'Первый день';
-                                if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? 'день' : (diffDays < 5 ? 'дня' : 'дней')}`;
-
-                                const months = Math.floor(diffDays / 30.44);
-                                if (months < 12) return `${months} мес.`;
-
-                                const years = Math.floor(months / 12);
-                                const remMonths = months % 12;
-                                if (remMonths === 0) return `${years} ${years === 1 ? 'год' : (years < 5 ? 'года' : 'лет')}`;
-                                return `${years}.${remMonths} лет`;
-                            })()}
-                        </span>
-                    </div>
-                </div>
-            }
-        >
-            <div className="space-y-6">
-                {normalizeSkills(user.skills).length > 0 && (
-                    <div className="space-y-4">
-                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Компетенции</h4>
-                        <div className="flex flex-wrap gap-2">
-                            {normalizeSkills(user.skills).map((tag, i) => (
-                                <span key={i} className="px-3 py-1 bg-white border border-dashed border-slate-300 rounded-full text-slate-700 text-sm font-medium hover:border-blue-400 transition-colors cursor-default">{tag}</span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {offerText && (
-                    <div className="bg-slate-50 p-5 rounded-3xl">
-                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Чем могу быть полезна</h4>
-                        <p className="text-slate-700 leading-relaxed">{offerText}</p>
-                    </div>
-                )}
-
-                {superpowerText && (
-                    <div className="bg-slate-50 p-5 rounded-3xl">
-                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Суперсила</h4>
-                        <p className="text-slate-700 leading-relaxed">{superpowerText}</p>
-                    </div>
-                )}
-            </div>
-        </ModalShell>
-    );
-};
-
-const MapView = ({ users, currentUser, onSendRay }) => {
+const MapView = ({ users, currentUser, onOpenLeader }) => {
     const [search, setSearch] = useState('');
     const [selectedCity, setSelectedCity] = useState('');
     const [selectedSkill, setSelectedSkill] = useState('');
-    const [selectedUser, setSelectedUser] = useState(null);
     const [isGardenMode, setIsGardenMode] = useState(false);
     const normalizeKey = (value) => String(value || '').trim().toLowerCase();
 
@@ -351,7 +254,7 @@ const MapView = ({ users, currentUser, onSendRay }) => {
                                     return (
                                         <div
                                             key={user.id}
-                                            onClick={() => setSelectedUser(displayUser)}
+                                            onClick={() => onOpenLeader && onOpenLeader(displayUser)}
                                             className="group relative flex flex-col items-center cursor-pointer gap-3 min-w-[100px]"
                                         >
                                             {/* Circular Container with Flip Effect */}
@@ -408,7 +311,7 @@ const MapView = ({ users, currentUser, onSendRay }) => {
                                         <UserCard
                                             key={user.id}
                                             user={displayUser}
-                                            onClick={() => setSelectedUser(displayUser)}
+                                            onClick={() => onOpenLeader && onOpenLeader(displayUser)}
                                         // Removed onSendRay propagation as it is no longer used in UserCard, but kept in prop if needed internally
                                         />
                                     );
@@ -419,13 +322,6 @@ const MapView = ({ users, currentUser, onSendRay }) => {
                 )}
             </div>
 
-            {/* Details Modal */}
-            {selectedUser && (
-                <UserModal
-                    user={selectedUser}
-                    onClose={() => setSelectedUser(null)}
-                />
-            )}
         </div>
     );
 };

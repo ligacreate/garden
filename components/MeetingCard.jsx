@@ -6,7 +6,8 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
     const [isExpanded, setIsExpanded] = useState(false);
 
     // Helpers
-    const isPast = new Date(meeting.date) < new Date().setHours(0, 0, 0, 0);
+    const localDate = meeting.date ? new Date(`${meeting.date}T00:00:00`) : new Date();
+    const isPast = localDate < new Date().setHours(0, 0, 0, 0);
     const isPlanned = meeting.status === 'planned';
 
     // Auto-detect "Pending" state for UI: Planned but date passed
@@ -38,6 +39,45 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
             default: return 'Черновик';
         }
     };
+
+    const getTimeZoneOffsetMinutes = (date, timeZone) => {
+        const dtf = new Intl.DateTimeFormat('en-US', {
+            timeZone,
+            hour12: false,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+        const parts = dtf.formatToParts(date);
+        const values = Object.fromEntries(parts.map(p => [p.type, p.value]));
+        const asUtc = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute, values.second);
+        return (asUtc - date.getTime()) / 60000;
+    };
+
+    const getZonedDate = (dateStr, timeStr, timeZone) => {
+        if (!dateStr || !timeStr || !timeZone) return null;
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const [hh, mm] = timeStr.split(':').map(Number);
+        const utcGuess = new Date(Date.UTC(y, m - 1, d, hh, mm));
+        const offset = getTimeZoneOffsetMinutes(utcGuess, timeZone);
+        return new Date(utcGuess.getTime() - offset * 60000);
+    };
+
+    const meetingTimezone = meeting.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const meetingInstant = meeting.time ? getZonedDate(meeting.date, meeting.time, meetingTimezone) : null;
+    const timeZoneLabel = meetingInstant
+        ? new Intl.DateTimeFormat('ru-RU', { timeZone: meetingTimezone, timeZoneName: 'short' })
+            .formatToParts(meetingInstant)
+            .find(p => p.type === 'timeZoneName')?.value
+        : meetingTimezone;
+    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const localTimeLabel = meetingInstant
+        ? new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(meetingInstant)
+        : null;
+    const showLocalTime = meetingInstant && meetingTimezone && meetingTimezone !== viewerTz;
 
     const handleDelete = (e) => {
         e.stopPropagation();
@@ -74,12 +114,23 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                         </div>
                         <div className="text-xs text-slate-400 font-medium flex items-center gap-1">
                             <Calendar size={12} />
-                            {new Date(meeting.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+                            {localDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
                         </div>
                     </div>
                     <h3 className={`text-xl font-display font-semibold text-slate-900 mb-1 ${status === 'cancelled' ? 'line-through text-slate-400' : ''}`}>
                         {meeting.title || 'Без названия'}
                     </h3>
+                    {meeting.time && (
+                        <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
+                            <Clock size={14} />
+                            <span>{meeting.time}{timeZoneLabel ? ` ${timeZoneLabel}` : ''}</span>
+                            {showLocalTime && (
+                                <span className="text-xs text-slate-400">
+                                    • у вас будет {localTimeLabel}
+                                </span>
+                            )}
+                        </div>
+                    )}
                     {coHostNames.length > 0 && (
                         <div className="text-xs text-slate-500 mb-1">
                             Со‑ведущие: <span className="font-medium text-slate-700">{coHostNames.join(', ')}</span>

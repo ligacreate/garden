@@ -14,6 +14,7 @@ import BuilderView from './BuilderView';
 import CRMView from './CRMView';
 import MarketView from './MarketView';
 import MapView from './MapView';
+import LeaderPageView from './LeaderPageView';
 import ProfileView from './ProfileView';
 import NewsView from './NewsView';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
@@ -53,6 +54,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
     const [clients, setClients] = useState(INITIAL_CLIENTS);
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [leaderUser, setLeaderUser] = useState(null);
     const skillOptions = useMemo(() => {
         const skillMap = new Map();
         users.forEach((u) => {
@@ -157,6 +159,13 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             setLibraryResetToken((v) => v + 1);
         }
 
+        setMobileMenuOpen(false);
+    };
+
+    const handleOpenLeader = (leader) => {
+        if (!leader) return;
+        setLeaderUser(leader);
+        setView('leader');
         setMobileMenuOpen(false);
     };
 
@@ -450,7 +459,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                             </div>
                             <div className="flex flex-col">
                                 <span className="font-semibold text-slate-900 tracking-tight group-hover:text-blue-700 transition-colors duration-300">{user.name}</span>
-                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.3em]">{getRoleLabel(user.role)}</span>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.12em] leading-none">{getRoleLabel(user.role)}</span>
                             </div>
                         </div>
                     </div>
@@ -600,7 +609,21 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                     {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} />}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
                     {view === 'market' && <MarketView />}
-                    {view === 'map' && <MapView users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} currentUser={user} onSendRay={onSendRay} />}
+                    {view === 'map' && (
+                        <MapView
+                            users={users.map(u => u.id === user.id ? { ...u, ...user } : u)}
+                            currentUser={user}
+                            onOpenLeader={handleOpenLeader}
+                        />
+                    )}
+                    {view === 'leader' && (
+                        <LeaderPageView
+                            leader={leaderUser}
+                            currentUser={user}
+                            onBack={() => setView('map')}
+                            onUpdateProfile={handleUpdateProfile}
+                        />
+                    )}
                     {view === 'news' && <NewsView news={news} users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} />}
                     {view === 'profile' && (
                         <ProfileView
@@ -610,6 +633,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                             onDeleteAccount={onLogout}
                             onNotify={onNotify}
                             skillOptions={skillOptions}
+                            onOpenLeaderPage={() => handleOpenLeader(user)}
                         />
                     )}
                 </div>

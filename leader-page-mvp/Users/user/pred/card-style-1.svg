@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+  <rect width="1080" height="1350" fill="#F7F6F3"/>
+  <rect x="120" y="140" width="840" height="1070" rx="12" fill="#FFFFFF" filter="url(#shadow)"/>
+
+  <text x="200" y="300" font-family="'Helvetica Neue', Arial, sans-serif" font-size="22" fill="#8B8B8B" letter-spacing="2">ОТЗЫВ</text>
+
+  <text x="200" y="380" font-family="'Helvetica Neue', Arial, sans-serif" font-size="44" fill="#1C1C1C">
+    <tspan x="200" dy="0">Эта встреча помогла мне</tspan>
+    <tspan x="200" dy="60">мягко прожить тревогу.</tspan>
+    <tspan x="200" dy="60">Очень бережный формат и</tspan>
+    <tspan x="200" dy="60">точные вопросы.</tspan>
+  </text>
+
+  <text x="200" y="800" font-family="'Helvetica Neue', Arial, sans-serif" font-size="28" fill="#2B2B2B">Анна К.</text>
+</svg>

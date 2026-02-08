@@ -656,7 +656,8 @@ const MeetingsView = ({
             { text: 'Напомнить за день', completed: false }
         ];
 
-        setFormData(meeting ? { ...meeting } : {
+        const resolvedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        setFormData(meeting ? { ...meeting, timezone: meeting.timezone || resolvedTz } : {
             title: '',
             date: new Date().toISOString().split('T')[0],
             time: '19:00',
@@ -664,7 +665,8 @@ const MeetingsView = ({
             scenario_id: '',
             checklist: initialChecklist,
             is_public: false,
-            co_hosts: []
+            co_hosts: [],
+            timezone: resolvedTz
         });
         setIsPlanModalOpen(true);
     };
@@ -736,7 +738,8 @@ const MeetingsView = ({
             const meetingData = {
                 ...formData,
                 user_id: user.id,
-                status: 'planned'
+                status: 'planned',
+                timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
             };
 
             const missing = validatePublicFields(meetingData);
@@ -1046,6 +1049,10 @@ const MeetingsView = ({
                                         />
                                         <Input type="time" label="Время" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} />
                                     </div>
+                                    <div className="text-xs text-slate-400">
+                                        Время встречи указывается в вашем часовом поясе: <span className="font-medium text-slate-500">{formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}</span>.
+                                        Участницы увидят своё локальное время.
+                                    </div>
                                 </div>
 
                                 {/* Co-hosts */}
@@ -1101,7 +1108,8 @@ const MeetingsView = ({
                                                     setFormData(prev => ({
                                                         ...prev,
                                                         is_public: next,
-                                                        cost: next ? (prev.cost || '1000 рублей') : prev.cost
+                                                        cost: next ? (prev.cost || '1000 рублей') : prev.cost,
+                                                        payment_link: next && !prev.payment_link ? (user.telegram || '') : prev.payment_link
                                                     }));
                                                 }}
                                             />
@@ -1218,8 +1226,18 @@ const MeetingsView = ({
                                                 label="Ссылка на запись / Telegram"
                                                 value={formData.payment_link}
                                                 onChange={e => setFormData({ ...formData, payment_link: e.target.value })}
+                                                onFocus={() => {
+                                                    if (!formData.payment_link && user.telegram) {
+                                                        setFormData(prev => ({ ...prev, payment_link: user.telegram }));
+                                                    }
+                                                }}
                                                 placeholder="https://t.me/username или ссылка на оплату"
                                             />
+                                            {user.telegram && (
+                                                <div className="text-[11px] text-slate-400">
+                                                    По умолчанию используется Telegram ведущей: <span className="text-slate-500">{user.telegram}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>

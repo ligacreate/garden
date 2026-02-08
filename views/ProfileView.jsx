@@ -303,13 +303,15 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                 <span className="flex items-center gap-1"><Briefcase size={14} /> {user.role === 'admin' ? 'Администратор' : 'Участник Лиги'}</span>
                             </div>
                         </div>
-                        <Button
-                            onClick={isEditing ? handleSave : () => setIsEditing(true)}
-                            variant="secondary"
-                            className="w-full md:w-auto !rounded-xl !px-6 !py-2.5 border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700 shadow-sm"
-                        >
-                            {isEditing ? 'Сохранить изменения' : 'Редактировать профиль'}
-                        </Button>
+                        {!isEditing && (
+                            <Button
+                                onClick={() => setIsEditing(true)}
+                                variant="secondary"
+                                className="w-full md:w-auto !rounded-xl !px-6 !py-2.5 border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700 shadow-sm"
+                            >
+                                Редактировать профиль
+                            </Button>
+                        )}
                     </div>
 
                     {/* Forms Grid */}
@@ -494,6 +496,21 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                             </div>
                         </Card>
                     </div>
+
+                    {isEditing && (
+                        <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="text-sm text-slate-500">
+                                Все изменения сохраняются в профиле и отражаются на странице ведущей.
+                            </div>
+                            <Button
+                                onClick={handleSave}
+                                variant="primary"
+                                className="w-full md:w-auto !rounded-xl !px-6 !py-2.5 shadow-sm"
+                            >
+                                Сохранить изменения
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Account Actions */}
                     <div className="pt-8 border-t border-slate-200 flex flex-wrap gap-4 items-center justify-between">

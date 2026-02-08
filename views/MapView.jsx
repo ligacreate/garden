@@ -30,7 +30,7 @@ const FilterSelect = ({ icon: Icon, value, onChange, options, placeholder }) => 
     </div>
 );
 
-const UserCard = ({ user }) => {
+const UserCard = ({ user, onClick }) => {
     // Competencies list
     const allTags = normalizeSkills(user.skills);
     const superpowerText = String(user.unique_abilities || user.uniqueAbilities || '').trim();
@@ -38,8 +38,23 @@ const UserCard = ({ user }) => {
     // Tenure Logic with correct Russian declension
     const tenureCaption = getTenureText(user.join_date);
 
+    const handleKeyDown = (event) => {
+        if (!onClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onClick();
+        }
+    };
+
     return (
-        <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col h-full relative overflow-hidden text-left">
+        <div
+            onClick={onClick}
+            onKeyDown={handleKeyDown}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            aria-label={onClick ? `Открыть страницу ведущей: ${user.name || 'профиль'}` : undefined}
+            className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all group flex flex-col h-full relative overflow-hidden text-left cursor-pointer"
+        >
             {/* Header: Avatar + Meta */}
             <div className="flex items-start gap-4 mb-5">
                 <UserAvatar user={user} size="md" className="border-2 border-white shadow-md shrink-0" />

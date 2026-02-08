@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
-import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, User } from 'lucide-react';
+import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, User, GripVertical } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -280,6 +280,9 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
     const [scenarioTitle, setScenarioTitle] = useState('');
     const [timeFilter, setTimeFilter] = useState('all');
     const [deleteConfirmation, setDeleteConfirmation] = useState({ isOpen: false, scenarioId: null });
+    const [dragOverIndex, setDragOverIndex] = useState(null);
+    const [draggedTimelineId, setDraggedTimelineId] = useState(null);
+    const [isDraggingFromLibrary, setIsDraggingFromLibrary] = useState(false);
 
     // Lists
     const [myScenarios, setMyScenarios] = useState([]);
@@ -310,6 +313,47 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
             [newTimeline[index], newTimeline[index + 1]] = [newTimeline[index + 1], newTimeline[index]];
         }
         setTimeline(newTimeline);
+    };
+
+    const insertIntoTimeline = (item, index) => {
+        const next = [...timeline];
+        const insertIndex = typeof index === 'number' ? index : next.length;
+        next.splice(insertIndex, 0, item);
+        setTimeline(next);
+    };
+
+    const moveTimelineItemToIndex = (dragId, index) => {
+        const fromIndex = timeline.findIndex(i => String(i.uniqueId) === String(dragId));
+        if (fromIndex === -1) return;
+        const next = [...timeline];
+        const [moved] = next.splice(fromIndex, 1);
+        const targetIndex = typeof index === 'number' ? index : next.length;
+        const adjustedIndex = fromIndex < targetIndex ? Math.max(targetIndex - 1, 0) : targetIndex;
+        next.splice(adjustedIndex, 0, moved);
+        setTimeline(next);
+    };
+
+    const handleTimelineDrop = (event, index = null) => {
+        event.preventDefault();
+        const practiceData = event.dataTransfer.getData('application/x-garden-practice');
+        const timelineId = event.dataTransfer.getData('application/x-garden-timeline');
+
+        if (practiceData) {
+            try {
+                const practice = JSON.parse(practiceData);
+                const newItem = { ...practice, uniqueId: Date.now() + Math.random() };
+                insertIntoTimeline(newItem, index);
+                onNotify("Практика добавлена");
+            } catch (e) {
+                console.error('Failed to parse practice data', e);
+            }
+        } else if (timelineId) {
+            moveTimelineItemToIndex(timelineId, index);
+        }
+
+        setDragOverIndex(null);
+        setDraggedTimelineId(null);
+        setIsDraggingFromLibrary(false);
     };
 
     const handleSave = async (title, isPublic) => {
@@ -435,7 +479,18 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                     if (timeFilter === 'long') return minutes >= 40;
                                     return true;
                                 }).map(practice => (
-                                    <div key={practice.id} onClick={() => addToTimeline(practice)} className="group bg-white p-4 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-200 cursor-pointer transition-all flex justify-between items-center">
+                                    <div
+                                        key={practice.id}
+                                        draggable
+                                        onDragStart={(e) => {
+                                            e.dataTransfer.setData('application/x-garden-practice', JSON.stringify(practice));
+                                            e.dataTransfer.effectAllowed = 'copy';
+                                            setIsDraggingFromLibrary(true);
+                                        }}
+                                        onDragEnd={() => setIsDraggingFromLibrary(false)}
+                                        onClick={() => addToTimeline(practice)}
+                                        className="group bg-white p-4 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-200 cursor-pointer transition-all flex justify-between items-center"
+                                    >
                                         <div className="flex items-center gap-3"><span className="text-2xl">{practice.icon}</span><div><div className="font-medium text-slate-800">{practice.title}</div><div className="text-xs text-slate-400">{practice.type} • {practice.time}</div></div></div>
                                         <Plus size={16} className="text-slate-300 group-hover:text-blue-500" />
                                     </div>
@@ -451,21 +506,61 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1 scroll-smooth">
-                                    {timeline.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl"><FileText size={32} className="mb-2 opacity-50" /><span className="text-sm">Выберите практики из списка</span></div> :
+                                <div
+                                    className={`flex-1 overflow-y-auto space-y-3 mb-4 pr-1 scroll-smooth ${isDraggingFromLibrary ? 'ring-2 ring-blue-200/70 rounded-3xl' : ''}`}
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = isDraggingFromLibrary ? 'copy' : 'move';
+                                    }}
+                                    onDrop={(e) => handleTimelineDrop(e)}
+                                >
+                                    {timeline.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">
+                                            <FileText size={32} className="mb-2 opacity-50" />
+                                            <span className="text-sm">Перетащите практики сюда</span>
+                                        </div>
+                                    ) : (
                                         timeline.map((item, index) => (
-                                            <div key={item.uniqueId} className="flex gap-2 items-center group">
-                                                <div className="flex flex-col gap-1 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => moveItem(index, 'up')} disabled={index === 0} className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-30"><ArrowUp size={14} /></button>
-                                                    <button onClick={() => moveItem(index, 'down')} disabled={index === timeline.length - 1} className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-30"><ArrowDown size={14} /></button>
-                                                </div>
-                                                <div className="flex-1 bg-white p-3 rounded-2xl shadow-sm border border-slate-100 text-sm flex justify-between items-start">
-                                                    <div><div className="font-medium text-slate-800">{item.title}</div><div className="text-xs text-slate-400 flex justify-between mt-1 gap-2"><span>{item.icon} {item.type}</span><span>{item.time}</span></div></div>
-                                                    <button onClick={() => removeFromTimeline(item.uniqueId)} className="text-slate-300 hover:text-rose-500 transition-colors"><X size={14} /></button>
+                                            <div key={item.uniqueId} className="relative">
+                                                {dragOverIndex === index && (
+                                                    <div className="absolute -top-1 left-8 right-3 h-0.5 rounded-full bg-blue-400/80 shadow-[0_0_0_3px_rgba(191,219,254,0.6)]" />
+                                                )}
+                                                <div
+                                                    draggable
+                                                    onDragStart={(e) => {
+                                                        e.dataTransfer.setData('application/x-garden-timeline', String(item.uniqueId));
+                                                        e.dataTransfer.effectAllowed = 'move';
+                                                        setDraggedTimelineId(item.uniqueId);
+                                                    }}
+                                                    onDragEnd={() => {
+                                                        setDraggedTimelineId(null);
+                                                        setDragOverIndex(null);
+                                                    }}
+                                                    onDragOver={(e) => {
+                                                        e.preventDefault();
+                                                        setDragOverIndex(index);
+                                                    }}
+                                                    onDrop={(e) => handleTimelineDrop(e, index)}
+                                                    className={`flex gap-2 items-center group rounded-2xl transition-colors ${dragOverIndex === index ? 'bg-blue-50/70' : ''}`}
+                                                >
+                                                    <div className="flex flex-col gap-1 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => moveItem(index, 'up')} disabled={index === 0} className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-30"><ArrowUp size={14} /></button>
+                                                        <button onClick={() => moveItem(index, 'down')} disabled={index === timeline.length - 1} className="p-1 hover:bg-slate-200 rounded text-slate-500 disabled:opacity-30"><ArrowDown size={14} /></button>
+                                                    </div>
+                                                    <div className={`flex-1 bg-white p-3 rounded-2xl shadow-sm border text-sm flex items-start gap-2 ${dragOverIndex === index ? 'border-blue-200' : 'border-slate-100'} ${draggedTimelineId === item.uniqueId ? 'opacity-60' : ''}`}>
+                                                        <div className="text-slate-300 mt-0.5 cursor-grab active:cursor-grabbing">
+                                                            <GripVertical size={16} />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="font-medium text-slate-800">{item.title}</div>
+                                                            <div className="text-xs text-slate-400 flex justify-between mt-1 gap-2"><span>{item.icon} {item.type}</span><span>{item.time}</span></div>
+                                                        </div>
+                                                        <button onClick={() => removeFromTimeline(item.uniqueId)} className="text-slate-300 hover:text-rose-500 transition-colors"><X size={14} /></button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))
-                                    }
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-slate-200 bg-slate-50 z-10">
                                     <Button variant="secondary" icon={Download} onClick={() => setPreviewType('workbook')} disabled={timeline.length === 0}><span className="text-xs">Воркбук</span></Button>

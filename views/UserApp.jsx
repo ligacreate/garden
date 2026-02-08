@@ -602,7 +602,19 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                 <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(63,139,107,0.18),_transparent_55%),radial-gradient(circle_at_20%_20%,_rgba(143,127,106,0.15),_transparent_40%),linear-gradient(180deg,_#fbf9f3_0%,_#f7f3ea_100%)] -z-50" />
 
                 <div className="p-6 max-w-6xl mx-auto min-h-full animate-in fade-in duration-500">
-                    {view === 'dashboard' && <StatsDashboardView user={user} meetings={meetings} knowledgeBase={knowledgeBase} clients={clients} practices={practices} scenarios={scenarios} goals={goals} onNavigate={handleViewChange} />}
+                    {view === 'dashboard' && (
+                        <StatsDashboardView
+                            user={user}
+                            meetings={meetings}
+                            knowledgeBase={knowledgeBase}
+                            clients={clients}
+                            practices={practices}
+                            scenarios={scenarios}
+                            goals={goals}
+                            onNavigate={handleViewChange}
+                            onOpenLeaderPage={() => handleOpenLeader(user)}
+                        />
+                    )}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
                     {view === 'library' && <CourseLibraryView user={user} knowledgeBase={knowledgeBase} onCompleteLesson={handleLessonCompleted} onNotify={onNotify} resetToken={libraryResetToken} />}

@@ -116,11 +116,11 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
         );
     }
 
-    const handleSaveReviews = async () => {
+    const handleSaveReviews = async (nextReviews = reviews) => {
         if (!isOwner) return;
         const updated = {
             ...leader,
-            leader_reviews: reviews
+            leader_reviews: nextReviews
         };
         await onUpdateProfile(updated);
     };
@@ -136,8 +136,9 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
 
     const handleSaveReview = () => {
         if (!reviewDraft.text.trim()) return;
+        let nextReviews;
         if (editingReviewId) {
-            setReviews(reviews.map((r) => r.id === editingReviewId ? { ...r, ...reviewDraft } : r));
+            nextReviews = reviews.map((r) => r.id === editingReviewId ? { ...r, ...reviewDraft } : r);
         } else {
             const next = {
                 id: Date.now(),
@@ -145,18 +146,22 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                 author: reviewDraft.author.trim() || 'Без имени',
                 color: reviewDraft.color
             };
-            setReviews([next, ...reviews]);
+            nextReviews = [next, ...reviews];
         }
+        setReviews(nextReviews);
         setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
         setEditingReviewId(null);
+        handleSaveReviews(nextReviews);
     };
 
     const handleDeleteReview = (id) => {
-        setReviews(reviews.filter((r) => r.id !== id));
+        const nextReviews = reviews.filter((r) => r.id !== id);
+        setReviews(nextReviews);
         if (editingReviewId === id) {
             setEditingReviewId(null);
             setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
         }
+        handleSaveReviews(nextReviews);
     };
 
     return (
@@ -166,16 +171,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                     <ArrowLeft size={18} />
                     <span className="text-sm font-medium">Назад в Сад</span>
                 </button>
-                {isOwner && (
-                    <div className="flex items-center gap-2">
-                        <Button
-                            onClick={handleSaveReviews}
-                            className="!rounded-xl !px-4"
-                        >
-                            Сохранить отзывы
-                        </Button>
-                    </div>
-                )}
+                {/* Top action removed: reviews save handled in form */}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

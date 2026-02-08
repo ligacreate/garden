@@ -3,7 +3,7 @@ import { Users, Coins, BookOpen, TrendingUp, Star, Zap, MessageSquare, Target, A
 import { getDruidTree } from '../utils/druidHoroscope';
 import { getTenureParts } from '../utils/tenure';
 
-const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate }) => {
+const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate, onOpenLeaderPage }) => {
 
     // Calculate Stats
     const totalMeetings = meetings.length;
@@ -196,9 +196,9 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                     <Zap size={18} className="text-slate-400" />
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Сценарии ({totalScenarios})</span>
                 </div>
-                <div onClick={() => onNavigate('profile')} className="bg-white/60 hover:bg-white/90 transition-colors rounded-3xl p-5 flex items-center gap-3 cursor-pointer border border-white/60 col-span-2 sm:col-span-1">
+                <div onClick={() => onOpenLeaderPage && onOpenLeaderPage()} className="bg-white/60 hover:bg-white/90 transition-colors rounded-3xl p-5 flex items-center gap-3 cursor-pointer border border-white/60 col-span-2 sm:col-span-1">
                     <TrendingUp size={18} className="text-slate-400" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">В Лиге {tenure.value} {tenure.label}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Моя страница ведущей</span>
                 </div>
             </div>
 

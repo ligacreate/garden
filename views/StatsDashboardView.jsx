@@ -1,9 +1,9 @@
 import React from 'react';
-import { Users, Coins, BookOpen, TrendingUp, Star, Zap, MessageSquare, Target, ArrowRight } from 'lucide-react';
+import { Users, Coins, BookOpen, TrendingUp, Star, Zap, MessageSquare, Target, ArrowRight, Bell, PartyPopper } from 'lucide-react';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { getTenureParts } from '../utils/tenure';
 
-const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate, onOpenLeaderPage }) => {
+const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate, onOpenLeaderPage, newsItems = [] }) => {
 
     // Calculate Stats
     const totalMeetings = meetings.length;
@@ -200,6 +200,43 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                     <TrendingUp size={18} className="text-slate-400" />
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Моя страница ведущей</span>
                 </div>
+            </div>
+
+            <div className="mt-6 surface-muted p-6 rounded-3xl border border-white/70 shadow-[0_12px_30px_-24px_rgba(27,35,28,0.45)]">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2 text-slate-700">
+                        <Bell size={18} strokeWidth={1.6} />
+                        <h3 className="text-sm font-display font-semibold uppercase tracking-widest text-slate-600">Новости</h3>
+                    </div>
+                    <div className="text-xs text-slate-400">Всего: {newsItems.length}</div>
+                </div>
+
+                {newsItems.length > 0 ? (
+                    <div className="space-y-3">
+                        {newsItems.slice(0, 4).map(item => (
+                            <div key={item.id} className="flex items-start gap-3">
+                                <div className={`mt-1 w-2.5 h-2.5 rounded-full ${item.type === 'birthday' ? 'bg-rose-400' : 'bg-blue-400'}`} />
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                        <span>{item.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span>
+                                        {item.type === 'birthday' && (
+                                            <span className="inline-flex items-center gap-1 text-rose-500">
+                                                <PartyPopper size={12} />
+                                                Поздравление
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-sm font-medium text-slate-700">{item.title}</div>
+                                    {item.body && (
+                                        <div className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{item.body}</div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-sm text-slate-400">Пока новостей нет. Но скоро здесь будет интересно!</div>
+                )}
             </div>
 
         </div>

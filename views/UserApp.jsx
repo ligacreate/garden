@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Shield, LogOut, X, BookOpen, Sparkles, Users, Bell,
+    Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap
 } from 'lucide-react';
@@ -16,7 +16,6 @@ import MarketView from './MarketView';
 import MapView from './MapView';
 import LeaderPageView from './LeaderPageView';
 import ProfileView from './ProfileView';
-import NewsView from './NewsView';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
@@ -55,6 +54,11 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [leaderUser, setLeaderUser] = useState(null);
+    const [birthdayTemplates, setBirthdayTemplates] = useState([]);
+    const mergedUsers = useMemo(
+        () => users.map(u => (u.id === user.id ? { ...u, ...user } : u)),
+        [users, user]
+    );
     const skillOptions = useMemo(() => {
         const skillMap = new Map();
         users.forEach((u) => {
@@ -66,10 +70,54 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             });
         });
         return Array.from(skillMap.values()).sort((a, b) => a.localeCompare(b, 'ru'));
-    }, [users]);
+    }, [mergedUsers]);
 
-    // Determines if user has a birthday message
-    const hasBirthday = news && news.some(n => n.type === 'birthday' && !n.read);
+    useEffect(() => {
+        api.getBirthdayTemplates()
+            .then(setBirthdayTemplates)
+            .catch(() => setBirthdayTemplates([]));
+    }, []);
+
+    const birthdayUsers = useMemo(() => {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentDay = today.getDate();
+
+        return mergedUsers.filter(u => {
+            if (!u.dob) return false;
+            const dob = new Date(u.dob);
+            return dob.getMonth() === currentMonth && dob.getDate() === currentDay;
+        });
+    }, [mergedUsers]);
+
+    const dashboardNews = useMemo(() => {
+        const manualNews = (news || []).map(n => ({
+            ...n,
+            type: 'manual',
+            date: new Date(n.timestamp || Date.now())
+        }));
+
+        if (!birthdayTemplates || birthdayTemplates.length === 0) {
+            return manualNews.sort((a, b) => b.date - a.date);
+        }
+
+        const birthdayNews = birthdayUsers.map(u => {
+            const entropy = u.id.toString().charCodeAt(0) + new Date().getDate();
+            const template = birthdayTemplates[entropy % birthdayTemplates.length];
+            const body = template.replace('{name}', u.name);
+
+            return {
+                id: `bday-${u.id}`,
+                type: 'birthday',
+                title: `С Днем Рождения, ${u.name}! 🎉`,
+                body,
+                user: u,
+                date: new Date()
+            };
+        });
+
+        return [...birthdayNews, ...manualNews].sort((a, b) => b.date - a.date);
+    }, [news, birthdayUsers, birthdayTemplates]);
 
     // Load initial data
     useEffect(() => {
@@ -520,13 +568,6 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                     onClick={onSwitchToAdmin}
                                 />
                             )}
-                            <SidebarItem
-                                icon={Bell}
-                                label="Новости"
-                                active={view === 'news'}
-                                onClick={() => handleViewChange('news')}
-                                badge={hasBirthday ? "!" : null}
-                            />
                             <div className="h-px bg-slate-100/60 my-3"></div>
                             <SidebarItem
                                 icon={Settings}
@@ -571,7 +612,6 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                             <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
                             <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
                             <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
-                            <SidebarItem icon={Bell} label="Новости" active={view === 'news'} onClick={() => handleViewChange('news')} />
                             <div className="h-px bg-slate-100 my-4"></div>
                             <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
                             <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
@@ -613,6 +653,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                             goals={goals}
                             onNavigate={handleViewChange}
                             onOpenLeaderPage={() => handleOpenLeader(user)}
+                            newsItems={dashboardNews}
                         />
                     )}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
@@ -623,7 +664,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                     {view === 'market' && <MarketView />}
                     {view === 'map' && (
                         <MapView
-                            users={users.map(u => u.id === user.id ? { ...u, ...user } : u)}
+                            users={mergedUsers}
                             currentUser={user}
                             onOpenLeader={handleOpenLeader}
                         />
@@ -636,7 +677,6 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                             onUpdateProfile={handleUpdateProfile}
                         />
                     )}
-                    {view === 'news' && <NewsView news={news} users={users.map(u => u.id === user.id ? { ...u, ...user } : u)} />}
                     {view === 'profile' && (
                         <ProfileView
                             user={user}

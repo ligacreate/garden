@@ -218,7 +218,7 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                             <div key={item.id} className="flex items-start gap-3">
                                 {item.type === 'birthday' && item.user ? (
                                     <div className="shrink-0">
-                                        <UserAvatar user={item.user} size="sm" />
+                                        <UserAvatar user={item.user} size="md" />
                                     </div>
                                 ) : (
                                     <div className={`mt-1 w-2.5 h-2.5 rounded-full ${item.type === 'birthday' ? 'bg-rose-400' : 'bg-blue-400'}`} />

@@ -109,7 +109,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
             return {
                 id: `bday-${u.id}`,
                 type: 'birthday',
-                title: `С Днем Рождения, ${u.name}! 🎉`,
+                title: `С днем рождения, ${u.name}! 🎉`,
                 body,
                 user: u,
                 date: new Date()

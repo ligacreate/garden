@@ -2,6 +2,7 @@ import React from 'react';
 import { Users, Coins, BookOpen, TrendingUp, Star, Zap, MessageSquare, Target, ArrowRight, Bell, PartyPopper } from 'lucide-react';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { getTenureParts } from '../utils/tenure';
+import UserAvatar from '../components/UserAvatar';
 
 const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate, onOpenLeaderPage, newsItems = [] }) => {
 
@@ -215,7 +216,13 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                     <div className="space-y-3">
                         {newsItems.slice(0, 4).map(item => (
                             <div key={item.id} className="flex items-start gap-3">
-                                <div className={`mt-1 w-2.5 h-2.5 rounded-full ${item.type === 'birthday' ? 'bg-rose-400' : 'bg-blue-400'}`} />
+                                {item.type === 'birthday' && item.user ? (
+                                    <div className="shrink-0">
+                                        <UserAvatar user={item.user} size="sm" />
+                                    </div>
+                                ) : (
+                                    <div className={`mt-1 w-2.5 h-2.5 rounded-full ${item.type === 'birthday' ? 'bg-rose-400' : 'bg-blue-400'}`} />
+                                )}
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 text-[11px] text-slate-400">
                                         <span>{item.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span>

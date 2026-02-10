@@ -657,7 +657,7 @@ const MeetingsView = ({
         ];
 
         const resolvedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        setFormData(meeting ? { ...meeting, timezone: meeting.timezone || resolvedTz } : {
+        setFormData(meeting ? { ...meeting, timezone: meeting.timezone || resolvedTz, image_focus_x: meeting.image_focus_x ?? 50, image_focus_y: meeting.image_focus_y ?? 50 } : {
             title: '',
             date: new Date().toISOString().split('T')[0],
             time: '19:00',
@@ -666,7 +666,9 @@ const MeetingsView = ({
             checklist: initialChecklist,
             is_public: false,
             co_hosts: [],
-            timezone: resolvedTz
+            timezone: resolvedTz,
+            image_focus_x: 50,
+            image_focus_y: 50
         });
         setIsPlanModalOpen(true);
     };
@@ -1134,7 +1136,12 @@ const MeetingsView = ({
                                                 <div className="flex items-start gap-4">
                                                     <div className="w-24 h-24 bg-slate-100 rounded-2xl overflow-hidden shadow-inner border border-slate-200 shrink-0 relative group">
                                                         {formData.cover_image ? (
-                                                            <img src={formData.cover_image} alt="Cover" className="w-full h-full object-cover" />
+                                                            <img
+                                                                src={formData.cover_image}
+                                                                alt="Cover"
+                                                                className="w-full h-full object-cover"
+                                                                style={{ objectPosition: `${formData.image_focus_x ?? 50}% ${formData.image_focus_y ?? 50}%` }}
+                                                            />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-slate-300">
                                                                 <CalendarIcon size={24} />
@@ -1164,6 +1171,32 @@ const MeetingsView = ({
                                                     </div>
                                                 </div>
                                             </div>
+                                            {formData.cover_image && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-600 mb-2 ml-1">Положение по горизонтали</label>
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            value={formData.image_focus_x ?? 50}
+                                                            onChange={(e) => setFormData({ ...formData, image_focus_x: parseInt(e.target.value, 10) })}
+                                                            className="w-full"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-600 mb-2 ml-1">Положение по вертикали</label>
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            value={formData.image_focus_y ?? 50}
+                                                            onChange={(e) => setFormData({ ...formData, image_focus_y: parseInt(e.target.value, 10) })}
+                                                            className="w-full"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             <div className="space-y-4">
                                                 <Input

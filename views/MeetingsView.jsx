@@ -661,6 +661,7 @@ const MeetingsView = ({
             title: '',
             date: new Date().toISOString().split('T')[0],
             time: '19:00',
+            duration: '',
             guests: '',
             scenario_id: '',
             checklist: initialChecklist,
@@ -832,9 +833,12 @@ const MeetingsView = ({
                 const newMeeting = {
                     title: formData.title,
                     date: formData.new_date,
+                    time: formData.time,
+                    duration: formData.duration,
                     user_id: user.id,
                     status: 'planned',
-                    checklist: formData.checklist
+                    checklist: formData.checklist,
+                    timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
                 };
                 await onAddMeeting(newMeeting);
             }
@@ -1041,7 +1045,7 @@ const MeetingsView = ({
                                 <div className="space-y-4">
                                     <Input label="Название" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Например: Женский круг" />
 
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-3 gap-4">
                                         <Input
                                             type="date"
                                             label="Дата"
@@ -1050,6 +1054,15 @@ const MeetingsView = ({
                                             max="9999-12-31"
                                         />
                                         <Input type="time" label="Время" value={formData.time} onChange={e => setFormData({ ...formData, time: e.target.value })} />
+                                        <Input
+                                            type="number"
+                                            label="Длительность (мин)"
+                                            value={formData.duration ?? ''}
+                                            min="5"
+                                            step="5"
+                                            onChange={e => setFormData({ ...formData, duration: e.target.value })}
+                                            placeholder="90"
+                                        />
                                     </div>
                                     <div className="text-xs text-slate-400">
                                         Время встречи указывается в вашем часовом поясе: <span className="font-medium text-slate-500">{formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}</span>.

@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const ModalShell = ({
@@ -12,9 +13,10 @@ const ModalShell = ({
     size = 'md',
     align = 'center',
     showClose = true,
-    zIndex = 'z-50'
+    zIndex = 'z-[80]'
 }) => {
     if (!isOpen) return null;
+    if (typeof document === 'undefined') return null;
 
     const sizeClass = {
         sm: 'max-w-sm',
@@ -25,7 +27,7 @@ const ModalShell = ({
 
     const alignClass = align === 'start' ? 'items-start pt-10' : 'items-center';
 
-    return (
+    return createPortal(
         <div className={`fixed inset-0 ${zIndex} flex ${alignClass} justify-center p-4 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-200`}>
             <div className={`surface-card w-full ${sizeClass} overflow-hidden animate-in zoom-in-95 duration-200 relative`}>
                 {showClose && (
@@ -52,7 +54,8 @@ const ModalShell = ({
                     <div className="px-8 pb-8 pt-0">{footer}</div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

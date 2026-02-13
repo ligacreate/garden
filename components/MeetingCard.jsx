@@ -124,6 +124,9 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                         <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
                             <Clock size={14} />
                             <span>{meeting.time}{timeZoneLabel ? ` ${timeZoneLabel}` : ''}</span>
+                            {meeting.duration ? (
+                                <span className="text-slate-500">• {meeting.duration} мин</span>
+                            ) : null}
                             {showLocalTime && (
                                 <span className="text-xs text-slate-400">
                                     • у вас будет {localTimeLabel}

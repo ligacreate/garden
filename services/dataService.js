@@ -1011,6 +1011,7 @@ class SupabaseService {
         const cleaned = this._sanitizeFields(meeting, {
             plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
         });
+        const durationValue = toIntOrNull(cleaned.duration);
         const sanitized = {
             user_id: cleaned.user_id,
             title: cleaned.title,
@@ -1035,11 +1036,14 @@ class SupabaseService {
             city: cleaned.city,
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
-            duration: toIntOrNull(cleaned.duration),
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
             seeds_awarded: cleaned.seeds_awarded,
             timezone: cleaned.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
         };
+        // Backward compatibility: don't send duration to DB until column exists.
+        if (cleaned.duration !== undefined && cleaned.duration !== '') {
+            sanitized.duration = durationValue;
+        }
         // Remove undefined keys to let DB defaults work
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
 
@@ -1063,6 +1067,7 @@ class SupabaseService {
             plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
         });
         // Sanitize fields
+        const durationValue = toIntOrNull(cleaned.duration);
         const sanitized = {
             title: cleaned.title,
             description: cleaned.description,
@@ -1084,11 +1089,13 @@ class SupabaseService {
             city: cleaned.city,
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
-            duration: toIntOrNull(cleaned.duration),
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
             seeds_awarded: cleaned.seeds_awarded,
             timezone: cleaned.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
         };
+        if (cleaned.duration !== undefined && cleaned.duration !== '') {
+            sanitized.duration = durationValue;
+        }
 
         // Remove undefined keys to avoid sending empty updates for partial objects
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);

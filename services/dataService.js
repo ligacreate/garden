@@ -5,6 +5,38 @@ import { ROLES } from '../utils/roles';
 import DOMPurify from 'dompurify';
 import imageCompression from 'browser-image-compression';
 
+const POSTGREST_URL = import.meta.env.VITE_POSTGREST_URL || 'https://api.skrebeyko.ru';
+
+const postgrestFetch = async (path, params = {}, options = {}) => {
+    const url = new URL(path, POSTGREST_URL);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (options.count) headers['Prefer'] = 'count=exact';
+    if (options.returnRepresentation) headers['Prefer'] = 'return=representation';
+
+    const response = await fetch(url.toString(), {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text);
+    }
+
+    const data = await response.json();
+    let count;
+    if (options.count) {
+        const range = response.headers.get('Content-Range');
+        const match = range?.match(/\/(\d+)$/);
+        if (match) count = Number(match[1]);
+    }
+
+    return { data, count };
+};
+
 // Helper to simulate delay for local storage operations
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -968,12 +1000,11 @@ class SupabaseService {
     }
 
     async getMeetings(userId) {
-        const { data, error } = await supabase
-            .from('meetings')
-            .select('*')
-            .eq('user_id', userId)
-            .order('date', { ascending: false });
-        if (error) throw error;
+        const { data } = await postgrestFetch('meetings', {
+            select: '*',
+            user_id: `eq.${userId}`,
+            order: 'date.desc'
+        });
         return data;
     }
 
@@ -1047,13 +1078,12 @@ class SupabaseService {
         // Remove undefined keys to let DB defaults work
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
 
-        const { data, error } = await supabase
-            .from('meetings')
-            .insert([sanitized])
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        const { data } = await postgrestFetch('meetings', {}, {
+            method: 'POST',
+            body: [sanitized],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async updateMeeting(meeting) {
@@ -1100,35 +1130,33 @@ class SupabaseService {
         // Remove undefined keys to avoid sending empty updates for partial objects
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
 
-        const { data, error } = await supabase
-            .from('meetings')
-            .update(sanitized)
-            .eq('id', id)
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        const { data } = await postgrestFetch('meetings', { id: `eq.${id}` }, {
+            method: 'PATCH',
+            body: sanitized,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async deleteMeeting(meetingId) {
-        const { error } = await supabase
-            .from('meetings')
-            .delete()
-            .eq('id', meetingId);
-        if (error) throw error;
+        await postgrestFetch('meetings', { id: `eq.${meetingId}` }, {
+            method: 'DELETE',
+            returnRepresentation: true
+        });
         return true;
     }
 
     async getAllMeetings() {
-        const { data, error } = await supabase
-            .from('meetings')
-            .select('*')
-            .order('date', { ascending: false });
-        if (error) {
+        try {
+            const { data } = await postgrestFetch('meetings', {
+                select: '*',
+                order: 'date.desc'
+            });
+            return data;
+        } catch (error) {
             console.warn("Global meetings fetch failed", error);
             return [];
         }
-        return data;
     }
 
 

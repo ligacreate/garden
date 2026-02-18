@@ -441,17 +441,31 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                     onChange={e => setEditingEvent({ ...editingEvent, image_url: e.target.value })}
                                 />
                                 {editingEvent.image_url && (
-                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                                        <div className="text-xs text-slate-500 mb-2">Превью</div>
-                                        <div className="w-full h-40 rounded-2xl overflow-hidden bg-slate-100">
-                                            <img
-                                                src={editingEvent.image_url}
-                                                alt={editingEvent.title || 'preview'}
-                                                className="w-full h-full object-cover"
-                                                style={{ objectPosition: `${editingEvent.image_focus_x ?? 50}% ${editingEvent.image_focus_y ?? 50}%` }}
-                                            />
+                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                                        <div>
+                                            <div className="text-xs text-slate-500 mb-2">Полное фото</div>
+                                            <div className="w-full max-h-[320px] rounded-2xl overflow-hidden bg-slate-100">
+                                                <img
+                                                    src={editingEvent.image_url}
+                                                    alt={editingEvent.title || 'preview'}
+                                                    className="w-full h-full object-contain"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+
+                                        <div>
+                                            <div className="text-xs text-slate-500 mb-2">Как в расписании</div>
+                                            <div className="w-full rounded-2xl overflow-hidden bg-slate-100" style={{ aspectRatio: '4 / 3' }}>
+                                                <img
+                                                    src={editingEvent.image_url}
+                                                    alt={editingEvent.title || 'preview-crop'}
+                                                    className="w-full h-full object-cover"
+                                                    style={{ objectPosition: `${editingEvent.image_focus_x ?? 50}% ${editingEvent.image_focus_y ?? 50}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="text-xs text-slate-500 ml-1">Смещение по X</label>
                                                 <input

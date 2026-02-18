@@ -75,9 +75,14 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         <div className="h-full flex flex-col animate-in fade-in duration-700 pb-20 pt-6 px-4 lg:px-0">
 
             {/* Header Area */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 w-full">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 w-full gap-3">
                 <div>
-                    <h1 className="text-4xl font-light text-slate-800 tracking-tight">База практик</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-4xl font-light text-slate-800 tracking-tight">База практик</h1>
+                        <span className="md:hidden inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-white/80 border border-slate-200 text-xs font-mono text-blue-600">
+                            {practices.length}
+                        </span>
+                    </div>
                     <p className="text-slate-400 mt-1 font-light">Ваша коллекция практик</p>
                 </div>
                 <div className="text-right hidden md:block">
@@ -88,45 +93,45 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
 
             {/* Search & Filter Controls */}
             <div className="mb-10 w-full">
-                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                    <div className="relative w-full max-w-md">
-                        <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-full py-3 pl-12 pr-6 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
-                            placeholder="Найти практику..."
-                        />
-                    </div>
+                <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+                        <div className="relative w-full sm:flex-1">
+                            <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-full py-3 pl-12 pr-6 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                                placeholder="Найти практику..."
+                            />
+                        </div>
 
-                    <div className="flex items-center gap-4 flex-wrap justify-start md:justify-end">
                         {/* Time Filter */}
                         <select
                             value={timeFilter}
                             onChange={(e) => setTimeFilter(e.target.value)}
-                            className="bg-white border border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider rounded-full px-4 py-2 outline-none focus:border-blue-300 transition-all cursor-pointer h-[34px]"
+                            className="bg-white border border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider rounded-full px-4 py-2 outline-none focus:border-blue-300 transition-all cursor-pointer h-[44px] sm:h-auto"
                         >
                             <option value="all">Любое время</option>
                             <option value="short">5-15 мин</option>
                             <option value="medium">20-30 мин</option>
                             <option value="long">40+ мин</option>
                         </select>
+                    </div>
 
-                        {/* Filter Pills */}
-                        <div className="flex flex-wrap gap-2">
-                            {categories.map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setSelectedCategory(cat)}
-                                    className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 border ${selectedCategory === cat
-                                        ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20'
-                                        : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600'
-                                        }`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
-                        </div>
+                    {/* Filter Pills */}
+                    <div className="flex flex-wrap gap-2">
+                        {categories.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setSelectedCategory(cat)}
+                                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 border ${selectedCategory === cat
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600'
+                                    }`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>

@@ -182,10 +182,13 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     );
 };
 
-const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefreshUsers, onAddContent, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings }) => {
+const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefreshUsers, onAddContent, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState('stats');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     const [allMeetings, setAllMeetings] = useState([]);
+    const [allEvents, setAllEvents] = useState([]);
+    const [eventSearch, setEventSearch] = useState('');
+    const [editingEvent, setEditingEvent] = useState(null);
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -193,7 +196,12 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                 if (data) setAllMeetings(data);
             });
         }
-    }, [tab, onGetAllMeetings]);
+        if (tab === 'events' && onGetAllEvents) {
+            onGetAllEvents().then(data => {
+                if (data) setAllEvents(data);
+            });
+        }
+    }, [tab, onGetAllMeetings, onGetAllEvents]);
 
     // Modal State
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => { }, variant: 'primary' });
@@ -248,7 +256,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
 
                 <div className="flex gap-2 items-center justify-between">
                     <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
-                        {['stats', 'users', 'content', 'news'].map(t => (
+                        {['stats', 'users', 'content', 'news', 'events'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => setTab(t)}
@@ -256,7 +264,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
-                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : 'Новости'}
+                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'events' ? 'События' : 'Новости'}
                             </button>
                         ))}
                     </div>
@@ -337,6 +345,114 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                 onNotify("Шаблон добавлен!");
                             }}>Добавить вариант поздравления</Button>
                         </div>
+                    </div>
+                )}
+
+                {tab === 'events' && (
+                    <div className="surface-card p-8">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-display font-semibold text-slate-900">События ({allEvents.length})</h3>
+                            <Button variant="ghost" className="!p-2 text-slate-400 hover:text-blue-600" onClick={async () => {
+                                if (!onGetAllEvents) return;
+                                const data = await onGetAllEvents();
+                                if (data) setAllEvents(data);
+                            }} title="Обновить список"><RotateCw size={20} /></Button>
+                        </div>
+
+                        <Input
+                            placeholder="Поиск по названию или городу"
+                            value={eventSearch}
+                            onChange={(e) => setEventSearch(e.target.value)}
+                        />
+
+                        <div className="space-y-3 max-h-[420px] overflow-y-auto mt-4">
+                            {[...allEvents]
+                                .filter(ev => {
+                                    const q = eventSearch.trim().toLowerCase();
+                                    if (!q) return true;
+                                    return (ev.title || '').toLowerCase().includes(q) || (ev.city || '').toLowerCase().includes(q);
+                                })
+                                .map(ev => (
+                                    <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
+                                        <div className="min-w-0">
+                                            <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
+                                            <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
+                                        </div>
+                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => setEditingEvent({ ...ev })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                            <button onClick={() => {
+                                                confirmAction(
+                                                    "Удалить событие?",
+                                                    `Вы собираетесь удалить событие "${ev.title || 'Без названия'}".`,
+                                                    async () => {
+                                                        if (onDeleteEvent) {
+                                                            await onDeleteEvent(ev.id);
+                                                            setAllEvents(allEvents.filter(e => e.id !== ev.id));
+                                                            onNotify("Событие удалено");
+                                                        }
+                                                    },
+                                                    'danger'
+                                                );
+                                            }} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                                        </div>
+                                    </div>
+                                ))}
+                        </div>
+
+                        <hr className="border-slate-100 my-6" />
+
+                        <h3 className="font-display font-semibold text-slate-900 mb-4">{editingEvent?.id ? 'Редактировать событие' : 'Выберите событие для редактирования'}</h3>
+                        {editingEvent?.id && (
+                            <div className="space-y-4">
+                                <Input
+                                    placeholder="Название"
+                                    value={editingEvent.title || ''}
+                                    onChange={e => setEditingEvent({ ...editingEvent, title: e.target.value })}
+                                />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input
+                                        placeholder="Дата (например 22.02.2026)"
+                                        value={editingEvent.date || ''}
+                                        onChange={e => setEditingEvent({ ...editingEvent, date: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Время (например 19:00)"
+                                        value={editingEvent.time || ''}
+                                        onChange={e => setEditingEvent({ ...editingEvent, time: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Город"
+                                        value={editingEvent.city || ''}
+                                        onChange={e => setEditingEvent({ ...editingEvent, city: e.target.value })}
+                                    />
+                                </div>
+                                <Input
+                                    placeholder="Локация"
+                                    value={editingEvent.location || ''}
+                                    onChange={e => setEditingEvent({ ...editingEvent, location: e.target.value })}
+                                />
+                                <textarea
+                                    className="w-full min-h-[140px] bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
+                                    placeholder="Описание"
+                                    value={editingEvent.description || ''}
+                                    onChange={e => setEditingEvent({ ...editingEvent, description: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <Button variant="secondary" onClick={() => setEditingEvent(null)}>Отмена</Button>
+                                    <Button onClick={async () => {
+                                        if (!onUpdateEvent) return;
+                                        try {
+                                            const updated = await onUpdateEvent(editingEvent);
+                                            setAllEvents(allEvents.map(e => e.id === updated.id ? updated : e));
+                                            onNotify("Событие обновлено");
+                                        } catch (e) {
+                                            console.error(e);
+                                            onNotify("Ошибка обновления");
+                                        }
+                                    }}>Сохранить</Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

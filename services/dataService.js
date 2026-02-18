@@ -284,6 +284,28 @@ class LocalStorageService {
         return true;
     }
 
+    // Events (public schedule) - local fallback
+    async getAllEvents() {
+        return JSON.parse(localStorage.getItem('garden_events')) || [];
+    }
+
+    async updateEvent(event) {
+        const allEvents = JSON.parse(localStorage.getItem('garden_events')) || [];
+        const index = allEvents.findIndex(e => e.id === event.id);
+        if (index !== -1) {
+            allEvents[index] = { ...allEvents[index], ...event };
+            localStorage.setItem('garden_events', JSON.stringify(allEvents));
+            return allEvents[index];
+        }
+        return event;
+    }
+
+    async deleteEvent(eventId) {
+        const allEvents = JSON.parse(localStorage.getItem('garden_events')) || [];
+        localStorage.setItem('garden_events', JSON.stringify(allEvents.filter(e => e.id !== eventId)));
+        return true;
+    }
+
     // Practices
     async getPractices(userId) {
         // Fallback to initial data if empty, or local storage
@@ -1157,6 +1179,40 @@ class SupabaseService {
             console.warn("Global meetings fetch failed", error);
             return [];
         }
+    }
+
+    async getAllEvents() {
+        try {
+            const { data } = await postgrestFetch('events', {
+                select: 'id,title,description,date,city,time,location,category,image_url,price,registration_link',
+                order: 'date.desc'
+            });
+            return data;
+        } catch (error) {
+            console.warn("Events fetch failed", error);
+            return [];
+        }
+    }
+
+    async updateEvent(event) {
+        const { id, ...rest } = event;
+        const cleaned = this._sanitizeFields(rest, {
+            plain: ['title', 'description', 'date', 'time', 'city', 'location', 'category', 'image_url', 'price', 'registration_link']
+        });
+        const { data } = await postgrestFetch('events', { id: `eq.${id}` }, {
+            method: 'PATCH',
+            body: cleaned,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
+    }
+
+    async deleteEvent(eventId) {
+        await postgrestFetch('events', { id: `eq.${eventId}` }, {
+            method: 'DELETE',
+            returnRepresentation: true
+        });
+        return true;
     }
 
 

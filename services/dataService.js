@@ -1184,7 +1184,7 @@ class SupabaseService {
     async getAllEvents() {
         try {
             const { data } = await postgrestFetch('events', {
-                select: 'id,title,description,date,city,time,location,category,image_url,price,registration_link',
+                select: 'id,title,description,date,city,time,location,category,image_url,image_focus_x,image_focus_y,price,registration_link',
                 order: 'date.desc'
             });
             return data;
@@ -1199,9 +1199,15 @@ class SupabaseService {
         const cleaned = this._sanitizeFields(rest, {
             plain: ['title', 'description', 'date', 'time', 'city', 'location', 'category', 'image_url', 'price', 'registration_link']
         });
+        const focusX = rest.image_focus_x === '' || rest.image_focus_x === undefined ? null : parseInt(rest.image_focus_x, 10);
+        const focusY = rest.image_focus_y === '' || rest.image_focus_y === undefined ? null : parseInt(rest.image_focus_y, 10);
         const { data } = await postgrestFetch('events', { id: `eq.${id}` }, {
             method: 'PATCH',
-            body: cleaned,
+            body: {
+                ...cleaned,
+                image_focus_x: Number.isNaN(focusX) ? null : focusX,
+                image_focus_y: Number.isNaN(focusY) ? null : focusY
+            },
             returnRepresentation: true
         });
         return Array.isArray(data) ? data[0] : data;

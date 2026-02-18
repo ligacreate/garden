@@ -379,7 +379,11 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                             <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
                                         </div>
                                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => setEditingEvent({ ...ev })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                            <button onClick={() => setEditingEvent({
+                                                ...ev,
+                                                image_focus_x: ev.image_focus_x ?? 50,
+                                                image_focus_y: ev.image_focus_y ?? 50
+                                            })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
                                             <button onClick={() => {
                                                 confirmAction(
                                                     "Удалить событие?",
@@ -431,6 +435,48 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                     value={editingEvent.location || ''}
                                     onChange={e => setEditingEvent({ ...editingEvent, location: e.target.value })}
                                 />
+                                <Input
+                                    placeholder="Ссылка на фото (image_url)"
+                                    value={editingEvent.image_url || ''}
+                                    onChange={e => setEditingEvent({ ...editingEvent, image_url: e.target.value })}
+                                />
+                                {editingEvent.image_url && (
+                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                        <div className="text-xs text-slate-500 mb-2">Превью</div>
+                                        <div className="w-full h-40 rounded-2xl overflow-hidden bg-slate-100">
+                                            <img
+                                                src={editingEvent.image_url}
+                                                alt={editingEvent.title || 'preview'}
+                                                className="w-full h-full object-cover"
+                                                style={{ objectPosition: `${editingEvent.image_focus_x ?? 50}% ${editingEvent.image_focus_y ?? 50}%` }}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                            <div>
+                                                <label className="text-xs text-slate-500 ml-1">Смещение по X</label>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    value={editingEvent.image_focus_x ?? 50}
+                                                    onChange={(e) => setEditingEvent({ ...editingEvent, image_focus_x: parseInt(e.target.value, 10) })}
+                                                    className="w-full"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-slate-500 ml-1">Смещение по Y</label>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    value={editingEvent.image_focus_y ?? 50}
+                                                    onChange={(e) => setEditingEvent({ ...editingEvent, image_focus_y: parseInt(e.target.value, 10) })}
+                                                    className="w-full"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 <textarea
                                     className="w-full min-h-[140px] bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
                                     placeholder="Описание"

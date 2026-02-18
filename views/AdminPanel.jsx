@@ -440,6 +440,31 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                     value={editingEvent.image_url || ''}
                                     onChange={e => setEditingEvent({ ...editingEvent, image_url: e.target.value })}
                                 />
+                                <div className="flex items-center gap-3">
+                                    <Button variant="secondary" className="!py-2 !px-3 !text-xs relative">
+                                        Загрузить фото
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                try {
+                                                    const url = await api.uploadMeetingImage(file);
+                                                    setEditingEvent({ ...editingEvent, image_url: url });
+                                                    onNotify("Фото загружено");
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    onNotify("Ошибка загрузки фото");
+                                                } finally {
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        />
+                                    </Button>
+                                    <span className="text-xs text-slate-400">Фото сохранится в Supabase Storage</span>
+                                </div>
                                 {editingEvent.image_url && (
                                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-5">
                                         <div>

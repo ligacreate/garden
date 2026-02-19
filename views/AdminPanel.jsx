@@ -547,7 +547,38 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                 )}
 
                 {tab === 'users' ? (
-                    <div className="surface-card p-8 overflow-hidden">
+                    <div className="surface-card p-8 overflow-hidden space-y-6">
+                        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                            <div className="flex items-center justify-between gap-4 mb-3">
+                                <div className="text-sm font-semibold text-slate-700">Email всех пользователей</div>
+                                <Button
+                                    variant="ghost"
+                                    className="!py-1 !px-3 text-xs"
+                                    onClick={async () => {
+                                        const emails = (users || [])
+                                            .map(u => (u.email || '').trim())
+                                            .filter(Boolean)
+                                            .join('\n');
+                                        try {
+                                            await navigator.clipboard.writeText(emails);
+                                            onNotify("Email-список скопирован");
+                                        } catch (e) {
+                                            onNotify("Не удалось скопировать");
+                                        }
+                                    }}
+                                >
+                                    Скопировать
+                                </Button>
+                            </div>
+                            <textarea
+                                className="w-full min-h-[120px] bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700"
+                                readOnly
+                                value={(users || [])
+                                    .map(u => (u.email || '').trim())
+                                    .filter(Boolean)
+                                    .join('\n')}
+                            />
+                        </div>
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="border-b border-slate-100 text-xs uppercase text-slate-400">

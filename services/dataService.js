@@ -1,5 +1,4 @@
 import { INITIAL_USERS, INITIAL_KNOWLEDGE, INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
-import { supabase } from '../supabaseClient';
 import { ROLES } from '../utils/roles';
 import DOMPurify from 'dompurify';
 import imageCompression from 'browser-image-compression';
@@ -599,7 +598,9 @@ class SupabaseService {
     }
 
     async uploadAvatar(file) {
-        throw new Error('Загрузка аватаров временно отключена. Используем старые ссылки.');
+        if (!file) return null;
+        const fileToUpload = await this.compressMeetingImage(file);
+        return await this._uploadToS3(fileToUpload, 'avatars');
     }
 
     async compressMeetingImage(file) {
@@ -618,6 +619,37 @@ class SupabaseService {
             console.warn('Image compression failed, using original file:', error);
             return file;
         }
+    }
+
+    async _uploadToS3(file, folder) {
+        if (!file) return null;
+        const contentType = file.type || 'image/jpeg';
+        const fileName = file.name || `${folder}-${Date.now()}.jpg`;
+
+        const sign = await authFetch('/storage/sign', {
+            method: 'POST',
+            body: {
+                folder,
+                fileName,
+                contentType
+            }
+        });
+
+        if (!sign?.uploadUrl || !sign?.publicUrl) {
+            throw new Error('Не удалось получить ссылку для загрузки файла.');
+        }
+
+        const uploadRes = await fetch(sign.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': contentType },
+            body: file
+        });
+
+        if (!uploadRes.ok) {
+            throw new Error('Ошибка загрузки файла в хранилище.');
+        }
+
+        return sign.publicUrl;
     }
 
     async logout() {
@@ -858,20 +890,7 @@ class SupabaseService {
         const fileToUpload = await this.compressMeetingImage(file);
 
         try {
-            const fileExt = file.name.split('.').pop();
-            const ext = fileToUpload.type === 'image/jpeg' ? 'jpg' : fileExt;
-            const fileName = `meeting_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
-            const filePath = `${fileName}`;
-
-            // TODO: replace with Timeweb storage upload
-            const { error: uploadError } = await supabase.storage
-                .from('event-images')
-                .upload(filePath, fileToUpload);
-
-            if (uploadError) throw uploadError;
-
-            const { data } = supabase.storage.from('event-images').getPublicUrl(filePath);
-            return data.publicUrl;
+            return await this._uploadToS3(fileToUpload, 'event-images');
         } catch (error) {
             console.error('Image upload failed:', error);
             throw error;

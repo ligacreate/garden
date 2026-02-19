@@ -525,11 +525,18 @@ class SupabaseService {
         return next;
     }
 
+    _assertActive(profile) {
+        if (profile?.status === 'suspended') {
+            throw new Error("Ваш аккаунт приостановлен. Обратитесь к администратору.");
+        }
+        return profile;
+    }
+
     async login(email, password) {
         const data = await authFetch('/auth/login', { method: 'POST', body: { email, password } });
         if (data?.token) setAuthToken(data.token);
         const profile = await this._fetchProfile(data.user?.id || data.user?.id);
-        return profile || this._normalizeProfile(data.user);
+        return this._assertActive(profile || this._normalizeProfile(data.user));
     }
 
     async updatePassword(newPassword) {
@@ -621,7 +628,7 @@ class SupabaseService {
         const token = getAuthToken();
         if (!token) return null;
         const data = await authFetch('/auth/me');
-        return this._normalizeProfile(data.user);
+        return this._assertActive(this._normalizeProfile(data.user));
     }
 
     async _ensurePostgrestUser(user) {
@@ -1255,9 +1262,6 @@ class SupabaseService {
         if (data.email === 'olga@skrebeyko.com') {
             data.role = 'admin';
             data.status = 'active';
-        }
-        if (data.status === 'suspended') {
-            throw new Error("Ваш аккаунт приостановлен. Обратитесь к администратору.");
         }
         return {
             ...data,

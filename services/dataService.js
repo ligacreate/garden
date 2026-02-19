@@ -586,6 +586,11 @@ class SupabaseService {
         return true;
     }
 
+    async resetPasswordWithToken(token, newPassword) {
+        await authFetch('/auth/reset', { method: 'POST', body: { token, new_password: newPassword } });
+        return true;
+    }
+
     async uploadAvatar(file) {
         throw new Error('Загрузка аватаров временно отключена. Используем старые ссылки.');
     }

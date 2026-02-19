@@ -73,6 +73,18 @@ export default function App() {
         }
     };
 
+    const handleResetWithToken = async (token, newPassword) => {
+        try {
+            await api.resetPasswordWithToken(token, newPassword);
+            showNotification("Пароль обновлен. Войдите снова.");
+            return true;
+        } catch (e) {
+            console.error(e);
+            alert(e.message || "Ошибка сброса пароля");
+            return false;
+        }
+    };
+
     const handleLogout = async () => {
         await api.logout();
         setCurrentUser(null);
@@ -151,7 +163,7 @@ export default function App() {
         <div className={`min-h-screen bg-transparent font-sans text-slate-700 selection:bg-blue-100 selection:text-blue-900 flex justify-center relative`}>
             <div className="w-full max-w-[480px] md:max-w-full bg-transparent min-h-screen relative flex flex-col">
                 <Toast message={notification} onClose={() => setNotification(null)} />
-                {!currentUser ? <AuthScreen onLogin={handleLogin} onNotify={showNotification} />
+                {!currentUser ? <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
                     : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} knowledgeBase={knowledgeBase} news={news} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Leaf, ArrowRight } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import { getDruidTree } from '../utils/druidHoroscope';
 
-const AuthScreen = ({ onLogin, onNotify }) => {
+const AuthScreen = ({ onLogin, onNotify, onResetPassword }) => {
     const [authMode, setAuthMode] = useState('welcome');
     const [step, setStep] = useState(1);
     const [regData, setRegData] = useState({ name: '', email: '', password: '', dob: '' });
@@ -13,6 +13,17 @@ const AuthScreen = ({ onLogin, onNotify }) => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [showForgot, setShowForgot] = useState(false);
     const [forgotEmail, setForgotEmail] = useState('');
+    const [resetToken, setResetToken] = useState('');
+    const [resetPassword, setResetPassword] = useState('');
+    const [resetConfirm, setResetConfirm] = useState('');
+
+    useEffect(() => {
+        const token = new URLSearchParams(window.location.search).get('token');
+        if (token) {
+            setResetToken(token);
+            setAuthMode('reset');
+        }
+    }, []);
 
     const handleRegisterCalculate = () => {
         if (!regData.name || !regData.email || !regData.password || !regData.dob) return;
@@ -90,6 +101,47 @@ const AuthScreen = ({ onLogin, onNotify }) => {
             setIsProcessing(false);
         }
     };
+
+    const handleResetSubmit = async () => {
+        if (!resetToken) return;
+        if (!resetPassword || resetPassword.length < 6) {
+            alert("Пароль должен быть не менее 6 символов");
+            return;
+        }
+        if (resetPassword !== resetConfirm) {
+            alert("Пароли не совпадают");
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            const ok = await onResetPassword?.(resetToken, resetPassword);
+            if (ok) {
+                setResetPassword('');
+                setResetConfirm('');
+                setResetToken('');
+                setAuthMode('login');
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    if (authMode === 'reset') return (
+        <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6">
+            <div className="w-full max-w-sm surface-card p-8 space-y-4">
+                <h2 className="text-2xl font-display font-semibold">Новый пароль</h2>
+                <Input type="password" placeholder="Новый пароль" value={resetPassword} onChange={e => setResetPassword(e.target.value)} />
+                <Input type="password" placeholder="Повторите пароль" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} />
+                <Button onClick={handleResetSubmit} className="w-full mt-2" disabled={isProcessing}>
+                    {isProcessing ? "Сохраняем..." : "Сохранить пароль"}
+                </Button>
+                <button onClick={() => { setAuthMode('login'); window.history.replaceState(null, '', window.location.pathname); }} className="text-xs text-blue-700 block w-full text-center">
+                    Вернуться ко входу
+                </button>
+            </div>
+        </div>
+    );
 
     if (showForgot) return (<div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6"><div className="w-full max-w-sm surface-card p-8 space-y-4"><button onClick={() => setShowForgot(false)} className="text-slate-400"><ArrowLeft size={20} /></button><h2 className="text-2xl font-display font-semibold text-slate-900">Восстановление</h2><Input placeholder="Email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} /><Button onClick={handleForgot} className="w-full">Сбросить пароль</Button></div></div>);
 

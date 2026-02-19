@@ -1169,22 +1169,41 @@ class SupabaseService {
 
     // Birthday Templates
     async getBirthdayTemplates() {
-        // Fallback to local storage (since we lack a table for now)
         const defaults = [
             "С Днем Рождения, {name}! 🎉\nЖелаем роста, процветания и много семян!",
             "Поздравляем с Днем Рождения, {name}! 🎂\nПусть каждый день будет наполнен светом и радостью!",
             "{name}, с твоим днем! 🥳\nЦвети и пахни, как самый прекрасный цветок в нашем Саду!"
         ];
-        const local = JSON.parse(localStorage.getItem('garden_bday_templates')) || [];
-        return [...defaults, ...local];
+        try {
+            const { data } = await postgrestFetch('birthday_templates', { select: '*', order: 'created_at.desc' });
+            const fromDb = (data || [])
+                .map(t => (t.text || t.template || t.body || '').trim())
+                .filter(Boolean);
+            return [...defaults, ...fromDb];
+        } catch (e) {
+            // Fallback to local storage if table not yet created
+            const local = JSON.parse(localStorage.getItem('garden_bday_templates')) || [];
+            return [...defaults, ...local];
+        }
     }
 
     async addBirthdayTemplate(text) {
-        // Local storage only for now
-        const local = JSON.parse(localStorage.getItem('garden_bday_templates')) || [];
-        local.push(text);
-        localStorage.setItem('garden_bday_templates', JSON.stringify(local));
-        return true;
+        if (!text) return false;
+        const sanitized = this._sanitize(text);
+        try {
+            await postgrestFetch('birthday_templates', {}, {
+                method: 'POST',
+                body: [{ text: sanitized }],
+                returnRepresentation: true
+            });
+            return true;
+        } catch (e) {
+            // Fallback to local storage if table not yet created
+            const local = JSON.parse(localStorage.getItem('garden_bday_templates')) || [];
+            local.push(sanitized);
+            localStorage.setItem('garden_bday_templates', JSON.stringify(local));
+            return true;
+        }
     }
 
     // Scenarios

@@ -1,11 +1,17 @@
 import { INITIAL_USERS, INITIAL_KNOWLEDGE, INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { supabase } from '../supabaseClient';
-
 import { ROLES } from '../utils/roles';
 import DOMPurify from 'dompurify';
 import imageCompression from 'browser-image-compression';
 
 const POSTGREST_URL = import.meta.env.VITE_POSTGREST_URL || 'https://api.skrebeyko.ru';
+const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.skrebeyko.ru';
+
+const getAuthToken = () => localStorage.getItem('garden_auth_token') || '';
+const setAuthToken = (token) => {
+    if (token) localStorage.setItem('garden_auth_token', token);
+    else localStorage.removeItem('garden_auth_token');
+};
 
 const postgrestFetch = async (path, params = {}, options = {}) => {
     const url = new URL(path, POSTGREST_URL);
@@ -35,6 +41,26 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
     }
 
     return { data, count };
+};
+
+const authFetch = async (path, options = {}) => {
+    const url = new URL(path, AUTH_URL);
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const token = getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(url.toString(), {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const message = data?.error || data?.message || 'Ошибка запроса';
+        throw new Error(message);
+    }
+    return data;
 };
 
 // Helper to simulate delay for local storage operations
@@ -500,164 +526,68 @@ class SupabaseService {
     }
 
     async login(email, password) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        await this._ensureProfile(data.user);
-        return this._fetchProfile(data.user.id);
+        const data = await authFetch('/auth/login', { method: 'POST', body: { email, password } });
+        if (data?.token) setAuthToken(data.token);
+        const profile = await this._fetchProfile(data.user?.id || data.user?.id);
+        return profile || this._normalizeProfile(data.user);
     }
 
     async updatePassword(newPassword) {
-        const { data, error } = await supabase.auth.updateUser({ password: newPassword });
-        if (error) throw error;
-        return data;
+        throw new Error('Смена пароля доступна через восстановление');
     }
 
     async incrementUserSeeds(userIds, amount) {
         if (!Array.isArray(userIds) || userIds.length === 0) return;
-        const { error } = await supabase.rpc('increment_user_seeds', { user_ids: userIds, amount });
-        if (error) throw error;
+        try {
+            await postgrestFetch('rpc/increment_user_seeds', {}, {
+                method: 'POST',
+                body: { user_ids: userIds, amount },
+                returnRepresentation: true
+            });
+        } catch (e) {
+            console.warn('increment_user_seeds failed', e);
+            throw e;
+        }
         return true;
     }
 
     async register(userData) {
-        const { email, password, isNew, ...rest } = userData;
-
-        const profileDraft = {
-            name: this._sanitizeIfString(rest.name),
-            city: this._sanitizeIfString(rest.city),
-            role: email === 'olga@skrebeyko.com' ? 'admin' : (rest.role || 'applicant'),
-            tree: this._sanitizeIfString(rest.tree),
-            tree_desc: this._sanitizeIfString(rest.treeDesc),
-            seeds: rest.seeds || 0,
-            avatar_url: this._sanitizeIfString(rest.avatar) || null,
-            dob: rest.dob || null,
-            x: rest.x || (Math.random() * 80 + 10),
-            y: rest.y || (Math.random() * 80 + 10),
-        };
-
-        // 1. Sign Up
-        // We remove emailRedirectTo to rely on Supabase "Site URL" setting to avoid 400 mismatches.
-        const { data, error } = await supabase.auth.signUp({
+        const { email, password, ...rest } = userData;
+        const payload = {
             email,
             password,
-            options: {
-                // Temporary storage until profile row is created (email confirmation flow)
-                data: profileDraft
-            }
-        });
-
-        if (error) {
-            console.error("SignUp Error:", error);
-            // Handle "User already registered" specifically
-            if (error.message.includes("already registered")) {
-                const { data: signinData, error: signinError } = await supabase.auth.signInWithPassword({ email, password });
-                if (signinError) {
-                    if (signinError.message.includes("Email not confirmed")) {
-                        // User exists but unconfirmed. We can't log them in yet.
-                        alert("Этот email уже зарегистрирован, но не подтвержден. Проверьте почту!");
-                        return null;
-                    }
-                    throw new Error("Пользователь уже существует. Попробуйте войти.");
-                }
-                return await this._fetchProfile(signinData.user.id);
-            }
-            throw error;
-        }
-
-        // 2. If SignUp successful but no session -> Email Confirmation Required
-        if (data.user && !data.session) {
-            alert("Регистрация успешна! Мы отправили письмо на " + email + ". Подтвердите почту, чтобы войти.");
-            // Return null so we don't 'login' the user into a broken state
-            return null;
-        }
-
-        // 3. If we have a session (Email auto-confirm is ON or similar), create profile
-        if (data.user && data.session) {
-            const profileData = { ...profileDraft };
-            // Fix keys for DB
-            if (profileDraft.treeDesc) { profileData.tree_desc = profileDraft.treeDesc; delete profileData.treeDesc; }
-
-            try {
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .upsert([{ id: data.user.id, ...profileData }]);
-                if (profileError) console.warn("Profile write failed", profileError);
-            } catch (e) {
-                console.warn("Profile write exception", e);
+            name: this._sanitizeIfString(rest.name),
+            city: this._sanitizeIfString(rest.city)
+        };
+        const data = await authFetch('/auth/register', { method: 'POST', body: payload });
+        if (data?.token) setAuthToken(data.token);
+        const created = this._normalizeProfile(data.user);
+        if (created?.id) {
+            const patch = {};
+            if (rest.tree) patch.tree = this._sanitizeIfString(rest.tree);
+            if (rest.treeDesc || rest.tree_desc) patch.tree_desc = this._sanitizeIfString(rest.treeDesc || rest.tree_desc);
+            if (rest.dob) patch.dob = rest.dob;
+            if (rest.seeds !== undefined) patch.seeds = rest.seeds;
+            if (rest.x !== undefined) patch.x = rest.x;
+            if (rest.y !== undefined) patch.y = rest.y;
+            if (Object.keys(patch).length > 0) {
+                await postgrestFetch('profiles', { id: `eq.${created.id}` }, {
+                    method: 'PATCH',
+                    body: patch,
+                    returnRepresentation: true
+                });
             }
         }
-
-        // 4. Return Profile (from DB or Meta)
-        try {
-            const profile = await this._fetchProfile(data.user.id);
-            if (profile) return profile;
-            throw new Error("Profile fetch returned null");
-        } catch (e) {
-            return {
-                id: data.user.id,
-                email,
-                ...profileDraft,
-                tree_desc: profileDraft.treeDesc || profileDraft.tree_desc
-            };
-        }
+        return created;
     }
 
     async resetPassword(email) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin,
-        });
-        if (error) {
-            console.error("Reset Password Error:", error);
-            if (error.status === 429) {
-                alert("Слишком много попыток. Подождите минуту.");
-            } else if (error.status === 400 || (error.message && error.message.includes("redirect_to"))) {
-                alert(`Ошибка конфигурации (400). Убедитесь, что URL ${window.location.origin} добавлен в 'Redirect URLs' в настройках Supabase Auth.`);
-            } else {
-                alert(`Ошибка сброса: ${error.message}`);
-            }
-            throw error;
-        }
+        await authFetch('/auth/request-reset', { method: 'POST', body: { email } });
         return true;
     }
 
     async uploadAvatar(file) {
-        // Simple compression helper
-        const compress = (f) => new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(f);
-            reader.onload = (e) => {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 500; // Optimize for avatar size (500px is plenty)
-                    const scale = MAX_WIDTH / img.width;
-                    if (scale >= 1) { resolve(f); return; } // Don't upscale or process small images
-
-                    canvas.width = MAX_WIDTH;
-                    canvas.height = img.height * scale;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    canvas.toBlob((blob) => {
-                        resolve(new File([blob], f.name.replace(/\.[^/.]+$/, ".jpg"), { type: 'image/jpeg' }));
-                    }, 'image/jpeg', 0.8);
-                };
-            };
-        });
-
-        const compressedFile = await compress(file);
-        const fileExt = 'jpg'; // We convert to jpeg
-        const fileName = `${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
-        const filePath = `${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-            .from('avatars')
-            .upload(filePath, compressedFile);
-
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-        return data.publicUrl;
+        throw new Error('Загрузка аватаров временно отключена. Используем старые ссылки.');
     }
 
     async compressMeetingImage(file) {
@@ -679,164 +609,74 @@ class SupabaseService {
     }
 
     async logout() {
-        await supabase.auth.signOut();
+        setAuthToken(null);
     }
 
     async getCurrentUser() {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return null;
-        await this._ensureProfile(session.user);
-        return this._fetchProfile(session.user.id);
+        const token = getAuthToken();
+        if (!token) return null;
+        const data = await authFetch('/auth/me');
+        return this._normalizeProfile(data.user);
+    }
+
+    async _ensurePostgrestUser(user) {
+        if (!user?.id) return;
+        try {
+            const { data } = await postgrestFetch('profiles', { select: 'id', id: `eq.${user.id}` });
+            if (Array.isArray(data) && data.length > 0) return;
+
+            const meta = user.user_metadata || {};
+            const payload = {
+                id: user.id,
+                email: user.email || meta.email || null,
+                name: user.name || meta.name || null,
+                city: user.city || meta.city || null,
+                role: user.role || meta.role || 'applicant',
+                status: user.status || meta.status || 'active',
+                tree: user.tree || meta.tree || null,
+                tree_desc: user.tree_desc || meta.tree_desc || meta.treeDesc || null,
+                seeds: user.seeds ?? meta.seeds ?? 0,
+                avatar_url: user.avatar_url || user.avatar || meta.avatar_url || meta.avatar || null,
+                x: user.x ?? meta.x ?? null,
+                y: user.y ?? meta.y ?? null,
+                skills: Array.isArray(user.skills) ? user.skills : (Array.isArray(meta.skills) ? meta.skills : []),
+                offer: user.offer || meta.offer || null,
+                unique_abilities: user.unique_abilities || meta.unique_abilities || null,
+                leader_about: user.leader_about || meta.leader_about || null,
+                leader_signature: user.leader_signature || meta.leader_signature || null,
+                leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : (Array.isArray(meta.leader_reviews) ? meta.leader_reviews : []),
+                telegram: user.telegram || meta.telegram || null,
+                join_date: user.join_date || meta.join_date || null
+            };
+
+            await postgrestFetch('profiles', {}, {
+                method: 'POST',
+                body: [payload],
+                returnRepresentation: true
+            });
+        } catch (e) {
+            console.warn('PostgREST user ensure failed:', e);
+            throw new Error('Не удалось создать пользователя в новой базе. Напишите администратору.');
+        }
     }
 
     async _ensureProfile(user) {
-        if (!user?.id) return;
-        try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('id', user.id)
-                .single();
-            if (data && data.id) return;
-            if (error && error.code && error.code !== 'PGRST116') {
-                console.warn("Profile check failed:", error);
-                return;
-            }
-
-            const meta = user.user_metadata || {};
-            const draft = {
-                id: user.id,
-                email: user.email,
-                name: meta.name || null,
-                city: meta.city || null,
-                role: user.email === 'olga@skrebeyko.com' ? 'admin' : (meta.role || 'applicant'),
-                tree: meta.tree || null,
-                tree_desc: meta.tree_desc || meta.treeDesc || null,
-                seeds: meta.seeds || 0,
-                avatar_url: meta.avatar_url || meta.avatar || null,
-                dob: meta.dob || null,
-                x: meta.x || (Math.random() * 80 + 10),
-                y: meta.y || (Math.random() * 80 + 10),
-                skills: Array.isArray(meta.skills) ? meta.skills.map(String) : [],
-                offer: meta.offer || null,
-                unique_abilities: meta.unique_abilities || null,
-                leader_about: meta.leader_about || null,
-                leader_signature: meta.leader_signature || null,
-                leader_reviews: Array.isArray(meta.leader_reviews) ? meta.leader_reviews : [],
-                telegram: meta.telegram || null,
-                join_date: meta.join_date || null,
-                status: meta.status || 'active'
-            };
-
-            const { error: insertError } = await supabase
-                .from('profiles')
-                .upsert([draft]);
-            if (insertError) console.warn("Profile upsert failed:", insertError);
-        } catch (e) {
-            console.warn("Profile ensure failed:", e);
-        }
+        // No-op in new auth flow (profile created by auth service)
     }
 
     async _fetchProfile(userId) {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
+        const { data } = await postgrestFetch('profiles', {
+            select: '*',
+            id: `eq.${userId}`
+        });
 
-        // Safety check: force admin role for olga regardless of what DB says
-        if (data && data.email === 'olga@skrebeyko.com') {
-            data.role = 'admin';
-            data.status = 'active'; // Admin cannot be suspended
-        }
-
-        if (data && data.status === 'suspended') {
-            throw new Error("Ваш аккаунт приостановлен. Обратитесь к администратору.");
-        }
-
-        if (data) {
-            // Best-effort hydrate missing fields from auth metadata (one-time sync)
-            try {
-                const { data: { user: authUser } } = await supabase.auth.getUser();
-                const meta = authUser?.user_metadata || {};
-                const metaOffer = typeof meta.offer === 'string' ? meta.offer.trim() : '';
-                const metaUnique = typeof meta.unique_abilities === 'string'
-                    ? meta.unique_abilities.trim()
-                    : (typeof meta.uniqueAbilities === 'string' ? meta.uniqueAbilities.trim() : '');
-                const offerMissing = !data.offer || String(data.offer).trim() === '';
-                const uniqueMissing = !data.unique_abilities || String(data.unique_abilities).trim() === '';
-                const leaderAboutMissing = !data.leader_about || String(data.leader_about).trim() === '';
-                const leaderSignatureMissing = !data.leader_signature || String(data.leader_signature).trim() === '';
-                const metaLeaderAbout = typeof meta.leader_about === 'string' ? meta.leader_about.trim() : '';
-                const metaLeaderSignature = typeof meta.leader_signature === 'string' ? meta.leader_signature.trim() : '';
-                const metaLeaderReviews = Array.isArray(meta.leader_reviews) ? meta.leader_reviews : null;
-                const metaTelegram = typeof meta.telegram === 'string' ? meta.telegram.trim() : '';
-                if (
-                    (offerMissing && metaOffer) ||
-                    (uniqueMissing && metaUnique) ||
-                    (leaderAboutMissing && metaLeaderAbout) ||
-                    (leaderSignatureMissing && metaLeaderSignature) ||
-                    (!Array.isArray(data.leader_reviews) && metaLeaderReviews) ||
-                    (!data.telegram && metaTelegram)
-                ) {
-                    const patch = {};
-                    if (offerMissing && metaOffer) patch.offer = metaOffer;
-                    if (uniqueMissing && metaUnique) patch.unique_abilities = metaUnique;
-                    if (leaderAboutMissing && metaLeaderAbout) patch.leader_about = metaLeaderAbout;
-                    if (leaderSignatureMissing && metaLeaderSignature) patch.leader_signature = metaLeaderSignature;
-                    if (!Array.isArray(data.leader_reviews) && metaLeaderReviews) patch.leader_reviews = metaLeaderReviews;
-                    if (!data.telegram && metaTelegram) patch.telegram = metaTelegram;
-                    if (Object.keys(patch).length > 0) {
-                        await supabase.from('profiles').update(patch).eq('id', userId);
-                        data.offer = patch.offer ?? data.offer;
-                        data.unique_abilities = patch.unique_abilities ?? data.unique_abilities;
-                        data.leader_about = patch.leader_about ?? data.leader_about;
-                        data.leader_signature = patch.leader_signature ?? data.leader_signature;
-                        data.leader_reviews = patch.leader_reviews ?? data.leader_reviews;
-                        data.telegram = patch.telegram ?? data.telegram;
-                    }
-                }
-            } catch (e) {
-                console.warn("Profile metadata hydrate failed:", e);
-            }
-
-            // Map DB columns to UI expected keys (single source of truth)
-            return {
-                ...data,
-                avatar: data.avatar_url, // Map avatar_url -> avatar
-                treeDesc: data.tree_desc, // Map tree_desc -> treeDesc
-                // Ensure role is respected
-                role: data.email === 'olga@skrebeyko.com' ? 'admin' : data.role,
-                dob: data.dob,
-                seeds: data.seeds || 0,
-                skills: Array.isArray(data.skills) ? data.skills : [],
-                offer: data.offer || '',
-                unique_abilities: data.unique_abilities || '',
-                leader_about: data.leader_about || '',
-                leader_signature: data.leader_signature || '',
-                leader_reviews: Array.isArray(data.leader_reviews) ? data.leader_reviews : [],
-                telegram: data.telegram || '',
-                join_date: data.join_date
-            };
-        }
-
-        return null;
+        if (!data || data.length === 0) return null;
+        return this._normalizeProfile(data[0]);
     }
 
     async getUsers() {
-        const { data, error } = await supabase.from('profiles').select('*');
-        if (error) throw error;
-        return (data || []).map((profile) => ({
-            ...profile,
-            avatar: profile.avatar_url || profile.avatar,
-            skills: Array.isArray(profile.skills) ? profile.skills : [],
-            offer: profile.offer || '',
-            unique_abilities: profile.unique_abilities || '',
-            leader_about: profile.leader_about || '',
-            leader_signature: profile.leader_signature || '',
-            leader_reviews: Array.isArray(profile.leader_reviews) ? profile.leader_reviews : [],
-            telegram: profile.telegram || ''
-        }));
+        const { data } = await postgrestFetch('profiles', { select: '*' });
+        return (data || []).map((profile) => this._normalizeProfile(profile));
     }
 
     async updateUser(updatedUser) {
@@ -868,11 +708,11 @@ class SupabaseService {
             if (hasField(updatedUser, 'status')) roleStatusUpdate.status = updatedUser.status;
 
             if (Object.keys(roleStatusUpdate).length > 0) {
-                const { error: roleError } = await supabase
-                    .from('profiles')
-                    .update(roleStatusUpdate)
-                    .eq('id', updatedUser.id);
-                if (roleError) throw roleError;
+                await postgrestFetch('profiles', { id: `eq.${updatedUser.id}` }, {
+                    method: 'PATCH',
+                    body: roleStatusUpdate,
+                    returnRepresentation: true
+                });
             }
         } catch (e) {
             console.warn("Role/status update failed:", e);
@@ -904,15 +744,11 @@ class SupabaseService {
             if (hasField(updatedUser, 'telegram')) dbUser.telegram = clean.telegram;
             if (safeJoinDate !== undefined) dbUser.join_date = safeJoinDate;
 
-            const { error } = await supabase
-                .from('profiles')
-                .update(dbUser)
-                .eq('id', dbUser.id);
-
-            if (error) {
-                console.warn("Profile table update failed.", error);
-                // Optional: Retry with only safe fields? 
-            }
+            await postgrestFetch('profiles', { id: `eq.${dbUser.id}` }, {
+                method: 'PATCH',
+                body: dbUser,
+                returnRepresentation: true
+            });
         } catch (e) {
             console.warn("Profile update exception:", e);
         }
@@ -922,37 +758,27 @@ class SupabaseService {
     }
 
     async deleteUser(userId) {
-        // We can only delete from public.profiles from client.
-        // Auth user deletion requires service_role key.
-        // So we will just delete profile, effectively "hiding" them and breaking their profile access.
-        const { error, count } = await supabase
-            .from('profiles')
-            .delete({ count: 'exact' })
-            .eq('id', userId);
-        if (error) throw error;
-        if (count === 0) throw new Error("Не удалось удалить (нет прав или пользователь не найден)");
+        await postgrestFetch('profiles', { id: `eq.${userId}` }, {
+            method: 'DELETE',
+            returnRepresentation: true
+        });
         return true;
     }
 
     async toggleUserStatus(userId, newStatus) {
-        const { error, count } = await supabase
-            .from('profiles')
-            .update({ status: newStatus }, { count: 'exact' })
-            .eq('id', userId);
-        if (error) throw error;
-        if (count === 0) throw new Error("Не удалось обновить статус (нет прав)");
+        await postgrestFetch('profiles', { id: `eq.${userId}` }, {
+            method: 'PATCH',
+            body: { status: newStatus },
+            returnRepresentation: true
+        });
         return true;
     }
 
 
     // Knowledge Base
     async getKnowledgeBase() {
-        const { data, error } = await supabase.from('knowledge_base').select('*').order('created_at', { ascending: false });
-        if (error) {
-            console.warn("KB fetch failed, using local", error);
-            return [];
-        }
-        return data;
+        const { data } = await postgrestFetch('knowledge_base', { select: '*', order: 'created_at.desc' });
+        return data || [];
     }
 
     async addKnowledge(item) {
@@ -963,8 +789,7 @@ class SupabaseService {
             { plain: ['title', 'description'], rich: ['content'] }
         );
         const { id, ...rest } = sanitized;
-        const { error } = await supabase.from('knowledge_base').insert([rest]);
-        if (error) throw error;
+        await postgrestFetch('knowledge_base', {}, { method: 'POST', body: [rest], returnRepresentation: true });
         return true;
     }
 
@@ -974,27 +799,15 @@ class SupabaseService {
     }
 
     async deleteKnowledge(id) {
-        const { error } = await supabase
-            .from('knowledge_base')
-            .delete()
-            .eq('id', id);
-        if (error) throw error;
+        await postgrestFetch('knowledge_base', { id: `eq.${id}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
     }
 
     // Course progress
     async getCourseProgress(userId, courseTitle) {
-        let query = supabase
-            .from('course_progress')
-            .select('material_id')
-            .eq('user_id', userId);
-
-        if (courseTitle) {
-            query = query.eq('course_title', courseTitle);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
+        const params = { select: 'material_id', user_id: `eq.${userId}` };
+        if (courseTitle) params.course_title = `eq.${courseTitle}`;
+        const { data } = await postgrestFetch('course_progress', params);
         return (data || []).map(row => row.material_id);
     }
 
@@ -1005,20 +818,17 @@ class SupabaseService {
             course_title: courseTitle
         };
 
-        const { data, error } = await supabase
-            .from('course_progress')
-            .insert([payload])
-            .select('material_id')
-            .single();
-
-        if (error) {
-            if (error.code === '23505') {
-                return { inserted: false };
-            }
-            throw error;
+        try {
+            const { data } = await postgrestFetch('course_progress', {}, {
+                method: 'POST',
+                body: [payload],
+                returnRepresentation: true
+            });
+            return { inserted: Array.isArray(data) && data.length > 0 };
+        } catch (e) {
+            if (String(e.message).includes('23505')) return { inserted: false };
+            throw e;
         }
-
-        return { inserted: !!data };
     }
 
     async getMeetings(userId) {
@@ -1041,6 +851,7 @@ class SupabaseService {
             const fileName = `meeting_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
             const filePath = `${fileName}`;
 
+            // TODO: replace with Timeweb storage upload
             const { error: uploadError } = await supabase.storage
                 .from('event-images')
                 .upload(filePath, fileToUpload);
@@ -1056,6 +867,7 @@ class SupabaseService {
     }
 
     async addMeeting(meeting) {
+        await this._ensurePostgrestUser(await this.getCurrentUser());
         const toIntOrNull = (value) => {
             if (value === '' || value === null || value === undefined) return null;
             const n = parseInt(value, 10);
@@ -1224,12 +1036,11 @@ class SupabaseService {
 
     // Practices
     async getPractices(userId) {
-        const { data, error } = await supabase
-            .from('practices')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
-        if (error) throw error;
+        const { data } = await postgrestFetch('practices', {
+            select: '*',
+            user_id: `eq.${userId}`,
+            order: 'created_at.desc'
+        });
         return data;
     }
 
@@ -1239,32 +1050,30 @@ class SupabaseService {
         // OR we can keep using BIGINT if we want. Let's let DB handle it.
         const { id, ...rest } = practice;
         const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
-        const { data, error } = await supabase
-            .from('practices')
-            .insert([sanitized])
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        const { data } = await postgrestFetch('practices', {}, {
+            method: 'POST',
+            body: [sanitized],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async updatePractice(practice) {
         const { id, ...rest } = practice;
         const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
-        const { error } = await supabase
-            .from('practices')
-            .update(sanitized)
-            .eq('id', id);
-        if (error) throw error;
+        await postgrestFetch('practices', { id: `eq.${id}` }, {
+            method: 'PATCH',
+            body: sanitized,
+            returnRepresentation: true
+        });
         return true;
     }
 
     async deletePractice(practiceId) {
-        const { error } = await supabase
-            .from('practices')
-            .delete()
-            .eq('id', practiceId);
-        if (error) throw error;
+        await postgrestFetch('practices', { id: `eq.${practiceId}` }, {
+            method: 'DELETE',
+            returnRepresentation: true
+        });
         return true;
     }
 
@@ -1303,47 +1112,27 @@ class SupabaseService {
 
     // News
     async getNews() {
-        const { data, error } = await supabase.from('news').select('*').order('created_at', { ascending: false });
-        if (error) {
-            console.warn("News fetch failed (table might be missing), using fallback", error);
-            const localNews = JSON.parse(localStorage.getItem('garden_news')) || [];
-            return localNews;
-        }
-        return data;
+        const { data } = await postgrestFetch('news', { select: '*', order: 'created_at.desc' });
+        return data || [];
     }
 
     async addNews(item) {
         this.checkActionTimer();
         const sanitized = this._sanitizeFields(item, { plain: ['title'], rich: ['body'] });
         const { id, ...rest } = sanitized;
-        const { error } = await supabase.from('news').insert([rest]);
-        if (error) {
-            console.warn("News insert failed, saving locally", error);
-            const localNews = JSON.parse(localStorage.getItem('garden_news')) || [];
-            localNews.unshift(sanitized);
-            localStorage.setItem('garden_news', JSON.stringify(localNews));
-            return true;
-        }
+        await postgrestFetch('news', {}, { method: 'POST', body: [rest], returnRepresentation: true });
         return true;
     }
 
     async updateNews(item) {
         const { id, ...rest } = item;
         const sanitized = this._sanitizeFields(rest, { plain: ['title'], rich: ['body'] });
-        const { error } = await supabase
-            .from('news')
-            .update(sanitized)
-            .eq('id', id);
-        if (error) throw error;
+        await postgrestFetch('news', { id: `eq.${id}` }, { method: 'PATCH', body: sanitized, returnRepresentation: true });
         return true;
     }
 
     async deleteNews(newsId) {
-        const { error } = await supabase
-            .from('news')
-            .delete()
-            .eq('id', newsId);
-        if (error) throw error;
+        await postgrestFetch('news', { id: `eq.${newsId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
     }
 
@@ -1370,64 +1159,21 @@ class SupabaseService {
     // Scenarios
     // Scenarios
     async getScenarios(userId) {
-        const { data, error } = await supabase
-            .from('scenarios')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.warn("Scenarios fetch failed, checking local", error);
-            const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
-            return allScenarios.filter(s => s.user_id === userId).sort((a, b) => b.created_at.localeCompare(a.created_at));
-        }
-
-        // Auto-migration: If DB is empty but we have local data, move it to DB
-        if (data.length === 0) {
-            const localScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
-            const userLocalScenarios = localScenarios.filter(s => s.user_id === userId);
-
-            if (userLocalScenarios.length > 0) {
-                console.log("Migrating scenarios to Supabase...");
-                const toInsert = userLocalScenarios.map(s => ({
-                    user_id: s.user_id,
-                    title: this._sanitize(s.title),
-                    timeline: s.timeline,
-                    is_public: s.is_public || false,
-                    author_name: this._sanitize(s.author_name || ''),
-                    created_at: s.created_at || new Date().toISOString()
-                }));
-
-                const { data: migratedData, error: migrationError } = await supabase
-                    .from('scenarios')
-                    .insert(toInsert)
-                    .select();
-
-                if (!migrationError && migratedData) {
-                    // Optional: Clear local storage or mark migrated? 
-                    // keeping logic simple for now.
-                    return migratedData.sort((a, b) => b.created_at.localeCompare(a.created_at));
-                }
-                // If migration fails, return local so user keeps seeing them
-                return userLocalScenarios;
-            }
-        }
-
-        return data;
+        const { data } = await postgrestFetch('scenarios', {
+            select: '*',
+            user_id: `eq.${userId}`,
+            order: 'created_at.desc'
+        });
+        return data || [];
     }
 
     async getPublicScenarios() {
-        const { data, error } = await supabase
-            .from('scenarios')
-            .select('*')
-            .eq('is_public', true)
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.warn("Public scenarios fetch failed", error);
-            return [];
-        }
-        return data;
+        const { data } = await postgrestFetch('scenarios', {
+            select: '*',
+            is_public: 'eq.true',
+            order: 'created_at.desc'
+        });
+        return data || [];
     }
 
     async addScenario(scenario) {
@@ -1440,26 +1186,12 @@ class SupabaseService {
             author_name: scenario.author_name
         }, { plain: ['title', 'author_name'] });
 
-        const { data, error } = await supabase
-            .from('scenarios')
-            .insert([sanitized])
-            .select()
-            .single();
-
-        if (error) {
-            console.warn("Scenario DB insert failed, saving locally", error);
-            // Local storage fallback
-            const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
-            const newScenario = {
-                ...sanitized,
-                id: Date.now(),
-                created_at: new Date().toISOString()
-            };
-            allScenarios.push(newScenario);
-            localStorage.setItem('garden_scenarios', JSON.stringify(allScenarios));
-            return newScenario;
-        }
-        return data;
+        const { data } = await postgrestFetch('scenarios', {}, {
+            method: 'POST',
+            body: [sanitized],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async saveScenario(scenario) {
@@ -1468,30 +1200,17 @@ class SupabaseService {
     }
 
     async deleteScenario(scenarioId) {
-        const { error } = await supabase
-            .from('scenarios')
-            .delete()
-            .eq('id', scenarioId);
-
-        if (error) {
-            console.warn("Scenario DB delete failed, trying local", error);
-            // Try deleting from local storage just in case it was a local fallback item
-            const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
-            const filtered = allScenarios.filter(s => s.id !== scenarioId);
-            localStorage.setItem('garden_scenarios', JSON.stringify(filtered));
-            return true;
-        }
+        await postgrestFetch('scenarios', { id: `eq.${scenarioId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
     }
 
     // Goals
     async getGoals(userId) {
-        const { data, error } = await supabase
-            .from('goals')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false });
-        if (error) throw error;
+        const { data } = await postgrestFetch('goals', {
+            select: '*',
+            user_id: `eq.${userId}`,
+            order: 'created_at.desc'
+        });
         return data;
     }
 
@@ -1501,35 +1220,56 @@ class SupabaseService {
             { plain: ['title', 'description'] }
         );
         const { id, ...rest } = sanitized; // Ensure no ID is sent for insert
-        const { data, error } = await supabase
-            .from('goals')
-            .insert([rest])
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        const { data } = await postgrestFetch('goals', {}, {
+            method: 'POST',
+            body: [rest],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async updateGoal(goal) {
         const { id, user_id, created_at, ...rest } = goal; // Exclude immutable fields
         const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
-        const { data, error } = await supabase
-            .from('goals')
-            .update(sanitized)
-            .eq('id', id)
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        const { data } = await postgrestFetch('goals', { id: `eq.${id}` }, {
+            method: 'PATCH',
+            body: sanitized,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async deleteGoal(goalId) {
-        const { error } = await supabase
-            .from('goals')
-            .delete()
-            .eq('id', goalId);
-        if (error) throw error;
+        await postgrestFetch('goals', { id: `eq.${goalId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
+    }
+
+    _normalizeProfile(profile) {
+        if (!profile) return null;
+        const data = { ...profile };
+        if (data.email === 'olga@skrebeyko.com') {
+            data.role = 'admin';
+            data.status = 'active';
+        }
+        if (data.status === 'suspended') {
+            throw new Error("Ваш аккаунт приостановлен. Обратитесь к администратору.");
+        }
+        return {
+            ...data,
+            avatar: data.avatar_url || data.avatar,
+            treeDesc: data.tree_desc || data.treeDesc,
+            role: data.email === 'olga@skrebeyko.com' ? 'admin' : data.role,
+            dob: data.dob,
+            seeds: data.seeds || 0,
+            skills: Array.isArray(data.skills) ? data.skills : [],
+            offer: data.offer || '',
+            unique_abilities: data.unique_abilities || '',
+            leader_about: data.leader_about || '',
+            leader_signature: data.leader_signature || '',
+            leader_reviews: Array.isArray(data.leader_reviews) ? data.leader_reviews : [],
+            telegram: data.telegram || '',
+            join_date: data.join_date
+        };
     }
 }
 

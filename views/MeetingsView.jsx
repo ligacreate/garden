@@ -1185,6 +1185,35 @@ const MeetingsView = ({
                                                 </div>
                                             </div>
                                             {formData.cover_image && (
+                                                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                                                    <div className="text-xs text-slate-500">Как выглядит в расписании</div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <div className="text-[11px] text-slate-400">Компьютер (широкое)</div>
+                                                            <div className="w-full rounded-2xl overflow-hidden bg-slate-100" style={{ aspectRatio: '16 / 9' }}>
+                                                                <img
+                                                                    src={formData.cover_image}
+                                                                    alt="Desktop preview"
+                                                                    className="w-full h-full object-cover"
+                                                                    style={{ objectPosition: `${formData.image_focus_x ?? 50}% ${formData.image_focus_y ?? 50}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <div className="text-[11px] text-slate-400">Телефон (квадрат)</div>
+                                                            <div className="w-full rounded-2xl overflow-hidden bg-slate-100" style={{ aspectRatio: '1 / 1' }}>
+                                                                <img
+                                                                    src={formData.cover_image}
+                                                                    alt="Mobile preview"
+                                                                    className="w-full h-full object-cover"
+                                                                    style={{ objectPosition: `${formData.image_focus_x ?? 50}% ${formData.image_focus_y ?? 50}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {formData.cover_image && (
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     <div>
                                                         <label className="block text-xs font-bold text-slate-600 mb-2 ml-1">Положение по горизонтали</label>

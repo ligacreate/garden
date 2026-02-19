@@ -468,17 +468,6 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                 {editingEvent.image_url && (
                                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-5">
                                         <div>
-                                            <div className="text-xs text-slate-500 mb-2">Полное фото</div>
-                                            <div className="w-full max-h-[320px] rounded-2xl overflow-hidden bg-slate-100">
-                                                <img
-                                                    src={editingEvent.image_url}
-                                                    alt={editingEvent.title || 'preview'}
-                                                    className="w-full h-full object-contain"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
                                             <div className="text-xs text-slate-500 mb-3">Как выглядит в расписании</div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div className="space-y-2">

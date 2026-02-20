@@ -4,6 +4,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import MeetingCard from '../components/MeetingCard';
 import { resolveCityTimezone } from '../utils/timezone';
+import { isMeetingPast } from '../utils/meetingTime';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
 import { getCostAmount, getCostCurrency } from '../utils/cost';
@@ -43,7 +44,7 @@ const CalendarWidget = ({ meetings, onPlanClick, currentDate, setCurrentDate, sh
 
         // Priority: Pending (Red) > Planned (Blue) > Completed (Green)
         const hasPending = dayMeetings.some(m => {
-            const isPast = new Date(m.date) < new Date().setHours(0, 0, 0, 0);
+            const isPast = isMeetingPast(m);
             return (m.status === 'planned' && isPast) || m.status === 'pending';
         });
         if (hasPending) return 'bg-amber-400';
@@ -132,6 +133,12 @@ const MonthAnalytics = ({ meetings, currentDate }) => {
             d.getFullYear() === currentDate.getFullYear() &&
             m.status === 'completed';
     });
+    const currentMonthCancelled = meetings.filter(m => {
+        const d = new Date(m.date);
+        return d.getMonth() === currentDate.getMonth() &&
+            d.getFullYear() === currentDate.getFullYear() &&
+            m.status === 'cancelled';
+    });
 
     const totalIncome = currentMonthMeetings.reduce((acc, m) => acc + (parseInt(m.income) || 0), 0);
     const totalGuests = currentMonthMeetings.reduce((acc, m) => acc + (parseInt(m.guests) || 0), 0);
@@ -156,11 +163,12 @@ const MonthAnalytics = ({ meetings, currentDate }) => {
                 <h3 className="font-bold text-slate-900">Результаты {monthName}</h3>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <MetricCard label="Доход" value={`${totalIncome.toLocaleString()} ₽`} />
                 <MetricCard label="Ср. чек" value={`${avgCheck.toLocaleString()} ₽`} colorClass="text-purple-600" />
                 <MetricCard label="Гости" value={totalGuests} />
                 <MetricCard label="Новенькие" value={totalNew} colorClass="text-green-600" />
+                <MetricCard label="Не состоялись" value={currentMonthCancelled.length} colorClass="text-slate-500" />
             </div>
         </div>
     );
@@ -181,7 +189,7 @@ const MeetingsTab = ({ meetings, users, onPlanClick, onResultClick, onCancelClic
     const sortedMeetings = [...filteredMeetings].sort((a, b) => {
         const statusPriority = { pending: 0, planned: 1, completed: 2, cancelled: 3 };
         const getStatus = (m) => {
-            const isPast = new Date(m.date) < new Date().setHours(0, 0, 0, 0);
+            const isPast = isMeetingPast(m);
             if (m.status === 'planned' && isPast) return 'pending';
             return m.status || 'planned';
         };

@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Users, Edit2, AlertCircle, Trash2 } from 'lucide-react';
 import Button from './Button';
-import { resolveCityTimezone } from '../utils/timezone';
+import { getMeetingInstant, getMeetingTimezone, isMeetingPast } from '../utils/meetingTime';
 
 const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete, onUpdate }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     // Helpers
-    const localDate = meeting.date ? new Date(`${meeting.date}T00:00:00`) : new Date();
-    const isPast = localDate < new Date().setHours(0, 0, 0, 0);
+    const isPast = isMeetingPast(meeting);
     const isPlanned = meeting.status === 'planned';
 
     // Auto-detect "Pending" state for UI: Planned but date passed
@@ -43,36 +42,9 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
         }
     };
 
-    const getTimeZoneOffsetMinutes = (date, timeZone) => {
-        const dtf = new Intl.DateTimeFormat('en-US', {
-            timeZone,
-            hour12: false,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-        const parts = dtf.formatToParts(date);
-        const values = Object.fromEntries(parts.map(p => [p.type, p.value]));
-        const asUtc = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute, values.second);
-        return (asUtc - date.getTime()) / 60000;
-    };
-
-    const getZonedDate = (dateStr, timeStr, timeZone) => {
-        if (!dateStr || !timeStr || !timeZone) return null;
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const [hh, mm] = timeStr.split(':').map(Number);
-        const utcGuess = new Date(Date.UTC(y, m - 1, d, hh, mm));
-        const offset = getTimeZoneOffsetMinutes(utcGuess, timeZone);
-        return new Date(utcGuess.getTime() - offset * 60000);
-    };
-
     const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const cityTz = resolveCityTimezone(meeting.city, null);
-    const meetingTimezone = cityTz || meeting.timezone || viewerTz;
-    const meetingInstant = meeting.time ? getZonedDate(meeting.date, meeting.time, meetingTimezone) : null;
+    const meetingTimezone = getMeetingTimezone(meeting, viewerTz);
+    const meetingInstant = meeting.time ? getMeetingInstant(meeting, viewerTz) : null;
     const timeZoneLabel = meetingInstant
         ? new Intl.DateTimeFormat('ru-RU', { timeZone: meetingTimezone, timeZoneName: 'short' })
             .formatToParts(meetingInstant)
@@ -118,7 +90,7 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                         </div>
                         <div className="text-xs text-slate-400 font-medium flex items-center gap-1">
                             <Calendar size={12} />
-                            {localDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+                            {meeting.date ? new Date(`${meeting.date}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'Дата не указана'}
                         </div>
                     </div>
                     <h3 className={`text-xl font-display font-semibold text-slate-900 mb-1 ${status === 'cancelled' ? 'line-through text-slate-400' : ''}`}>

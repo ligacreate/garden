@@ -10,12 +10,8 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     const [period, setPeriod] = useState('month'); // 'month', 'year', 'all', 'custom'
     const [customRange, setCustomRange] = useState({ from: '', to: '' });
 
-    // Filter meetings by period and only completed
-    const filteredMeetings = meetings.filter(m => {
-        const status = String(m.status || '').toLowerCase();
-        if (status !== 'completed') return false;
+    const isInPeriod = (date) => {
         if (period === 'all') return true;
-        const date = new Date(m.date);
         const now = new Date();
         if (Number.isNaN(date.getTime())) return false;
         if (period === 'month') {
@@ -36,6 +32,21 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
             return true;
         }
         return true;
+    };
+
+    // Filter meetings by period and status
+    const filteredMeetings = meetings.filter(m => {
+        const status = String(m.status || '').toLowerCase();
+        if (status !== 'completed') return false;
+        const date = new Date(m.date);
+        return isInPeriod(date);
+    });
+
+    const filteredCancelledMeetings = meetings.filter(m => {
+        const status = String(m.status || '').toLowerCase();
+        if (status !== 'cancelled') return false;
+        const date = new Date(m.date);
+        return isInPeriod(date);
     });
 
     // Stats Calculations
@@ -62,6 +73,14 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
         leaders[leaderName] = (leaders[leaderName] || 0) + 1;
     });
     const topLeaders = Object.entries(leaders).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    // Cancelled by Leaders
+    const cancelledLeaders = {};
+    filteredCancelledMeetings.forEach(m => {
+        const leaderName = users.find(u => u.id === m.user_id)?.name || 'Неизвестный';
+        cancelledLeaders[leaderName] = (cancelledLeaders[leaderName] || 0) + 1;
+    });
+    const topCancelledLeaders = Object.entries(cancelledLeaders).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -104,12 +123,19 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
             </div>
 
             {/* Key Metrics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-6 rounded-3xl text-white shadow-[0_20px_40px_-24px_rgba(47,111,84,0.6)] relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><Calendar size={64} /></div>
                     <div className="relative z-10">
                         <div className="text-blue-100 text-sm font-medium mb-1">Проведено встреч</div>
                         <div className="text-4xl font-bold tracking-tight">{totalMeetings}</div>
+                    </div>
+                </div>
+                <div className="surface-card p-6 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4 text-slate-100 group-hover:scale-110 transition-transform"><Trash2 size={64} /></div>
+                    <div className="relative z-10">
+                        <div className="text-slate-400 text-sm font-medium mb-1">Не состоялись</div>
+                        <div className="text-4xl font-bold text-slate-800 tracking-tight">{filteredCancelledMeetings.length}</div>
                     </div>
                 </div>
                 <div className="surface-card p-6 relative overflow-hidden group">
@@ -129,7 +155,7 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
             </div>
 
             {/* Charts Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Cities */}
                 <div className="surface-card p-6 min-h-[300px]">
                     <h3 className="text-lg font-display font-semibold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
@@ -171,6 +197,32 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
                                     </div>
                                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                                         <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(count / topLeaders[0][1]) * 100}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Cancelled by Leaders */}
+                <div className="surface-card p-6 min-h-[300px]">
+                    <h3 className="text-lg font-display font-semibold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-50 pb-4">
+                        <Trash2 size={20} className="text-slate-500" />
+                        Не состоялись по ведущим
+                    </h3>
+                    <div className="space-y-4">
+                        {topCancelledLeaders.length === 0 ? (
+                            <div className="text-sm text-slate-400">Пока без отмен в этом периоде</div>
+                        ) : topCancelledLeaders.map(([name, count], i) => (
+                            <div key={name} className="flex items-center gap-4">
+                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-xs">{i + 1}</div>
+                                <div className="flex-1">
+                                    <div className="flex justify-between mb-1">
+                                        <span className="font-medium text-slate-700">{name}</span>
+                                        <span className="font-bold text-slate-900">{count}</span>
+                                    </div>
+                                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-slate-400 rounded-full" style={{ width: `${(count / topCancelledLeaders[0][1]) * 100}%` }}></div>
                                     </div>
                                 </div>
                             </div>

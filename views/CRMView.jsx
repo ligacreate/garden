@@ -13,16 +13,77 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
     const [deleteClientId, setDeleteClientId] = useState(null);
     const [clientForm, setClientForm] = useState({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '', birthDate: '' });
 
+    const parseDateValue = (value) => {
+        if (!value) return null;
+        const raw = String(value).trim();
+        if (!raw) return null;
+
+        const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (iso) {
+            const [, yyyy, mm, dd] = iso;
+            return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+        }
+
+        const ru = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+        if (ru) {
+            const [, dd, mm, yyyy] = ru;
+            return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+        }
+
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const formatDateForInput = (value) => {
+        const d = parseDateValue(value);
+        if (!d) return '';
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    const formatDateForDisplay = (value) => {
+        const d = parseDateValue(value);
+        return d ? d.toLocaleDateString('ru-RU') : '';
+    };
+
     const handleOpenAdd = () => { setEditingId(null); setClientForm({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '', birthDate: '' }); setIsClientModalOpen(true); };
-    const handleOpenEdit = (c) => { setEditingId(c.id); setClientForm({ name: c.name, contact: c.contact, notes: c.notes, status: c.status, lastVisit: c.lastVisit, lastContact: c.lastContact, birthDate: c.birthDate || '' }); setIsClientModalOpen(true); };
-    const handleSave = () => { if (editingId) { onUpdateClient({ ...clientForm, id: editingId }); onNotify("Клиент обновлен"); } else { onAddClient(clientForm); onNotify("Новый клиент добавлен"); } setIsClientModalOpen(false); };
+    const handleOpenEdit = (c) => {
+        setEditingId(c.id);
+        setClientForm({
+            name: c.name,
+            contact: c.contact,
+            notes: c.notes,
+            status: c.status,
+            lastVisit: formatDateForInput(c.lastVisit),
+            lastContact: formatDateForInput(c.lastContact),
+            birthDate: formatDateForInput(c.birthDate)
+        });
+        setIsClientModalOpen(true);
+    };
+    const handleSave = () => {
+        const payload = {
+            ...clientForm,
+            birthDate: formatDateForInput(clientForm.birthDate),
+            lastContact: formatDateForInput(clientForm.lastContact),
+            lastVisit: formatDateForInput(clientForm.lastVisit)
+        };
+        if (editingId) {
+            onUpdateClient({ ...payload, id: editingId });
+            onNotify("Клиент обновлен");
+        } else {
+            onAddClient(payload);
+            onNotify("Новый клиент добавлен");
+        }
+        setIsClientModalOpen(false);
+    };
 
     const getDaysUntilBirthday = (birthDate) => {
-        if (!birthDate) return null;
-        const m = String(birthDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (!m) return null;
-        const month = Number(m[2]) - 1;
-        const day = Number(m[3]);
+        const parsedBirthDate = parseDateValue(birthDate);
+        if (!parsedBirthDate) return null;
+        const month = parsedBirthDate.getMonth();
+        const day = parsedBirthDate.getDate();
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         let next = new Date(today.getFullYear(), month, day);
@@ -60,7 +121,8 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {clientsSorted.map(c => {
                     // Reminder Logic
-                    const daysInactive = c.lastContact ? Math.floor((new Date() - new Date(c.lastContact)) / (1000 * 60 * 60 * 24)) : null;
+                    const lastContactDate = parseDateValue(c.lastContact);
+                    const daysInactive = lastContactDate ? Math.floor((new Date() - lastContactDate) / (1000 * 60 * 60 * 24)) : null;
                     const isOverdue = daysInactive && daysInactive > 30;
                     const daysToBirthday = getDaysUntilBirthday(c.birthDate);
                     const hasUpcomingBirthday = daysToBirthday !== null && daysToBirthday <= 14;
@@ -117,13 +179,13 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
 
                             {/* Footer: Dates if needed, or just padding */}
                             <div className="mt-6 pt-4 border-t border-slate-50 flex justify-between text-xs text-slate-400 items-center">
-                                <span>{c.lastVisit ? `Визит: ${new Date(c.lastVisit).toLocaleDateString()}` : ''}</span>
+                                <span>{c.lastVisit ? `Визит: ${formatDateForDisplay(c.lastVisit)}` : ''}</span>
                                 {isOverdue ? (
                                     <span className="text-amber-500 font-bold flex items-center gap-1">
                                         Давно не общались ({daysInactive} дн.)
                                     </span>
                                 ) : (
-                                    <span>{c.lastContact ? `Контакт: ${new Date(c.lastContact).toLocaleDateString()}` : ''}</span>
+                                    <span>{c.lastContact ? `Контакт: ${formatDateForDisplay(c.lastContact)}` : ''}</span>
                                 )}
                             </div>
                         </div>
@@ -190,11 +252,11 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <div>
                                         <div className="text-xs text-slate-400 mb-1">Дата рождения</div>
-                                        <div className="font-medium text-slate-700">{viewClient.birthDate ? new Date(viewClient.birthDate).toLocaleDateString() : '—'}</div>
+                                        <div className="font-medium text-slate-700">{viewClient.birthDate ? formatDateForDisplay(viewClient.birthDate) : '—'}</div>
                                     </div>
                                     <div>
                                         <div className="text-xs text-slate-400 mb-1">Последний контакт</div>
-                                        <div className="font-medium text-slate-700">{viewClient.lastContact ? new Date(viewClient.lastContact).toLocaleDateString() : '—'}</div>
+                                        <div className="font-medium text-slate-700">{viewClient.lastContact ? formatDateForDisplay(viewClient.lastContact) : '—'}</div>
                                     </div>
                                 </div>
                             )}

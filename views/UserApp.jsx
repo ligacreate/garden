@@ -124,16 +124,18 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
         const loadData = async () => {
             if (user?.id) {
                 try {
-                    const [meetingsData, practicesData, scenariosData, goalsData] = await Promise.all([
+                    const [meetingsData, practicesData, scenariosData, goalsData, clientsData] = await Promise.all([
                         api.getMeetings(user.id),
                         api.getPractices(user.id),
                         api.getScenarios(user.id),
-                        api.getGoals(user.id)
+                        api.getGoals(user.id),
+                        api.getClients(user.id)
                     ]);
                     setMeetings(meetingsData || []);
                     setPractices(practicesData || []);
                     setScenarios(scenariosData || []);
                     setGoals(goalsData || []);
+                    setClients(clientsData || []);
                 } catch (e) {
                     console.error("Failed to load data", e);
                 }
@@ -380,20 +382,11 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
         try {
             // Find old client to compare notes
             const oldClient = clients.find(c => c.id === updatedClient.id);
-
-            // Assume API update happens here if we had one specific for clients, 
-            // for now we trust the CRMView handled the layout, but ideally we move API calls here.
-            // Since CRMView calls this to update LOCAL state, we just do that.
-            // If CRMView calls api.updateClient inside it (it doesn't seems so from my earlier read, it just calls onUpdateClient),
-            // wait, let's check CRMView again.
-            // CRMView: "if (editingId) { onUpdateClient({ ...clientForm, id: editingId }); ... }"
-            // It effectively expects parent to handle storage/state.
-            // But checking other handlers, e.g. handleUpdateMeeting, they CALL api.updateMeeting.
-            // CRMView DOES NOT call api. So I need to call api.updateClient here if it exists.
-            // checking handleAddClient, it didn't call api.
-            // So for now, we just update state.
-
-            setClients(clients.map(old => old.id === updatedClient.id ? updatedClient : old));
+            let savedClient = updatedClient;
+            if (api.updateClient) {
+                savedClient = await api.updateClient(updatedClient);
+            }
+            setClients(prev => prev.map(old => old.id === savedClient.id ? savedClient : old));
 
             // Seed Bonus for Notes: +5
             if (oldClient && updatedClient.notes && updatedClient.notes !== oldClient.notes) {
@@ -404,25 +397,26 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                 onNotify("Клиент обновлен");
             }
 
-            // Sync with backend (mock or real)
-            if (api.updateClient) await api.updateClient(updatedClient);
-
-
         } catch (e) {
             console.error(e);
             onNotify("Ошибка обновления клиента");
         }
     };
 
-    const handleAddClient = (client) => {
-        // Local Logic for now
-        const newClient = { id: Date.now(), ...client };
-        setClients([...clients, newClient]);
+    const handleAddClient = async (client) => {
+        try {
+            const payload = { ...client, user_id: user.id };
+            const newClient = api.addClient ? await api.addClient(payload) : { id: Date.now(), ...payload };
+            setClients(prev => [newClient, ...prev]);
 
-        // Seed Bonus: +10
-        const seedsEarned = 10;
-        onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
-        onNotify(`Клиент добавлен! +${seedsEarned} семян`);
+            // Seed Bonus: +10
+            const seedsEarned = 10;
+            onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+            onNotify(`Клиент добавлен! +${seedsEarned} семян`);
+        } catch (e) {
+            console.error(e);
+            onNotify("Ошибка создания клиента");
+        }
     };
 
     const handleDeleteClient = async (clientId) => {

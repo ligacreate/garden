@@ -5,6 +5,7 @@ const Input = ({ label, type = "text", placeholder, value, onChange, className =
     const [showPassword, setShowPassword] = useState(false);
     const isPassword = type === 'password';
     const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+    const rightPaddingClass = isPassword ? 'pr-10' : 'pr-3';
 
     return (
         <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -19,7 +20,7 @@ const Input = ({ label, type = "text", placeholder, value, onChange, className =
                     value={value}
                     onChange={onChange}
                     placeholder={placeholder}
-                    className={`input-field pr-10 ${inputClassName}`}
+                    className={`input-field ${rightPaddingClass} ${inputClassName}`}
                     {...props}
                 />
                 {isPassword && (

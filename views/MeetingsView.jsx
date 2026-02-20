@@ -314,27 +314,27 @@ const MasteryTab = ({ meetings, goals, onAddGoal, onEditGoal, onToggleGoal, onDe
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
             {/* Header: Controls */}
-            <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
-                <div className="flex-1 min-w-[200px]">
+            <div className="mb-8 rounded-2xl border border-slate-200/70 bg-white/70 backdrop-blur-sm p-3 md:p-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_220px] gap-3 items-center">
                     <Input
                         placeholder="Поиск по рефлексиям..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-white"
-                        inputClassName="focus:ring-0 focus:border-blue-500 shadow-sm"
+                        className="bg-transparent"
+                        inputClassName="h-12 bg-white border-slate-200 focus:ring-0 focus:border-blue-500 shadow-sm"
                     />
+                    <select
+                        value={period}
+                        onChange={(e) => setPeriod(e.target.value)}
+                        className="h-12 bg-white border border-slate-200 text-slate-600 font-medium text-sm rounded-xl px-4 cursor-pointer hover:bg-slate-50 focus:ring-2 focus:ring-blue-100 outline-none shadow-sm"
+                    >
+                        <option value="1m">Последний месяц</option>
+                        <option value="3m">Последние 3 месяца</option>
+                        <option value="6m">Последние 6 месяцев</option>
+                        <option value="year">Весь год</option>
+                        <option value="all">Всё время</option>
+                    </select>
                 </div>
-                <select
-                    value={period}
-                    onChange={(e) => setPeriod(e.target.value)}
-                    className="bg-white border-none text-slate-500 font-medium text-sm rounded-xl px-4 py-3 cursor-pointer hover:bg-slate-50 focus:ring-2 focus:ring-blue-100 outline-none shadow-sm"
-                >
-                    <option value="1m">Последний месяц</option>
-                    <option value="3m">Последние 3 месяца</option>
-                    <option value="6m">Последние 6 месяцев</option>
-                    <option value="year">Весь год</option>
-                    <option value="all">Всё время</option>
-                </select>
             </div>
 
             {/* SUGGESTION BANNER */}

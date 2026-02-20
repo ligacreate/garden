@@ -59,6 +59,8 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
         () => users.map(u => (u.id === user.id ? { ...u, ...user } : u)),
         [users, user]
     );
+    const normalizedRole = (user?.role || '').toLowerCase();
+    const isAdmin = normalizedRole === ROLES.ADMIN;
     const skillOptions = useMemo(() => {
         const skillMap = new Map();
         users.forEach((u) => {
@@ -492,7 +494,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                     <UserAvatar user={user} size="md" />
                                 </div>
                                 <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
-                                    <div className={`w-2.5 h-2.5 rounded-full border border-white ${user.role === ROLES.ADMIN ? 'bg-purple-500' : 'bg-green-500'}`}></div>
+                                    <div className={`w-2.5 h-2.5 rounded-full border border-white ${isAdmin ? 'bg-purple-500' : 'bg-green-500'}`}></div>
                                 </div>
                             </div>
                             <div className="flex flex-col">
@@ -541,7 +543,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                 active={view === 'library'}
                                 onClick={() => handleViewChange('library')}
                             />
-                            {hasAccess(user.role, 'leader') && (
+                            {hasAccess(normalizedRole, 'leader') && (
                                 <>
                                     <SidebarItem
                                         icon={Users}
@@ -551,7 +553,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                                     />
                                 </>
                             )}
-                            {user.role === ROLES.ADMIN && (
+                            {isAdmin && (
                                 <SidebarItem
                                     icon={Shield}
                                     label="Админка"
@@ -606,13 +608,13 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                             <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
                             <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                             <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
-                            {hasAccess(user.role, 'leader') && (
+                            {hasAccess(normalizedRole, 'leader') && (
                                 <>
                                     <SidebarItem icon={Users} label="Люди" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
                                 </>
                             )}
                             <div className="h-px bg-slate-100 my-4"></div>
-                            {user.role === ROLES.ADMIN && (
+                            {isAdmin && (
                                 <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
                             )}
                             <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />

@@ -20,6 +20,8 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
     const coHostNames = (Array.isArray(meeting.co_hosts) ? meeting.co_hosts : [])
         .map(id => users.find(u => u.id === id)?.name)
         .filter(Boolean);
+    const hostUser = users.find(u => u.id === meeting.user_id);
+    const isInternHosted = hostUser?.role === 'intern';
 
     const getStatusColor = () => {
         switch (status) {
@@ -139,6 +141,11 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                     {coHostNames.length > 0 && (
                         <div className="text-xs text-slate-500 mb-1">
                             Со‑ведущие: <span className="font-medium text-slate-700">{coHostNames.join(', ')}</span>
+                        </div>
+                    )}
+                    {isInternHosted && (
+                        <div className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full inline-flex items-center gap-1 mt-1 mb-1">
+                            Встречу проводит стажер
                         </div>
                     )}
                     {status === 'planned' && (

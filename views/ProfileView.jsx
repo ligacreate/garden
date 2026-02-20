@@ -154,7 +154,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
     // Calculate Progress
     const calculateProgress = () => {
         let completed = 0;
-        const total = 8; // Name, City, Avatar, Directions, Skills, Offer, Unique, JoinDate
+        const total = 7; // Name, City, Avatar, Skills, Offer, Unique, JoinDate
         if (user.name) completed++;
         if (user.city) completed++;
         if (user.avatar) completed++;

@@ -11,11 +11,35 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
     const [editingId, setEditingId] = useState(null);
     const [viewClient, setViewClient] = useState(null);
     const [deleteClientId, setDeleteClientId] = useState(null);
-    const [clientForm, setClientForm] = useState({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '' });
+    const [clientForm, setClientForm] = useState({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '', birthDate: '' });
 
-    const handleOpenAdd = () => { setEditingId(null); setClientForm({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '' }); setIsClientModalOpen(true); };
-    const handleOpenEdit = (c) => { setEditingId(c.id); setClientForm({ name: c.name, contact: c.contact, notes: c.notes, status: c.status, lastVisit: c.lastVisit, lastContact: c.lastContact }); setIsClientModalOpen(true); };
+    const handleOpenAdd = () => { setEditingId(null); setClientForm({ name: '', contact: '', notes: '', status: 'new', lastVisit: '', lastContact: '', birthDate: '' }); setIsClientModalOpen(true); };
+    const handleOpenEdit = (c) => { setEditingId(c.id); setClientForm({ name: c.name, contact: c.contact, notes: c.notes, status: c.status, lastVisit: c.lastVisit, lastContact: c.lastContact, birthDate: c.birthDate || '' }); setIsClientModalOpen(true); };
     const handleSave = () => { if (editingId) { onUpdateClient({ ...clientForm, id: editingId }); onNotify("Клиент обновлен"); } else { onAddClient(clientForm); onNotify("Новый клиент добавлен"); } setIsClientModalOpen(false); };
+
+    const getDaysUntilBirthday = (birthDate) => {
+        if (!birthDate) return null;
+        const m = String(birthDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return null;
+        const month = Number(m[2]) - 1;
+        const day = Number(m[3]);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        let next = new Date(today.getFullYear(), month, day);
+        if (next < today) next = new Date(today.getFullYear() + 1, month, day);
+        return Math.floor((next - today) / (1000 * 60 * 60 * 24));
+    };
+
+    const clientsSorted = [...clients].sort((a, b) => {
+        const aDays = getDaysUntilBirthday(a.birthDate);
+        const bDays = getDaysUntilBirthday(b.birthDate);
+        const aHas = aDays !== null;
+        const bHas = bDays !== null;
+        if (aHas && bHas) return aDays - bDays;
+        if (aHas) return -1;
+        if (bHas) return 1;
+        return 0;
+    });
 
     return (
         <div className="h-full flex flex-col pt-6 px-4 lg:px-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -34,10 +58,12 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
             </div>
             {/* Client Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {clients.map(c => {
+                {clientsSorted.map(c => {
                     // Reminder Logic
                     const daysInactive = c.lastContact ? Math.floor((new Date() - new Date(c.lastContact)) / (1000 * 60 * 60 * 24)) : null;
                     const isOverdue = daysInactive && daysInactive > 30;
+                    const daysToBirthday = getDaysUntilBirthday(c.birthDate);
+                    const hasUpcomingBirthday = daysToBirthday !== null && daysToBirthday <= 14;
                     // Also consider "new" interaction? or just if lastContact is old.
                     // If no contact ever, maybe also flag? existing logic: check if 'new' status.
                     // For now, only flag if lastContact > 30.
@@ -46,7 +72,7 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
                         <div
                             key={c.id}
                             onClick={() => setViewClient(c)}
-                            className={`bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-sm border flex flex-col h-full group hover:shadow-xl hover:-translate-y-1 transition-all duration-500 relative cursor-pointer ${isOverdue ? 'border-amber-200 ring-1 ring-amber-200' : 'border-white/50'}`}
+                            className={`bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-sm border flex flex-col h-full group hover:shadow-xl hover:-translate-y-1 transition-all duration-500 relative cursor-pointer ${isOverdue ? 'border-amber-200 ring-1 ring-amber-200' : hasUpcomingBirthday ? 'border-violet-200 ring-1 ring-violet-200' : 'border-white/50'}`}
                         >
                             {/* Header: Icon & Edit */}
                             <div className="flex justify-between items-start mb-6">
@@ -66,6 +92,11 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
                                                 </span>
                                             )}
                                         </div>
+                                        {daysToBirthday !== null && (
+                                            <span className={`px-3 py-1 inline-block rounded-full text-xs font-medium border border-dashed ${hasUpcomingBirthday ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                                {daysToBirthday === 0 ? 'ДР сегодня' : `ДР через ${daysToBirthday} дн.`}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 

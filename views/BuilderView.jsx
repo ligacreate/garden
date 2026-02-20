@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
 import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, User, GripVertical } from 'lucide-react';
@@ -279,6 +279,8 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [scenarioTitle, setScenarioTitle] = useState('');
     const [timeFilter, setTimeFilter] = useState('all');
+    const [typeFilter, setTypeFilter] = useState('all');
+    const [practiceSearch, setPracticeSearch] = useState('');
     const [deleteConfirmation, setDeleteConfirmation] = useState({ isOpen: false, scenarioId: null });
     const [dragOverIndex, setDragOverIndex] = useState(null);
     const [draggedTimelineId, setDraggedTimelineId] = useState(null);
@@ -289,6 +291,31 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
     const [leagueScenarios, setLeagueScenarios] = useState([]);
 
     const totalTime = timeline.reduce((acc, item) => acc + (parseInt(item.time) || 0), 0) + 40;
+
+    const practiceTypes = useMemo(() => {
+        const types = new Set();
+        (practices || []).forEach((p) => {
+            const t = String(p?.type || '').trim();
+            if (t) types.add(t);
+        });
+        return ['all', ...Array.from(types)];
+    }, [practices]);
+
+    const filteredPractices = useMemo(() => {
+        const needle = practiceSearch.trim().toLowerCase();
+        return (practices || []).filter((p) => {
+            const minutes = parseInt(p.time) || 0;
+            if (timeFilter === 'short' && !(minutes >= 5 && minutes <= 15)) return false;
+            if (timeFilter === 'medium' && !(minutes >= 20 && minutes <= 30)) return false;
+            if (timeFilter === 'long' && !(minutes >= 40)) return false;
+
+            if (typeFilter !== 'all' && String(p.type || '') !== typeFilter) return false;
+
+            if (!needle) return true;
+            const hay = `${p.title || ''} ${p.description || ''} ${p.type || ''}`.toLowerCase();
+            return hay.includes(needle);
+        });
+    }, [practices, timeFilter, typeFilter, practiceSearch]);
 
     useEffect(() => {
         if (activeTab === 'my') {
@@ -460,25 +487,36 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                             <div className="overflow-y-auto pr-2 space-y-3 pb-20 h-[calc(100vh-250px)] md:h-auto">
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">База практик</h3>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                                    <input
+                                        value={practiceSearch}
+                                        onChange={(e) => setPracticeSearch(e.target.value)}
+                                        placeholder="Поиск практик..."
+                                        className="sm:col-span-2 bg-white border border-slate-200 text-sm text-slate-700 rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-blue-200"
+                                    />
                                     <select
                                         value={timeFilter}
                                         onChange={(e) => setTimeFilter(e.target.value)}
-                                        className="bg-slate-50 border-none text-xs text-slate-500 font-medium rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                                        className="bg-slate-50 border border-slate-200 text-xs text-slate-500 font-medium rounded-xl px-2 py-2 outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
                                     >
                                         <option value="all">Любое время</option>
                                         <option value="short">5-15 мин</option>
                                         <option value="medium">20-30 мин</option>
                                         <option value="long">40+ мин</option>
                                     </select>
+                                    <select
+                                        value={typeFilter}
+                                        onChange={(e) => setTypeFilter(e.target.value)}
+                                        className="sm:col-span-3 bg-slate-50 border border-slate-200 text-xs text-slate-500 font-medium rounded-xl px-2 py-2 outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                                    >
+                                        <option value="all">Все типы</option>
+                                        {practiceTypes.filter(t => t !== 'all').map((type) => (
+                                            <option key={type} value={type}>{type}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                {practices.filter(p => {
-                                    if (timeFilter === 'all') return true;
-                                    const minutes = parseInt(p.time) || 0;
-                                    if (timeFilter === 'short') return minutes >= 5 && minutes <= 15;
-                                    if (timeFilter === 'medium') return minutes >= 20 && minutes <= 30;
-                                    if (timeFilter === 'long') return minutes >= 40;
-                                    return true;
-                                }).map(practice => (
+                                {filteredPractices.map(practice => (
                                     <div
                                         key={practice.id}
                                         draggable
@@ -496,6 +534,11 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                         <Plus size={16} className="text-slate-300 group-hover:text-blue-500" />
                                     </div>
                                 ))}
+                                {filteredPractices.length === 0 && (
+                                    <div className="text-sm text-slate-400 text-center py-8 border border-dashed border-slate-200 rounded-2xl">
+                                        Ничего не найдено. Измените фильтры.
+                                    </div>
+                                )}
                             </div>
                             <div className="bg-slate-50 rounded-3xl p-6 flex flex-col border border-slate-200/50 h-[calc(100vh-250px)] md:h-auto overflow-hidden">
                                 <div className="mb-4">

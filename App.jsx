@@ -180,9 +180,13 @@ export default function App() {
                         }
                     }} onAddNews={async (n) => {
                         try {
-                            api.checkActionTimer();
-                            setNews([n, ...news]);
-                            await api.addNews(n);
+                            const created = await api.addNews(n);
+                            if (created) {
+                                setNews([created, ...news]);
+                            } else {
+                                const fresh = await api.getNews();
+                                setNews(fresh || []);
+                            }
                             showNotification("Новость опубликована");
                         } catch (e) {
                             console.error(e);

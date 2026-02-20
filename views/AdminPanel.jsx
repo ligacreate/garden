@@ -340,9 +340,14 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                             />
                             <Button onClick={async () => {
                                 if (!newContent.template) return;
-                                await api.addBirthdayTemplate(newContent.template);
-                                setNewContent({ ...newContent, template: '' });
-                                onNotify("Шаблон добавлен!");
+                                try {
+                                    await api.addBirthdayTemplate(newContent.template);
+                                    setNewContent({ ...newContent, template: '' });
+                                    onNotify("Шаблон добавлен!");
+                                } catch (e) {
+                                    console.error(e);
+                                    onNotify(e.message || "Ошибка сохранения шаблона");
+                                }
                             }}>Добавить вариант поздравления</Button>
                         </div>
                     </div>

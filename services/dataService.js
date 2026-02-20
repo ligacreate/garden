@@ -1151,8 +1151,8 @@ class SupabaseService {
         this.checkActionTimer();
         const sanitized = this._sanitizeFields(item, { plain: ['title'], rich: ['body'] });
         const { id, ...rest } = sanitized;
-        await postgrestFetch('news', {}, { method: 'POST', body: [rest], returnRepresentation: true });
-        return true;
+        const { data } = await postgrestFetch('news', {}, { method: 'POST', body: [rest], returnRepresentation: true });
+        return data?.[0] || null;
     }
 
     async updateNews(item) {

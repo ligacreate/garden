@@ -3,6 +3,7 @@ import { Plus, X, Calendar as CalendarIcon, Users, Clock, MessageSquare, AlertCi
 import Button from '../components/Button';
 import Input from '../components/Input';
 import MeetingCard from '../components/MeetingCard';
+import { resolveCityTimezone } from '../utils/timezone';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
 import { getCostAmount, getCostCurrency } from '../utils/cost';
@@ -656,8 +657,9 @@ const MeetingsView = ({
             { text: 'Напомнить за день', completed: false }
         ];
 
-        const resolvedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        setFormData(meeting ? { ...meeting, timezone: meeting.timezone || resolvedTz, image_focus_x: meeting.image_focus_x ?? 50, image_focus_y: meeting.image_focus_y ?? 50 } : {
+        const fallbackTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const resolvedTz = resolveCityTimezone(meeting?.city, meeting?.timezone || fallbackTz);
+        setFormData(meeting ? { ...meeting, timezone: resolvedTz, image_focus_x: meeting.image_focus_x ?? 50, image_focus_y: meeting.image_focus_y ?? 50 } : {
             title: '',
             date: new Date().toISOString().split('T')[0],
             time: '19:00',
@@ -742,7 +744,7 @@ const MeetingsView = ({
                 ...formData,
                 user_id: user.id,
                 status: 'planned',
-                timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+                timezone: resolveCityTimezone(formData.city, formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)
             };
 
             const missing = validatePublicFields(meetingData);
@@ -838,7 +840,7 @@ const MeetingsView = ({
                     user_id: user.id,
                     status: 'planned',
                     checklist: formData.checklist,
-                    timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+                    timezone: resolveCityTimezone(formData.city, formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)
                 };
                 await onAddMeeting(newMeeting);
             }
@@ -1065,7 +1067,7 @@ const MeetingsView = ({
                                         />
                                     </div>
                                     <div className="text-xs text-slate-400">
-                                        Время встречи указывается в вашем часовом поясе: <span className="font-medium text-slate-500">{formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}</span>.
+                                        Время встречи указывается в часовом поясе города события: <span className="font-medium text-slate-500">{resolveCityTimezone(formData.city, formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)}</span>.
                                         Участницы увидят своё локальное время.
                                     </div>
                                 </div>

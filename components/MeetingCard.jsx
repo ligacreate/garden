@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Users, Edit2, AlertCircle, Trash2 } from 'lucide-react';
 import Button from './Button';
+import { resolveCityTimezone } from '../utils/timezone';
 
 const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete, onUpdate }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -66,14 +67,15 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
         return new Date(utcGuess.getTime() - offset * 60000);
     };
 
-    const meetingTimezone = meeting.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const cityTz = resolveCityTimezone(meeting.city, null);
+    const meetingTimezone = cityTz || meeting.timezone || viewerTz;
     const meetingInstant = meeting.time ? getZonedDate(meeting.date, meeting.time, meetingTimezone) : null;
     const timeZoneLabel = meetingInstant
         ? new Intl.DateTimeFormat('ru-RU', { timeZone: meetingTimezone, timeZoneName: 'short' })
             .formatToParts(meetingInstant)
             .find(p => p.type === 'timeZoneName')?.value
         : meetingTimezone;
-    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const localTimeLabel = meetingInstant
         ? new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(meetingInstant)
         : null;

@@ -131,11 +131,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
                         api.getGoals(user.id)
                     ]);
                     setMeetings(meetingsData || []);
-                    if (!practicesData || practicesData.length === 0) {
-                        setPractices(INITIAL_PRACTICES);
-                    } else {
-                        setPractices(practicesData);
-                    }
+                    setPractices(practicesData || []);
                     setScenarios(scenariosData || []);
                     setGoals(goalsData || []);
                 } catch (e) {

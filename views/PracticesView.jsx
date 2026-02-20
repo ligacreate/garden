@@ -14,6 +14,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
     const [formData, setFormData] = useState({ id: null, title: '', time: '', type: '', description: '', icon: '📄' });
     const [selectedCategory, setSelectedCategory] = useState('Все');
     const [timeFilter, setTimeFilter] = useState('all');
+    const isAdmin = user?.role === 'admin';
 
     // Helper to normalize text (capitalize first letter)
     const normalize = (str) => {

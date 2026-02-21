@@ -62,6 +62,31 @@ const authFetch = async (path, options = {}) => {
     return data;
 };
 
+const extensionByContentType = (contentType) => {
+    switch (contentType) {
+        case 'image/jpeg':
+            return 'jpg';
+        case 'image/png':
+            return 'png';
+        case 'image/webp':
+            return 'webp';
+        default:
+            return 'bin';
+    }
+};
+
+const buildUploadFileName = (folder, fileName, contentType) => {
+    const ext = extensionByContentType(contentType);
+    const rawBase = String(fileName || `${folder}-${Date.now()}`)
+        .replace(/\.[^.]+$/, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 64);
+    const base = rawBase || `${folder}-${Date.now()}`;
+    return `${base}.${ext}`;
+};
+
 // Helper to simulate delay for local storage operations
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -624,7 +649,7 @@ class SupabaseService {
     async _uploadToS3(file, folder) {
         if (!file) return null;
         const contentType = file.type || 'image/jpeg';
-        const fileName = file.name || `${folder}-${Date.now()}.jpg`;
+        const fileName = buildUploadFileName(folder, file.name, contentType);
 
         const sign = await authFetch('/storage/sign', {
             method: 'POST',
@@ -646,7 +671,8 @@ class SupabaseService {
         });
 
         if (!uploadRes.ok) {
-            throw new Error('Ошибка загрузки файла в хранилище.');
+            const details = await uploadRes.text().catch(() => '');
+            throw new Error(details || 'Ошибка загрузки файла в хранилище.');
         }
 
         return sign.publicUrl;

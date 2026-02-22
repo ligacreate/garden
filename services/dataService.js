@@ -127,28 +127,60 @@ const resolveStorageSign = async (body) => {
     const token = getAuthToken();
     const bases = [AUTH_URL, POSTGREST_URL];
     const attempts = [];
+    const payloadCandidates = [
+        // Current contract
+        {
+            folder: body.folder,
+            fileName: body.fileName,
+            contentType: body.contentType
+        },
+        // Common snake_case contract
+        {
+            folder: body.folder,
+            file_name: body.fileName,
+            content_type: body.contentType
+        },
+        // Bucket/path style contract
+        {
+            bucket: body.folder,
+            path: body.fileName,
+            contentType: body.contentType
+        },
+        // Mixed legacy contract
+        {
+            bucket: body.folder,
+            fileName: body.fileName,
+            mimeType: body.contentType
+        }
+    ];
 
     for (const base of bases) {
         for (const path of STORAGE_SIGN_PATHS) {
-            const url = new URL(path, base);
-            const headers = { 'Content-Type': 'application/json' };
-            if (token) headers.Authorization = `Bearer ${token}`;
+            for (const payload of payloadCandidates) {
+                const url = new URL(path, base);
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers.Authorization = `Bearer ${token}`;
 
-            try {
-                const response = await fetch(url.toString(), {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(body)
-                });
-                if (response.ok) {
-                    const data = await response.json().catch(() => ({}));
-                    if (data?.uploadUrl && data?.publicUrl) return data;
-                    attempts.push(`${url.pathname}: invalid payload`);
-                    continue;
+                try {
+                    const response = await fetch(url.toString(), {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) {
+                        const data = await response.json().catch(() => ({}));
+                        const normalized = {
+                            uploadUrl: data?.uploadUrl || data?.upload_url || data?.signedUrl || data?.signed_url || data?.data?.uploadUrl || data?.data?.upload_url,
+                            publicUrl: data?.publicUrl || data?.public_url || data?.url || data?.publicURL || data?.data?.publicUrl || data?.data?.public_url
+                        };
+                        if (normalized.uploadUrl && normalized.publicUrl) return normalized;
+                        attempts.push(`${url.host}${url.pathname}: ok-but-invalid`);
+                        continue;
+                    }
+                    attempts.push(`${url.host}${url.pathname}: ${response.status}`);
+                } catch (error) {
+                    attempts.push(`${url.host}${url.pathname}: network`);
                 }
-                attempts.push(`${url.pathname}: ${response.status}`);
-            } catch (error) {
-                attempts.push(`${url.pathname}: network`);
             }
         }
     }

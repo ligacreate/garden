@@ -56,7 +56,7 @@ const authFetch = async (path, options = {}) => {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        const message = data?.error || data?.message || 'Ошибка запроса';
+        const message = data?.error || data?.message || data?.detail || `Ошибка запроса (${response.status})`;
         throw new Error(message);
     }
     return data;
@@ -86,6 +86,41 @@ const buildUploadFileName = (folder, fileName, contentType) => {
     const base = rawBase || `${folder}-${Date.now()}`;
     return `${base}.${ext}`;
 };
+
+const SUPPORTED_UPLOAD_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+const convertImageToJpegFile = async (file, maxSize = 1200, quality = 0.82) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл изображения.'));
+    reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Формат изображения не поддерживается. Сохраните фото как JPG/PNG и попробуйте снова.'));
+        img.onload = () => {
+            const ratio = Math.min(1, maxSize / Math.max(img.width, img.height));
+            const width = Math.max(1, Math.round(img.width * ratio));
+            const height = Math.max(1, Math.round(img.height * ratio));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error('Не удалось обработать изображение.'));
+                return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    reject(new Error('Не удалось подготовить изображение для загрузки.'));
+                    return;
+                }
+                const outName = buildUploadFileName('image', file.name || `image-${Date.now()}`, 'image/jpeg');
+                resolve(new File([blob], outName, { type: 'image/jpeg' }));
+            }, 'image/jpeg', quality);
+        };
+        img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+});
 
 // Helper to simulate delay for local storage operations
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -497,10 +532,14 @@ class LocalStorageService {
                 initialQuality: 0.75,
                 fileType: 'image/jpeg'
             };
-            return await imageCompression(file, options);
+            const compressed = await imageCompression(file, options);
+            if (SUPPORTED_UPLOAD_CONTENT_TYPES.has(compressed?.type)) {
+                return compressed;
+            }
+            return await convertImageToJpegFile(compressed || file, 1200, 0.82);
         } catch (error) {
-            console.warn('Image compression failed, using original file:', error);
-            return file;
+            console.warn('Image compression failed, converting via canvas:', error);
+            return await convertImageToJpegFile(file, 1200, 0.82);
         }
     }
 }
@@ -639,10 +678,14 @@ class SupabaseService {
                 initialQuality: 0.75,
                 fileType: 'image/jpeg'
             };
-            return await imageCompression(file, options);
+            const compressed = await imageCompression(file, options);
+            if (SUPPORTED_UPLOAD_CONTENT_TYPES.has(compressed?.type)) {
+                return compressed;
+            }
+            return await convertImageToJpegFile(compressed || file, 1200, 0.82);
         } catch (error) {
-            console.warn('Image compression failed, using original file:', error);
-            return file;
+            console.warn('Image compression failed, converting via canvas:', error);
+            return await convertImageToJpegFile(file, 1200, 0.82);
         }
     }
 

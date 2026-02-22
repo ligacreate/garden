@@ -88,6 +88,7 @@ const buildUploadFileName = (folder, fileName, contentType) => {
 };
 
 const SUPPORTED_UPLOAD_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const STORAGE_SIGN_PATHS = ['/storage/sign', '/api/storage/sign'];
 
 const convertImageToJpegFile = async (file, maxSize = 1200, quality = 0.82) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -121,6 +122,39 @@ const convertImageToJpegFile = async (file, maxSize = 1200, quality = 0.82) => n
     };
     reader.readAsDataURL(file);
 });
+
+const resolveStorageSign = async (body) => {
+    const token = getAuthToken();
+    const bases = [AUTH_URL, POSTGREST_URL];
+    const attempts = [];
+
+    for (const base of bases) {
+        for (const path of STORAGE_SIGN_PATHS) {
+            const url = new URL(path, base);
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            try {
+                const response = await fetch(url.toString(), {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(body)
+                });
+                if (response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    if (data?.uploadUrl && data?.publicUrl) return data;
+                    attempts.push(`${url.pathname}: invalid payload`);
+                    continue;
+                }
+                attempts.push(`${url.pathname}: ${response.status}`);
+            } catch (error) {
+                attempts.push(`${url.pathname}: network`);
+            }
+        }
+    }
+
+    throw new Error(`Ошибка запроса подписи файла (${attempts.join(', ')})`);
+};
 
 // Helper to simulate delay for local storage operations
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -693,15 +727,7 @@ class SupabaseService {
         if (!file) return null;
         const contentType = file.type || 'image/jpeg';
         const fileName = buildUploadFileName(folder, file.name, contentType);
-
-        const sign = await authFetch('/storage/sign', {
-            method: 'POST',
-            body: {
-                folder,
-                fileName,
-                contentType
-            }
-        });
+        const sign = await resolveStorageSign({ folder, fileName, contentType });
 
         if (!sign?.uploadUrl || !sign?.publicUrl) {
             throw new Error('Не удалось получить ссылку для загрузки файла.');

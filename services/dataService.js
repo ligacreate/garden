@@ -1,5 +1,6 @@
 import { INITIAL_USERS, INITIAL_KNOWLEDGE, INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES } from '../utils/roles';
+import { DEFAULT_TIMEZONE } from '../utils/timezone';
 import DOMPurify from 'dompurify';
 import imageCompression from 'browser-image-compression';
 
@@ -404,7 +405,7 @@ class LocalStorageService {
             id: Date.now(),
             title: this._sanitize(sanitized.title),
             description: this._sanitize(sanitized.description),
-            timezone: meeting.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+            timezone: meeting.timezone || DEFAULT_TIMEZONE
         };
         allMeetings.push(newMeeting);
         localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
@@ -421,7 +422,7 @@ class LocalStorageService {
             allMeetings[index] = {
                 ...allMeetings[index],
                 ...sanitized,
-                timezone: meeting.timezone || allMeetings[index].timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+                timezone: meeting.timezone || allMeetings[index].timezone || DEFAULT_TIMEZONE
             };
             localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
             return allMeetings[index];
@@ -1087,7 +1088,7 @@ class RemoteApiService {
             cover_image: cleaned.cover_image,
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
             seeds_awarded: cleaned.seeds_awarded,
-            timezone: cleaned.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+            timezone: cleaned.timezone || DEFAULT_TIMEZONE
         };
         // Backward compatibility: don't send duration to DB until column exists.
         if (cleaned.duration !== undefined && cleaned.duration !== '') {
@@ -1139,7 +1140,7 @@ class RemoteApiService {
             cover_image: cleaned.cover_image,
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
             seeds_awarded: cleaned.seeds_awarded,
-            timezone: cleaned.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+            timezone: cleaned.timezone || DEFAULT_TIMEZONE
         };
         if (cleaned.duration !== undefined && cleaned.duration !== '') {
             sanitized.duration = durationValue;

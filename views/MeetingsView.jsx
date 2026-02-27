@@ -3,7 +3,7 @@ import { Plus, X, Calendar as CalendarIcon, Users, Clock, MessageSquare, AlertCi
 import Button from '../components/Button';
 import Input from '../components/Input';
 import MeetingCard from '../components/MeetingCard';
-import { resolveCityTimezone } from '../utils/timezone';
+import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
 import { isMeetingPast } from '../utils/meetingTime';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
@@ -665,7 +665,7 @@ const MeetingsView = ({
             { text: 'Напомнить за день', completed: false }
         ];
 
-        const fallbackTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const fallbackTz = DEFAULT_TIMEZONE;
         const resolvedTz = resolveCityTimezone(meeting?.city, meeting?.timezone || fallbackTz);
         setFormData(meeting ? { ...meeting, timezone: resolvedTz, image_focus_x: meeting.image_focus_x ?? 50, image_focus_y: meeting.image_focus_y ?? 50 } : {
             title: '',
@@ -752,7 +752,7 @@ const MeetingsView = ({
                 ...formData,
                 user_id: user.id,
                 status: 'planned',
-                timezone: resolveCityTimezone(formData.city, formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)
+                timezone: resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)
             };
 
             const missing = validatePublicFields(meetingData);
@@ -848,7 +848,7 @@ const MeetingsView = ({
                     user_id: user.id,
                     status: 'planned',
                     checklist: formData.checklist,
-                    timezone: resolveCityTimezone(formData.city, formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)
+                    timezone: resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)
                 };
                 await onAddMeeting(newMeeting);
             }
@@ -1075,7 +1075,7 @@ const MeetingsView = ({
                                         />
                                     </div>
                                     <div className="text-xs text-slate-400">
-                                        Время встречи указывается в часовом поясе города события: <span className="font-medium text-slate-500">{resolveCityTimezone(formData.city, formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)}</span>.
+                                        Время встречи указывается в часовом поясе города события: <span className="font-medium text-slate-500">{resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)}</span>.
                                         Участницы увидят своё локальное время.
                                     </div>
                                 </div>

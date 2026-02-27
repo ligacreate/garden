@@ -113,6 +113,8 @@ const CITY_TIMEZONES = {
   'онлайн': null
 };
 
+export const DEFAULT_TIMEZONE = 'Europe/Moscow';
+
 export const resolveCityTimezone = (city, fallback = null) => {
   if (!city || typeof city !== 'string') return fallback;
 

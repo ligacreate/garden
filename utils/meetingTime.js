@@ -1,4 +1,4 @@
-import { resolveCityTimezone } from './timezone';
+import { DEFAULT_TIMEZONE, resolveCityTimezone } from './timezone';
 
 const getTimeZoneOffsetMinutes = (date, timeZone) => {
     const dtf = new Intl.DateTimeFormat('en-US', {
@@ -27,7 +27,7 @@ const getZonedDate = (dateStr, timeStr, timeZone) => {
 };
 
 export const getMeetingTimezone = (meeting, fallbackTz) => {
-    const viewerTz = fallbackTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const viewerTz = fallbackTz || DEFAULT_TIMEZONE;
     const cityTz = resolveCityTimezone(meeting?.city, null);
     return cityTz || meeting?.timezone || viewerTz;
 };

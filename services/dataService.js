@@ -11,6 +11,7 @@ const setAuthToken = (token) => {
     if (token) localStorage.setItem('garden_auth_token', token);
     else localStorage.removeItem('garden_auth_token');
 };
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
 const postgrestFetch = async (path, params = {}, options = {}) => {
     const url = new URL(path, POSTGREST_URL);
@@ -610,7 +611,7 @@ class LocalStorageService {
     }
 }
 
-class SupabaseService {
+class RemoteApiService {
     // --- Security Helpers (Client-side) ---
     checkActionTimer() {
         const now = Date.now();
@@ -662,10 +663,23 @@ class SupabaseService {
     }
 
     async login(email, password) {
-        const data = await authFetch('/auth/login', { method: 'POST', body: { email, password } });
+        const normalizedEmail = normalizeEmail(email);
+        const data = await authFetch('/auth/login', { method: 'POST', body: { email: normalizedEmail, password } });
         if (data?.token) setAuthToken(data.token);
-        const profile = await this._fetchProfile(data.user?.id || data.user?.id);
-        return this._assertActive(profile || this._normalizeProfile(data.user));
+        const authUser = this._normalizeProfile(data.user);
+        let profile = await this._fetchProfile(authUser?.id);
+
+        // Safety net for partially migrated users: auth account exists but profile row is missing.
+        if (!profile && authUser?.id) {
+            await this._ensurePostgrestUser({
+                ...data.user,
+                ...authUser,
+                email: normalizedEmail || authUser.email
+            });
+            profile = await this._fetchProfile(authUser.id);
+        }
+
+        return this._assertActive(profile || authUser);
     }
 
     async updatePassword(newPassword) {
@@ -689,8 +703,9 @@ class SupabaseService {
 
     async register(userData) {
         const { email, password, ...rest } = userData;
+        const normalizedEmail = normalizeEmail(email);
         const payload = {
-            email,
+            email: normalizedEmail,
             password,
             name: this._sanitizeIfString(rest.name),
             city: this._sanitizeIfString(rest.city)
@@ -699,6 +714,11 @@ class SupabaseService {
         if (data?.token) setAuthToken(data.token);
         const created = this._normalizeProfile(data.user);
         if (created?.id) {
+            await this._ensurePostgrestUser({
+                ...data.user,
+                ...created,
+                email: normalizedEmail || created.email
+            });
             const patch = {};
             if (rest.tree) patch.tree = this._sanitizeIfString(rest.tree);
             if (rest.treeDesc || rest.tree_desc) patch.tree_desc = this._sanitizeIfString(rest.treeDesc || rest.tree_desc);
@@ -718,7 +738,7 @@ class SupabaseService {
     }
 
     async resetPassword(email) {
-        await authFetch('/auth/request-reset', { method: 'POST', body: { email } });
+        await authFetch('/auth/request-reset', { method: 'POST', body: { email: normalizeEmail(email) } });
         return true;
     }
 
@@ -787,7 +807,13 @@ class SupabaseService {
         const token = getAuthToken();
         if (!token) return null;
         const data = await authFetch('/auth/me');
-        return this._assertActive(this._normalizeProfile(data.user));
+        const authUser = this._normalizeProfile(data.user);
+        let profile = await this._fetchProfile(authUser?.id);
+        if (!profile && authUser?.id) {
+            await this._ensurePostgrestUser({ ...data.user, ...authUser });
+            profile = await this._fetchProfile(authUser.id);
+        }
+        return this._assertActive(profile || authUser);
     }
 
     async _ensurePostgrestUser(user) {
@@ -1448,7 +1474,6 @@ class SupabaseService {
 }
 
 // Export a singleton instance
-// Export a singleton instance
 const useLocalDb = import.meta.env.VITE_USE_LOCAL_DB === 'true';
 
-export const api = useLocalDb ? new LocalStorageService() : new SupabaseService();
+export const api = useLocalDb ? new LocalStorageService() : new RemoteApiService();

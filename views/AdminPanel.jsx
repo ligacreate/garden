@@ -520,7 +520,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                             }}
                                         />
                                     </Button>
-                                    <span className="text-xs text-slate-400">Фото сохранится в Supabase Storage</span>
+                                    <span className="text-xs text-slate-400">Фото сохранится в хранилище сервиса</span>
                                 </div>
                                 {editingEvent.image_url && (
                                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-5">

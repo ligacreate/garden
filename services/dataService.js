@@ -544,7 +544,7 @@ class LocalStorageService {
     }
 
     async saveScenario(scenario) {
-        // Alias for addScenario or similar? It was separate in SupabaseService
+        // Alias for addScenario to keep backward-compatible method usage.
         return this.addScenario(scenario);
     }
 
@@ -560,7 +560,7 @@ class LocalStorageService {
     }
 
     async uploadAvatar(file) {
-        // Shared compression helper (from SupabaseService logic)
+        // Shared compression helper reused across upload flows.
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);

@@ -1,10 +1,100 @@
 import React, { useState } from 'react';
-import { Search, Plus, Filter, Pencil, X } from 'lucide-react';
+import { Search, Plus, Pencil, X, Upload, Download } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
-import { getRoleLabel } from '../utils/roles';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalShell from '../components/ModalShell';
+
+const CSV_TEMPLATE = `title,time,type,description,icon
+Дыхание 4-7-8,10 мин,Дыхание,Успокаивающая практика для быстрого снижения стресса,🫁
+Колесо баланса,20 мин,Рефлексия,Проверка ключевых сфер жизни и фокус на следующем шаге,🎯`;
+
+const parseCsvLine = (line, delimiter) => {
+    const out = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        const next = line[i + 1];
+
+        if (ch === '"' && inQuotes && next === '"') {
+            current += '"';
+            i += 1;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (ch === delimiter && !inQuotes) {
+            out.push(current.trim());
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+
+    out.push(current.trim());
+    return out;
+};
+
+const normalizeHeader = (value) => String(value || '').trim().toLowerCase();
+
+const pickDelimiter = (headerLine) => {
+    const commaCount = (headerLine.match(/,/g) || []).length;
+    const semicolonCount = (headerLine.match(/;/g) || []).length;
+    return semicolonCount > commaCount ? ';' : ',';
+};
+
+const parsePracticesCsv = (rawText) => {
+    const text = String(rawText || '').trim();
+    if (!text) return { items: [], errors: [] };
+
+    const lines = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    if (lines.length < 2) {
+        return { items: [], errors: ['Добавьте заголовок и хотя бы одну строку с данными.'] };
+    }
+
+    const delimiter = pickDelimiter(lines[0]);
+    const headers = parseCsvLine(lines[0], delimiter).map(normalizeHeader);
+    const indexByHeader = Object.fromEntries(headers.map((header, idx) => [header, idx]));
+
+    const getValue = (cells, keys) => {
+        for (const key of keys) {
+            const idx = indexByHeader[key];
+            if (idx === undefined) continue;
+            const value = cells[idx];
+            if (value !== undefined) return String(value).trim();
+        }
+        return '';
+    };
+
+    const items = [];
+    const errors = [];
+
+    for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+        const cells = parseCsvLine(lines[lineIndex], delimiter);
+        const title = getValue(cells, ['title', 'название', 'name']);
+        const time = getValue(cells, ['time', 'время']);
+        const type = getValue(cells, ['type', 'тема', 'категория']);
+        const description = getValue(cells, ['description', 'описание']);
+        const icon = getValue(cells, ['icon', 'иконка']) || '📄';
+
+        if (!title) {
+            errors.push(`Строка ${lineIndex + 1}: пустое поле title/название.`);
+            continue;
+        }
+
+        items.push({ title, time, type, description, icon });
+    }
+
+    return { items, errors };
+};
 
 const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDeletePractice, onNotify }) => {
     const [search, setSearch] = useState('');
@@ -12,6 +102,11 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
     const [viewPractice, setViewPractice] = useState(null); // The practice currently being viewed
     const [deletePracticeId, setDeletePracticeId] = useState(null);
     const [formData, setFormData] = useState({ id: null, title: '', time: '', type: '', description: '', icon: '📄' });
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [csvText, setCsvText] = useState('');
+    const [csvErrors, setCsvErrors] = useState([]);
+    const [parsedPractices, setParsedPractices] = useState([]);
+    const [isImporting, setIsImporting] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState('Все');
     const [timeFilter, setTimeFilter] = useState('all');
     const isAdmin = user?.role === 'admin';
@@ -95,6 +190,93 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         setIsEditModalOpen(true);
     };
 
+    const openImportModal = () => {
+        setCsvText('');
+        setCsvErrors([]);
+        setParsedPractices([]);
+        setIsImportModalOpen(true);
+    };
+
+    const refreshCsvPreview = (nextText) => {
+        setCsvText(nextText);
+        const parsed = parsePracticesCsv(nextText);
+        setParsedPractices(parsed.items);
+        setCsvErrors(parsed.errors);
+    };
+
+    const handleCsvFile = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            refreshCsvPreview(text);
+        } catch (error) {
+            console.error(error);
+            onNotify('Не удалось прочитать CSV-файл');
+        } finally {
+            event.target.value = '';
+        }
+    };
+
+    const handleDownloadTemplate = () => {
+        const blob = new Blob([CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'practices-template.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImportCsv = async () => {
+        if (parsedPractices.length === 0) {
+            onNotify('Нет данных для импорта');
+            return;
+        }
+
+        const existingTitles = new Set(practices.map((p) => String(p.title || '').trim().toLowerCase()));
+        const uniqueIncoming = [];
+        const skipped = [];
+
+        for (const item of parsedPractices) {
+            const titleKey = String(item.title || '').trim().toLowerCase();
+            if (!titleKey || existingTitles.has(titleKey)) {
+                skipped.push(item.title || '(без названия)');
+                continue;
+            }
+            existingTitles.add(titleKey);
+            uniqueIncoming.push(item);
+        }
+
+        if (uniqueIncoming.length === 0) {
+            onNotify('Все практики из файла уже есть в базе');
+            return;
+        }
+
+        setIsImporting(true);
+        let addedCount = 0;
+        let failedCount = 0;
+
+        for (const item of uniqueIncoming) {
+            try {
+                await onAddPractice(
+                    { ...item, id: Date.now() + addedCount },
+                    { silent: true, grantSeeds: false, propagateError: true }
+                );
+                addedCount += 1;
+            } catch (error) {
+                console.error('Practice import failed:', item.title, error);
+                failedCount += 1;
+            }
+        }
+
+        setIsImporting(false);
+        onNotify(`Импорт завершен: добавлено ${addedCount}, пропущено ${skipped.length}, с ошибкой ${failedCount}`);
+        if (addedCount > 0) setIsImportModalOpen(false);
+    };
+
     const canEditPractices = true;
 
     return (
@@ -142,6 +324,11 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                             <option value="medium">20-30 мин</option>
                             <option value="long">40+ мин</option>
                         </select>
+                        {canEditPractices && (
+                            <Button variant="secondary" onClick={openImportModal} className="!rounded-full !px-4 !py-2 !text-xs h-[44px] sm:h-auto" icon={Upload}>
+                                Импорт CSV
+                            </Button>
+                        )}
                     </div>
 
                     {/* Filter Pills */}
@@ -293,6 +480,84 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                         )}
                         <Button variant="secondary" onClick={() => setIsEditModalOpen(false)} className="flex-1">Отмена</Button>
                         <Button onClick={handleSave} className="flex-1">Сохранить</Button>
+                    </div>
+                </div>
+            </ModalShell>
+
+            <ModalShell
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                title="Массовый импорт практик"
+                size="lg"
+            >
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-3">
+                        <Button variant="secondary" icon={Download} onClick={handleDownloadTemplate}>
+                            Скачать шаблон
+                        </Button>
+                        <label className="inline-flex">
+                            <span className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-blue-300">
+                                <Upload size={16} />
+                                Загрузить CSV
+                            </span>
+                            <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFile} />
+                        </label>
+                    </div>
+
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">CSV-данные</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-40 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono"
+                            placeholder="Вставьте CSV или загрузите файл. Колонки: title,time,type,description,icon"
+                            value={csvText}
+                            onChange={(e) => refreshCsvPreview(e.target.value)}
+                        />
+                    </div>
+
+                    {csvErrors.length > 0 && (
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                            {csvErrors.slice(0, 5).map((err) => (
+                                <div key={err}>• {err}</div>
+                            ))}
+                            {csvErrors.length > 5 && <div>• Еще ошибок: {csvErrors.length - 5}</div>}
+                        </div>
+                    )}
+
+                    {parsedPractices.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                            <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                Предпросмотр ({parsedPractices.length})
+                            </div>
+                            <div className="max-h-52 overflow-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-white sticky top-0 border-b border-slate-100">
+                                        <tr className="text-left text-slate-500">
+                                            <th className="px-4 py-2">Название</th>
+                                            <th className="px-4 py-2">Время</th>
+                                            <th className="px-4 py-2">Тема</th>
+                                            <th className="px-4 py-2">Иконка</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {parsedPractices.slice(0, 30).map((item, idx) => (
+                                            <tr key={`${item.title}-${idx}`} className="border-b border-slate-100 last:border-b-0">
+                                                <td className="px-4 py-2 text-slate-800">{item.title}</td>
+                                                <td className="px-4 py-2 text-slate-600">{item.time || '—'}</td>
+                                                <td className="px-4 py-2 text-slate-600">{item.type || '—'}</td>
+                                                <td className="px-4 py-2 text-slate-600">{item.icon || '📄'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                        <Button variant="secondary" onClick={() => setIsImportModalOpen(false)} className="flex-1">Отмена</Button>
+                        <Button onClick={handleImportCsv} className="flex-1" disabled={isImporting || parsedPractices.length === 0}>
+                            {isImporting ? 'Импортируем...' : 'Импортировать'}
+                        </Button>
                     </div>
                 </div>
             </ModalShell>

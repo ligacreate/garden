@@ -312,26 +312,35 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
         }
     };
 
-    const handleAddPractice = async (practice) => {
+    const handleAddPractice = async (practice, options = {}) => {
+        const { silent = false, grantSeeds = true, propagateError = false } = options;
         try {
             const newPractice = { ...practice, user_id: user.id };
             const saved = await api.addPractice(newPractice);
-            setPractices([saved, ...practices]);
+            setPractices((prev) => [saved, ...prev]);
 
-            // Seed Bonus: +80
-            const seedsEarned = 80;
-            onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
-            onNotify(`Практика добавлена! +${seedsEarned} семян`);
+            if (grantSeeds) {
+                // Seed Bonus: +80
+                const seedsEarned = 80;
+                onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+                if (!silent) onNotify(`Практика добавлена! +${seedsEarned} семян`);
+            } else if (!silent) {
+                onNotify("Практика добавлена");
+            }
+
+            return saved;
         } catch (e) {
             console.error(e);
-            onNotify("Ошибка сохранения практики: " + e.message);
+            if (!silent) onNotify("Ошибка сохранения практики: " + e.message);
+            if (propagateError) throw e;
+            return null;
         }
     };
 
     const handleUpdatePractice = async (updatedPractice) => {
         try {
             await api.updatePractice(updatedPractice);
-            setPractices(practices.map(p => p.id === updatedPractice.id ? updatedPractice : p));
+            setPractices((prev) => prev.map(p => p.id === updatedPractice.id ? updatedPractice : p));
             onNotify("Практика обновлена");
         } catch (e) {
             console.error(e);
@@ -342,7 +351,7 @@ const UserApp = ({ user, users, knowledgeBase, news, onLogout, onNotify, onSwitc
     const handleDeletePractice = async (practiceId) => {
         try {
             await api.deletePractice(practiceId);
-            setPractices(practices.filter(p => p.id !== practiceId));
+            setPractices((prev) => prev.filter(p => p.id !== practiceId));
             onNotify("Практика удалена");
         } catch (e) {
             console.error(e);

@@ -3,6 +3,7 @@ import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
 import { hasAccess, ROLES } from '../utils/roles';
 import { api } from '../services/dataService';
+import DOMPurify from 'dompurify';
 
 const COURSES = [
     {
@@ -71,6 +72,134 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
             .split(',')
             .map(t => t.trim())
             .filter(Boolean);
+    };
+
+    const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const splitUrlAndPunctuation = (raw) => {
+        const match = raw.match(/^(.*?)([),.;!?]+)?$/);
+        const core = (match?.[1] || raw).trim();
+        const trailing = match?.[2] || '';
+        return { core, trailing };
+    };
+
+    const linkifyEscapedText = (escapedText) => {
+        const urlRegex = /(https?:\/\/[^\s<]+)/g;
+        return escapedText.replace(urlRegex, (raw) => {
+            const { core, trailing } = splitUrlAndPunctuation(raw);
+            if (!core) return raw;
+            return `<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trailing}`;
+        });
+    };
+
+    const plainTextToHtml = (text) => {
+        const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+        const html = [];
+        let inList = false;
+
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+
+            if (!trimmed) {
+                if (inList) {
+                    html.push('</ul>');
+                    inList = false;
+                }
+                html.push('<p><br /></p>');
+                return;
+            }
+
+            if (bulletMatch) {
+                if (!inList) {
+                    html.push('<ul>');
+                    inList = true;
+                }
+                const escaped = escapeHtml(bulletMatch[1]);
+                html.push(`<li>${linkifyEscapedText(escaped)}</li>`);
+                return;
+            }
+
+            if (inList) {
+                html.push('</ul>');
+                inList = false;
+            }
+
+            const escaped = escapeHtml(line);
+            html.push(`<p>${linkifyEscapedText(escaped)}</p>`);
+        });
+
+        if (inList) html.push('</ul>');
+        return html.join('');
+    };
+
+    const enhanceLinksInHtml = (html) => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
+        const root = doc.getElementById('root');
+        if (!root) return html;
+
+        const textNodes = [];
+        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+            textNodes.push(node);
+            node = walker.nextNode();
+        }
+
+        textNodes.forEach((textNode) => {
+            const parentEl = textNode.parentElement;
+            const value = textNode.nodeValue || '';
+            if (!value || !parentEl || parentEl.closest('a')) return;
+            if (!/(https?:\/\/[^\s<]+)/.test(value)) return;
+
+            const frag = doc.createDocumentFragment();
+            const parts = value.split(/(https?:\/\/[^\s<]+)/g);
+
+            parts.forEach((part) => {
+                if (!part) return;
+                if (/^https?:\/\/[^\s<]+$/.test(part)) {
+                    const { core, trailing } = splitUrlAndPunctuation(part);
+                    if (core) {
+                        const a = doc.createElement('a');
+                        a.href = core;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.textContent = core;
+                        frag.appendChild(a);
+                        if (trailing) frag.appendChild(doc.createTextNode(trailing));
+                    } else {
+                        frag.appendChild(doc.createTextNode(part));
+                    }
+                } else {
+                    frag.appendChild(doc.createTextNode(part));
+                }
+            });
+
+            textNode.parentNode?.replaceChild(frag, textNode);
+        });
+
+        return root.innerHTML;
+    };
+
+    const formatMaterialContent = (content) => {
+        const raw = String(content || '').trim();
+        if (!raw) return '<p>Материал в процессе подготовки.</p>';
+
+        const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
+        const baseHtml = hasHtmlTags ? raw : plainTextToHtml(raw);
+        const sanitized = DOMPurify.sanitize(baseHtml);
+        const withLinks = enhanceLinksInHtml(sanitized);
+
+        return DOMPurify.sanitize(withLinks, {
+            ADD_ATTR: ['target', 'rel'],
+            FORBID_TAGS: ['style', 'script']
+        });
     };
 
     const filteredCourses = useMemo(() => {
@@ -166,6 +295,11 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
     const handleOpenMaterial = (material) => {
         setSelectedMaterial(material);
     };
+
+    const selectedMaterialContentHtml = useMemo(
+        () => formatMaterialContent(selectedMaterial?.content),
+        [selectedMaterial?.content]
+    );
 
     return (
         <div className="h-full flex flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
@@ -270,7 +404,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
                         ))}
                     </div>
 
-                    <div className="prose prose-slate max-w-none text-sm mb-8" dangerouslySetInnerHTML={{ __html: selectedMaterial.content || '<p>Материал в процессе подготовки.</p>' }} />
+                    <div className="prose prose-slate max-w-none text-sm mb-8 [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1" dangerouslySetInnerHTML={{ __html: selectedMaterialContentHtml }} />
 
                     <div className="border-t border-slate-100 pt-5 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap gap-2">

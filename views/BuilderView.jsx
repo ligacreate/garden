@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
-import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, User, GripVertical } from 'lucide-react';
+import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, User, GripVertical, PenLine, Upload } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -273,6 +273,42 @@ const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage, user
     </div>
 );
 
+const ImportScenarioModal = ({ onImport, onClose }) => {
+    const [text, setText] = useState('');
+    const [replaceCurrent, setReplaceCurrent] = useState(false);
+
+    return (
+        <ModalShell isOpen onClose={onClose} title="Быстрый импорт сценария" size="md">
+            <p className="text-sm text-slate-500 mb-3">
+                Вставьте готовый сценарий текстом: по одному шагу на строку. Можно указывать время, например: `15 мин - Приветствие`.
+            </p>
+            <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={"15 мин - Приветствие\n20 мин - Практика: Письмо себе\n10 мин - Рефлексия"}
+                className="w-full h-52 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                <input
+                    type="checkbox"
+                    checked={replaceCurrent}
+                    onChange={(e) => setReplaceCurrent(e.target.checked)}
+                />
+                Заменить текущий таймлайн
+            </label>
+            <div className="mt-4 flex gap-2 justify-end">
+                <Button variant="secondary" onClick={onClose}>Отмена</Button>
+                <Button
+                    onClick={() => onImport(text, replaceCurrent)}
+                    disabled={!text.trim()}
+                >
+                    Импортировать
+                </Button>
+            </div>
+        </ModalShell>
+    );
+};
+
 const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave }) => {
     const [activeTab, setActiveTab] = useState('builder'); // 'builder', 'my', 'league'
     const [previewType, setPreviewType] = useState(null);
@@ -285,6 +321,7 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
     const [dragOverIndex, setDragOverIndex] = useState(null);
     const [draggedTimelineId, setDraggedTimelineId] = useState(null);
     const [isDraggingFromLibrary, setIsDraggingFromLibrary] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
 
     // Lists
     const [myScenarios, setMyScenarios] = useState([]);
@@ -330,6 +367,20 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
         onNotify("Практика добавлена");
     };
 
+    const addFreeInputStep = () => {
+        const customItem = {
+            uniqueId: Date.now() + Math.random(),
+            title: 'Новый шаг',
+            description: '',
+            type: 'Свободный ввод',
+            time: '10 мин',
+            icon: '✍️',
+            custom: true
+        };
+        setTimeline([...timeline, customItem]);
+        onNotify("Добавлен шаг для свободного ввода");
+    };
+
     const removeFromTimeline = (uniqueId) => setTimeline(timeline.filter(item => item.uniqueId !== uniqueId));
 
     const moveItem = (index, direction) => {
@@ -358,6 +409,61 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
         const adjustedIndex = fromIndex < targetIndex ? Math.max(targetIndex - 1, 0) : targetIndex;
         next.splice(adjustedIndex, 0, moved);
         setTimeline(next);
+    };
+
+    const updateTimelineItem = (uniqueId, patch) => {
+        setTimeline(prev => prev.map(item => String(item.uniqueId) === String(uniqueId) ? { ...item, ...patch } : item));
+    };
+
+    const parseImportedText = (rawText) => {
+        const lines = String(rawText || '')
+            .replace(/\r\n/g, '\n')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        return lines.map((line, idx) => {
+            let cleaned = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '');
+
+            let time = '10 мин';
+            const timeMatch = cleaned.match(/(\d{1,3})\s*мин/i);
+            if (timeMatch) {
+                time = `${timeMatch[1]} мин`;
+                cleaned = cleaned.replace(timeMatch[0], '').replace(/^[\s\-–—:]+/, '').trim();
+            }
+
+            let title = cleaned;
+            let description = '';
+            const split = cleaned.split(/\s[—-]\s/);
+            if (split.length > 1) {
+                title = split[0].trim();
+                description = split.slice(1).join(' - ').trim();
+            }
+
+            return {
+                uniqueId: Date.now() + Math.random() + idx,
+                title: title || `Шаг ${idx + 1}`,
+                description,
+                type: 'Импорт',
+                time,
+                icon: '📝',
+                custom: true
+            };
+        });
+    };
+
+    const handleImportScenario = (text, replaceCurrent) => {
+        const imported = parseImportedText(text);
+        if (imported.length === 0) {
+            onNotify("Не удалось распознать шаги в тексте");
+            return;
+        }
+
+        if (replaceCurrent) setTimeline(imported);
+        else setTimeline([...timeline, ...imported]);
+
+        setShowImportModal(false);
+        onNotify(`Импортировано шагов: ${imported.length}`);
     };
 
     const handleTimelineDrop = (event, index = null) => {
@@ -424,7 +530,11 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
     };
 
     const handleLoadScenario = (scenario) => {
-        setTimeline(scenario.timeline);
+        const hydratedTimeline = (scenario.timeline || []).map((item, idx) => ({
+            ...item,
+            uniqueId: item.uniqueId || `${Date.now()}-${idx}-${Math.random()}`
+        }));
+        setTimeline(hydratedTimeline);
         setScenarioTitle(scenario.title);
         setActiveTab('builder');
         onNotify(`Загружен сценарий: ${scenario.title}`);
@@ -480,7 +590,11 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                 {activeTab === 'builder' ? (
                     <div className="flex-1 flex flex-col min-h-0 animate-in fade-in duration-300 pb-10">
                         <div className="flex justify-start mb-4">
-                            <Button variant="secondary" icon={Save} onClick={() => setShowSaveModal(true)} disabled={timeline.length === 0} className="!py-2 !text-xs">Сохранить текущий сценарий</Button>
+                            <div className="flex flex-wrap gap-2">
+                                <Button variant="secondary" icon={Save} onClick={() => setShowSaveModal(true)} disabled={timeline.length === 0} className="!py-2 !text-xs">Сохранить текущий сценарий</Button>
+                                <Button variant="secondary" icon={PenLine} onClick={addFreeInputStep} className="!py-2 !text-xs">Свободный шаг</Button>
+                                <Button variant="secondary" icon={Upload} onClick={() => setShowImportModal(true)} className="!py-2 !text-xs">Импорт текста</Button>
+                            </div>
                         </div>
 
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 min-h-0">
@@ -606,8 +720,41 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                                                             <GripVertical size={16} />
                                                         </div>
                                                         <div className="flex-1">
-                                                            <div className="font-medium text-slate-800">{item.title}</div>
-                                                            <div className="text-xs text-slate-400 flex justify-between mt-1 gap-2"><span>{item.icon} {item.type}</span><span>{item.time}</span></div>
+                                                            {item.custom ? (
+                                                                <div className="space-y-2">
+                                                                    <input
+                                                                        value={item.title || ''}
+                                                                        onChange={(e) => updateTimelineItem(item.uniqueId, { title: e.target.value })}
+                                                                        placeholder="Название шага"
+                                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-200"
+                                                                    />
+                                                                    <textarea
+                                                                        value={item.description || ''}
+                                                                        onChange={(e) => updateTimelineItem(item.uniqueId, { description: e.target.value })}
+                                                                        placeholder="Описание шага (опционально)"
+                                                                        className="w-full h-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-200 resize-none"
+                                                                    />
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <input
+                                                                            value={item.type || ''}
+                                                                            onChange={(e) => updateTimelineItem(item.uniqueId, { type: e.target.value })}
+                                                                            placeholder="Тип"
+                                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-200"
+                                                                        />
+                                                                        <input
+                                                                            value={item.time || ''}
+                                                                            onChange={(e) => updateTimelineItem(item.uniqueId, { time: e.target.value })}
+                                                                            placeholder="Время (например, 10 мин)"
+                                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-200"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="font-medium text-slate-800">{item.title}</div>
+                                                                    <div className="text-xs text-slate-400 flex justify-between mt-1 gap-2"><span>{item.icon} {item.type}</span><span>{item.time}</span></div>
+                                                                </>
+                                                            )}
                                                         </div>
                                                         <button onClick={() => removeFromTimeline(item.uniqueId)} className="text-slate-300 hover:text-rose-500 transition-colors"><X size={14} /></button>
                                                     </div>
@@ -664,6 +811,7 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
 
             {previewType && <DocumentPreviewModal type={previewType} timeline={timeline} title={scenarioTitle} user={user} onClose={() => setPreviewType(null)} onNotify={onNotify} />}
             {showSaveModal && <SaveScenarioModal onSave={handleSave} onClose={() => setShowSaveModal(false)} user={user} onNotify={onNotify} />}
+            {showImportModal && <ImportScenarioModal onImport={handleImportScenario} onClose={() => setShowImportModal(false)} />}
 
             <ConfirmationModal
                 isOpen={deleteConfirmation.isOpen}

@@ -22,6 +22,31 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
     };
 
+    const renderDescriptionWithLinks = (text) => {
+        if (!text) return null;
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const urlOnlyRegex = /^https?:\/\/[^\s]+$/;
+        const parts = String(text).split(urlRegex);
+
+        return parts.map((part, idx) => {
+            if (urlOnlyRegex.test(part)) {
+                return (
+                    <a
+                        key={`link-${idx}`}
+                        href={part}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-700 underline decoration-blue-300 hover:text-blue-800 break-all"
+                    >
+                        {part}
+                    </a>
+                );
+            }
+
+            return <React.Fragment key={`txt-${idx}`}>{part}</React.Fragment>;
+        });
+    };
+
     // Get unique categories with normalized names (excluding 'Общее' from filters as requested)
     const categories = ['Все', ...new Set(practices.map(p => normalize(p.type)).filter(c => c !== 'Общее'))];
 
@@ -296,7 +321,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                         <div className="prose prose-slate max-w-none">
                             {viewPractice.description && (
                                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-lg text-slate-700 leading-relaxed whitespace-pre-wrap font-medium italic mb-6">
-                                    {viewPractice.description}
+                                    {renderDescriptionWithLinks(viewPractice.description)}
                                 </div>
                             )}
                         </div>

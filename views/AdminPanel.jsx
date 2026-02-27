@@ -798,6 +798,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                                             onChange={e => setNewContent({ ...newContent, category: e.target.value })}
                                         >
                                             <option value="">-- Выберите раздел --</option>
+                                            <option value="Инструкции">Инструкции</option>
                                             <option value="Пиши, веди, люби">Пиши, веди, люби</option>
                                             <option value="Начало пути">Начало пути</option>
                                             <option value="Расти">Расти</option>

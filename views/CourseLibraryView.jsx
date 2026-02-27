@@ -6,6 +6,15 @@ import { api } from '../services/dataService';
 
 const COURSES = [
     {
+        id: 0,
+        title: "Инструкции",
+        description: "Быстрые инструкции по работе с платформой: вход, профиль, встречи, библиотека и публикация в расписании.",
+        image: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?auto=format&fit=crop&q=80&w=800",
+        tag: "Полезное",
+        minRole: ROLES.APPLICANT,
+        pinned: true
+    },
+    {
         id: 1,
         title: "Пиши, веди, люби",
         description: "Курс для ведущих встреч с письменными практиками. Освойте искусство бережной модерации и создания смыслов.",
@@ -64,12 +73,19 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
             .filter(Boolean);
     };
 
-    const filteredCourses = COURSES.filter(course => {
+    const filteredCourses = useMemo(() => {
         const role = user?.role || ROLES.APPLICANT;
-        if (!hasAccess(role, course.minRole)) return false;
-        if (selectedFilter !== 'Все' && course.tag !== selectedFilter) return false;
-        return true;
-    });
+        return COURSES
+            .filter(course => {
+                if (!hasAccess(role, course.minRole)) return false;
+                if (selectedFilter !== 'Все' && course.tag !== selectedFilter) return false;
+                return true;
+            })
+            .sort((a, b) => {
+                if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+                return a.id - b.id;
+            });
+    }, [selectedFilter, user?.role]);
 
     const selectedCourse = COURSES.find(c => c.id === selectedCourseId) || null;
     const role = user?.role || ROLES.APPLICANT;

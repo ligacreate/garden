@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ExternalLink, Image, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, Image, Sparkles } from 'lucide-react';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import UserAvatar from '../components/UserAvatar';
@@ -60,6 +60,57 @@ const openReviewCard = (review) => {
 </body>
 </html>`);
     win.document.close();
+};
+
+const safeFilePart = (value) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-zа-я0-9-_]+/gi, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 48) || 'review';
+
+const buildReviewCardNode = (review) => {
+    const card = document.createElement('div');
+    card.style.width = '1080px';
+    card.style.minHeight = '1080px';
+    card.style.padding = '72px';
+    card.style.borderRadius = '48px';
+    card.style.background = review.color || '#ffffff';
+    card.style.boxShadow = '0 24px 60px rgba(28, 28, 28, 0.12)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '24px';
+    card.style.fontFamily = 'Onest, Arial, sans-serif';
+
+    const badge = document.createElement('span');
+    badge.textContent = 'ОТЗЫВ';
+    badge.style.alignSelf = 'flex-start';
+    badge.style.padding = '10px 16px';
+    badge.style.borderRadius = '999px';
+    badge.style.background = '#eef4ef';
+    badge.style.color = '#3a6d57';
+    badge.style.fontSize = '20px';
+    badge.style.fontWeight = '700';
+    badge.style.letterSpacing = '0.08em';
+
+    const text = document.createElement('div');
+    text.textContent = review.text || '';
+    text.style.whiteSpace = 'pre-wrap';
+    text.style.fontSize = '40px';
+    text.style.lineHeight = '1.45';
+    text.style.color = '#1f1f1f';
+
+    const author = document.createElement('div');
+    author.textContent = review.author || 'Без имени';
+    author.style.marginTop = 'auto';
+    author.style.fontWeight = '600';
+    author.style.fontSize = '28px';
+    author.style.color = '#2b2b2b';
+
+    card.append(badge, text, author);
+    return card;
 };
 
 const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
@@ -162,6 +213,43 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
             setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
         }
         handleSaveReviews(nextReviews);
+    };
+
+    const handleDownloadReviewCard = async (review) => {
+        let host = null;
+        try {
+            const { default: html2canvas } = await import('html2canvas');
+            host = document.createElement('div');
+            host.style.position = 'fixed';
+            host.style.left = '-10000px';
+            host.style.top = '0';
+            host.style.padding = '40px';
+            host.style.background = '#f7f6f3';
+            host.style.zIndex = '-1';
+
+            const cardNode = buildReviewCardNode(review);
+            host.appendChild(cardNode);
+            document.body.appendChild(host);
+
+            const canvas = await html2canvas(cardNode, {
+                backgroundColor: review.color || '#ffffff',
+                scale: 2,
+                useCORS: true
+            });
+
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `otzyv-${safeFilePart(review.author)}-${safeFilePart(review.id)}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            onNotify?.('Карточка отзыва скачана');
+        } catch (e) {
+            console.error('Review card download failed', e);
+            onNotify?.('Не удалось скачать карточку. Попробуйте снова.');
+        } finally {
+            if (host && document.body.contains(host)) document.body.removeChild(host);
+        }
     };
 
     return (
@@ -278,8 +366,16 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                                         >
                                             <div className="text-sm text-slate-800 leading-relaxed">{review.text}</div>
                                             <div className="mt-3 text-xs font-semibold text-slate-700">{review.author}</div>
-                                            {isOwner && (
-                                                <div className="mt-4 flex flex-wrap gap-2">
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                <button
+                                                    className="text-xs px-2 py-1 rounded-lg bg-white/70 border border-white/80 inline-flex items-center gap-1"
+                                                    onClick={() => handleDownloadReviewCard(review)}
+                                                >
+                                                    <Download size={12} />
+                                                    Скачать карточку
+                                                </button>
+                                                {isOwner && (
+                                                    <>
                                                     <button className="text-xs px-2 py-1 rounded-lg bg-white/70 border border-white/80" onClick={() => handleEditReview(review)}>Редактировать</button>
                                                     <button className="text-xs px-2 py-1 rounded-lg bg-white/70 border border-white/80" onClick={() => openReviewCard(review)}>
                                                         Открыть карточку
@@ -287,8 +383,9 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                                                     <button className="text-xs px-2 py-1 rounded-lg bg-white/70 border border-white/80" onClick={() => handleDeleteReview(review.id)}>
                                                         Удалить
                                                     </button>
-                                                </div>
-                                            )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

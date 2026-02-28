@@ -659,15 +659,42 @@ const MeetingsView = ({
 
     // 1. Plan Meeting
     const handleOpenPlan = (meeting = null) => {
-        const initialChecklist = [
+        const ensurePhotoChecklistItems = (checklist = []) => {
+            const items = Array.isArray(checklist) ? [...checklist] : [];
+            const normalized = items.map((i) => String(i?.text || '').toLowerCase().trim());
+
+            const hasConsentItem = normalized.some((text) =>
+                text.includes('не против') && text.includes('фото')
+            );
+            const hasGroupPhotoItem = normalized.some((text) =>
+                text.includes('общее фото') || text.includes('групповое фото')
+            );
+
+            if (!hasConsentItem) {
+                items.unshift({ text: 'Узнать, не против ли участники общего фото', completed: false });
+            }
+            if (!hasGroupPhotoItem) {
+                items.push({ text: 'Сделать общее фото', completed: false });
+            }
+
+            return items;
+        };
+
+        const initialChecklist = ensurePhotoChecklistItems([
             { text: 'Отправить приглашения', completed: false },
             { text: 'Подготовить материалы', completed: false },
             { text: 'Напомнить за день', completed: false }
-        ];
+        ]);
 
         const fallbackTz = DEFAULT_TIMEZONE;
         const resolvedTz = resolveCityTimezone(meeting?.city, meeting?.timezone || fallbackTz);
-        setFormData(meeting ? { ...meeting, timezone: resolvedTz, image_focus_x: meeting.image_focus_x ?? 50, image_focus_y: meeting.image_focus_y ?? 50 } : {
+        setFormData(meeting ? {
+            ...meeting,
+            checklist: ensurePhotoChecklistItems(meeting.checklist || []),
+            timezone: resolvedTz,
+            image_focus_x: meeting.image_focus_x ?? 50,
+            image_focus_y: meeting.image_focus_y ?? 50
+        } : {
             title: '',
             date: new Date().toISOString().split('T')[0],
             time: '19:00',

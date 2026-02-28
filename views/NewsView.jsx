@@ -112,8 +112,20 @@ const NewsView = ({ news = [], users = [] }) => {
 };
 
 export default NewsView;
+    const decodeEntities = (value) => {
+        let current = String(value || '');
+        for (let i = 0; i < 2; i += 1) {
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = current;
+            const next = textarea.value;
+            if (next === current) break;
+            current = next;
+        }
+        return current;
+    };
+
     const formatNewsBody = (value) => {
-        const raw = String(value || '');
+        const raw = decodeEntities(value);
         const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
 
         if (hasHtmlTags) {

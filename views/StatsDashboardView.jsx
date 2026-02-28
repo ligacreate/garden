@@ -1,10 +1,32 @@
 import React from 'react';
 import { Users, Coins, BookOpen, TrendingUp, Star, Zap, MessageSquare, Target, ArrowRight, Bell, PartyPopper } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { getTenureParts } from '../utils/tenure';
 import UserAvatar from '../components/UserAvatar';
 
 const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate, onOpenLeaderPage, newsItems = [] }) => {
+    const decodeEntities = (value) => {
+        let current = String(value || '');
+        for (let i = 0; i < 2; i += 1) {
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = current;
+            const next = textarea.value;
+            if (next === current) break;
+            current = next;
+        }
+        return current;
+    };
+
+    const formatNewsBody = (value) => {
+        const raw = decodeEntities(value);
+        const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
+
+        if (hasHtmlTags) return DOMPurify.sanitize(raw);
+
+        const plain = DOMPurify.sanitize(raw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+        return plain.replace(/\n/g, '<br />');
+    };
 
     // Calculate Stats
     const totalMeetings = meetings.length;
@@ -235,7 +257,10 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                                     </div>
                                     <div className="text-sm font-medium text-slate-700">{item.title}</div>
                                     {item.body && (
-                                        <div className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{item.body}</div>
+                                        <div
+                                            className="text-xs text-slate-500 mt-1 whitespace-pre-wrap [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_li]:my-1"
+                                            dangerouslySetInnerHTML={{ __html: formatNewsBody(item.body) }}
+                                        />
                                     )}
                                 </div>
                             </div>

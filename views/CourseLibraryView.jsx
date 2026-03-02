@@ -13,7 +13,8 @@ const COURSES = [
         image: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?auto=format&fit=crop&q=80&w=800",
         tag: "Полезное",
         minRole: ROLES.APPLICANT,
-        pinned: true
+        pinned: true,
+        hideWhenEmpty: false
     },
     {
         id: 1,
@@ -21,7 +22,8 @@ const COURSES = [
         description: "Курс для ведущих встреч с письменными практиками. Освойте искусство бережной модерации и создания смыслов.",
         image: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
-        minRole: ROLES.APPLICANT
+        minRole: ROLES.APPLICANT,
+        hideWhenEmpty: true
     },
     {
         id: 2,
@@ -29,7 +31,8 @@ const COURSES = [
         description: "Курс для стажеров: первые шаги, опоры и базовые навыки ведущей.",
         image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
-        minRole: ROLES.INTERN
+        minRole: ROLES.INTERN,
+        hideWhenEmpty: true
     },
     {
         id: 3,
@@ -37,7 +40,8 @@ const COURSES = [
         description: "Курс для развития личного бренда ведущей. Как проявляться, привлекать своих людей и монетизировать талант.",
         image: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
-        minRole: ROLES.INTERN
+        minRole: ROLES.INTERN,
+        hideWhenEmpty: true
     },
     {
         id: 4,
@@ -45,7 +49,8 @@ const COURSES = [
         description: "Полезные рекомендации для ведущих. Коллекция проверенных инструментов для упрощения работы.",
         image: "https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?auto=format&fit=crop&q=80&w=800",
         tag: "Полезное",
-        minRole: ROLES.INTERN
+        minRole: ROLES.INTERN,
+        hideWhenEmpty: true
     },
     {
         id: 5,
@@ -53,7 +58,8 @@ const COURSES = [
         description: "Курс для кураторов ПВЛ. Углубленное обучение наставничеству и поддержке других ведущих.",
         image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
-        minRole: ROLES.LEADER
+        minRole: ROLES.LEADER,
+        hideWhenEmpty: true
     }
 ];
 
@@ -202,11 +208,29 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
         });
     };
 
+    const role = user?.role || ROLES.APPLICANT;
+
+    const availableCourses = useMemo(() => {
+        const materialsCountByCourse = new Map();
+
+        knowledgeBase
+            .filter(k => k.role === 'all' || hasAccess(role, k.role))
+            .forEach((k) => {
+                const key = k.category;
+                materialsCountByCourse.set(key, (materialsCountByCourse.get(key) || 0) + 1);
+            });
+
+        return COURSES.filter((course) => {
+            if (!hasAccess(role, course.minRole)) return false;
+            if (course.hidden) return false;
+            if (!course.hideWhenEmpty) return true;
+            return (materialsCountByCourse.get(course.title) || 0) > 0;
+        });
+    }, [knowledgeBase, role]);
+
     const filteredCourses = useMemo(() => {
-        const role = user?.role || ROLES.APPLICANT;
-        return COURSES
+        return availableCourses
             .filter(course => {
-                if (!hasAccess(role, course.minRole)) return false;
                 if (selectedFilter !== 'Все' && course.tag !== selectedFilter) return false;
                 return true;
             })
@@ -214,10 +238,9 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
                 if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
                 return a.id - b.id;
             });
-    }, [selectedFilter, user?.role]);
+    }, [availableCourses, selectedFilter]);
 
-    const selectedCourse = COURSES.find(c => c.id === selectedCourseId) || null;
-    const role = user?.role || ROLES.APPLICANT;
+    const selectedCourse = availableCourses.find(c => c.id === selectedCourseId) || null;
 
     const courseMaterials = useMemo(() => {
         if (!selectedCourse) return [];
@@ -251,6 +274,14 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
         setSelectedTag('Все');
         setSelectedMaterial(null);
     }, [resetToken]);
+
+    useEffect(() => {
+        if (!selectedCourseId) return;
+        if (availableCourses.some(c => c.id === selectedCourseId)) return;
+        setSelectedCourseId(null);
+        setSelectedTag('Все');
+        setSelectedMaterial(null);
+    }, [availableCourses, selectedCourseId]);
 
     const completedCount = selectedCourse ? courseMaterials.filter(m => completedIds.has(String(m.id))).length : 0;
     const totalCount = selectedCourse ? courseMaterials.length : 0;
@@ -310,7 +341,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
                 </div>
                 <div className="text-right hidden md:block">
                     <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
-                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : COURSES.length}</div>
+                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : filteredCourses.length}</div>
                 </div>
             </div>
 

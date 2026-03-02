@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
+
+const COURSE_TITLES = [
+    "Инструкции",
+    "Пиши, веди, люби",
+    "Начало пути",
+    "Расти",
+    "Промты, ассистенты, лайфхаки",
+    "Менторский курс"
+];
 
 const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     const [period, setPeriod] = useState('month'); // 'month', 'year', 'all', 'custom'
@@ -234,13 +243,14 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     );
 };
 
-const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefreshUsers, onAddContent, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState('stats');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     const [allMeetings, setAllMeetings] = useState([]);
     const [allEvents, setAllEvents] = useState([]);
     const [eventSearch, setEventSearch] = useState('');
     const [editingEvent, setEditingEvent] = useState(null);
+    const [draggingItemId, setDraggingItemId] = useState(null);
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -266,6 +276,53 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
             .split(',')
             .map(t => t.trim())
             .filter(Boolean);
+    };
+
+    const hiddenCourses = librarySettings?.hiddenCourses || [];
+    const materialOrder = librarySettings?.materialOrder || {};
+
+    const getSortedItems = (category, items) => {
+        const order = materialOrder[category];
+        if (!Array.isArray(order) || order.length === 0) return items;
+        const rank = new Map(order.map((id, idx) => [String(id), idx]));
+        return [...items].sort((a, b) => {
+            const aRank = rank.has(String(a.id)) ? rank.get(String(a.id)) : Number.MAX_SAFE_INTEGER;
+            const bRank = rank.has(String(b.id)) ? rank.get(String(b.id)) : Number.MAX_SAFE_INTEGER;
+            if (aRank !== bRank) return aRank - bRank;
+            return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
+        });
+    };
+
+    const groupedKnowledgeBase = useMemo(() => {
+        const grouped = (knowledgeBase || []).reduce((acc, item) => {
+            const key = item.category || 'Без раздела';
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(item);
+            return acc;
+        }, {});
+
+        return Object.entries(grouped).map(([category, items]) => ({
+            category,
+            items: getSortedItems(category, items)
+        }));
+    }, [knowledgeBase, materialOrder]);
+
+    const handleDropMaterial = (category, targetIndex) => {
+        if (!draggingItemId) return;
+        const group = groupedKnowledgeBase.find(g => g.category === category);
+        if (!group) return;
+        const currentIndex = group.items.findIndex(item => String(item.id) === String(draggingItemId));
+        if (currentIndex === -1 || currentIndex === targetIndex) {
+            setDraggingItemId(null);
+            return;
+        }
+
+        const next = [...group.items];
+        const [moved] = next.splice(currentIndex, 1);
+        next.splice(targetIndex, 0, moved);
+        const orderedIds = next.map(item => String(item.id));
+        setDraggingItemId(null);
+        if (onReorderCourseMaterials) onReorderCourseMaterials(category, orderedIds);
     };
 
     const handleAdd = () => {
@@ -723,25 +780,59 @@ const AdminPanel = ({ users, knowledgeBase, news = [], onUpdateUserRole, onRefre
                     <div className="space-y-6">
                         {/* List of Knowledge Base Items */}
                         <div className="surface-card p-8">
+                            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-6">
+                                <div className="text-sm font-semibold text-slate-700 mb-3">Видимость курсов в библиотеке</div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {COURSE_TITLES.map((title) => {
+                                        const isVisible = !hiddenCourses.includes(title);
+                                        return (
+                                            <label key={title} className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-3 py-2.5">
+                                                <span className="text-sm text-slate-700">{title}</span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isVisible}
+                                                    onChange={(e) => onSetCourseVisible && onSetCourseVisible(title, e.target.checked)}
+                                                    className="h-4 w-4 accent-blue-600"
+                                                />
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
                             <h3 className="font-display font-semibold text-slate-900 mb-4">База знаний ({knowledgeBase.length})</h3>
                             <div className="space-y-3 max-h-[420px] overflow-y-auto mb-6">
-                                {Object.entries(
-                                    (knowledgeBase || []).reduce((acc, item) => {
-                                        const key = item.category || 'Без раздела';
-                                        if (!acc[key]) acc[key] = [];
-                                        acc[key].push(item);
-                                        return acc;
-                                    }, {})
-                                ).map(([category, items]) => (
+                                {groupedKnowledgeBase.map(({ category, items }) => (
                                     <details key={category} className="group bg-white/70 rounded-2xl border border-slate-100">
                                         <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
                                             <div className="font-medium text-slate-800">{category}</div>
                                             <div className="text-xs text-slate-400">{items.length} материалов</div>
                                         </summary>
                                         <div className="px-4 pb-4 space-y-2">
-                                            {items.map(item => (
-                                                <div key={item.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                                            {items.map((item, idx) => (
+                                                <div
+                                                    key={item.id}
+                                                    className={`flex justify-between items-center p-3 rounded-xl transition-colors border ${String(draggingItemId) === String(item.id)
+                                                        ? 'bg-blue-50 border-blue-200'
+                                                        : 'bg-slate-50 border-transparent hover:bg-slate-100'
+                                                        }`}
+                                                    draggable
+                                                    onDragStart={(e) => {
+                                                        setDraggingItemId(String(item.id));
+                                                        e.dataTransfer.effectAllowed = 'move';
+                                                        e.dataTransfer.setData('text/plain', String(item.id));
+                                                    }}
+                                                    onDragOver={(e) => e.preventDefault()}
+                                                    onDrop={(e) => {
+                                                        e.preventDefault();
+                                                        handleDropMaterial(category, idx);
+                                                    }}
+                                                    onDragEnd={() => setDraggingItemId(null)}
+                                                >
                                                     <div className="flex items-center gap-3">
+                                                        <span className="text-slate-400 cursor-grab active:cursor-grabbing" title="Перетащите для изменения порядка">
+                                                            <GripVertical size={16} />
+                                                        </span>
                                                         <span className="text-xl">{item.video_link ? '🎥' : item.file_link ? '📄' : '📝'}</span>
                                                         <div>
                                                             <div className="font-medium text-slate-800">{item.title}</div>

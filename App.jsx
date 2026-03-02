@@ -14,6 +14,7 @@ export default function App() {
     const [notification, setNotification] = useState(null);
     const [viewMode, setViewMode] = useState('default');
     const [loading, setLoading] = useState(true);
+    const [librarySettings, setLibrarySettings] = useState({ hiddenCourses: [], materialOrder: {} });
 
     const showNotification = (msg) => setNotification(msg);
 
@@ -29,6 +30,9 @@ export default function App() {
 
                 const kb = await api.getKnowledgeBase();
                 if (kb && kb.length > 0) setKnowledgeBase(kb);
+
+                const settings = await api.getLibrarySettings();
+                if (settings) setLibrarySettings(settings);
 
                 const newsData = await api.getNews();
                 setNews(newsData || []);
@@ -157,6 +161,40 @@ export default function App() {
         }
     };
 
+    const handleSaveLibrarySettings = async (next) => {
+        const normalized = {
+            hiddenCourses: Array.isArray(next?.hiddenCourses) ? next.hiddenCourses : [],
+            materialOrder: next?.materialOrder || {}
+        };
+        setLibrarySettings(normalized);
+        try {
+            await api.saveLibrarySettings(normalized);
+        } catch (e) {
+            console.error(e);
+            showNotification("Не удалось сохранить настройки библиотеки");
+        }
+    };
+
+    const handleSetCourseVisible = async (courseTitle, visible) => {
+        const hidden = new Set(librarySettings.hiddenCourses || []);
+        if (visible) hidden.delete(courseTitle);
+        else hidden.add(courseTitle);
+        await handleSaveLibrarySettings({
+            ...librarySettings,
+            hiddenCourses: Array.from(hidden)
+        });
+    };
+
+    const handleReorderCourseMaterials = async (courseTitle, orderedMaterialIds) => {
+        await handleSaveLibrarySettings({
+            ...librarySettings,
+            materialOrder: {
+                ...(librarySettings.materialOrder || {}),
+                [courseTitle]: orderedMaterialIds.map(String)
+            }
+        });
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600 font-sans">Загрузка...</div>;
 
     return (
@@ -164,7 +202,7 @@ export default function App() {
             <div className="w-full max-w-[480px] md:max-w-full bg-transparent min-h-screen relative flex flex-col">
                 <Toast message={notification} onClose={() => setNotification(null)} />
                 {!currentUser ? <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
-                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} knowledgeBase={knowledgeBase} news={news} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
+                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);
                         showNotification("Список пользователей обновлен");
@@ -193,7 +231,7 @@ export default function App() {
                             showNotification(e.message || "Ошибка публикации");
                         }
                     }} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} />
-                        : <UserApp user={currentUser} users={users} knowledgeBase={knowledgeBase} news={news} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
+                        : <UserApp user={currentUser} users={users} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
             </div>
         </div>
     );

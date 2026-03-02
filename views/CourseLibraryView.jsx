@@ -63,7 +63,7 @@ const COURSES = [
     }
 ];
 
-const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotify, resetToken = 0 }) => {
+const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onCompleteLesson, onNotify, resetToken = 0 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
     const [selectedTag, setSelectedTag] = useState('Все');
@@ -209,6 +209,8 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
     };
 
     const role = user?.role || ROLES.APPLICANT;
+    const hiddenCourses = librarySettings?.hiddenCourses || [];
+    const materialOrder = librarySettings?.materialOrder || {};
 
     const availableCourses = useMemo(() => {
         const materialsCountByCourse = new Map();
@@ -222,11 +224,12 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
 
         return COURSES.filter((course) => {
             if (!hasAccess(role, course.minRole)) return false;
+            if (hiddenCourses.includes(course.title)) return false;
             if (course.hidden) return false;
             if (!course.hideWhenEmpty) return true;
             return (materialsCountByCourse.get(course.title) || 0) > 0;
         });
-    }, [knowledgeBase, role]);
+    }, [hiddenCourses, knowledgeBase, role]);
 
     const filteredCourses = useMemo(() => {
         return availableCourses
@@ -244,7 +247,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
 
     const courseMaterials = useMemo(() => {
         if (!selectedCourse) return [];
-        return knowledgeBase
+        const base = knowledgeBase
             .filter(k => k.category === selectedCourse.title)
             .filter(k => k.role === 'all' || hasAccess(role, k.role))
             .map(k => ({
@@ -253,7 +256,18 @@ const CourseLibraryView = ({ user, knowledgeBase = [], onCompleteLesson, onNotif
                 video_link: k.video_link || (k.type === 'Видео' ? k.link : '') || '',
                 file_link: k.file_link || (k.type === 'PDF' ? k.link : '') || ''
             }));
-    }, [knowledgeBase, role, selectedCourse]);
+
+        const order = materialOrder[selectedCourse.title];
+        if (!Array.isArray(order) || order.length === 0) return base;
+
+        const rank = new Map(order.map((id, idx) => [String(id), idx]));
+        return [...base].sort((a, b) => {
+            const aRank = rank.has(String(a.id)) ? rank.get(String(a.id)) : Number.MAX_SAFE_INTEGER;
+            const bRank = rank.has(String(b.id)) ? rank.get(String(b.id)) : Number.MAX_SAFE_INTEGER;
+            if (aRank !== bRank) return aRank - bRank;
+            return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
+        });
+    }, [knowledgeBase, materialOrder, role, selectedCourse]);
 
     const availableTags = useMemo(() => {
         if (!selectedCourse) return [];

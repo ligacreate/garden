@@ -192,6 +192,23 @@ const resolveStorageSign = async (body) => {
 
 // Helper to simulate delay for local storage operations
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const LIBRARY_SETTINGS_STORAGE_KEY = 'garden_library_settings';
+const DEFAULT_LIBRARY_SETTINGS = { hiddenCourses: [], materialOrder: {} };
+
+const normalizeLibrarySettings = (raw) => {
+    const hiddenCourses = Array.isArray(raw?.hiddenCourses)
+        ? raw.hiddenCourses.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+    const materialOrder = raw?.materialOrder && typeof raw.materialOrder === 'object'
+        ? Object.fromEntries(
+            Object.entries(raw.materialOrder).map(([course, ids]) => [
+                course,
+                Array.isArray(ids) ? ids.map((id) => String(id)) : []
+            ])
+        )
+        : {};
+    return { hiddenCourses, materialOrder };
+};
 
 class LocalStorageService {
     constructor() {
@@ -387,6 +404,17 @@ class LocalStorageService {
         this.knowledgeBase.push(sanitized);
         localStorage.setItem('garden_knowledgeBase', JSON.stringify(this.knowledgeBase));
         return sanitized;
+    }
+
+    async getLibrarySettings() {
+        const raw = JSON.parse(localStorage.getItem(LIBRARY_SETTINGS_STORAGE_KEY) || 'null');
+        return normalizeLibrarySettings(raw || DEFAULT_LIBRARY_SETTINGS);
+    }
+
+    async saveLibrarySettings(settings) {
+        const normalized = normalizeLibrarySettings(settings || DEFAULT_LIBRARY_SETTINGS);
+        localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+        return normalized;
     }
 
     // Meetings (Mocked for local storage as they were in UserApp state)
@@ -999,6 +1027,17 @@ class RemoteApiService {
     async deleteKnowledge(id) {
         await postgrestFetch('knowledge_base', { id: `eq.${id}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
+    }
+
+    async getLibrarySettings() {
+        const raw = JSON.parse(localStorage.getItem(LIBRARY_SETTINGS_STORAGE_KEY) || 'null');
+        return normalizeLibrarySettings(raw || DEFAULT_LIBRARY_SETTINGS);
+    }
+
+    async saveLibrarySettings(settings) {
+        const normalized = normalizeLibrarySettings(settings || DEFAULT_LIBRARY_SETTINGS);
+        localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+        return normalized;
     }
 
     // Course progress

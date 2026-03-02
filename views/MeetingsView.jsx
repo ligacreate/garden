@@ -1347,7 +1347,7 @@ const MeetingsView = ({
                                             />
                                             {user.telegram && (
                                                 <div className="text-[11px] text-slate-400">
-                                                    По умолчанию используется Telegram ведущей: <span className="text-slate-500">{user.telegram}</span>
+                                                    Ссылка на запись / Telegram — в полном формате (например, https://t.me/username), не через @.
                                                 </div>
                                             )}
                                         </div>

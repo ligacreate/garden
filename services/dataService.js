@@ -1449,26 +1449,54 @@ class RemoteApiService {
 
     // Goals
     async getGoals(userId) {
-        const { data } = await postgrestFetch('goals', {
-            select: '*',
-            user_id: `eq.${userId}`,
-            order: 'created_at.desc'
+        const currentUser = await this.getCurrentUser().catch(() => null);
+        const resolvedUserId = await this._resolveGoalsUserId(userId, currentUser);
+        const candidateIds = Array.from(new Set([userId, resolvedUserId].filter(Boolean)));
+        const rows = [];
+
+        for (const candidateId of candidateIds) {
+            try {
+                const { data } = await postgrestFetch('goals', {
+                    select: '*',
+                    user_id: `eq.${candidateId}`,
+                    order: 'created_at.desc'
+                });
+                if (Array.isArray(data)) rows.push(...data);
+            } catch (e) {
+                // Some backends can reject mismatched id types in filters; try next candidate.
+                console.warn('getGoals candidate lookup failed:', candidateId, e);
+            }
+        }
+
+        const byId = new Map();
+        rows.forEach((row) => {
+            if (row && row.id !== undefined && row.id !== null) byId.set(row.id, row);
         });
-        return data;
+        return Array.from(byId.values()).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     }
 
     async addGoal(goal) {
+        const currentUser = await this.getCurrentUser().catch(() => null);
+        const resolvedUserId = await this._resolveGoalsUserId(goal?.user_id, currentUser);
         const sanitized = this._sanitizeFields(
-            { ...goal, related_tags: goal.related_tags || [] },
+            { ...goal, user_id: resolvedUserId || goal?.user_id, related_tags: goal.related_tags || [] },
             { plain: ['title', 'description'] }
         );
         const { id, ...rest } = sanitized; // Ensure no ID is sent for insert
-        const { data } = await postgrestFetch('goals', {}, {
-            method: 'POST',
-            body: [rest],
-            returnRepresentation: true
-        });
-        return Array.isArray(data) ? data[0] : data;
+        try {
+            const { data } = await postgrestFetch('goals', {}, {
+                method: 'POST',
+                body: [rest],
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        } catch (e) {
+            const msg = String(e?.message || '');
+            if (msg.includes('goals_user_id_fkey') || msg.includes('"code":"23503"')) {
+                throw new Error('Не удалось привязать цель к вашему профилю. Обновите страницу и попробуйте снова.');
+            }
+            throw e;
+        }
     }
 
     async updateGoal(goal) {
@@ -1485,6 +1513,57 @@ class RemoteApiService {
     async deleteGoal(goalId) {
         await postgrestFetch('goals', { id: `eq.${goalId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
+    }
+
+    async _resolveGoalsUserId(requestedUserId, currentUser = null) {
+        const candidateId = requestedUserId || currentUser?.id || null;
+        if (!candidateId) return requestedUserId;
+
+        try {
+            const { data: byId } = await postgrestFetch('users', {
+                select: 'id',
+                id: `eq.${candidateId}`,
+                limit: '1'
+            });
+            if (Array.isArray(byId) && byId.length > 0) return byId[0].id;
+        } catch (e) {
+            console.warn('goals user lookup by id failed:', e);
+        }
+
+        const email = normalizeEmail(currentUser?.email || '');
+        if (email) {
+            try {
+                const { data: byEmail } = await postgrestFetch('users', {
+                    select: 'id',
+                    email: `eq.${email}`,
+                    limit: '1'
+                });
+                if (Array.isArray(byEmail) && byEmail.length > 0) return byEmail[0].id;
+            } catch (e) {
+                console.warn('goals user lookup by email failed:', e);
+            }
+        }
+
+        try {
+            const payload = {
+                id: candidateId,
+                email: email || null,
+                name: this._sanitizeIfString(currentUser?.name) || null,
+                city: this._sanitizeIfString(currentUser?.city) || null
+            };
+            const { data: inserted } = await postgrestFetch('users', {}, {
+                method: 'POST',
+                body: [payload],
+                returnRepresentation: true
+            });
+            if (Array.isArray(inserted) && inserted.length > 0 && inserted[0]?.id !== undefined) {
+                return inserted[0].id;
+            }
+        } catch (e) {
+            console.warn('goals user auto-create failed:', e);
+        }
+
+        return requestedUserId;
     }
 
     _normalizeProfile(profile) {

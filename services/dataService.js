@@ -1519,6 +1519,42 @@ class RemoteApiService {
         const candidateId = requestedUserId || currentUser?.id || null;
         if (!candidateId) return requestedUserId;
 
+        // Primary path for current schema: goals.user_id -> auth.users.id
+        try {
+            const authMe = await authFetch('/auth/me');
+            const authId = authMe?.user?.id;
+            if (authId) return authId;
+        } catch (e) {
+            console.warn('goals auth user lookup failed:', e);
+        }
+
+        // Fallback for deployments where goals.user_id points to profiles.id
+        try {
+            const { data: profileById } = await postgrestFetch('profiles', {
+                select: 'id',
+                id: `eq.${candidateId}`,
+                limit: '1'
+            });
+            if (Array.isArray(profileById) && profileById.length > 0) return profileById[0].id;
+        } catch (e) {
+            console.warn('goals profile lookup by id failed:', e);
+        }
+
+        const email = normalizeEmail(currentUser?.email || '');
+        if (email) {
+            try {
+                const { data: profileByEmail } = await postgrestFetch('profiles', {
+                    select: 'id',
+                    email: `eq.${email}`,
+                    limit: '1'
+                });
+                if (Array.isArray(profileByEmail) && profileByEmail.length > 0) return profileByEmail[0].id;
+            } catch (e) {
+                console.warn('goals profile lookup by email failed:', e);
+            }
+        }
+
+        // Legacy fallback: deployments where goals.user_id points to public.users.id
         try {
             const { data: byId } = await postgrestFetch('users', {
                 select: 'id',
@@ -1530,7 +1566,6 @@ class RemoteApiService {
             console.warn('goals user lookup by id failed:', e);
         }
 
-        const email = normalizeEmail(currentUser?.email || '');
         if (email) {
             try {
                 const { data: byEmail } = await postgrestFetch('users', {

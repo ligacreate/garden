@@ -44,6 +44,23 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
     return { data, count };
 };
 
+const parsePostgrestErrorPayload = (error) => {
+    const message = String(error?.message || '').trim();
+    if (!message) return null;
+    try {
+        return JSON.parse(message);
+    } catch {
+        return null;
+    }
+};
+
+const isMissingColumnError = (error, table, column) => {
+    const payload = parsePostgrestErrorPayload(error);
+    if (!payload || payload.code !== 'PGRST204') return false;
+    const text = String(payload.message || '').toLowerCase();
+    return text.includes(`'${column.toLowerCase()}'`) && text.includes(`'${table.toLowerCase()}'`);
+};
+
 const authFetch = async (path, options = {}) => {
     const url = new URL(path, AUTH_URL);
     const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -1143,12 +1160,24 @@ class RemoteApiService {
         // Remove undefined keys to let DB defaults work
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
 
-        const { data } = await postgrestFetch('meetings', {}, {
-            method: 'POST',
-            body: [sanitized],
-            returnRepresentation: true
-        });
-        return Array.isArray(data) ? data[0] : data;
+        try {
+            const { data } = await postgrestFetch('meetings', {}, {
+                method: 'POST',
+                body: [sanitized],
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        } catch (error) {
+            if (!isMissingColumnError(error, 'meetings', 'city_key')) throw error;
+            const fallbackPayload = { ...sanitized };
+            delete fallbackPayload.city_key;
+            const { data } = await postgrestFetch('meetings', {}, {
+                method: 'POST',
+                body: [fallbackPayload],
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        }
     }
 
     async updateMeeting(meeting) {
@@ -1198,12 +1227,24 @@ class RemoteApiService {
         // Remove undefined keys to avoid sending empty updates for partial objects
         Object.keys(sanitized).forEach(key => sanitized[key] === undefined && delete sanitized[key]);
 
-        const { data } = await postgrestFetch('meetings', { id: `eq.${id}` }, {
-            method: 'PATCH',
-            body: sanitized,
-            returnRepresentation: true
-        });
-        return Array.isArray(data) ? data[0] : data;
+        try {
+            const { data } = await postgrestFetch('meetings', { id: `eq.${id}` }, {
+                method: 'PATCH',
+                body: sanitized,
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        } catch (error) {
+            if (!isMissingColumnError(error, 'meetings', 'city_key')) throw error;
+            const fallbackPayload = { ...sanitized };
+            delete fallbackPayload.city_key;
+            const { data } = await postgrestFetch('meetings', { id: `eq.${id}` }, {
+                method: 'PATCH',
+                body: fallbackPayload,
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        }
     }
 
     async deleteMeeting(meetingId) {

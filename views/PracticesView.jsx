@@ -498,7 +498,8 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                 isOpen={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
                 title={formData.id ? 'Редактировать практику' : 'Новая практика'}
-                size="md"
+                size="full"
+                align="start"
             >
                 <div className="space-y-4">
                     <Input

@@ -22,14 +22,16 @@ const ModalShell = ({
         sm: 'max-w-sm',
         md: 'max-w-lg',
         lg: 'max-w-3xl',
-        xl: 'max-w-5xl'
+        xl: 'max-w-5xl',
+        full: 'max-w-none'
     }[size] || 'max-w-lg';
 
     const alignClass = align === 'start' ? 'items-start pt-10' : 'items-center';
+    const dialogWidthClass = size === 'full' ? 'w-[calc(100vw-2rem)]' : 'w-full';
 
     return createPortal(
-        <div className={`fixed inset-0 ${zIndex} flex ${alignClass} justify-center p-4 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-200`}>
-            <div className={`surface-card w-full ${sizeClass} overflow-hidden animate-in zoom-in-95 duration-200 relative`}>
+        <div className={`fixed inset-0 ${zIndex} flex ${alignClass} justify-center p-4 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto`}>
+            <div className={`surface-card ${dialogWidthClass} ${sizeClass} max-h-[calc(100vh-2rem)] overflow-hidden animate-in zoom-in-95 duration-200 relative flex flex-col`}>
                 {showClose && (
                     <button
                         onClick={onClose}
@@ -49,7 +51,7 @@ const ModalShell = ({
                         </div>
                     )
                 )}
-                <div className="px-8 py-8">{children}</div>
+                <div className="px-8 py-8 overflow-y-auto flex-1">{children}</div>
                 {footer && (
                     <div className="px-8 pb-8 pt-0">{footer}</div>
                 )}

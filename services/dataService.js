@@ -1098,7 +1098,7 @@ class RemoteApiService {
             return Number.isNaN(n) ? null : n;
         };
         const cleaned = this._sanitizeFields(meeting, {
-            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
+            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'city_key', 'payment_link', 'meeting_format', 'online_visibility']
         });
         const durationValue = toIntOrNull(cleaned.duration);
         const sanitized = {
@@ -1123,8 +1123,11 @@ class RemoteApiService {
             cost: cleaned.cost,
             address: cleaned.address,
             city: cleaned.city,
+            city_key: cleaned.city_key,
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
+            meeting_format: cleaned.meeting_format,
+            online_visibility: cleaned.online_visibility,
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
             seeds_awarded: cleaned.seeds_awarded,
             timezone: cleaned.timezone || DEFAULT_TIMEZONE
@@ -1152,7 +1155,7 @@ class RemoteApiService {
             return Number.isNaN(n) ? null : n;
         };
         const cleaned = this._sanitizeFields(rest, {
-            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
+            plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'city_key', 'payment_link', 'meeting_format', 'online_visibility']
         });
         // Sanitize fields
         const durationValue = toIntOrNull(cleaned.duration);
@@ -1175,8 +1178,11 @@ class RemoteApiService {
             cost: cleaned.cost,
             address: cleaned.address,
             city: cleaned.city,
+            city_key: cleaned.city_key,
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
+            meeting_format: cleaned.meeting_format,
+            online_visibility: cleaned.online_visibility,
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],
             seeds_awarded: cleaned.seeds_awarded,
             timezone: cleaned.timezone || DEFAULT_TIMEZONE
@@ -1220,7 +1226,7 @@ class RemoteApiService {
     async getAllEvents() {
         try {
             const { data } = await postgrestFetch('events', {
-                select: 'id,title,description,date,city,time,location,category,image_url,image_focus_x,image_focus_y,price,registration_link',
+                select: 'id,title,description,date,city,city_key,time,location,category,image_url,image_focus_x,image_focus_y,price,registration_link,meeting_format,online_visibility,starts_at,day_date',
                 order: 'date.desc'
             });
             return data;
@@ -1233,7 +1239,7 @@ class RemoteApiService {
     async updateEvent(event) {
         const { id, ...rest } = event;
         const cleaned = this._sanitizeFields(rest, {
-            plain: ['title', 'description', 'date', 'time', 'city', 'location', 'category', 'image_url', 'price', 'registration_link']
+            plain: ['title', 'description', 'date', 'time', 'city', 'city_key', 'location', 'category', 'image_url', 'price', 'registration_link', 'meeting_format', 'online_visibility']
         });
         const focusX = rest.image_focus_x === '' || rest.image_focus_x === undefined ? null : parseInt(rest.image_focus_x, 10);
         const focusY = rest.image_focus_y === '' || rest.image_focus_y === undefined ? null : parseInt(rest.image_focus_y, 10);
@@ -1477,26 +1483,53 @@ class RemoteApiService {
 
     async addGoal(goal) {
         const currentUser = await this.getCurrentUser().catch(() => null);
+        if (currentUser?.id) {
+            try {
+                await this._ensurePostgrestUser(currentUser);
+            } catch (e) {
+                console.warn('goal profile ensure failed:', e);
+            }
+        }
+
         const resolvedUserId = await this._resolveGoalsUserId(goal?.user_id, currentUser);
-        const sanitized = this._sanitizeFields(
-            { ...goal, user_id: resolvedUserId || goal?.user_id, related_tags: goal.related_tags || [] },
+        const candidateUserIds = Array.from(new Set([
+            resolvedUserId,
+            currentUser?.id,
+            goal?.user_id
+        ].filter(Boolean)));
+
+        const baseSanitized = this._sanitizeFields(
+            { ...goal, related_tags: goal.related_tags || [] },
             { plain: ['title', 'description'] }
         );
-        const { id, ...rest } = sanitized; // Ensure no ID is sent for insert
-        try {
-            const { data } = await postgrestFetch('goals', {}, {
-                method: 'POST',
-                body: [rest],
-                returnRepresentation: true
-            });
-            return Array.isArray(data) ? data[0] : data;
-        } catch (e) {
-            const msg = String(e?.message || '');
+        const { id, user_id, ...restGoal } = baseSanitized; // Ensure no ID is sent for insert
+
+        let lastError = null;
+        for (const candidateUserId of candidateUserIds) {
+            try {
+                const { data } = await postgrestFetch('goals', {}, {
+                    method: 'POST',
+                    body: [{ ...restGoal, user_id: candidateUserId }],
+                    returnRepresentation: true
+                });
+                return Array.isArray(data) ? data[0] : data;
+            } catch (e) {
+                const msg = String(e?.message || '');
+                lastError = e;
+                if (msg.includes('goals_user_id_fkey') || msg.includes('"code":"23503"')) {
+                    continue;
+                }
+                throw e;
+            }
+        }
+
+        if (lastError) {
+            const msg = String(lastError?.message || '');
             if (msg.includes('goals_user_id_fkey') || msg.includes('"code":"23503"')) {
                 throw new Error('Не удалось привязать цель к вашему профилю. Обновите страницу и попробуйте снова.');
             }
-            throw e;
         }
+        throw new Error('Не удалось сохранить цель. Попробуйте снова.');
     }
 
     async updateGoal(goal) {

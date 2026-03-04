@@ -445,6 +445,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         try {
             const newGoal = { ...goal, user_id: user.id };
             const saved = await api.addGoal(newGoal);
+            if (!saved) throw new Error('Сервер не вернул созданную цель');
             setGoals([saved, ...goals]);
 
             // Seed Bonus: +30
@@ -461,10 +462,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         try {
             const oldGoal = goals.find(g => g.id === updatedGoal.id);
             const saved = await api.updateGoal(updatedGoal);
-            setGoals(goals.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+            const nextGoal = saved || updatedGoal;
+            setGoals(goals.map(g => g.id === updatedGoal.id ? nextGoal : g));
 
             // Check for completion bonus: +100
-            if (updatedGoal.completed && (!oldGoal || !oldGoal.completed)) {
+            if (nextGoal.completed && (!oldGoal || !oldGoal.completed)) {
                 const seedsEarned = 100;
                 onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
                 onNotify(`Цель достигнута! +${seedsEarned} семян`);

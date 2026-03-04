@@ -10,6 +10,21 @@ import { api } from '../services/dataService';
 import { getCostAmount, getCostCurrency } from '../utils/cost';
 import ModalShell from '../components/ModalShell';
 
+const normalizeCityKey = (value) => String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const normalizeMeetingFormat = (meeting) => {
+    const raw = String(meeting?.meeting_format || '').toLowerCase();
+    if (raw === 'online' || raw === 'hybrid' || raw === 'offline') return raw;
+    const city = String(meeting?.city || '').toLowerCase();
+    if (city.includes('онлайн') || city.includes('online')) return 'online';
+    return 'offline';
+};
+
 // --- Sub-Components ---
 
 // 1. Calendar Widget
@@ -688,10 +703,13 @@ const MeetingsView = ({
 
         const fallbackTz = DEFAULT_TIMEZONE;
         const resolvedTz = resolveCityTimezone(meeting?.city, meeting?.timezone || fallbackTz);
+        const meetingFormat = normalizeMeetingFormat(meeting);
         setFormData(meeting ? {
             ...meeting,
             checklist: ensurePhotoChecklistItems(meeting.checklist || []),
             timezone: resolvedTz,
+            meeting_format: meetingFormat,
+            online_visibility: meeting?.online_visibility || 'online_only',
             image_focus_x: meeting.image_focus_x ?? 50,
             image_focus_y: meeting.image_focus_y ?? 50
         } : {
@@ -705,6 +723,8 @@ const MeetingsView = ({
             is_public: false,
             co_hosts: [],
             timezone: resolvedTz,
+            meeting_format: 'offline',
+            online_visibility: 'online_only',
             image_focus_x: 50,
             image_focus_y: 50
         });
@@ -722,7 +742,7 @@ const MeetingsView = ({
             if (!data.description) missing.push('Описание');
             if (isImageUploading) missing.push('Обложка (загрузка)');
             if (!data.cover_image) missing.push('Обложка');
-            if (!data.city) missing.push('Город');
+            if ((data.meeting_format || 'offline') !== 'online' && !data.city) missing.push('Город');
             if (!data.cost) missing.push('Стоимость');
             if (!data.payment_link) missing.push('Ссылка');
 
@@ -775,11 +795,22 @@ const MeetingsView = ({
         if (isSaving) return;
         setIsSaving(true);
         try {
+            const meetingFormat = normalizeMeetingFormat(formData);
+            const normalizedCity = String(formData.city || '').trim();
+            const finalCity = meetingFormat === 'online' ? 'Онлайн' : normalizedCity;
+            const cityKey = normalizeCityKey(finalCity || 'online');
+            const onlineVisibility = meetingFormat === 'online'
+                ? (formData.online_visibility || 'online_only')
+                : null;
             const meetingData = {
                 ...formData,
                 user_id: user.id,
                 status: 'planned',
-                timezone: resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)
+                city: finalCity,
+                city_key: cityKey,
+                meeting_format: meetingFormat,
+                online_visibility: onlineVisibility,
+                timezone: resolveCityTimezone(finalCity, formData.timezone || DEFAULT_TIMEZONE)
             };
 
             const missing = validatePublicFields(meetingData);
@@ -1278,12 +1309,46 @@ const MeetingsView = ({
                                             )}
 
                                             <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Формат встречи</label>
+                                                    <select
+                                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none"
+                                                        value={normalizeMeetingFormat(formData)}
+                                                        onChange={(e) => {
+                                                            const nextFormat = e.target.value;
+                                                            setFormData({
+                                                                ...formData,
+                                                                meeting_format: nextFormat,
+                                                                city: nextFormat === 'online' ? 'Онлайн' : (formData.city === 'Онлайн' ? '' : formData.city),
+                                                                online_visibility: nextFormat === 'online' ? (formData.online_visibility || 'online_only') : null
+                                                            });
+                                                        }}
+                                                    >
+                                                        <option value="offline">Офлайн</option>
+                                                        <option value="online">Онлайн</option>
+                                                        <option value="hybrid">Гибрид</option>
+                                                    </select>
+                                                </div>
                                                 <Input
                                                     label="Город"
-                                                    value={formData.city}
+                                                    value={normalizeMeetingFormat(formData) === 'online' ? 'Онлайн' : (formData.city || '')}
                                                     onChange={e => setFormData({ ...formData, city: e.target.value })}
-                                                    placeholder="Москва, Бали, Онлайн..."
+                                                    placeholder={normalizeMeetingFormat(formData) === 'online' ? 'Онлайн' : 'Москва, Бали...'}
+                                                    disabled={normalizeMeetingFormat(formData) === 'online'}
                                                 />
+                                                {normalizeMeetingFormat(formData) === 'online' && (
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Показывать онлайн-встречу</label>
+                                                        <select
+                                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none"
+                                                            value={formData.online_visibility || 'online_only'}
+                                                            onChange={(e) => setFormData({ ...formData, online_visibility: e.target.value })}
+                                                        >
+                                                            <option value="online_only">Только во вкладке Онлайн</option>
+                                                            <option value="all_cities">Во всех городах + Онлайн</option>
+                                                        </select>
+                                                    </div>
+                                                )}
 
                                                     <div>
                                                         <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Стоимость</label>

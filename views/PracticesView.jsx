@@ -5,9 +5,9 @@ import Input from '../components/Input';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalShell from '../components/ModalShell';
 
-const CSV_TEMPLATE = `title,time,type,description,icon
-Дыхание 4-7-8,10 мин,Дыхание,Успокаивающая практика для быстрого снижения стресса,🫁
-Колесо баланса,20 мин,Рефлексия,Проверка ключевых сфер жизни и фокус на следующем шаге,🎯`;
+const CSV_TEMPLATE = `title,time,duration_minutes,type,short_goal,instruction_short,instruction_full,reflection_questions,description,icon
+Дыхание 4-7-8,10 мин,10,Дыхание,Снизить уровень стресса,Сделайте 3 цикла дыхания 4-7-8,Сядьте удобно. 1) Вдох 4 счета. 2) Задержка 7. 3) Выдох 8. Повторите 3-5 циклов.,Что изменилось в теле? | Что поменялось в состоянии?,Успокаивающая практика для быстрого снижения стресса,🫁
+Колесо баланса,20 мин,20,Рефлексия,Найти зону роста,Оцените 8 сфер по шкале 1-10,Нарисуйте круг, разделите на сектора, оцените каждую сферу, выберите 1 шаг на неделю.,Какая сфера проседает? | Какой первый шаг сделаете?,Проверка ключевых сфер жизни и фокус на следующем шаге,🎯`;
 
 const parseCsvLine = (line, delimiter) => {
     const out = [];
@@ -83,6 +83,11 @@ const parsePracticesCsv = (rawText) => {
         const time = getValue(cells, ['time', 'время']);
         const type = getValue(cells, ['type', 'тема', 'категория']);
         const description = getValue(cells, ['description', 'описание']);
+        const duration_minutes = getValue(cells, ['duration_minutes', 'duration', 'длительность', 'длительность_мин']);
+        const short_goal = getValue(cells, ['short_goal', 'goal', 'краткая_цель', 'цель']);
+        const instruction_short = getValue(cells, ['instruction_short', 'короткая_инструкция', 'инструкция_коротко']);
+        const instruction_full = getValue(cells, ['instruction_full', 'полная_инструкция', 'инструкция_полная', 'инструкция']);
+        const reflection_questions = getValue(cells, ['reflection_questions', 'вопросы_рефлексии', 'вопросы']);
         const icon = getValue(cells, ['icon', 'иконка']) || '📄';
 
         if (!title) {
@@ -90,18 +95,42 @@ const parsePracticesCsv = (rawText) => {
             continue;
         }
 
-        items.push({ title, time, type, description, icon });
+        items.push({
+            title,
+            time,
+            type,
+            description,
+            icon,
+            duration_minutes,
+            short_goal,
+            instruction_short,
+            instruction_full,
+            reflection_questions
+        });
     }
 
     return { items, errors };
 };
 
 const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDeletePractice, onNotify }) => {
+    const emptyPracticeForm = {
+        id: null,
+        title: '',
+        time: '',
+        duration_minutes: '',
+        type: '',
+        short_goal: '',
+        instruction_short: '',
+        instruction_full: '',
+        reflection_questions: '',
+        description: '',
+        icon: '📄'
+    };
     const [search, setSearch] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [viewPractice, setViewPractice] = useState(null); // The practice currently being viewed
     const [deletePracticeId, setDeletePracticeId] = useState(null);
-    const [formData, setFormData] = useState({ id: null, title: '', time: '', type: '', description: '', icon: '📄' });
+    const [formData, setFormData] = useState(emptyPracticeForm);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [csvText, setCsvText] = useState('');
     const [csvErrors, setCsvErrors] = useState([]);
@@ -142,6 +171,27 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         });
     };
 
+    const parseDurationMinutes = (practice) => {
+        const direct = parseInt(practice?.duration_minutes, 10);
+        if (!Number.isNaN(direct) && direct > 0) return direct;
+        const fallback = parseInt(practice?.time, 10);
+        if (!Number.isNaN(fallback) && fallback > 0) return fallback;
+        return null;
+    };
+
+    const getDurationLabel = (practice) => {
+        const minutes = parseDurationMinutes(practice);
+        if (minutes) return `${minutes} мин`;
+        if (practice?.time) return practice.time;
+        return '';
+    };
+
+    const splitReflectionQuestions = (value) =>
+        String(value || '')
+            .split(/\r?\n|\|/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+
     // Get unique categories with normalized names (excluding 'Общее' from filters as requested)
     const categories = ['Все', ...new Set(practices.map(p => normalize(p.type)).filter(c => c !== 'Общее'))];
 
@@ -149,11 +199,15 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         const pType = normalize(p.type);
         const matchesCategory = selectedCategory === 'Все' || pType === selectedCategory;
         const matchesSearch = p.title.toLowerCase().includes(search.toLowerCase()) ||
-            p.description?.toLowerCase().includes(search.toLowerCase());
+            p.description?.toLowerCase().includes(search.toLowerCase()) ||
+            p.short_goal?.toLowerCase().includes(search.toLowerCase()) ||
+            p.instruction_short?.toLowerCase().includes(search.toLowerCase()) ||
+            p.instruction_full?.toLowerCase().includes(search.toLowerCase()) ||
+            p.reflection_questions?.toLowerCase().includes(search.toLowerCase());
 
         let matchesTime = true;
         if (timeFilter !== 'all') {
-            const minutes = parseInt(p.time) || 0;
+            const minutes = parseDurationMinutes(p) || 0;
             if (timeFilter === 'short') matchesTime = minutes >= 5 && minutes <= 15;
             else if (timeFilter === 'medium') matchesTime = minutes >= 20 && minutes <= 30;
             else if (timeFilter === 'long') matchesTime = minutes >= 40;
@@ -164,29 +218,40 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
 
     const handleSave = () => {
         if (!formData.title) return;
+        const duration = parseInt(formData.duration_minutes, 10);
+        const normalizedDuration = Number.isNaN(duration) ? null : duration;
+        const payload = {
+            ...formData,
+            duration_minutes: normalizedDuration,
+            time: formData.time || (normalizedDuration ? `${normalizedDuration} мин` : '')
+        };
 
         if (formData.id) {
             // Update existing
-            onUpdatePractice(formData);
+            onUpdatePractice(payload);
             onNotify("Практика обновлена");
         } else {
             // Create new
-            onAddPractice({ ...formData, id: Date.now() });
+            onAddPractice({ ...payload, id: Date.now() });
             onNotify("Практика добавлена");
         }
 
         setIsEditModalOpen(false);
-        setFormData({ id: null, title: '', time: '', type: '', description: '', icon: '📄' });
+        setFormData(emptyPracticeForm);
     };
 
     const openAddModal = () => {
-        setFormData({ id: null, title: '', time: '', type: '', description: '', icon: '📄' });
+        setFormData(emptyPracticeForm);
         setIsEditModalOpen(true);
     };
 
     const openEditModal = (practice, e) => {
         e.stopPropagation(); // Prevent opening the view modal
-        setFormData({ ...practice });
+        setFormData({
+            ...emptyPracticeForm,
+            ...practice,
+            duration_minutes: practice?.duration_minutes ?? ''
+        });
         setIsEditModalOpen(true);
     };
 
@@ -372,6 +437,11 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                                     {practice.type}
                                                 </span>
                                             )}
+                                            {getDurationLabel(practice) && (
+                                                <span className="px-3 py-1 mt-2 ml-2 inline-block bg-white border border-dashed border-slate-300 rounded-full text-slate-600 text-xs font-medium">
+                                                    {getDurationLabel(practice)}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
 
@@ -388,6 +458,11 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
 
                                 {/* Body: Description */}
                                 <div className="flex-1">
+                                    {practice.short_goal && (
+                                        <p className="text-slate-800 text-sm font-semibold mb-2 line-clamp-2">
+                                            Цель: {practice.short_goal}
+                                        </p>
+                                    )}
                                     <p className="text-slate-600 text-[15px] leading-relaxed line-clamp-4">
                                         {practice.description || "Описание отсутствует..."}
                                     </p>
@@ -440,10 +515,25 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                             placeholder="15 мин"
                         />
                         <Input
+                            label="Длительность (мин)"
+                            type="number"
+                            value={formData.duration_minutes}
+                            onChange={e => setFormData({ ...formData, duration_minutes: e.target.value })}
+                            placeholder="15"
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input
                             label="Тема"
                             value={formData.type}
                             onChange={e => setFormData({ ...formData, type: e.target.value })}
                             placeholder="Отношения, рост"
+                        />
+                        <Input
+                            label="Краткая цель"
+                            value={formData.short_goal}
+                            onChange={e => setFormData({ ...formData, short_goal: e.target.value })}
+                            placeholder="Что должна дать практика?"
                         />
                     </div>
                     <div>
@@ -461,10 +551,37 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                         </div>
                     </div>
                     <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Инструкция (короткая)</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-24 resize-none text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            placeholder="Короткий формат для карточки"
+                            value={formData.instruction_short}
+                            onChange={e => setFormData({ ...formData, instruction_short: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Инструкция (полная)</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-32 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            placeholder="Полный пошаговый вариант (раскрывающийся блок)"
+                            value={formData.instruction_full}
+                            onChange={e => setFormData({ ...formData, instruction_full: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">Вопросы для рефлексивного отклика</label>
+                        <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-28 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            placeholder="По одному вопросу на строку"
+                            value={formData.reflection_questions}
+                            onChange={e => setFormData({ ...formData, reflection_questions: e.target.value })}
+                        />
+                    </div>
+                    <div>
                         <label className="text-sm font-medium text-slate-700 mb-2 block">Описание</label>
                         <textarea
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-32 resize-none text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                            placeholder="Описание практики, физический и смысловой результат, вопросы для рефлексивного отклика"
+                            placeholder="Описание практики и контекст применения"
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
                         />
@@ -508,7 +625,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                         <label className="text-sm font-medium text-slate-700 mb-2 block">CSV-данные</label>
                         <textarea
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-40 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-mono"
-                            placeholder="Вставьте CSV или загрузите файл. Колонки: title,time,type,description,icon"
+                            placeholder="Вставьте CSV или загрузите файл. Колонки: title,time,duration_minutes,type,short_goal,instruction_short,instruction_full,reflection_questions,description,icon"
                             value={csvText}
                             onChange={(e) => refreshCsvPreview(e.target.value)}
                         />
@@ -578,12 +695,49 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                 <h2 className="text-3xl font-bold text-slate-900 mb-3">{viewPractice.title}</h2>
                                 <div className="flex gap-2">
                                     {viewPractice.type && <span className="px-3 py-1 bg-white text-slate-600 rounded-full text-sm font-medium border border-dashed border-slate-300">{viewPractice.type}</span>}
-                                    {viewPractice.time && <span className="px-3 py-1 bg-white text-slate-600 rounded-full text-sm font-medium border border-dashed border-slate-300">{viewPractice.time}</span>}
+                                    {getDurationLabel(viewPractice) && <span className="px-3 py-1 bg-white text-slate-600 rounded-full text-sm font-medium border border-dashed border-slate-300">{getDurationLabel(viewPractice)}</span>}
                                 </div>
                             </div>
                         </div>
 
                         <div className="prose prose-slate max-w-none">
+                            {viewPractice.short_goal && (
+                                <div className="mb-4 p-4 rounded-2xl border border-blue-100 bg-blue-50/40">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-blue-700 mb-1">Краткая цель</div>
+                                    <div className="text-slate-800 font-medium">{viewPractice.short_goal}</div>
+                                </div>
+                            )}
+
+                            {(viewPractice.instruction_short || viewPractice.instruction_full) && (
+                                <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Инструкция</div>
+                                    {viewPractice.instruction_short && (
+                                        <p className="text-slate-700 mb-3 whitespace-pre-wrap">
+                                            {renderDescriptionWithLinks(viewPractice.instruction_short)}
+                                        </p>
+                                    )}
+                                    {viewPractice.instruction_full && (
+                                        <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <summary className="cursor-pointer text-sm font-semibold text-slate-700">Показать полную инструкцию</summary>
+                                            <div className="mt-3 text-slate-700 whitespace-pre-wrap">
+                                                {renderDescriptionWithLinks(viewPractice.instruction_full)}
+                                            </div>
+                                        </details>
+                                    )}
+                                </div>
+                            )}
+
+                            {splitReflectionQuestions(viewPractice.reflection_questions).length > 0 && (
+                                <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Вопросы для рефлексивного отклика</div>
+                                    <ul className="list-disc pl-6 text-slate-700 space-y-1">
+                                        {splitReflectionQuestions(viewPractice.reflection_questions).map((question, idx) => (
+                                            <li key={`${question}-${idx}`}>{question}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
                             {viewPractice.description && (
                                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-lg text-slate-700 leading-relaxed whitespace-pre-wrap font-medium italic mb-6">
                                     {renderDescriptionWithLinks(viewPractice.description)}

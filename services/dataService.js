@@ -496,7 +496,9 @@ class LocalStorageService {
 
     async addPractice(practice) {
         const practices = await this.getPractices();
-        const sanitized = this._sanitizeFields(practice, { plain: ['title', 'description'] });
+        const sanitized = this._sanitizeFields(practice, {
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+        });
         const newPractice = { ...sanitized, id: Date.now() };
         practices.unshift(newPractice);
         localStorage.setItem('garden_practices', JSON.stringify(practices));
@@ -507,7 +509,9 @@ class LocalStorageService {
         const practices = await this.getPractices();
         const index = practices.findIndex(p => p.id === practice.id);
         if (index !== -1) {
-            const sanitized = this._sanitizeFields(practice, { plain: ['title', 'description'] });
+            const sanitized = this._sanitizeFields(practice, {
+                plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+            });
             practices[index] = { ...practices[index], ...sanitized };
             localStorage.setItem('garden_practices', JSON.stringify(practices));
         }
@@ -1279,7 +1283,9 @@ class RemoteApiService {
         // Since we used Date.now() for IDs locally, we should let DB handle it for persistence
         // OR we can keep using BIGINT if we want. Let's let DB handle it.
         const { id, ...rest } = practice;
-        const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
+        const sanitized = this._sanitizeFields(rest, {
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+        });
         const { data } = await postgrestFetch('practices', {}, {
             method: 'POST',
             body: [sanitized],
@@ -1290,7 +1296,9 @@ class RemoteApiService {
 
     async updatePractice(practice) {
         const { id, ...rest } = practice;
-        const sanitized = this._sanitizeFields(rest, { plain: ['title', 'description'] });
+        const sanitized = this._sanitizeFields(rest, {
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+        });
         await postgrestFetch('practices', { id: `eq.${id}` }, {
             method: 'PATCH',
             body: sanitized,

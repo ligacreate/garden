@@ -1,10 +1,67 @@
-import React, { useState } from 'react';
-import { Bold, Italic, Link, List, Type } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Bold, Italic, Link, List, Type, Image, Upload } from 'lucide-react';
 
-const RichEditor = ({ value, onChange, placeholder }) => {
+const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
+    const editorRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const emitChange = () => {
+        if (editorRef.current) onChange(editorRef.current.innerHTML);
+    };
+
+    const saveSelection = () => {
+        const selection = window.getSelection();
+        return selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+    };
+
+    const restoreSelection = (range) => {
+        if (!range) return;
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.removeAllRanges();
+        selection.addRange(range);
+    };
+
     const handleCommand = (e, command, val = null) => {
         e.preventDefault(); // Prevent button from stealing focus
         document.execCommand(command, false, val);
+        emitChange();
+    };
+
+    const handleInsertImageByUrl = (e) => {
+        e.preventDefault();
+        const range = saveSelection();
+        setTimeout(() => {
+            const url = prompt('Введите ссылку на изображение:');
+            if (!url) return;
+            const trimmed = url.trim();
+            if (!/^https?:\/\//i.test(trimmed)) return;
+            restoreSelection(range);
+            document.execCommand('insertImage', false, trimmed);
+            emitChange();
+        }, 0);
+    };
+
+    const handleUploadImage = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file || !onUploadImage) return;
+
+        const range = saveSelection();
+        setIsUploading(true);
+        try {
+            const url = await onUploadImage(file);
+            if (!url) return;
+            restoreSelection(range);
+            document.execCommand('insertImage', false, url);
+            emitChange();
+        } catch (error) {
+            console.error('Rich image upload failed:', error);
+            alert('Не удалось загрузить изображение');
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     return (
@@ -30,11 +87,32 @@ const RichEditor = ({ value, onChange, placeholder }) => {
                         }
                         if (url) {
                             document.execCommand('createLink', false, url);
+                            emitChange();
                         }
                     }, 0);
                 }} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Ссылка"><Link size={16} /></button>
+                <button onMouseDown={handleInsertImageByUrl} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Изображение по ссылке"><Image size={16} /></button>
+                <button
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (!isUploading) fileInputRef.current?.click();
+                    }}
+                    className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded disabled:opacity-50"
+                    title={isUploading ? 'Загрузка...' : 'Загрузить изображение'}
+                    disabled={isUploading || !onUploadImage}
+                >
+                    <Upload size={16} />
+                </button>
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleUploadImage}
+                />
             </div>
             <div
+                ref={editorRef}
                 className="p-4 min-h-[150px] outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_i]:italic [&_li]:mb-1"
                 contentEditable
                 dangerouslySetInnerHTML={{ __html: value }}

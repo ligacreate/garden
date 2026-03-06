@@ -1474,7 +1474,7 @@ const MeetingsView = ({
             <ModalShell
                 isOpen={isResultModalOpen}
                 onClose={() => setIsResultModalOpen(false)}
-                title="Итоги встречи"
+                title={selectedMeeting?.status === 'completed' ? 'Редактировать итоги' : 'Итоги встречи'}
                 description={formData.title}
                 size="md"
             >
@@ -1506,7 +1506,7 @@ const MeetingsView = ({
                     </div>
                 </div>
                 <Button onClick={handleSaveResult} disabled={isSaving} className="w-full justify-center">
-                    {isSaving ? 'Сохранение...' : 'Сохранить результат'}
+                    {isSaving ? 'Сохранение...' : (selectedMeeting?.status === 'completed' ? 'Сохранить изменения' : 'Сохранить результат')}
                 </Button>
             </ModalShell>
 

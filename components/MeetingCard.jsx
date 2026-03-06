@@ -235,6 +235,12 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
 
                             <div className="flex gap-3 mt-4">
                                 <button
+                                    onClick={(e) => { e.stopPropagation(); onResult(meeting); }}
+                                    className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-2"
+                                >
+                                    <Edit2 size={14} /> Изменить итоги
+                                </button>
+                                <button
                                     onClick={handleDelete}
                                     className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
                                 >

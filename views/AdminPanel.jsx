@@ -419,6 +419,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                             <RichEditor
                                 value={newContent.body || ''}
                                 onChange={val => setNewContent({ ...newContent, body: val })}
+                                onUploadImage={api.uploadMeetingImage.bind(api)}
                                 placeholder="Текст новости..."
                             />
                             <div className="flex gap-2">
@@ -919,6 +920,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 <RichEditor
                                     value={newContent.content || ''}
                                     onChange={val => setNewContent({ ...newContent, content: val })}
+                                    onUploadImage={api.uploadMeetingImage.bind(api)}
                                     placeholder="Напишите текст материала..."
                                 />
 

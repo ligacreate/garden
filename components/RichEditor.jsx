@@ -4,6 +4,7 @@ import { Bold, Italic, Link, List, Type, Image, Upload } from 'lucide-react';
 const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
     const editorRef = useRef(null);
     const fileInputRef = useRef(null);
+    const uploadSelectionRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
 
     const emitChange = () => {
@@ -48,7 +49,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         e.target.value = '';
         if (!file || !onUploadImage) return;
 
-        const range = saveSelection();
+        const range = uploadSelectionRef.current || saveSelection();
         setIsUploading(true);
         try {
             const url = await onUploadImage(file);
@@ -60,6 +61,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             console.error('Rich image upload failed:', error);
             alert('Не удалось загрузить изображение');
         } finally {
+            uploadSelectionRef.current = null;
             setIsUploading(false);
         }
     };
@@ -95,6 +97,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
                 <button
                     onMouseDown={(e) => {
                         e.preventDefault();
+                        uploadSelectionRef.current = saveSelection();
                         if (!isUploading) fileInputRef.current?.click();
                     }}
                     className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded disabled:opacity-50"

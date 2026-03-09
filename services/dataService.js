@@ -493,6 +493,20 @@ class LocalStorageService {
         if (index !== -1) {
             allEvents[index] = { ...allEvents[index], ...event };
             localStorage.setItem('garden_events', JSON.stringify(allEvents));
+            // Keep meeting source in sync for schedule events generated from public meetings.
+            if (event.garden_id) {
+                const allMeetings = JSON.parse(localStorage.getItem('garden_meetings')) || [];
+                const meetingIndex = allMeetings.findIndex(m => String(m.id) === String(event.garden_id));
+                if (meetingIndex !== -1) {
+                    allMeetings[meetingIndex] = {
+                        ...allMeetings[meetingIndex],
+                        cover_image: event.image_url ?? allMeetings[meetingIndex].cover_image,
+                        image_focus_x: event.image_focus_x ?? allMeetings[meetingIndex].image_focus_x ?? 50,
+                        image_focus_y: event.image_focus_y ?? allMeetings[meetingIndex].image_focus_y ?? 50
+                    };
+                    localStorage.setItem('garden_meetings', JSON.stringify(allMeetings));
+                }
+            }
             return allEvents[index];
         }
         return event;
@@ -1271,7 +1285,7 @@ class RemoteApiService {
     async getAllEvents() {
         try {
             const { data } = await postgrestFetch('events', {
-                select: 'id,title,description,date,city,city_key,time,location,category,image_url,image_focus_x,image_focus_y,price,registration_link,meeting_format,online_visibility,starts_at,day_date',
+                select: 'id,garden_id,title,description,date,city,city_key,time,location,category,image_url,image_focus_x,image_focus_y,price,registration_link,meeting_format,online_visibility,starts_at,day_date',
                 order: 'date.desc'
             });
             return data;
@@ -1297,7 +1311,29 @@ class RemoteApiService {
             },
             returnRepresentation: true
         });
-        return Array.isArray(data) ? data[0] : data;
+        const updatedEvent = Array.isArray(data) ? data[0] : data;
+
+        // For events mirrored from meetings, also persist back to the source meeting.
+        if (event.garden_id) {
+            const meetingPatch = {
+                image_focus_x: Number.isNaN(focusX) ? null : focusX,
+                image_focus_y: Number.isNaN(focusY) ? null : focusY
+            };
+            if (typeof rest.image_url === 'string') {
+                meetingPatch.cover_image = cleaned.image_url || null;
+            }
+            try {
+                await postgrestFetch('meetings', { id: `eq.${event.garden_id}` }, {
+                    method: 'PATCH',
+                    body: meetingPatch,
+                    returnRepresentation: false
+                });
+            } catch (syncError) {
+                console.warn('Meeting sync after event update failed', syncError);
+            }
+        }
+
+        return updatedEvent;
     }
 
     async deleteEvent(eventId) {

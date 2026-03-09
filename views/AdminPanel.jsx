@@ -553,7 +553,12 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 <Input
                                     placeholder="Ссылка на фото (image_url)"
                                     value={editingEvent.image_url || ''}
-                                    onChange={e => setEditingEvent({ ...editingEvent, image_url: e.target.value })}
+                                    onChange={e => setEditingEvent({
+                                        ...editingEvent,
+                                        image_url: e.target.value,
+                                        image_focus_x: 50,
+                                        image_focus_y: 50
+                                    })}
                                 />
                                 <div className="flex items-center gap-3">
                                     <Button variant="secondary" className="!py-2 !px-3 !text-xs relative">
@@ -567,7 +572,12 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                                 if (!file) return;
                                                 try {
                                                     const url = await api.uploadMeetingImage(file);
-                                                    setEditingEvent({ ...editingEvent, image_url: url });
+                                                    setEditingEvent({
+                                                        ...editingEvent,
+                                                        image_url: url,
+                                                        image_focus_x: 50,
+                                                        image_focus_y: 50
+                                                    });
                                                     onNotify("Фото загружено");
                                                 } catch (err) {
                                                     console.error(err);

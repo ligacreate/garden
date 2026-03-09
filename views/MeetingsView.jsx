@@ -766,18 +766,29 @@ const MeetingsView = ({
             const compressedFile = await api.compressMeetingImage(file);
             const reader = new FileReader();
             reader.onload = (e) => {
-                setFormData(prev => ({ ...prev, cover_image: e.target.result })); // Temp preview
+                setFormData(prev => ({
+                    ...prev,
+                    cover_image: e.target.result,
+                    image_focus_x: 50,
+                    image_focus_y: 50
+                })); // Temp preview
             };
             reader.readAsDataURL(compressedFile);
 
             // Upload
             const url = await api.uploadMeetingImage(compressedFile);
-            setFormData(prev => ({ ...prev, cover_image: url }));
+            setFormData(prev => ({
+                ...prev,
+                cover_image: url,
+                image_focus_x: 50,
+                image_focus_y: 50
+            }));
         } catch (error) {
             console.error(error);
             onNotify("Ошибка загрузки фото");
         } finally {
             setIsImageUploading(false);
+            e.target.value = '';
         }
     };
 

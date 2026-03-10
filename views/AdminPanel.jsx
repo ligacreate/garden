@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical } from 'lucide-react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
@@ -249,6 +249,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     const [allMeetings, setAllMeetings] = useState([]);
     const [allEvents, setAllEvents] = useState([]);
     const [eventSearch, setEventSearch] = useState('');
+    const [eventArchiveOpen, setEventArchiveOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
     const [draggingItemId, setDraggingItemId] = useState(null);
 
@@ -479,7 +480,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                             onChange={(e) => setEventSearch(e.target.value)}
                         />
 
-                        <div className="space-y-4 max-h-[420px] overflow-y-auto mt-4">
+                        <div className="space-y-4 max-h-[520px] overflow-y-auto mt-4">
                             {(() => {
                                 const filtered = [...allEvents].filter(ev => {
                                     const q = eventSearch.trim().toLowerCase();
@@ -491,68 +492,89 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 });
                                 const parseDate = (d) => {
                                     const s = String(d || '').trim();
-                                    const m = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/) || s.match(/(\d{4})-(\d{2})-(\d{2})/);
-                                    if (!m) return new Date(0);
-                                    if (m[3] && m[3].length === 4) {
-                                        const day = parseInt(m[1], 10), mon = parseInt(m[2], 10) - 1, year = parseInt(m[3], 10);
-                                        return new Date(year, mon, day);
+                                    const dm = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+                                    const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+                                    if (dm) {
+                                        return new Date(parseInt(dm[3], 10), parseInt(dm[2], 10) - 1, parseInt(dm[1], 10));
+                                    }
+                                    if (iso) {
+                                        return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
                                     }
                                     return new Date(0);
                                 };
-                                const sorted = filtered.sort((a, b) => parseDate(a.date) - parseDate(b.date));
-                                const byMonth = sorted.reduce((acc, ev) => {
-                                    const d = parseDate(ev.date);
-                                    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-                                    if (!acc[key]) acc[key] = [];
-                                    acc[key].push(ev);
-                                    return acc;
-                                }, {});
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const upcoming = filtered.filter(ev => parseDate(ev.date) >= today).sort((a, b) => parseDate(a.date) - parseDate(b.date));
+                                const past = filtered.filter(ev => parseDate(ev.date) < today).sort((a, b) => parseDate(b.date) - parseDate(a.date));
+                                const todayStr = today.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
                                 const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-                                return Object.entries(byMonth).map(([key, events]) => (
-                                    <div key={key} className="space-y-2">
-                                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-white/95 py-1 -mx-1 px-1">
-                                            {(() => {
-                                                const [y, m] = key.split('-').map(Number);
-                                                return `${monthNames[(m || 1) - 1]} ${y}`;
-                                            })()}
-                                        </div>
-                                        {events.map(ev => {
+                                const groupByMonth = (events) => {
+                                    return events.reduce((acc, ev) => {
+                                        const d = parseDate(ev.date);
+                                        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                                        if (!acc[key]) acc[key] = [];
+                                        acc[key].push(ev);
+                                        return acc;
+                                    }, {});
+                                };
+                                const renderEventCard = (ev) => {
                                     const meeting = allMeetings.find(m => String(m.id) === String(ev.garden_id));
                                     const leader = meeting ? users.find(u => u.id === meeting.user_id) : null;
                                     const leaderName = leader?.name || '—';
                                     return (
-                                    <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
-                                        <div className="min-w-0">
-                                            <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
-                                            <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
-                                            <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>
+                                        <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
+                                            <div className="min-w-0">
+                                                <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
+                                                <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
+                                                <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>
+                                            </div>
+                                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => setEditingEvent({ ...ev, image_focus_x: ev.image_focus_x ?? 50, image_focus_y: ev.image_focus_y ?? 50 })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                                <button onClick={() => confirmAction("Удалить событие?", `Вы собираетесь удалить событие "${ev.title || 'Без названия'}".`, async () => { if (onDeleteEvent) { await onDeleteEvent(ev.id); setAllEvents(allEvents.filter(e => e.id !== ev.id)); onNotify("Событие удалено"); } }, 'danger')} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                                            </div>
                                         </div>
-                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => setEditingEvent({
-                                                ...ev,
-                                                image_focus_x: ev.image_focus_x ?? 50,
-                                                image_focus_y: ev.image_focus_y ?? 50
-                                            })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
-                                            <button onClick={() => {
-                                                confirmAction(
-                                                    "Удалить событие?",
-                                                    `Вы собираетесь удалить событие "${ev.title || 'Без названия'}".`,
-                                                    async () => {
-                                                        if (onDeleteEvent) {
-                                                            await onDeleteEvent(ev.id);
-                                                            setAllEvents(allEvents.filter(e => e.id !== ev.id));
-                                                            onNotify("Событие удалено");
-                                                        }
-                                                    },
-                                                    'danger'
-                                                );
-                                            }} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                                    );
+                                };
+                                const renderMonthGroups = (byMonth) => Object.entries(byMonth).map(([key, events]) => (
+                                    <div key={key} className="space-y-2">
+                                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-white/95 py-1 -mx-1 px-1 z-10">
+                                            {(() => { const [y, m] = key.split('-').map(Number); return `${monthNames[(m || 1) - 1]} ${y}`; })()}
                                         </div>
-                                    </div>
-                                );
-                                        })}
+                                        {events.map(renderEventCard)}
                                     </div>
                                 ));
+                                return (
+                                    <>
+                                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider bg-emerald-50/80 rounded-xl px-3 py-2 border border-emerald-100">
+                                            Сегодня: {todayStr}
+                                        </div>
+                                        <div className="space-y-3">
+                                            {upcoming.length > 0 ? renderMonthGroups(groupByMonth(upcoming)) : (
+                                                <div className="text-sm text-slate-400 py-4">Нет предстоящих событий</div>
+                                            )}
+                                        </div>
+                                        <div className="border-t border-slate-200 pt-4">
+                                            <button
+                                                onClick={() => setEventArchiveOpen(!eventArchiveOpen)}
+                                                className="w-full flex items-center justify-between gap-2 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200/80 transition-colors text-left"
+                                            >
+                                                <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                                    <Archive size={18} className="text-slate-500" />
+                                                    Архив ({past.length} прошедших)
+                                                </span>
+                                                {eventArchiveOpen ? <ChevronUp size={20} className="text-slate-500" /> : <ChevronDown size={20} className="text-slate-500" />}
+                                            </button>
+                                            {eventArchiveOpen && past.length > 0 && (
+                                                <div className="space-y-3 mt-3 max-h-[320px] overflow-y-auto">
+                                                    {renderMonthGroups(groupByMonth(past))}
+                                                </div>
+                                            )}
+                                            {eventArchiveOpen && past.length === 0 && (
+                                                <div className="text-sm text-slate-400 py-4">В архиве пусто</div>
+                                            )}
+                                        </div>
+                                    </>
+                                );
                             })()}
                         </div>
 

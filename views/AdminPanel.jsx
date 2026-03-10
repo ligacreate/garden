@@ -258,10 +258,9 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                 if (data) setAllMeetings(data);
             });
         }
-        if (tab === 'events' && onGetAllEvents) {
-            onGetAllEvents().then(data => {
-                if (data) setAllEvents(data);
-            });
+        if (tab === 'events') {
+            if (onGetAllEvents) onGetAllEvents().then(data => { if (data) setAllEvents(data); });
+            if (onGetAllMeetings) onGetAllMeetings().then(data => { if (data) setAllMeetings(data); });
         }
     }, [tab, onGetAllMeetings, onGetAllEvents]);
 
@@ -475,23 +474,58 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                         </div>
 
                         <Input
-                            placeholder="Поиск по названию или городу"
+                            placeholder="Поиск по названию, городу или ведущему"
                             value={eventSearch}
                             onChange={(e) => setEventSearch(e.target.value)}
                         />
 
-                        <div className="space-y-3 max-h-[420px] overflow-y-auto mt-4">
-                            {[...allEvents]
-                                .filter(ev => {
+                        <div className="space-y-4 max-h-[420px] overflow-y-auto mt-4">
+                            {(() => {
+                                const filtered = [...allEvents].filter(ev => {
                                     const q = eventSearch.trim().toLowerCase();
                                     if (!q) return true;
-                                    return (ev.title || '').toLowerCase().includes(q) || (ev.city || '').toLowerCase().includes(q);
-                                })
-                                .map(ev => (
+                                    const meeting = allMeetings.find(m => String(m.id) === String(ev.garden_id));
+                                    const leader = meeting ? users.find(u => u.id === meeting.user_id) : null;
+                                    const leaderName = (leader?.name || '').toLowerCase();
+                                    return (ev.title || '').toLowerCase().includes(q) || (ev.city || '').toLowerCase().includes(q) || leaderName.includes(q);
+                                });
+                                const parseDate = (d) => {
+                                    const s = String(d || '').trim();
+                                    const m = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/) || s.match(/(\d{4})-(\d{2})-(\d{2})/);
+                                    if (!m) return new Date(0);
+                                    if (m[3] && m[3].length === 4) {
+                                        const day = parseInt(m[1], 10), mon = parseInt(m[2], 10) - 1, year = parseInt(m[3], 10);
+                                        return new Date(year, mon, day);
+                                    }
+                                    return new Date(0);
+                                };
+                                const sorted = filtered.sort((a, b) => parseDate(a.date) - parseDate(b.date));
+                                const byMonth = sorted.reduce((acc, ev) => {
+                                    const d = parseDate(ev.date);
+                                    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                                    if (!acc[key]) acc[key] = [];
+                                    acc[key].push(ev);
+                                    return acc;
+                                }, {});
+                                const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+                                return Object.entries(byMonth).map(([key, events]) => (
+                                    <div key={key} className="space-y-2">
+                                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-white/95 py-1 -mx-1 px-1">
+                                            {(() => {
+                                                const [y, m] = key.split('-').map(Number);
+                                                return `${monthNames[(m || 1) - 1]} ${y}`;
+                                            })()}
+                                        </div>
+                                        {events.map(ev => {
+                                    const meeting = allMeetings.find(m => String(m.id) === String(ev.garden_id));
+                                    const leader = meeting ? users.find(u => u.id === meeting.user_id) : null;
+                                    const leaderName = leader?.name || '—';
+                                    return (
                                     <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
                                         <div className="min-w-0">
                                             <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
                                             <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
+                                            <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>
                                         </div>
                                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button onClick={() => setEditingEvent({
@@ -515,7 +549,11 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                             }} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
                                         </div>
                                     </div>
-                                ))}
+                                );
+                                        })}
+                                    </div>
+                                ));
+                            })()}
                         </div>
 
                         <hr className="border-slate-100 my-6" />

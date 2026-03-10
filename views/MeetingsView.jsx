@@ -742,6 +742,9 @@ const MeetingsView = ({
             if (!data.description) missing.push('Описание');
             if (isImageUploading) missing.push('Обложка (загрузка)');
             if (!data.cover_image) missing.push('Обложка');
+            if (data.cover_image && String(data.cover_image).startsWith('data:')) {
+                missing.push('Обложка (загрузка не завершена — нажмите «Загрузить фото» снова)');
+            }
             if ((data.meeting_format || 'offline') !== 'online' && !data.city) missing.push('Город');
             if (!data.cost) missing.push('Стоимость');
             if (!data.payment_link) missing.push('Ссылка');

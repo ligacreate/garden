@@ -1228,6 +1228,8 @@ class RemoteApiService {
             city_key: cleaned.city_key,
             payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
+            image_focus_x: cleaned.image_focus_x != null ? (parseInt(cleaned.image_focus_x, 10) || 50) : undefined,
+            image_focus_y: cleaned.image_focus_y != null ? (parseInt(cleaned.image_focus_y, 10) || 50) : undefined,
             meeting_format: cleaned.meeting_format,
             online_visibility: cleaned.online_visibility,
             co_hosts: Array.isArray(cleaned.co_hosts) ? cleaned.co_hosts : [],

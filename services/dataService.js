@@ -14,23 +14,11 @@ const setAuthToken = (token) => {
 };
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-/** Превращает @username или t.me/xxx в полный URL для Telegram */
-const normalizeRegistrationLink = (val) => {
-    const s = String(val || '').trim();
-    if (!s) return s;
-    if (/^https?:\/\//i.test(s)) return s;
-    const tg = s.replace(/^@/, '').replace(/^(?:https?:\/\/)?(?:t\.me\/)?/i, '').replace(/\s+/g, '');
-    if (tg) return `https://t.me/${tg}`;
-    return s;
-};
-
 const postgrestFetch = async (path, params = {}, options = {}) => {
     const url = new URL(path, POSTGREST_URL);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
     const headers = { 'Content-Type': 'application/json' };
-    const token = getAuthToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
     if (options.count) headers['Prefer'] = 'count=exact';
     if (options.returnRepresentation) headers['Prefer'] = 'return=representation';
 
@@ -1121,7 +1109,7 @@ class RemoteApiService {
             user_id: `eq.${userId}`,
             order: 'date.desc'
         });
-        return (data || []).map(m => m.payment_link ? { ...m, payment_link: normalizeRegistrationLink(m.payment_link) } : m);
+        return data;
     }
 
     async uploadMeetingImage(file) {
@@ -1171,7 +1159,7 @@ class RemoteApiService {
             address: cleaned.address,
             city: cleaned.city,
             city_key: cleaned.city_key,
-            payment_link: normalizeRegistrationLink(cleaned.payment_link),
+            payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
             meeting_format: cleaned.meeting_format,
             online_visibility: cleaned.online_visibility,
@@ -1238,7 +1226,7 @@ class RemoteApiService {
             address: cleaned.address,
             city: cleaned.city,
             city_key: cleaned.city_key,
-            payment_link: normalizeRegistrationLink(cleaned.payment_link),
+            payment_link: cleaned.payment_link,
             cover_image: cleaned.cover_image,
             image_focus_x: cleaned.image_focus_x != null ? (parseInt(cleaned.image_focus_x, 10) || 50) : undefined,
             image_focus_y: cleaned.image_focus_y != null ? (parseInt(cleaned.image_focus_y, 10) || 50) : undefined,
@@ -1289,7 +1277,7 @@ class RemoteApiService {
                 select: '*',
                 order: 'date.desc'
             });
-            return (data || []).map(m => m.payment_link ? { ...m, payment_link: normalizeRegistrationLink(m.payment_link) } : m);
+            return data;
         } catch (error) {
             console.warn("Global meetings fetch failed", error);
             return [];
@@ -1302,7 +1290,7 @@ class RemoteApiService {
                 select: 'id,garden_id,title,description,date,city,city_key,time,location,category,image_url,image_focus_x,image_focus_y,price,registration_link,meeting_format,online_visibility,starts_at,day_date',
                 order: 'date.desc'
             });
-            return (data || []).map(e => e.registration_link ? { ...e, registration_link: normalizeRegistrationLink(e.registration_link) } : e);
+            return data;
         } catch (error) {
             console.warn("Events fetch failed", error);
             return [];

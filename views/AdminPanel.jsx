@@ -521,12 +521,19 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     const meeting = allMeetings.find(m => String(m.id) === String(ev.garden_id));
                                     const leader = meeting ? users.find(u => u.id === meeting.user_id) : null;
                                     const leaderName = leader?.name || '—';
+                                    const contactLink = meeting?.payment_link || ev.registration_link || null;
                                     return (
                                         <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
-                                            <div className="min-w-0">
+                                            <div className="min-w-0 flex-1">
                                                 <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
                                                 <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
                                                 <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>
+                                                {contactLink && (
+                                                    <div className="text-xs text-slate-500 mt-1.5 break-all" title="Ссылка на контакт / кнопку «Записаться»">
+                                                        <span className="text-slate-400">Контакт:</span>{' '}
+                                                        <a href={contactLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{contactLink}</a>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button onClick={() => setEditingEvent({ ...ev, image_focus_x: ev.image_focus_x ?? 50, image_focus_y: ev.image_focus_y ?? 50 })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>

@@ -218,7 +218,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const courseIconMap = {
         users: Users,
         calendar: CalendarRange,
-        graduation: GraduationCap
+        graduation: GraduationCap,
+        dashboard: LayoutGrid,
+        tracker: BookOpen,
+        mentor: Users,
+        notifications: Sparkles
     };
     const isCourseSidebarMode = view === 'library' && courseSidebar.enabled;
 

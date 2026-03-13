@@ -143,6 +143,12 @@ const AI_CAMP_MENTOR_DATA = {
         { id: "m-hw-5", studentName: "Светлана П.", lessonTitle: "ДЗ к уроку 6", submittedAt: "2026-03-13 08:40", status: "Непроверено", checkedAt: null },
         { id: "m-hw-6", studentName: "Мария Л.", lessonTitle: "Тест 3", submittedAt: "2026-03-09 16:25", status: "Проверено", checkedAt: "2026-03-09 18:05" }
     ],
+    mentorDialogs: [
+        { id: "m-chat-1", studentName: "Оля", from: "student", author: "Оля", text: "Анна, можно уточнить по структуре урока 2?", date: "2026-03-11 09:13" },
+        { id: "m-chat-2", studentName: "Оля", from: "mentor", author: "Ментор Анна", text: "Да, добавь 1-2 реальных примера и сократи финальный блок.", date: "2026-03-11 09:15" },
+        { id: "m-chat-3", studentName: "Мария Л.", from: "student", author: "Мария Л.", text: "Проверила доработки по уроку 8, можно снова отправить?", date: "2026-03-12 10:02" },
+        { id: "m-chat-4", studentName: "Мария Л.", from: "mentor", author: "Ментор Анна", text: "Да, отправляй, сегодня дам комментарий до 20:00.", date: "2026-03-12 10:07" }
+    ],
     courseOutline: [
         {
             id: "mod-1",
@@ -174,10 +180,12 @@ const AI_CAMP_STUDENT_DATA = {
         { id: "s-fb-2", title: "ДЗ к дню 3", comment: "Отлично! По Whisper добавьте скриншот финального результата.", date: "2026-03-12" }
     ],
     tracker: [
-        { id: "s-tr-1", lesson: "День 1: Введение", status: "done", hw: "Проверено" },
-        { id: "s-tr-2", lesson: "День 2: Вводная лекция + AI-браузеры", status: "done", hw: "Проверено" },
-        { id: "s-tr-3", lesson: "День 3: Whisper", status: "in_progress", hw: "На проверке" },
-        { id: "s-tr-4", lesson: "День 4: Оплата сервисов", status: "todo", hw: "Не отправлено" }
+        { id: "s-tr-1", lessonNumber: 1, lesson: "День 1: Введение", status: "done", hw: "Проверено" },
+        { id: "s-tr-2", lessonNumber: 2, lesson: "День 2: Вводная лекция + AI-браузеры", status: "done", hw: "Нужна доработка" },
+        { id: "s-tr-3", lessonNumber: 3, lesson: "День 3: Whisper", status: "done", hw: "На проверке" },
+        { id: "s-tr-4", lessonNumber: 4, lesson: "День 4: Оплата сервисов", status: "in_progress", hw: "Не отправлено" },
+        { id: "s-tr-5", lessonNumber: 5, lesson: "День 5: Ссылки на сервисы", status: "todo", hw: "Не начато" },
+        { id: "s-tr-6", lessonNumber: 6, lesson: "День 6: Книжная полка", status: "todo", hw: "Не начато" }
     ],
     materials: [
         { id: "s-c-1", title: "Урок 1. Введение", type: "Видео", duration: "18 мин" },
@@ -188,8 +196,73 @@ const AI_CAMP_STUDENT_DATA = {
         { id: "s-b-1", title: "Атомные привычки", author: "Джеймс Клир" },
         { id: "s-b-2", title: "Пиши, сокращай", author: "Ильяхов, Сарычева" },
         { id: "s-b-3", title: "Поток", author: "Михай Чиксентмихайи" }
+    ],
+    notifications: [
+        { id: "s-not-1", type: "homework_checked", title: "Домашнее задание проверено", text: "Урок 1: ментор проверил работу и оставил отметку «Проверено».", date: "2026-03-10 19:20" },
+        { id: "s-not-2", type: "comment", title: "Новый комментарий от ментора", text: "Урок 2: добавьте 1-2 примера из вашей практики.", date: "2026-03-11 09:15" },
+        { id: "s-not-3", type: "revision", title: "Требуется доработка", text: "Урок 2: доработайте структуру и перезагрузите ответ.", date: "2026-03-11 09:18" },
+        { id: "s-not-4", type: "homework_checked", title: "Домашнее задание на проверке", text: "Урок 3: работа отправлена и ожидает комментария ментора.", date: "2026-03-12 13:10" }
+    ],
+    mentorDialog: [
+        { id: "chat-1", from: "mentor", author: "Ментор Анна", text: "Оля, посмотрела твой ответ по уроку 2. Есть хороший потенциал.", date: "2026-03-11 09:10" },
+        { id: "chat-2", from: "student", author: "Оля", text: "Спасибо! Подскажи, где лучше усилить аргументацию?", date: "2026-03-11 09:13" },
+        { id: "chat-3", from: "mentor", author: "Ментор Анна", text: "Добавь реальные кейсы из встреч и чуть короче вывод.", date: "2026-03-11 09:15" },
+        { id: "chat-4", from: "student", author: "Оля", text: "Приняла, сегодня доработаю и отправлю заново.", date: "2026-03-11 09:16" }
     ]
 };
+
+const AI_CAMP_QUOTES = [
+    "Обучение начинается там, где заканчивается самоуверенность.",
+    "Труд в учебе - это форма уважения к своему будущему.",
+    "Каждый пройденный урок - это кирпич в фундаменте мастерства.",
+    "Дисциплина важнее вдохновения, когда строишь навык.",
+    "Маленькие шаги каждый день дают большие результаты.",
+    "Ошибки - это не провал, а карта следующего действия.",
+    "Учиться сложно, но не учиться - еще дороже.",
+    "Знания работают только тогда, когда превращаются в практику.",
+    "Сильный ученик не тот, кто знает, а тот, кто делает.",
+    "Терпение в обучении - это скрытая сила лидера.",
+    "Смысл учебы не в скорости, а в глубине понимания.",
+    "Каждая доработка приближает к профессионализму.",
+    "Путь мастера состоит из черновиков и правок.",
+    "Рост начинается с честного взгляда на свои пробелы.",
+    "Сначала сложно, потом интересно, потом привычно.",
+    "Практика превращает теорию в уверенность.",
+    "Зрелость в учебе - это умение не сдаваться на середине.",
+    "Урок без рефлексии - это незавершенный урок.",
+    "Сильные результаты рождаются из системной работы.",
+    "Сложные темы дают самые ценные прорывы.",
+    "Учеба - это договор с собой о развитии.",
+    "Когда есть фокус, труд становится осмысленным.",
+    "Освоенный навык - это свобода в действиях.",
+    "Глубина приходит через повторение и проверку.",
+    "Регулярность сильнее рывков.",
+    "Обратная связь - это подарок, а не критика.",
+    "Каждый комментарий ментора - это ускоритель роста.",
+    "Делай не идеально, делай последовательно.",
+    "Лучше медленно, но ежедневно.",
+    "Понимание приходит после десятков попыток.",
+    "Профессионализм - это любовь к деталям.",
+    "Учеба требует усилий, но возвращает уверенность.",
+    "Не бойся переделывать: так рождается качество.",
+    "Твой прогресс измеряется не настроением, а действиями.",
+    "Умение учиться - главный навык будущего.",
+    "Сложный урок часто становится любимым после практики.",
+    "Сила ученика в умении держать ритм.",
+    "Точность и ясность приходят через труд.",
+    "Настойчивость превращает новичка в эксперта.",
+    "Развитие - это выбор, который делается каждый день.",
+    "Труд в учебе - это инвестиция с лучшей доходностью.",
+    "Каждое выполненное ДЗ - это шаг к уверенности.",
+    "Качество формируется в процессе доработок.",
+    "Важно не знать ответы, а уметь их находить.",
+    "Рост начинается с любопытства и заканчивается действием.",
+    "Если есть цель, находится и энергия на учебу.",
+    "Осознанная практика быстрее случайного опыта.",
+    "Система побеждает хаос в любом обучении.",
+    "Глубокая работа сегодня экономит время завтра.",
+    "Учиться - это труд, который делает жизнь шире."
+];
 
 const CourseLibraryView = ({
     user,
@@ -212,6 +285,8 @@ const CourseLibraryView = ({
     const [aiCampError, setAiCampError] = useState('');
     const [mentorActiveTab, setMentorActiveTab] = useState('students');
     const [selectedMentorModuleId, setSelectedMentorModuleId] = useState('mod-1');
+    const [studentActiveTab, setStudentActiveTab] = useState('dashboard');
+    const [selectedStudentModuleId, setSelectedStudentModuleId] = useState('mod-1');
     const [aiCampSession, setAiCampSession] = useState(() => {
         try {
             const raw = localStorage.getItem(AI_CAMP_SESSION_KEY);
@@ -538,6 +613,35 @@ const CourseLibraryView = ({
         () => AI_CAMP_MENTOR_DATA.courseOutline.find((module) => module.id === selectedMentorModuleId) || AI_CAMP_MENTOR_DATA.courseOutline[0],
         [selectedMentorModuleId]
     );
+    const selectedStudentModule = useMemo(
+        () => AI_CAMP_MENTOR_DATA.courseOutline.find((module) => module.id === selectedStudentModuleId) || AI_CAMP_MENTOR_DATA.courseOutline[0],
+        [selectedStudentModuleId]
+    );
+    const dailyQuote = useMemo(() => {
+        const daySeed = new Date().getDate();
+        return AI_CAMP_QUOTES[daySeed % AI_CAMP_QUOTES.length];
+    }, []);
+    const studentProgressPercent = useMemo(
+        () => Math.round((AI_CAMP_STUDENT_DATA.stats.completedLessons / AI_CAMP_STUDENT_DATA.stats.totalLessons) * 100),
+        []
+    );
+    const viewedWithoutHomework = useMemo(
+        () => AI_CAMP_STUDENT_DATA.tracker.filter((item) => item.status === 'done' && item.hw !== 'Проверено'),
+        []
+    );
+    const lastCompletedLesson = useMemo(
+        () => [...AI_CAMP_STUDENT_DATA.tracker]
+            .filter((item) => item.status === 'done')
+            .sort((a, b) => (b.lessonNumber || 0) - (a.lessonNumber || 0))[0] || null,
+        []
+    );
+    const nextLesson = useMemo(() => {
+        if (!lastCompletedLesson) return AI_CAMP_STUDENT_DATA.tracker[0] || null;
+        const nextByNumber = [...AI_CAMP_STUDENT_DATA.tracker]
+            .filter((item) => (item.lessonNumber || 0) > (lastCompletedLesson.lessonNumber || 0))
+            .sort((a, b) => (a.lessonNumber || 0) - (b.lessonNumber || 0))[0];
+        return nextByNumber || null;
+    }, [lastCompletedLesson]);
 
     const handleAiCampLogin = (e) => {
         e.preventDefault();
@@ -563,6 +667,8 @@ const CourseLibraryView = ({
         setAiCampError('');
         setMentorActiveTab('students');
         setSelectedMentorModuleId('mod-1');
+        setStudentActiveTab('dashboard');
+        setSelectedStudentModuleId('mod-1');
         localStorage.removeItem(AI_CAMP_SESSION_KEY);
     };
 
@@ -580,19 +686,35 @@ const CourseLibraryView = ({
                 items: [
                     { key: 'students', label: 'Список учеников', iconKey: 'users' },
                     { key: 'homework', label: 'Домашние задания', iconKey: 'calendar' },
-                    { key: 'course', label: 'Вкладка курса', iconKey: 'graduation' }
+                    { key: 'course', label: 'Вкладка курса', iconKey: 'graduation' },
+                    { key: 'mentor-chat', label: 'Диалоги с учениками', iconKey: 'mentor' }
                 ]
             });
             return;
         }
 
-        onCourseSidebarChange?.({ enabled: false, title: 'Курс', items: [], activeKey: null });
-    }, [aiCampSession, mentorActiveTab, onCourseSidebarChange, selectedCourse]);
+        onCourseSidebarChange?.({
+            enabled: true,
+            title: 'Курс AI Camp',
+            activeKey: studentActiveTab,
+            items: [
+                { key: 'dashboard', label: 'Дашборд', iconKey: 'dashboard' },
+                { key: 'tracker', label: 'Трекер курса', iconKey: 'tracker' },
+                { key: 'course', label: 'Курс и уроки', iconKey: 'graduation' },
+                { key: 'mentor-chat', label: 'Связь с ментором', iconKey: 'mentor' },
+                { key: 'notifications', label: 'Уведомления', iconKey: 'notifications' }
+            ]
+        });
+    }, [aiCampSession, mentorActiveTab, onCourseSidebarChange, selectedCourse, studentActiveTab]);
 
     useEffect(() => {
-        if (!externalCourseNavKey || !aiCampSession || aiCampSession.role !== 'mentor') return;
-        if (['students', 'homework', 'course'].includes(externalCourseNavKey)) {
+        if (!externalCourseNavKey || !aiCampSession) return;
+        if (aiCampSession.role === 'mentor' && ['students', 'homework', 'course', 'mentor-chat'].includes(externalCourseNavKey)) {
             setMentorActiveTab(externalCourseNavKey);
+            return;
+        }
+        if (aiCampSession.role === 'student' && ['dashboard', 'tracker', 'course', 'mentor-chat', 'notifications'].includes(externalCourseNavKey)) {
+            setStudentActiveTab(externalCourseNavKey);
         }
     }, [aiCampSession, externalCourseNavKey]);
 
@@ -773,6 +895,13 @@ const CourseLibraryView = ({
                                 >
                                     Курс
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMentorActiveTab('mentor-chat')}
+                                    className={`px-4 py-2 rounded-full text-sm ${mentorActiveTab === 'mentor-chat' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Диалоги с учениками
+                                </button>
                             </div>
                             {mentorActiveTab === 'students' && (
                                 <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
@@ -876,6 +1005,25 @@ const CourseLibraryView = ({
                                     </div>
                                 </div>
                             )}
+                            {mentorActiveTab === 'mentor-chat' && (
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-sm font-medium text-slate-800 mb-3">Диалоги с учениками</div>
+                                    <div className="space-y-2">
+                                        {AI_CAMP_MENTOR_DATA.mentorDialogs.map((msg) => (
+                                            <div
+                                                key={msg.id}
+                                                className={`p-3 rounded-xl border text-sm ${msg.from === 'mentor' ? 'bg-blue-50/40 border-blue-100' : 'bg-white border-slate-100'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <span className="font-medium text-slate-800">{msg.author} · {msg.studentName}</span>
+                                                    <span className="text-xs text-slate-400">{msg.date}</span>
+                                                </div>
+                                                <div className="text-slate-600">{msg.text}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="space-y-6">
@@ -886,33 +1034,209 @@ const CourseLibraryView = ({
                                 </div>
                                 <Button variant="secondary" onClick={handleAiCampLogout}>Сменить роль</Button>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
-                                    <div className="text-xs text-slate-400 uppercase">Прогресс курса</div>
-                                    <div className="text-2xl font-semibold text-slate-900">
-                                        {Math.round((AI_CAMP_STUDENT_DATA.stats.completedLessons / AI_CAMP_STUDENT_DATA.stats.totalLessons) * 100)}%
+
+                            <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                <div className="text-xs uppercase tracking-wider text-slate-400 mb-1">Цитата дня</div>
+                                <div className="text-base text-slate-800">"{dailyQuote}"</div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setStudentActiveTab('dashboard')}
+                                    className={`px-4 py-2 rounded-full text-sm ${studentActiveTab === 'dashboard' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Дашборд
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStudentActiveTab('tracker')}
+                                    className={`px-4 py-2 rounded-full text-sm ${studentActiveTab === 'tracker' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Трекер курса
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStudentActiveTab('course')}
+                                    className={`px-4 py-2 rounded-full text-sm ${studentActiveTab === 'course' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Курс и уроки
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStudentActiveTab('mentor-chat')}
+                                    className={`px-4 py-2 rounded-full text-sm ${studentActiveTab === 'mentor-chat' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Связь с ментором
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setStudentActiveTab('notifications')}
+                                    className={`px-4 py-2 rounded-full text-sm ${studentActiveTab === 'notifications' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Уведомления
+                                </button>
+                            </div>
+
+                            {studentActiveTab === 'dashboard' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                        <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                            <div className="text-xs text-slate-400 uppercase">Прогресс курса</div>
+                                            <div className="text-2xl font-semibold text-slate-900">{studentProgressPercent}%</div>
+                                        </div>
+                                        <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                            <div className="text-xs text-slate-400 uppercase">Пройдено уроков</div>
+                                            <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_STUDENT_DATA.stats.completedLessons}/{AI_CAMP_STUDENT_DATA.stats.totalLessons}</div>
+                                        </div>
+                                        <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                            <div className="text-xs text-slate-400 uppercase">ДЗ на проверке</div>
+                                            <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_STUDENT_DATA.stats.pendingHomework}</div>
+                                        </div>
+                                        <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                            <div className="text-xs text-slate-400 uppercase">Последний урок</div>
+                                            <div className="text-sm font-semibold text-slate-900 mt-1">{lastCompletedLesson?.lesson || 'Нет данных'}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                            <div className="text-sm font-medium text-slate-800 mb-2">Последний пройденный урок</div>
+                                            <div className="text-sm text-slate-600">{lastCompletedLesson?.lesson || 'Нет завершенных уроков'}</div>
+                                            {nextLesson && (
+                                                <div className="mt-3">
+                                                    <Button variant="secondary" onClick={() => setStudentActiveTab('course')}>
+                                                        Перейти к следующему уроку
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                            <div className="text-sm font-medium text-slate-800 mb-2">Следующий урок</div>
+                                            <div className="text-sm text-slate-600">{nextLesson?.lesson || 'Курс пройден'}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                        <div className="text-sm font-medium text-slate-800 mb-3">Просмотренные уроки, но ДЗ не выполнено</div>
+                                        <div className="space-y-2">
+                                            {viewedWithoutHomework.length > 0 ? viewedWithoutHomework.map((item) => (
+                                                <div key={item.id} className="p-3 rounded-xl border border-slate-100 bg-white text-sm flex items-center justify-between gap-2">
+                                                    <div className="text-slate-700">{item.lesson}</div>
+                                                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded-full">{item.hw}</span>
+                                                </div>
+                                            )) : (
+                                                <div className="text-sm text-slate-400 italic">Отлично! Все просмотренные уроки закрыты по ДЗ.</div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
+                            )}
+
+                            {studentActiveTab === 'tracker' && (
                                 <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
-                                    <div className="text-xs text-slate-400 uppercase">Пройдено уроков</div>
-                                    <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_STUDENT_DATA.stats.completedLessons}/{AI_CAMP_STUDENT_DATA.stats.totalLessons}</div>
+                                    <div className="text-sm font-medium text-slate-800 mb-3">Трекер курса</div>
+                                    <div className="space-y-2">
+                                        {AI_CAMP_STUDENT_DATA.tracker.map((item) => (
+                                            <div key={item.id} className="p-3 rounded-xl border border-slate-100 bg-white">
+                                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                                                    <div className="text-sm text-slate-800">{item.lesson}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-xs px-2 py-1 rounded-full ${item.status === 'done' ? 'bg-emerald-50 text-emerald-700' : item.status === 'in_progress' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                            {item.status}
+                                                        </span>
+                                                        <span className={`text-xs px-2 py-1 rounded-full ${item.hw === 'Проверено' ? 'bg-emerald-50 text-emerald-700' : item.hw === 'На проверке' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                                                            {item.hw}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
+
+                            {studentActiveTab === 'course' && (
                                 <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
-                                    <div className="text-xs text-slate-400 uppercase">ДЗ на проверке</div>
-                                    <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_STUDENT_DATA.stats.pendingHomework}</div>
-                                </div>
-                            </div>
-                            <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
-                                <div className="text-sm font-medium text-slate-800 mb-3">Обратная связь от ментора</div>
-                                <div className="space-y-2">
-                                    {AI_CAMP_STUDENT_DATA.feedback.map(item => (
-                                        <div key={item.id} className="p-3 rounded-xl border border-slate-100 bg-white text-sm">
-                                            <div className="font-medium text-slate-800">{item.title}</div>
-                                            <div className="text-slate-600 mt-1">{item.comment}</div>
+                                    <div className="text-sm font-medium text-slate-800 mb-3">Курс и уроки</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+                                        {AI_CAMP_MENTOR_DATA.courseOutline.map((module) => (
+                                            <button
+                                                key={module.id}
+                                                type="button"
+                                                onClick={() => setSelectedStudentModuleId(module.id)}
+                                                className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                                                    selectedStudentModule?.id === module.id
+                                                        ? 'bg-slate-900 text-white border-slate-900'
+                                                        : 'bg-white text-slate-700 border-slate-100 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <div className="text-sm font-medium">{module.title}</div>
+                                                <div className={`text-xs mt-1 ${selectedStudentModule?.id === module.id ? 'text-white/70' : 'text-slate-400'}`}>Уроков: {module.lessons.length}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {selectedStudentModule && (
+                                        <div className="rounded-2xl border border-slate-100 bg-white">
+                                            <div className="px-4 py-3 border-b border-slate-100 text-sm font-semibold text-slate-800">
+                                                {selectedStudentModule.title}
+                                            </div>
+                                            <div className="divide-y divide-slate-100">
+                                                {selectedStudentModule.lessons.map((lesson) => (
+                                                    <div key={lesson.id} className="px-4 py-3">
+                                                        <div className="text-sm font-medium text-slate-800">{lesson.title}</div>
+                                                        <div className="text-xs text-slate-500 mt-1">{lesson.description}</div>
+                                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                                            {lesson.badges.map((badge) => (
+                                                                <span key={`${lesson.id}-student-${badge}`} className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                                                    {badge}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
-                            </div>
+                            )}
+
+                            {studentActiveTab === 'mentor-chat' && (
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-sm font-medium text-slate-800 mb-3">Связь с ментором</div>
+                                    <div className="space-y-2">
+                                        {AI_CAMP_STUDENT_DATA.mentorDialog.map((msg) => (
+                                            <div
+                                                key={msg.id}
+                                                className={`p-3 rounded-xl border text-sm ${msg.from === 'mentor' ? 'bg-white border-slate-100' : 'bg-blue-50/40 border-blue-100'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <span className="font-medium text-slate-800">{msg.author}</span>
+                                                    <span className="text-xs text-slate-400">{msg.date}</span>
+                                                </div>
+                                                <div className="text-slate-600">{msg.text}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {studentActiveTab === 'notifications' && (
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-sm font-medium text-slate-800 mb-3">Уведомления</div>
+                                    <div className="space-y-2">
+                                        {AI_CAMP_STUDENT_DATA.notifications.map((notice) => (
+                                            <div key={notice.id} className="p-3 rounded-xl border border-slate-100 bg-white">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-sm font-medium text-slate-800">{notice.title}</div>
+                                                    <span className="text-xs text-slate-400">{notice.date}</span>
+                                                </div>
+                                                <div className="text-sm text-slate-600 mt-1">{notice.text}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

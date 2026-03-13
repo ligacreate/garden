@@ -63,75 +63,110 @@ const COURSES = [
     },
     {
         id: 6,
-        title: "AI Camp (админ)",
-        description: "Объединенный обучающий курс. Доступен только администраторам.",
-        image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&q=80&w=800",
+        title: "AI Camp (система)",
+        description: "Единая система курса: вход ученика и ментора, дашборды, трекер, материалы и фидбек. Пока доступно только администраторам.",
+        image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
         minRole: ROLES.ADMIN,
         hideWhenEmpty: false,
         materials: [
             {
-                id: "aicamp-admin-1",
-                title: "Введение в AI Camp",
+                id: "aicamp-system-1",
+                title: "Вход в систему AI Camp",
                 type: "Текст",
-                tags: ["Введение", "Навигация"],
-                content: `Этот курс объединен с платформой "Сад ведущих".
+                tags: ["Вход", "Роли"],
+                content: `Внутри этого курса доступен вход для двух ролей:
+- ментор;
+- ученик.
 
-Что внутри:
-- трекер прогресса ученика;
-- материалы по занятиям;
-- обратная связь от ментора по домашним заданиям;
-- книжная полка с рекомендованными книгами.
-
-Рекомендация: начните с карты модулей и запланируйте неделю обучения.`,
+После входа показывается соответствующий кабинет.`,
                 role: "all"
             },
             {
-                id: "aicamp-admin-2",
-                title: "Трекер: как вести прогресс",
+                id: "aicamp-system-2",
+                title: "ЛК ученика: трекер и прогресс",
                 type: "Текст",
-                tags: ["Трекер", "Практика"],
-                content: `В трекере у каждого урока есть статус:
-- done — завершено;
-- in_progress — в процессе;
-- todo — запланировано.
-
-Отмечайте завершенные уроки регулярно, чтобы видеть реальный темп движения.`,
+                tags: ["Ученик", "Трекер", "Прогресс"],
+                content: `Ученик видит:
+- трекер уроков;
+- доступ к материалам курса;
+- книжную полку;
+- обратную связь от ментора по ДЗ.`,
                 role: "all"
             },
             {
-                id: "aicamp-admin-3",
-                title: "Обратная связь по ДЗ",
+                id: "aicamp-system-3",
+                title: "ЛК ментора: ученики и ДЗ",
                 type: "Текст",
-                tags: ["ДЗ", "Ментор"],
-                content: `Фидбек от ментора показывается в дашборде ученика.
-Что важно в хорошем комментарии:
-- конкретика (что получилось хорошо);
-- 1-2 рекомендации по улучшению;
-- поддерживающий тон и ориентир на следующий шаг.`,
-                role: "all"
-            },
-            {
-                id: "aicamp-admin-4",
-                title: "Подборка сервисов и инструментов",
-                type: "Текст",
-                tags: ["Инструменты", "Сервисы"],
-                content: `Базовый стек модуля:
-- ChatGPT / Claude / Gemini;
-- Whisper (транскрибация);
-- Cursor (редактура и структура материалов);
-- YouTube / Telegram для публикации и коммуникации.`,
+                tags: ["Ментор", "Ученики", "ДЗ"],
+                content: `Ментор видит:
+- дашборд непроверенных домашних;
+- список учеников;
+- прогресс учеников по курсу.`,
                 role: "all"
             }
         ]
     }
 ];
 
+const AI_CAMP_TITLE = "AI Camp (система)";
+const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
+const AI_CAMP_MENTOR_PIN = "1234";
+const AI_CAMP_STUDENT_PIN = "1111";
+
+const AI_CAMP_MENTOR_DATA = {
+    pendingHomework: [
+        { id: "m-hw-1", studentName: "Ирина К.", lessonTitle: "День 2: Вводная лекция", submittedAt: "2026-03-11 19:30", status: "Непроверено" },
+        { id: "m-hw-2", studentName: "Мария Л.", lessonTitle: "День 3: Whisper", submittedAt: "2026-03-12 09:15", status: "Непроверено" }
+    ],
+    students: [
+        { id: "m-st-1", name: "Ирина К.", completed: 5, total: 12 },
+        { id: "m-st-2", name: "Мария Л.", completed: 8, total: 12 },
+        { id: "m-st-3", name: "Елена Р.", completed: 3, total: 12 }
+    ]
+};
+
+const AI_CAMP_STUDENT_DATA = {
+    stats: { completedLessons: 7, totalLessons: 12, pendingHomework: 2 },
+    feedback: [
+        { id: "s-fb-1", title: "ДЗ к дню 2", comment: "Хорошая структура. Добавьте 1-2 живых примера из своей практики.", date: "2026-03-10" },
+        { id: "s-fb-2", title: "ДЗ к дню 3", comment: "Отлично! По Whisper добавьте скриншот финального результата.", date: "2026-03-12" }
+    ],
+    tracker: [
+        { id: "s-tr-1", lesson: "День 1: Введение", status: "done", hw: "Проверено" },
+        { id: "s-tr-2", lesson: "День 2: Вводная лекция + AI-браузеры", status: "done", hw: "Проверено" },
+        { id: "s-tr-3", lesson: "День 3: Whisper", status: "in_progress", hw: "На проверке" },
+        { id: "s-tr-4", lesson: "День 4: Оплата сервисов", status: "todo", hw: "Не отправлено" }
+    ],
+    materials: [
+        { id: "s-c-1", title: "Урок 1. Введение", type: "Видео", duration: "18 мин" },
+        { id: "s-c-2", title: "Урок 2. AI-браузеры", type: "Урок", duration: "24 мин" },
+        { id: "s-c-3", title: "Урок 3. Whisper", type: "Урок", duration: "29 мин" }
+    ],
+    bookshelf: [
+        { id: "s-b-1", title: "Атомные привычки", author: "Джеймс Клир" },
+        { id: "s-b-2", title: "Пиши, сокращай", author: "Ильяхов, Сарычева" },
+        { id: "s-b-3", title: "Поток", author: "Михай Чиксентмихайи" }
+    ]
+};
+
 const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onCompleteLesson, onNotify, resetToken = 0 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
     const [selectedTag, setSelectedTag] = useState('Все');
     const [selectedMaterial, setSelectedMaterial] = useState(null);
+    const [aiCampRole, setAiCampRole] = useState('student');
+    const [aiCampName, setAiCampName] = useState('');
+    const [aiCampPin, setAiCampPin] = useState('');
+    const [aiCampError, setAiCampError] = useState('');
+    const [aiCampSession, setAiCampSession] = useState(() => {
+        try {
+            const raw = localStorage.getItem(AI_CAMP_SESSION_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    });
 
     const filters = ['Все', 'Курсы', 'Полезное'];
 
@@ -359,6 +394,8 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
         setSelectedCourseId(null);
         setSelectedTag('Все');
         setSelectedMaterial(null);
+        setAiCampPin('');
+        setAiCampError('');
     }, [resetToken]);
 
     useEffect(() => {
@@ -417,6 +454,31 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
         () => formatMaterialContent(selectedMaterial?.content),
         [selectedMaterial?.content]
     );
+
+    const handleAiCampLogin = (e) => {
+        e.preventDefault();
+        const expectedPin = aiCampRole === 'mentor' ? AI_CAMP_MENTOR_PIN : AI_CAMP_STUDENT_PIN;
+        if (aiCampPin !== expectedPin) {
+            setAiCampError(`Неверный код для роли "${aiCampRole === 'mentor' ? 'Ментор' : 'Ученик'}".`);
+            return;
+        }
+        const session = {
+            role: aiCampRole,
+            name: aiCampName?.trim() || (aiCampRole === 'mentor' ? 'Ментор' : 'Ученик')
+        };
+        setAiCampSession(session);
+        localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(session));
+        setAiCampError('');
+        setAiCampPin('');
+    };
+
+    const handleAiCampLogout = () => {
+        setAiCampSession(null);
+        setAiCampName('');
+        setAiCampPin('');
+        setAiCampError('');
+        localStorage.removeItem(AI_CAMP_SESSION_KEY);
+    };
 
     return (
         <div className="h-full flex flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
@@ -497,6 +559,129 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
                             </div>
                         </div>
                     ))}
+                </div>
+            ) : selectedCourse.title === AI_CAMP_TITLE ? (
+                <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/50">
+                    {!aiCampSession ? (
+                        <form onSubmit={handleAiCampLogin} className="max-w-xl mx-auto">
+                            <div className="text-2xl font-medium text-slate-900 mb-2">Вход в AI Camp</div>
+                            <div className="text-sm text-slate-500 mb-5">Выберите роль и введите код доступа.</div>
+
+                            <div className="flex gap-2 mb-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setAiCampRole('student')}
+                                    className={`px-4 py-2 rounded-full text-sm ${aiCampRole === 'student' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Ученик
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAiCampRole('mentor')}
+                                    className={`px-4 py-2 rounded-full text-sm ${aiCampRole === 'mentor' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                >
+                                    Ментор
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                    placeholder={aiCampRole === 'mentor' ? 'Имя ментора' : 'Имя ученика'}
+                                    value={aiCampName}
+                                    onChange={(e) => setAiCampName(e.target.value)}
+                                />
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                                    type="password"
+                                    placeholder="Код доступа"
+                                    value={aiCampPin}
+                                    onChange={(e) => setAiCampPin(e.target.value)}
+                                />
+                            </div>
+                            {aiCampError && <div className="text-sm text-rose-600 mt-3">{aiCampError}</div>}
+                            <div className="text-xs text-slate-400 mt-2">
+                                Демо-коды: ученик — {AI_CAMP_STUDENT_PIN}, ментор — {AI_CAMP_MENTOR_PIN}
+                            </div>
+                            <div className="mt-4">
+                                <Button variant="primary" type="submit">Войти в систему</Button>
+                            </div>
+                        </form>
+                    ) : aiCampSession.role === 'mentor' ? (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-2xl font-medium text-slate-900">Личный кабинет ментора</div>
+                                    <div className="text-sm text-slate-500">Здравствуйте, {aiCampSession.name}</div>
+                                </div>
+                                <Button variant="secondary" onClick={handleAiCampLogout}>Сменить роль</Button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-xs text-slate-400 uppercase">Непроверенные ДЗ</div>
+                                    <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_MENTOR_DATA.pendingHomework.length}</div>
+                                </div>
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-xs text-slate-400 uppercase">Ученики</div>
+                                    <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_MENTOR_DATA.students.length}</div>
+                                </div>
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-xs text-slate-400 uppercase">Средний прогресс</div>
+                                    <div className="text-2xl font-semibold text-slate-900">
+                                        {Math.round(AI_CAMP_MENTOR_DATA.students.reduce((acc, s) => acc + Math.round((s.completed / s.total) * 100), 0) / AI_CAMP_MENTOR_DATA.students.length)}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                <div className="text-sm font-medium text-slate-800 mb-3">Непроверенные домашки</div>
+                                <div className="space-y-2">
+                                    {AI_CAMP_MENTOR_DATA.pendingHomework.map(hw => (
+                                        <div key={hw.id} className="p-3 rounded-xl border border-slate-100 bg-white flex justify-between text-sm">
+                                            <div>{hw.studentName} — {hw.lessonTitle}</div>
+                                            <div className="text-slate-400">{hw.submittedAt}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-2xl font-medium text-slate-900">Личный кабинет ученика</div>
+                                    <div className="text-sm text-slate-500">Здравствуйте, {aiCampSession.name}</div>
+                                </div>
+                                <Button variant="secondary" onClick={handleAiCampLogout}>Сменить роль</Button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-xs text-slate-400 uppercase">Прогресс курса</div>
+                                    <div className="text-2xl font-semibold text-slate-900">
+                                        {Math.round((AI_CAMP_STUDENT_DATA.stats.completedLessons / AI_CAMP_STUDENT_DATA.stats.totalLessons) * 100)}%
+                                    </div>
+                                </div>
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-xs text-slate-400 uppercase">Пройдено уроков</div>
+                                    <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_STUDENT_DATA.stats.completedLessons}/{AI_CAMP_STUDENT_DATA.stats.totalLessons}</div>
+                                </div>
+                                <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                    <div className="text-xs text-slate-400 uppercase">ДЗ на проверке</div>
+                                    <div className="text-2xl font-semibold text-slate-900">{AI_CAMP_STUDENT_DATA.stats.pendingHomework}</div>
+                                </div>
+                            </div>
+                            <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
+                                <div className="text-sm font-medium text-slate-800 mb-3">Обратная связь от ментора</div>
+                                <div className="space-y-2">
+                                    {AI_CAMP_STUDENT_DATA.feedback.map(item => (
+                                        <div key={item.id} className="p-3 rounded-xl border border-slate-100 bg-white text-sm">
+                                            <div className="font-medium text-slate-800">{item.title}</div>
+                                            <div className="text-slate-600 mt-1">{item.comment}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : selectedMaterial ? (
                 <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/50">

@@ -950,7 +950,7 @@ const CourseLibraryView = ({
                                                     {hw.checkedAt ? ` • Проверено: ${hw.checkedAt}` : ' • Ожидает проверки'}
                                                 </div>
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
                                 </div>
                             )}
@@ -1001,7 +1001,7 @@ const CourseLibraryView = ({
                                                     ))}
                                                 </div>
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
                                 </div>
                             )}

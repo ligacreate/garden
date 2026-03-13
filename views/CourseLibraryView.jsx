@@ -113,6 +113,19 @@ const AI_CAMP_TITLE = "AI Camp (система)";
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
 const AI_CAMP_MENTOR_PIN = "1234";
 const AI_CAMP_STUDENT_PIN = "1111";
+const AI_CAMP_LESSON_BADGES = ["Видео", "Урок", "Домашнее задание", "Тест"];
+
+const buildModuleLessons = (moduleId, moduleTitle) => (
+    Array.from({ length: 6 }, (_, index) => {
+        const lessonNumber = index + 1;
+        return {
+            id: `${moduleId}-lesson-${lessonNumber}`,
+            title: `Урок ${lessonNumber}`,
+            description: `${moduleTitle}: тема урока ${lessonNumber}, разбор кейсов и практическая часть.`,
+            badges: AI_CAMP_LESSON_BADGES
+        };
+    })
+);
 
 const AI_CAMP_MENTOR_DATA = {
     students: [
@@ -133,30 +146,23 @@ const AI_CAMP_MENTOR_DATA = {
     courseOutline: [
         {
             id: "mod-1",
-            title: "Модуль 1. База AI Camp",
-            items: [
-                { id: "mod-1-1", type: "Урок", title: "Урок 1. Введение в курс", duration: "18 мин" },
-                { id: "mod-1-2", type: "Урок", title: "Урок 2. AI-браузеры", duration: "24 мин" },
-                { id: "mod-1-3", type: "Тест", title: "Тест 1. Основы", duration: "10 вопросов" }
-            ]
+            title: "Модуль 1. Типы и виды письменных практик",
+            lessons: buildModuleLessons("mod-1", "Типы и виды письменных практик")
         },
         {
             id: "mod-2",
-            title: "Модуль 2. Практика и домашние",
-            items: [
-                { id: "mod-2-1", type: "Урок", title: "Урок 3. Whisper", duration: "29 мин" },
-                { id: "mod-2-2", type: "Урок", title: "Урок 4. Оплата сервисов", duration: "21 мин" },
-                { id: "mod-2-3", type: "Тест", title: "Тест 2. Практика", duration: "12 вопросов" }
-            ]
+            title: "Модуль 2. Составление практик",
+            lessons: buildModuleLessons("mod-2", "Составление практик")
         },
         {
             id: "mod-3",
-            title: "Модуль 3. Продвинутые сценарии",
-            items: [
-                { id: "mod-3-1", type: "Урок", title: "Урок 5. Сборка ассистента", duration: "31 мин" },
-                { id: "mod-3-2", type: "Урок", title: "Урок 6. Автоворонки", duration: "27 мин" },
-                { id: "mod-3-3", type: "Тест", title: "Тест 3. Итоговый", duration: "15 вопросов" }
-            ]
+            title: "Модуль 3. Сценарии и проведение встреч",
+            lessons: buildModuleLessons("mod-3", "Сценарии и проведение встреч")
+        },
+        {
+            id: "mod-4",
+            title: "Модуль 4. Уроки по социальной психологии",
+            lessons: buildModuleLessons("mod-4", "Уроки по социальной психологии")
         }
     ]
 };
@@ -185,7 +191,17 @@ const AI_CAMP_STUDENT_DATA = {
     ]
 };
 
-const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onCompleteLesson, onNotify, onBackToGarden, resetToken = 0 }) => {
+const CourseLibraryView = ({
+    user,
+    knowledgeBase = [],
+    librarySettings,
+    onCompleteLesson,
+    onNotify,
+    onBackToGarden,
+    onCourseSidebarChange,
+    externalCourseNavKey,
+    resetToken = 0
+}) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
     const [selectedTag, setSelectedTag] = useState('Все');
@@ -195,6 +211,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
     const [aiCampPin, setAiCampPin] = useState('');
     const [aiCampError, setAiCampError] = useState('');
     const [mentorActiveTab, setMentorActiveTab] = useState('students');
+    const [selectedMentorModuleId, setSelectedMentorModuleId] = useState('mod-1');
     const [aiCampSession, setAiCampSession] = useState(() => {
         try {
             const raw = localStorage.getItem(AI_CAMP_SESSION_KEY);
@@ -432,6 +449,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
         setSelectedMaterial(null);
         setAiCampPin('');
         setAiCampError('');
+        setMentorActiveTab('students');
     }, [resetToken]);
 
     useEffect(() => {
@@ -490,9 +508,35 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
         () => formatMaterialContent(selectedMaterial?.content),
         [selectedMaterial?.content]
     );
+    const getHomeworkLessonOrder = (lessonTitle) => {
+        const text = String(lessonTitle || '');
+        const lessonMatch = text.match(/урок[ау]?\s*(\d+)/i);
+        if (lessonMatch) return Number(lessonMatch[1]);
+        const testMatch = text.match(/тест\s*(\d+)/i);
+        if (testMatch) return Number(testMatch[1]);
+        return 0;
+    };
     const mentorPendingHomework = useMemo(
         () => AI_CAMP_MENTOR_DATA.allHomework.filter((hw) => hw.status === 'Непроверено'),
         []
+    );
+    const sortedMentorHomework = useMemo(
+        () => [...AI_CAMP_MENTOR_DATA.allHomework].sort((a, b) => {
+            const aPendingRank = a.status === 'Непроверено' ? 0 : 1;
+            const bPendingRank = b.status === 'Непроверено' ? 0 : 1;
+            if (aPendingRank !== bPendingRank) return aPendingRank - bPendingRank;
+
+            const aLesson = getHomeworkLessonOrder(a.lessonTitle);
+            const bLesson = getHomeworkLessonOrder(b.lessonTitle);
+            if (aLesson !== bLesson) return bLesson - aLesson;
+
+            return String(b.submittedAt || '').localeCompare(String(a.submittedAt || ''), 'ru');
+        }),
+        []
+    );
+    const selectedMentorModule = useMemo(
+        () => AI_CAMP_MENTOR_DATA.courseOutline.find((module) => module.id === selectedMentorModuleId) || AI_CAMP_MENTOR_DATA.courseOutline[0],
+        [selectedMentorModuleId]
     );
 
     const handleAiCampLogin = (e) => {
@@ -518,8 +562,39 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
         setAiCampPin('');
         setAiCampError('');
         setMentorActiveTab('students');
+        setSelectedMentorModuleId('mod-1');
         localStorage.removeItem(AI_CAMP_SESSION_KEY);
     };
+
+    useEffect(() => {
+        if (!selectedCourse || selectedCourse.title !== AI_CAMP_TITLE || !aiCampSession) {
+            onCourseSidebarChange?.({ enabled: false, title: 'Курс', items: [], activeKey: null });
+            return;
+        }
+
+        if (aiCampSession.role === 'mentor') {
+            onCourseSidebarChange?.({
+                enabled: true,
+                title: 'Курс AI Camp',
+                activeKey: mentorActiveTab,
+                items: [
+                    { key: 'students', label: 'Список учеников', iconKey: 'users' },
+                    { key: 'homework', label: 'Домашние задания', iconKey: 'calendar' },
+                    { key: 'course', label: 'Вкладка курса', iconKey: 'graduation' }
+                ]
+            });
+            return;
+        }
+
+        onCourseSidebarChange?.({ enabled: false, title: 'Курс', items: [], activeKey: null });
+    }, [aiCampSession, mentorActiveTab, onCourseSidebarChange, selectedCourse]);
+
+    useEffect(() => {
+        if (!externalCourseNavKey || !aiCampSession || aiCampSession.role !== 'mentor') return;
+        if (['students', 'homework', 'course'].includes(externalCourseNavKey)) {
+            setMentorActiveTab(externalCourseNavKey);
+        }
+    }, [aiCampSession, externalCourseNavKey]);
 
     return (
         <div className="h-full flex flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
@@ -733,7 +808,7 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
                                 <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
                                     <div className="text-sm font-medium text-slate-800 mb-3">Все домашние задания учеников</div>
                                     <div className="space-y-2">
-                                        {AI_CAMP_MENTOR_DATA.allHomework.map((hw) => (
+                                        {sortedMentorHomework.map((hw) => (
                                             <div key={hw.id} className="p-3 rounded-xl border border-slate-100 bg-white">
                                                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                                                     <div className="text-sm text-slate-800">{hw.studentName} — {hw.lessonTitle}</div>
@@ -753,22 +828,45 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
                             {mentorActiveTab === 'course' && (
                                 <div className="p-4 rounded-2xl border border-slate-100 bg-white/60">
                                     <div className="text-sm font-medium text-slate-800 mb-3">Вкладка курса</div>
-                                    <div className="text-xs text-slate-400 mb-4">Структура модуля в режиме просмотра, без редактирования.</div>
+                                    <div className="text-xs text-slate-400 mb-4">4 модуля в режиме просмотра. Внутри каждого модуля: уроки и структура занятия.</div>
                                     <div className="space-y-3">
-                                        {AI_CAMP_MENTOR_DATA.courseOutline.map((module) => (
-                                            <div key={module.id} className="rounded-2xl border border-slate-100 bg-white">
-                                                <div className="px-4 py-3 border-b border-slate-100 text-sm font-medium text-slate-800">
-                                                    {module.title}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            {AI_CAMP_MENTOR_DATA.courseOutline.map((module) => (
+                                                <button
+                                                    key={module.id}
+                                                    type="button"
+                                                    onClick={() => setSelectedMentorModuleId(module.id)}
+                                                    className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                                                        selectedMentorModule?.id === module.id
+                                                            ? 'bg-slate-900 text-white border-slate-900'
+                                                            : 'bg-white text-slate-700 border-slate-100 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    <div className="text-sm font-medium">{module.title}</div>
+                                                    <div className={`text-xs mt-1 ${selectedMentorModule?.id === module.id ? 'text-white/70' : 'text-slate-400'}`}>
+                                                        Уроков: {module.lessons.length}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {selectedMentorModule && (
+                                            <div className="rounded-2xl border border-slate-100 bg-white">
+                                                <div className="px-4 py-3 border-b border-slate-100">
+                                                    <div className="text-sm font-semibold text-slate-800">{selectedMentorModule.title}</div>
+                                                    <div className="text-xs text-slate-400 mt-1">Модуль. Урок 1 - Урок 6</div>
                                                 </div>
                                                 <div className="divide-y divide-slate-100">
-                                                    {module.items.map((item) => (
-                                                        <div key={item.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                                                            <div className="text-sm text-slate-700">{item.title}</div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${item.type === 'Тест' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>
-                                                                    {item.type}
-                                                                </span>
-                                                                <span className="text-xs text-slate-400">{item.duration}</span>
+                                                    {selectedMentorModule.lessons.map((lesson) => (
+                                                        <div key={lesson.id} className="px-4 py-3">
+                                                            <div className="text-sm font-medium text-slate-800">{lesson.title}</div>
+                                                            <div className="text-xs text-slate-500 mt-1">{lesson.description}</div>
+                                                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                                                {lesson.badges.map((badge) => (
+                                                                    <span key={`${lesson.id}-${badge}`} className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                                                        {badge}
+                                                                    </span>
+                                                                ))}
                                                             </div>
                                                         </div>
                                                     ))}

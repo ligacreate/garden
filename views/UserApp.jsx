@@ -53,6 +53,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [clients, setClients] = useState(INITIAL_CLIENTS);
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [courseSidebar, setCourseSidebar] = useState({ enabled: false, title: 'Курс', items: [], activeKey: null });
+    const [courseNavKey, setCourseNavKey] = useState(null);
     const [leaderUser, setLeaderUser] = useState(null);
     const [birthdayTemplates, setBirthdayTemplates] = useState([]);
     const mergedUsers = useMemo(
@@ -205,10 +207,20 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
 
         if (newView === 'library') {
             setLibraryResetToken((v) => v + 1);
+        } else {
+            setCourseSidebar({ enabled: false, title: 'Курс', items: [], activeKey: null });
+            setCourseNavKey(null);
         }
 
         setMobileMenuOpen(false);
     };
+
+    const courseIconMap = {
+        users: Users,
+        calendar: CalendarRange,
+        graduation: GraduationCap
+    };
+    const isCourseSidebarMode = view === 'library' && courseSidebar.enabled;
 
     const handleOpenLeader = (leader) => {
         if (!leader) return;
@@ -518,58 +530,87 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                     {/* Scrollable Navigation */}
                     <div className="flex-1 overflow-y-auto min-h-0 py-2 custom-scrollbar -mx-2 px-2">
                         <nav className="space-y-1">
-                            <SidebarItem
-                                icon={LayoutGrid}
-                                label="Дашборд"
-                                active={view === 'dashboard'}
-                                onClick={() => handleViewChange('dashboard')}
-                            />
-                            <SidebarItem
-                                icon={CalendarRange}
-                                label="Встречи"
-                                active={view === 'meetings'}
-                                onClick={() => handleViewChange('meetings')}
-                            />
-                            <SidebarItem
-                                icon={MapIcon}
-                                label="Сад ведущих"
-                                active={view === 'map'}
-                                onClick={() => handleViewChange('map')}
-                            />
-                            <SidebarItem
-                                icon={BookOpen}
-                                label="Практики"
-                                active={view === 'practices'}
-                                onClick={() => handleViewChange('practices')}
-                            />
-                            <SidebarItem
-                                icon={Sparkles}
-                                label="Сценарии"
-                                active={view === 'builder'}
-                                onClick={() => handleViewChange('builder')}
-                            />
-                            <SidebarItem
-                                icon={GraduationCap}
-                                label="Библиотека"
-                                active={view === 'library'}
-                                onClick={() => handleViewChange('library')}
-                            />
-                            {hasAccess(normalizedRole, 'leader') && (
+                            {isCourseSidebarMode ? (
                                 <>
+                                    <div className="px-4 pb-2">
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{courseSidebar.title}</div>
+                                    </div>
+                                    {courseSidebar.items.map((item) => {
+                                        const Icon = courseIconMap[item.iconKey] || GraduationCap;
+                                        return (
+                                            <SidebarItem
+                                                key={item.key}
+                                                icon={Icon}
+                                                label={item.label}
+                                                active={courseSidebar.activeKey === item.key}
+                                                onClick={() => setCourseNavKey(item.key)}
+                                            />
+                                        );
+                                    })}
+                                    <div className="h-px bg-slate-100/60 my-3"></div>
                                     <SidebarItem
-                                        icon={Users}
-                                        label="Люди"
-                                        active={view === 'crm'}
-                                        onClick={() => handleViewChange('crm')}
+                                        icon={LayoutGrid}
+                                        label="Вернуться в сад"
+                                        active={false}
+                                        onClick={() => handleViewChange('dashboard')}
                                     />
                                 </>
-                            )}
-                            {isAdmin && (
-                                <SidebarItem
-                                    icon={Shield}
-                                    label="Админка"
-                                    onClick={onSwitchToAdmin}
-                                />
+                            ) : (
+                                <>
+                                    <SidebarItem
+                                        icon={LayoutGrid}
+                                        label="Дашборд"
+                                        active={view === 'dashboard'}
+                                        onClick={() => handleViewChange('dashboard')}
+                                    />
+                                    <SidebarItem
+                                        icon={CalendarRange}
+                                        label="Встречи"
+                                        active={view === 'meetings'}
+                                        onClick={() => handleViewChange('meetings')}
+                                    />
+                                    <SidebarItem
+                                        icon={MapIcon}
+                                        label="Сад ведущих"
+                                        active={view === 'map'}
+                                        onClick={() => handleViewChange('map')}
+                                    />
+                                    <SidebarItem
+                                        icon={BookOpen}
+                                        label="Практики"
+                                        active={view === 'practices'}
+                                        onClick={() => handleViewChange('practices')}
+                                    />
+                                    <SidebarItem
+                                        icon={Sparkles}
+                                        label="Сценарии"
+                                        active={view === 'builder'}
+                                        onClick={() => handleViewChange('builder')}
+                                    />
+                                    <SidebarItem
+                                        icon={GraduationCap}
+                                        label="Библиотека"
+                                        active={view === 'library'}
+                                        onClick={() => handleViewChange('library')}
+                                    />
+                                    {hasAccess(normalizedRole, 'leader') && (
+                                        <>
+                                            <SidebarItem
+                                                icon={Users}
+                                                label="Люди"
+                                                active={view === 'crm'}
+                                                onClick={() => handleViewChange('crm')}
+                                            />
+                                        </>
+                                    )}
+                                    {isAdmin && (
+                                        <SidebarItem
+                                            icon={Shield}
+                                            label="Админка"
+                                            onClick={onSwitchToAdmin}
+                                        />
+                                    )}
+                                </>
                             )}
                             <div className="h-px bg-slate-100/60 my-3"></div>
                             <SidebarItem
@@ -669,6 +710,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             onCompleteLesson={handleLessonCompleted}
                             onNotify={onNotify}
                             onBackToGarden={() => handleViewChange('dashboard')}
+                            onCourseSidebarChange={setCourseSidebar}
+                            externalCourseNavKey={courseNavKey}
                             resetToken={libraryResetToken}
                         />
                     )}

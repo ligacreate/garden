@@ -60,6 +60,70 @@ const COURSES = [
         tag: "Курсы",
         minRole: ROLES.LEADER,
         hideWhenEmpty: true
+    },
+    {
+        id: 6,
+        title: "AI Camp (админ)",
+        description: "Объединенный обучающий курс. Доступен только администраторам.",
+        image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&q=80&w=800",
+        tag: "Курсы",
+        minRole: ROLES.ADMIN,
+        hideWhenEmpty: false,
+        materials: [
+            {
+                id: "aicamp-admin-1",
+                title: "Введение в AI Camp",
+                type: "Текст",
+                tags: ["Введение", "Навигация"],
+                content: `Этот курс объединен с платформой "Сад ведущих".
+
+Что внутри:
+- трекер прогресса ученика;
+- материалы по занятиям;
+- обратная связь от ментора по домашним заданиям;
+- книжная полка с рекомендованными книгами.
+
+Рекомендация: начните с карты модулей и запланируйте неделю обучения.`,
+                role: "all"
+            },
+            {
+                id: "aicamp-admin-2",
+                title: "Трекер: как вести прогресс",
+                type: "Текст",
+                tags: ["Трекер", "Практика"],
+                content: `В трекере у каждого урока есть статус:
+- done — завершено;
+- in_progress — в процессе;
+- todo — запланировано.
+
+Отмечайте завершенные уроки регулярно, чтобы видеть реальный темп движения.`,
+                role: "all"
+            },
+            {
+                id: "aicamp-admin-3",
+                title: "Обратная связь по ДЗ",
+                type: "Текст",
+                tags: ["ДЗ", "Ментор"],
+                content: `Фидбек от ментора показывается в дашборде ученика.
+Что важно в хорошем комментарии:
+- конкретика (что получилось хорошо);
+- 1-2 рекомендации по улучшению;
+- поддерживающий тон и ориентир на следующий шаг.`,
+                role: "all"
+            },
+            {
+                id: "aicamp-admin-4",
+                title: "Подборка сервисов и инструментов",
+                type: "Текст",
+                tags: ["Инструменты", "Сервисы"],
+                content: `Базовый стек модуля:
+- ChatGPT / Claude / Gemini;
+- Whisper (транскрибация);
+- Cursor (редактура и структура материалов);
+- YouTube / Telegram для публикации и коммуникации.`,
+                role: "all"
+            }
+        ]
     }
 ];
 
@@ -256,12 +320,20 @@ const CourseLibraryView = ({ user, knowledgeBase = [], librarySettings, onComple
                 video_link: k.video_link || (k.type === 'Видео' ? k.link : '') || '',
                 file_link: k.file_link || (k.type === 'PDF' ? k.link : '') || ''
             }));
+        const staticMaterials = (selectedCourse.materials || []).map((m) => ({
+            ...m,
+            category: selectedCourse.title,
+            tags: normalizeTags(m.tags),
+            video_link: m.video_link || (m.type === 'Видео' ? m.link : '') || '',
+            file_link: m.file_link || (m.type === 'PDF' ? m.link : '') || ''
+        }));
+        const merged = [...base, ...staticMaterials];
 
         const order = materialOrder[selectedCourse.title];
-        if (!Array.isArray(order) || order.length === 0) return base;
+        if (!Array.isArray(order) || order.length === 0) return merged;
 
         const rank = new Map(order.map((id, idx) => [String(id), idx]));
-        return [...base].sort((a, b) => {
+        return [...merged].sort((a, b) => {
             const aRank = rank.has(String(a.id)) ? rank.get(String(a.id)) : Number.MAX_SAFE_INTEGER;
             const bRank = rank.has(String(b.id)) ? rank.get(String(b.id)) : Number.MAX_SAFE_INTEGER;
             if (aRank !== bRank) return aRank - bRank;

@@ -661,7 +661,17 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                     )}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
-                    {view === 'library' && <CourseLibraryView user={user} knowledgeBase={knowledgeBase} librarySettings={librarySettings} onCompleteLesson={handleLessonCompleted} onNotify={onNotify} resetToken={libraryResetToken} />}
+                    {view === 'library' && (
+                        <CourseLibraryView
+                            user={user}
+                            knowledgeBase={knowledgeBase}
+                            librarySettings={librarySettings}
+                            onCompleteLesson={handleLessonCompleted}
+                            onNotify={onNotify}
+                            onBackToGarden={() => handleViewChange('dashboard')}
+                            resetToken={libraryResetToken}
+                        />
+                    )}
                     {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} />}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
                     {view === 'market' && <MarketView />}

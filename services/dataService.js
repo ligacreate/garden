@@ -1733,21 +1733,13 @@ class RemoteApiService {
     // Chat messages
     async getMessages(options = {}) {
         const limit = Number(options?.limit) > 0 ? Number(options.limit) : 200;
-        try {
-            const { data } = await postgrestFetch('messages', {
-                select: '*',
-                order: 'created_at.asc',
-                limit: String(limit)
-            });
-            return data || [];
-        } catch (e) {
-            // Graceful fallback for environments where messages table is not yet migrated.
-            const all = loadLocalMessages()
-                .filter((m) => !m.deleted_at)
-                .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
-            if (all.length <= limit) return all;
-            return all.slice(all.length - limit);
-        }
+        const { data } = await postgrestFetch('messages', {
+            select: '*',
+            order: 'created_at.desc',
+            limit: String(limit)
+        });
+        // Keep UI chronological while requesting latest N rows.
+        return (data || []).slice().reverse();
     }
 
     async addMessage(message) {
@@ -1759,29 +1751,12 @@ class RemoteApiService {
             text
         }, { plain: ['author_name', 'text'] });
 
-        try {
-            const { data } = await postgrestFetch('messages', {}, {
-                method: 'POST',
-                body: [payload],
-                returnRepresentation: true
-            });
-            return Array.isArray(data) ? data[0] : data;
-        } catch (e) {
-            // Graceful fallback for environments where messages table is not yet migrated.
-            const all = loadLocalMessages();
-            const created = {
-                id: Date.now(),
-                author_id: payload.author_id,
-                author_name: payload.author_name,
-                text: payload.text,
-                created_at: new Date().toISOString(),
-                edited_at: null,
-                deleted_at: null
-            };
-            all.push(created);
-            saveLocalMessages(all);
-            return created;
-        }
+        const { data } = await postgrestFetch('messages', {}, {
+            method: 'POST',
+            body: [payload],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     // Goals

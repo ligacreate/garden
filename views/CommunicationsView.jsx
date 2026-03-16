@@ -23,7 +23,7 @@ const CommunicationsView = ({ user, channelItems = [], onNotify }) => {
             setMessages(Array.isArray(data) ? data : []);
         } catch (e) {
             console.error(e);
-            onNotify?.('Не удалось загрузить чат');
+            onNotify?.('Чат недоступен: проверьте таблицу messages и доступ к API');
         }
     };
 
@@ -52,7 +52,7 @@ const CommunicationsView = ({ user, channelItems = [], onNotify }) => {
             }
         } catch (e) {
             console.error(e);
-            onNotify?.('Не удалось отправить сообщение');
+            onNotify?.('Не удалось отправить: чат должен сохраняться в общей базе');
         } finally {
             setIsSending(false);
         }

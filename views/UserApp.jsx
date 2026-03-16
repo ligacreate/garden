@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
-    GraduationCap
+    GraduationCap, MessagesSquare
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -16,6 +16,7 @@ import MarketView from './MarketView';
 import MapView from './MapView';
 import LeaderPageView from './LeaderPageView';
 import ProfileView from './ProfileView';
+import CommunicationsView from './CommunicationsView';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
@@ -597,6 +598,14 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         active={view === 'library'}
                                         onClick={() => handleViewChange('library')}
                                     />
+                                    {isAdmin && (
+                                        <SidebarItem
+                                            icon={MessagesSquare}
+                                            label="Коммуникации"
+                                            active={view === 'communications'}
+                                            onClick={() => handleViewChange('communications')}
+                                        />
+                                    )}
                                     {hasAccess(normalizedRole, 'leader') && (
                                         <>
                                             <SidebarItem
@@ -664,6 +673,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
                             <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                             <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
+                            {isAdmin && (
+                                <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
+                            )}
                             {hasAccess(normalizedRole, 'leader') && (
                                 <>
                                     <SidebarItem icon={Users} label="Люди" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
@@ -735,6 +747,13 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             currentUser={user}
                             onBack={() => setView('map')}
                             onUpdateProfile={handleUpdateProfile}
+                        />
+                    )}
+                    {view === 'communications' && isAdmin && (
+                        <CommunicationsView
+                            user={user}
+                            channelItems={news}
+                            onNotify={onNotify}
                         />
                     )}
                     {view === 'profile' && (

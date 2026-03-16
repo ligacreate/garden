@@ -211,6 +211,7 @@ const resolveStorageSign = async (body) => {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const LIBRARY_SETTINGS_STORAGE_KEY = 'garden_library_settings';
 const DEFAULT_LIBRARY_SETTINGS = { hiddenCourses: [], materialOrder: {} };
+const CHAT_MESSAGES_STORAGE_KEY = 'garden_chat_messages';
 
 const normalizeLibrarySettings = (raw) => {
     const hiddenCourses = Array.isArray(raw?.hiddenCourses)
@@ -282,6 +283,9 @@ const normalizeImportedScenarioInput = (input, index) => {
         author_name: input.author_name ? String(input.author_name).trim() : ''
     };
 };
+
+const loadLocalMessages = () => JSON.parse(localStorage.getItem(CHAT_MESSAGES_STORAGE_KEY) || '[]');
+const saveLocalMessages = (items) => localStorage.setItem(CHAT_MESSAGES_STORAGE_KEY, JSON.stringify(items || []));
 
 class LocalStorageService {
     constructor() {
@@ -728,6 +732,34 @@ class LocalStorageService {
         const filtered = allScenarios.filter(s => s.id !== scenarioId);
         localStorage.setItem('garden_scenarios', JSON.stringify(filtered));
         return true;
+    }
+
+    // Chat messages
+    async getMessages(options = {}) {
+        const limit = Number(options?.limit) > 0 ? Number(options.limit) : 200;
+        const all = loadLocalMessages()
+            .filter((m) => !m.deleted_at)
+            .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+        if (all.length <= limit) return all;
+        return all.slice(all.length - limit);
+    }
+
+    async addMessage(message) {
+        const text = this._sanitize(String(message?.text || ''));
+        if (!text.trim()) throw new Error('Пустое сообщение');
+        const all = loadLocalMessages();
+        const created = {
+            id: Date.now(),
+            author_id: message?.author_id || null,
+            author_name: this._sanitize(message?.author_name || 'Участник'),
+            text,
+            created_at: new Date().toISOString(),
+            edited_at: null,
+            deleted_at: null
+        };
+        all.push(created);
+        saveLocalMessages(all);
+        return created;
     }
 
     _saveUsers() {
@@ -1696,6 +1728,60 @@ class RemoteApiService {
     async deleteScenario(scenarioId) {
         await postgrestFetch('scenarios', { id: `eq.${scenarioId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
+    }
+
+    // Chat messages
+    async getMessages(options = {}) {
+        const limit = Number(options?.limit) > 0 ? Number(options.limit) : 200;
+        try {
+            const { data } = await postgrestFetch('messages', {
+                select: '*',
+                order: 'created_at.asc',
+                limit: String(limit)
+            });
+            return data || [];
+        } catch (e) {
+            // Graceful fallback for environments where messages table is not yet migrated.
+            const all = loadLocalMessages()
+                .filter((m) => !m.deleted_at)
+                .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+            if (all.length <= limit) return all;
+            return all.slice(all.length - limit);
+        }
+    }
+
+    async addMessage(message) {
+        const text = this._sanitize(String(message?.text || ''));
+        if (!text.trim()) throw new Error('Пустое сообщение');
+        const payload = this._sanitizeFields({
+            author_id: message?.author_id || null,
+            author_name: message?.author_name || 'Участник',
+            text
+        }, { plain: ['author_name', 'text'] });
+
+        try {
+            const { data } = await postgrestFetch('messages', {}, {
+                method: 'POST',
+                body: [payload],
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        } catch (e) {
+            // Graceful fallback for environments where messages table is not yet migrated.
+            const all = loadLocalMessages();
+            const created = {
+                id: Date.now(),
+                author_id: payload.author_id,
+                author_name: payload.author_name,
+                text: payload.text,
+                created_at: new Date().toISOString(),
+                edited_at: null,
+                deleted_at: null
+            };
+            all.push(created);
+            saveLocalMessages(all);
+            return created;
+        }
     }
 
     // Goals

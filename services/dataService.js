@@ -227,6 +227,62 @@ const normalizeLibrarySettings = (raw) => {
     return { hiddenCourses, materialOrder };
 };
 
+const normalizeScenarioTitle = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const normalizeScenarioTimelineItem = (entry, index) => {
+    if (typeof entry === 'string') {
+        const title = entry.trim();
+        if (!title) return null;
+        return {
+            title,
+            description: '',
+            type: 'Импорт',
+            time: '10 мин',
+            icon: '📝',
+            custom: true
+        };
+    }
+
+    if (!entry || typeof entry !== 'object') return null;
+    const title = String(entry.title || entry.name || `Шаг ${index + 1}`).trim();
+    if (!title) return null;
+
+    const description = entry.description == null ? '' : String(entry.description);
+    const type = entry.type == null ? 'Импорт' : String(entry.type);
+    const time = entry.time == null ? '10 мин' : String(entry.time);
+    const icon = entry.icon == null ? '📝' : String(entry.icon);
+
+    return {
+        ...entry,
+        title,
+        description,
+        type,
+        time,
+        icon,
+        custom: entry.custom ?? true
+    };
+};
+
+const normalizeScenarioTimeline = (timeline) => {
+    if (!Array.isArray(timeline)) return [];
+    return timeline
+        .map((entry, index) => normalizeScenarioTimelineItem(entry, index))
+        .filter(Boolean);
+};
+
+const normalizeImportedScenarioInput = (input, index) => {
+    if (!input || typeof input !== 'object') return null;
+    const title = String(input.title || '').trim();
+    if (!title) return null;
+    const timeline = normalizeScenarioTimeline(input.timeline);
+    if (timeline.length === 0) return null;
+    return {
+        title,
+        timeline,
+        author_name: input.author_name ? String(input.author_name).trim() : ''
+    };
+};
+
 class LocalStorageService {
     constructor() {
         this.users = JSON.parse(localStorage.getItem('garden_users')) || INITIAL_USERS;
@@ -597,6 +653,13 @@ class LocalStorageService {
         return allScenarios.filter(s => s.user_id === userId).sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
 
+    async getPublicScenarios() {
+        const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
+        return allScenarios
+            .filter(s => s.is_public === true)
+            .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    }
+
     async addScenario(scenario) {
         const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
         const sanitized = this._sanitizeFields(scenario, { plain: ['title', 'author_name'] });
@@ -609,6 +672,55 @@ class LocalStorageService {
     async saveScenario(scenario) {
         // Alias for addScenario to keep backward-compatible method usage.
         return this.addScenario(scenario);
+    }
+
+    async importLeagueScenarios(items, options = {}) {
+        const currentUser = await this.getCurrentUser().catch(() => null);
+        const userId = options.userId || currentUser?.id;
+        if (!userId) throw new Error('Не удалось определить администратора для импорта.');
+
+        const defaultAuthorName = this._sanitize(options.authorName || currentUser?.name || 'Админ');
+        const existing = await this.getPublicScenarios();
+        const existingTitles = new Set(existing.map(s => normalizeScenarioTitle(s.title)).filter(Boolean));
+        const toInsert = [];
+        let skipped = 0;
+
+        (Array.isArray(items) ? items : []).forEach((raw, index) => {
+            const normalized = normalizeImportedScenarioInput(raw, index);
+            if (!normalized) {
+                skipped += 1;
+                return;
+            }
+            const titleKey = normalizeScenarioTitle(normalized.title);
+            if (!titleKey || existingTitles.has(titleKey)) {
+                skipped += 1;
+                return;
+            }
+            existingTitles.add(titleKey);
+            toInsert.push(this._sanitizeFields({
+                user_id: userId,
+                title: normalized.title,
+                timeline: normalized.timeline,
+                is_public: true,
+                author_name: normalized.author_name || defaultAuthorName
+            }, { plain: ['title', 'author_name'] }));
+        });
+
+        if (toInsert.length === 0) {
+            return { inserted: 0, skipped };
+        }
+
+        const now = new Date().toISOString();
+        const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
+        const created = toInsert.map((scenario, idx) => ({
+            ...scenario,
+            id: Date.now() + idx,
+            created_at: now
+        }));
+        allScenarios.push(...created);
+        localStorage.setItem('garden_scenarios', JSON.stringify(allScenarios));
+
+        return { inserted: created.length, skipped };
     }
 
     async deleteScenario(scenarioId) {
@@ -1533,6 +1645,52 @@ class RemoteApiService {
     async saveScenario(scenario) {
         // Alias for consistency
         return this.addScenario(scenario);
+    }
+
+    async importLeagueScenarios(items, options = {}) {
+        this.checkActionTimer();
+        const currentUser = await this.getCurrentUser().catch(() => null);
+        const userId = options.userId || currentUser?.id;
+        if (!userId) throw new Error('Не удалось определить администратора для импорта.');
+
+        const defaultAuthorName = this._sanitize(options.authorName || currentUser?.name || 'Админ');
+        const existing = await this.getPublicScenarios();
+        const existingTitles = new Set(existing.map(s => normalizeScenarioTitle(s.title)).filter(Boolean));
+        const payload = [];
+        let skipped = 0;
+
+        (Array.isArray(items) ? items : []).forEach((raw, index) => {
+            const normalized = normalizeImportedScenarioInput(raw, index);
+            if (!normalized) {
+                skipped += 1;
+                return;
+            }
+            const titleKey = normalizeScenarioTitle(normalized.title);
+            if (!titleKey || existingTitles.has(titleKey)) {
+                skipped += 1;
+                return;
+            }
+            existingTitles.add(titleKey);
+            payload.push(this._sanitizeFields({
+                user_id: userId,
+                title: normalized.title,
+                timeline: normalized.timeline,
+                is_public: true,
+                author_name: normalized.author_name || defaultAuthorName
+            }, { plain: ['title', 'author_name'] }));
+        });
+
+        if (payload.length === 0) {
+            return { inserted: 0, skipped };
+        }
+
+        const { data } = await postgrestFetch('scenarios', {}, {
+            method: 'POST',
+            body: payload,
+            returnRepresentation: true
+        });
+
+        return { inserted: Array.isArray(data) ? data.length : 0, skipped };
     }
 
     async deleteScenario(scenarioId) {

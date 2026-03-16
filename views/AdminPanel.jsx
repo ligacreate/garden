@@ -243,9 +243,13 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     );
 };
 
-const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState('stats');
+    const [contentTab, setContentTab] = useState('library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
+    const [leagueScenarios, setLeagueScenarios] = useState([]);
+    const [scenarioImportText, setScenarioImportText] = useState('');
+    const [isImportingScenarios, setIsImportingScenarios] = useState(false);
     const [allMeetings, setAllMeetings] = useState([]);
     const [allEvents, setAllEvents] = useState([]);
     const [eventSearch, setEventSearch] = useState('');
@@ -265,6 +269,13 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
         }
     }, [tab, onGetAllMeetings, onGetAllEvents]);
 
+    useEffect(() => {
+        if (tab !== 'content' || contentTab !== 'scenarios' || !onGetLeagueScenarios) return;
+        onGetLeagueScenarios().then((items) => {
+            setLeagueScenarios(Array.isArray(items) ? items : []);
+        });
+    }, [tab, contentTab, onGetLeagueScenarios]);
+
     // Modal State
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => { }, variant: 'primary' });
 
@@ -276,6 +287,38 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
             .split(',')
             .map(t => t.trim())
             .filter(Boolean);
+    };
+
+    const parseScenariosImportText = (rawText) => {
+        const parsed = JSON.parse(rawText);
+        if (!Array.isArray(parsed)) {
+            throw new Error("Нужен JSON-массив сценариев.");
+        }
+        return parsed;
+    };
+
+    const refreshLeagueScenarios = async () => {
+        if (!onGetLeagueScenarios) return;
+        const items = await onGetLeagueScenarios();
+        setLeagueScenarios(Array.isArray(items) ? items : []);
+    };
+
+    const handleImportScenarios = async () => {
+        if (!onImportLeagueScenarios) return;
+        setIsImportingScenarios(true);
+        try {
+            const payload = parseScenariosImportText(scenarioImportText);
+            const result = await onImportLeagueScenarios(payload);
+            const inserted = result?.inserted || 0;
+            const skipped = result?.skipped || 0;
+            await refreshLeagueScenarios();
+            onNotify(`Импорт завершен: добавлено ${inserted}, пропущено ${skipped}`);
+            if (inserted > 0) setScenarioImportText('');
+        } catch (e) {
+            onNotify(e?.message || "Ошибка импорта сценариев");
+        } finally {
+            setIsImportingScenarios(false);
+        }
     };
 
     const hiddenCourses = librarySettings?.hiddenCourses || [];
@@ -856,8 +899,27 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                     </div>
                 ) : tab === 'content' && (
                     <div className="space-y-6">
-                        {/* List of Knowledge Base Items */}
-                        <div className="surface-card p-8">
+                        <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
+                            <button
+                                onClick={() => setContentTab('library')}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${contentTab === 'library'
+                                    ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
+                            >
+                                Библиотека
+                            </button>
+                            <button
+                                onClick={() => setContentTab('scenarios')}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${contentTab === 'scenarios'
+                                    ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
+                            >
+                                Сценарии
+                            </button>
+                        </div>
+
+                        {contentTab === 'library' && (
+                            <div className="surface-card p-8">
                             <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-6">
                                 <div className="text-sm font-semibold text-slate-700 mb-3">Видимость курсов в библиотеке</div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1007,6 +1069,88 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 </div>
                             </div>
                         </div>
+                        )}
+
+                        {contentTab === 'scenarios' && (
+                            <div className="surface-card p-8 space-y-6">
+                                <div className="flex items-center justify-between gap-2">
+                                    <h3 className="font-display font-semibold text-slate-900">Сценарии лиги ({leagueScenarios.length})</h3>
+                                    <Button
+                                        variant="ghost"
+                                        className="!p-2 text-slate-400 hover:text-blue-600"
+                                        onClick={refreshLeagueScenarios}
+                                        title="Обновить список"
+                                    >
+                                        <RotateCw size={20} />
+                                    </Button>
+                                </div>
+
+                                <div className="space-y-3 max-h-[380px] overflow-y-auto">
+                                    {leagueScenarios.length === 0 ? (
+                                        <div className="text-sm text-slate-400 py-8 text-center border border-dashed border-slate-200 rounded-2xl">
+                                            Общие сценарии пока не загружены
+                                        </div>
+                                    ) : leagueScenarios.map((scenario) => (
+                                        <div key={scenario.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start gap-3">
+                                            <div className="min-w-0">
+                                                <div className="font-medium text-slate-800 truncate">{scenario.title || 'Без названия'}</div>
+                                                <div className="text-xs text-slate-500 mt-1">
+                                                    Практик: {Array.isArray(scenario.timeline) ? scenario.timeline.length : 0}
+                                                    {scenario.author_name ? ` • Автор: ${scenario.author_name}` : ''}
+                                                </div>
+                                                <div className="text-xs text-slate-400 mt-1">
+                                                    {scenario.created_at ? new Date(scenario.created_at).toLocaleDateString() : '—'}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    if (!onDeleteLeagueScenario) return;
+                                                    confirmAction(
+                                                        "Удалить сценарий лиги?",
+                                                        `Вы собираетесь удалить сценарий "${scenario.title || 'Без названия'}".`,
+                                                        async () => {
+                                                            try {
+                                                                await onDeleteLeagueScenario(scenario.id);
+                                                                await refreshLeagueScenarios();
+                                                                onNotify("Сценарий удален");
+                                                            } catch (e) {
+                                                                onNotify(e?.message || "Ошибка удаления сценария");
+                                                            }
+                                                        },
+                                                        'danger'
+                                                    );
+                                                }}
+                                                className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                                                title="Удалить сценарий"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="border-t border-slate-100 pt-6 space-y-4">
+                                    <h4 className="font-display font-semibold text-slate-900">Импорт сценариев (JSON)</h4>
+                                    <p className="text-sm text-slate-500">
+                                        Вставьте JSON-массив. Каждый элемент: <code>title</code> и <code>timeline</code> (массив строк или шагов).
+                                    </p>
+                                    <textarea
+                                        className="w-full min-h-[220px] bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700 font-mono text-xs"
+                                        placeholder={'[{"title":"Сценарий 1","timeline":["Приветствие","Практика","Рефлексия"]}]'}
+                                        value={scenarioImportText}
+                                        onChange={(e) => setScenarioImportText(e.target.value)}
+                                    />
+                                    <div className="flex justify-end">
+                                        <Button
+                                            onClick={handleImportScenarios}
+                                            disabled={isImportingScenarios || !scenarioImportText.trim()}
+                                        >
+                                            {isImportingScenarios ? 'Импортируем...' : 'Импортировать сценарии'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

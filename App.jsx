@@ -195,6 +195,38 @@ export default function App() {
         });
     };
 
+    const handleGetLeagueScenarios = async () => {
+        try {
+            return await api.getPublicScenarios();
+        } catch (e) {
+            console.error(e);
+            showNotification("Не удалось загрузить сценарии лиги");
+            return [];
+        }
+    };
+
+    const handleImportLeagueScenarios = async (items) => {
+        try {
+            return await api.importLeagueScenarios(items, {
+                userId: currentUser?.id,
+                authorName: currentUser?.name || 'Админ'
+            });
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    };
+
+    const handleDeleteLeagueScenario = async (scenarioId) => {
+        try {
+            await api.deleteScenario(scenarioId);
+            return true;
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600 font-sans">Загрузка...</div>;
 
     return (
@@ -216,7 +248,7 @@ export default function App() {
                             console.error(e);
                             showNotification("Ошибка сохранения (см. консоль)");
                         }
-                    }} onAddNews={async (n) => {
+                    }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onAddNews={async (n) => {
                         try {
                             const created = await api.addNews(n);
                             if (created) {

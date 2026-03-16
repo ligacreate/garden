@@ -244,10 +244,19 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 };
 
 const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+    const createScenarioStep = () => ({
+        id: `${Date.now()}-${Math.random()}`,
+        title: '',
+        time: '10 мин',
+        type: 'Импорт',
+        description: ''
+    });
+
     const [tab, setTab] = useState('stats');
     const [contentTab, setContentTab] = useState('library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     const [leagueScenarios, setLeagueScenarios] = useState([]);
+    const [newScenario, setNewScenario] = useState({ title: '', role: 'all', timeline: [createScenarioStep()] });
     const [scenarioImportText, setScenarioImportText] = useState('');
     const [isImportingScenarios, setIsImportingScenarios] = useState(false);
     const [allMeetings, setAllMeetings] = useState([]);
@@ -345,6 +354,8 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
         return plainParsed;
     };
 
+    const stripHtml = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
     const refreshLeagueScenarios = async () => {
         if (!onGetLeagueScenarios) return;
         const items = await onGetLeagueScenarios();
@@ -364,6 +375,74 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
             if (inserted > 0) setScenarioImportText('');
         } catch (e) {
             onNotify(e?.message || "Ошибка импорта сценариев");
+        } finally {
+            setIsImportingScenarios(false);
+        }
+    };
+
+    const handleScenarioStepChange = (stepId, patch) => {
+        setNewScenario((prev) => ({
+            ...prev,
+            timeline: (prev.timeline || []).map((step) => String(step.id) === String(stepId) ? { ...step, ...patch } : step)
+        }));
+    };
+
+    const handleAddScenarioStep = () => {
+        setNewScenario((prev) => ({
+            ...prev,
+            timeline: [...(prev.timeline || []), createScenarioStep()]
+        }));
+    };
+
+    const handleRemoveScenarioStep = (stepId) => {
+        setNewScenario((prev) => {
+            const next = (prev.timeline || []).filter((step) => String(step.id) !== String(stepId));
+            return {
+                ...prev,
+                timeline: next.length > 0 ? next : [createScenarioStep()]
+            };
+        });
+    };
+
+    const handlePublishScenario = async () => {
+        if (!onImportLeagueScenarios) return;
+
+        const title = String(newScenario.title || '').trim();
+        if (!title) {
+            onNotify('Введите название сценария');
+            return;
+        }
+
+        const timeline = (newScenario.timeline || [])
+            .map((step) => ({
+                title: String(step.title || '').trim(),
+                time: String(step.time || '').trim() || '10 мин',
+                type: String(step.type || '').trim() || 'Импорт',
+                description: String(step.description || '').trim()
+            }))
+            .filter((step) => step.title || stripHtml(step.description));
+
+        if (timeline.length === 0) {
+            onNotify('Добавьте хотя бы один шаг сценария');
+            return;
+        }
+
+        setIsImportingScenarios(true);
+        try {
+            const result = await onImportLeagueScenarios([{ title, timeline }]);
+            const inserted = result?.inserted || 0;
+            const skipped = result?.skipped || 0;
+            await refreshLeagueScenarios();
+            if (newScenario.role !== 'all') {
+                onNotify(`Сценарий добавлен (${inserted}), но фильтрация по роли пока не применяется в лиге`);
+            } else {
+                onNotify(`Сценарий добавлен: ${inserted}. Пропущено: ${skipped}`);
+            }
+            if (inserted > 0) {
+                setNewScenario({ title: '', role: 'all', timeline: [createScenarioStep()] });
+            }
+        } catch (e) {
+            onNotify(e?.message || 'Ошибка публикации сценария');
         } finally {
             setIsImportingScenarios(false);
         }
@@ -397,6 +476,18 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
             items: getSortedItems(category, items)
         }));
     }, [knowledgeBase, materialOrder]);
+
+    const scenarioTypeOptions = useMemo(() => {
+        const defaults = ['Импорт', 'Свободный ввод', 'Знакомство', 'Письменная практика', 'Рефлексия'];
+        const fromScenarios = new Set();
+        (leagueScenarios || []).forEach((scenario) => {
+            (scenario.timeline || []).forEach((step) => {
+                const type = String(step?.type || '').trim();
+                if (type) fromScenarios.add(type);
+            });
+        });
+        return Array.from(new Set([...defaults, ...Array.from(fromScenarios)]));
+    }, [leagueScenarios]);
 
     const handleDropMaterial = (category, targetIndex) => {
         if (!draggingItemId) return;
@@ -1179,18 +1270,112 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
 
                                 <hr className="border-slate-100 my-6" />
 
-                                <h3 className="font-display font-semibold text-slate-900 mb-4">Добавить сценарии</h3>
+                                <h3 className="font-display font-semibold text-slate-900 mb-4">Добавить сценарий</h3>
                                 <div className="space-y-4">
+                                    <Input
+                                        placeholder="Название"
+                                        value={newScenario.title}
+                                        onChange={(e) => setNewScenario({ ...newScenario, title: e.target.value })}
+                                    />
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-1">Доступ</label>
+                                            <select
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
+                                                value={newScenario.role}
+                                                onChange={(e) => setNewScenario({ ...newScenario, role: e.target.value })}
+                                            >
+                                                <option value="all">Для всех</option>
+                                                <option value="intern">Стажеры+</option>
+                                                <option value="leader">Ведущие+</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {(newScenario.timeline || []).map((step, index) => (
+                                            <div key={step.id} className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="text-sm font-semibold text-slate-700">Шаг {index + 1}</div>
+                                                    <button
+                                                        onClick={() => handleRemoveScenarioStep(step.id)}
+                                                        className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                                                        title="Удалить шаг"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                                <Input
+                                                    placeholder="Название шага"
+                                                    value={step.title}
+                                                    onChange={(e) => handleScenarioStepChange(step.id, { title: e.target.value })}
+                                                />
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <Input
+                                                        placeholder="Время (например 10 мин)"
+                                                        value={step.time}
+                                                        onChange={(e) => handleScenarioStepChange(step.id, { time: e.target.value })}
+                                                    />
+                                                    <div className="md:col-span-2">
+                                                        <select
+                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
+                                                            value={step.type}
+                                                            onChange={(e) => handleScenarioStepChange(step.id, { type: e.target.value })}
+                                                        >
+                                                            {scenarioTypeOptions.map((type) => (
+                                                                <option key={type} value={type}>{type}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <RichEditor
+                                                    value={step.description || ''}
+                                                    onChange={(val) => handleScenarioStepChange(step.id, { description: val })}
+                                                    onUploadImage={api.uploadMeetingImage.bind(api)}
+                                                    placeholder="Описание шага..."
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <Button variant="secondary" onClick={handleAddScenarioStep}>Добавить шаг</Button>
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setNewScenario({ title: '', role: 'all', timeline: [createScenarioStep()] })}
+                                            disabled={isImportingScenarios}
+                                        >
+                                            Очистить
+                                        </Button>
+                                        <Button
+                                            onClick={handlePublishScenario}
+                                            disabled={isImportingScenarios}
+                                            className="w-full"
+                                        >
+                                            {isImportingScenarios ? 'Публикуем...' : 'Опубликовать'}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="border-t border-slate-100 pt-6 space-y-4">
+                                    <h4 className="font-display font-semibold text-slate-900">Быстрый импорт текстом</h4>
                                     <p className="text-sm text-slate-500">
                                         Вставьте обычный текст: в каждом блоке первая строка - название сценария, дальше шаги по строкам. Блоки можно разделять пустой строкой или <code>---</code>.
                                     </p>
                                     <textarea
-                                        className="w-full min-h-[320px] bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
+                                        className="w-full h-[220px] overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
                                         placeholder={'Сценарий 1: Знакомство\nПриветствие\nПрактика\nРефлексия\n\n---\n\nСценарий 2: Ресурсы\nКруг\nПисьменная практика\nИтоги'}
                                         value={scenarioImportText}
                                         onChange={(e) => setScenarioImportText(e.target.value)}
                                     />
                                     <div className="flex gap-2">
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setScenarioImportText('')}
+                                            disabled={isImportingScenarios || !scenarioImportText.trim()}
+                                        >
+                                            Очистить текст
+                                        </Button>
                                         <Button
                                             onClick={handleImportScenarios}
                                             disabled={isImportingScenarios || !scenarioImportText.trim()}

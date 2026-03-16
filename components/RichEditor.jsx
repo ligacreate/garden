@@ -68,7 +68,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
 
     return (
         <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white/90 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-            <div className="flex items-center gap-1 p-2 border-b border-slate-100 bg-slate-50/80">
+            <div className="sticky top-0 z-10 flex items-center gap-1 p-2 border-b border-slate-100 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
                 <button onMouseDown={(e) => handleCommand(e, 'bold')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Жирный"><Bold size={16} /></button>
                 <button onMouseDown={(e) => handleCommand(e, 'italic')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Курсив"><Italic size={16} /></button>
                 <button onMouseDown={(e) => handleCommand(e, 'formatBlock', '<h3>')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Заголовок"><Type size={16} /></button>
@@ -116,7 +116,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             </div>
             <div
                 ref={editorRef}
-                className="p-4 min-h-[150px] outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_i]:italic [&_li]:mb-1"
+                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_i]:italic [&_li]:mb-1"
                 contentEditable
                 dangerouslySetInnerHTML={{ __html: value }}
                 onBlur={(e) => onChange(e.currentTarget.innerHTML)}

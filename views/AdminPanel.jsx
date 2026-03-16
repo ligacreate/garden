@@ -289,12 +289,60 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
             .filter(Boolean);
     };
 
+    const parsePlainTextScenarios = (rawText) => {
+        const text = String(rawText || '').replace(/\r\n/g, '\n').trim();
+        if (!text) return [];
+
+        const delimiterBlocks = text
+            .split(/\n\s*---+\s*\n/g)
+            .map((block) => block.trim())
+            .filter(Boolean);
+
+        const candidateBlocks = delimiterBlocks.length > 1
+            ? delimiterBlocks
+            : text.split(/\n{2,}/g).map((block) => block.trim()).filter(Boolean);
+
+        const scenarios = [];
+
+        candidateBlocks.forEach((block, index) => {
+            const lines = block
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean);
+
+            if (lines.length === 0) return;
+
+            const first = lines[0]
+                .replace(/^#{1,6}\s*/, '')
+                .replace(/^(сценарий|scenario)\s*[:\-]\s*/i, '')
+                .trim();
+            const title = first || `Сценарий ${index + 1}`;
+
+            const timeline = lines
+                .slice(1)
+                .map((line) => line
+                    .replace(/^\s*[-*•]\s+/, '')
+                    .replace(/^\s*\d+[.)]\s+/, '')
+                    .trim()
+                )
+                .filter(Boolean);
+
+            if (timeline.length === 0) return;
+
+            scenarios.push({ title, timeline });
+        });
+
+        return scenarios;
+    };
+
     const parseScenariosImportText = (rawText) => {
-        const parsed = JSON.parse(rawText);
-        if (!Array.isArray(parsed)) {
-            throw new Error("Нужен JSON-массив сценариев.");
+        const text = String(rawText || '').trim();
+        if (!text) throw new Error("Вставьте сценарии для импорта.");
+        const plainParsed = parsePlainTextScenarios(text);
+        if (plainParsed.length === 0) {
+            throw new Error("Не удалось разобрать текст. Используйте формат: заголовок + шаги, блоки через пустую строку или ---.");
         }
-        return parsed;
+        return plainParsed;
     };
 
     const refreshLeagueScenarios = async () => {
@@ -1130,13 +1178,13 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 </div>
 
                                 <div className="border-t border-slate-100 pt-6 space-y-4">
-                                    <h4 className="font-display font-semibold text-slate-900">Импорт сценариев (JSON)</h4>
+                                    <h4 className="font-display font-semibold text-slate-900">Импорт сценариев (текст)</h4>
                                     <p className="text-sm text-slate-500">
-                                        Вставьте JSON-массив. Каждый элемент: <code>title</code> и <code>timeline</code> (массив строк или шагов).
+                                        Вставьте обычный текст: в каждом блоке первая строка - название сценария, дальше шаги по строкам. Блоки можно разделять пустой строкой или <code>---</code>.
                                     </p>
                                     <textarea
-                                        className="w-full min-h-[220px] bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700 font-mono text-xs"
-                                        placeholder={'[{"title":"Сценарий 1","timeline":["Приветствие","Практика","Рефлексия"]}]'}
+                                        className="w-full h-[320px] overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700 font-mono text-xs"
+                                        placeholder={'Сценарий 1: Знакомство\nПриветствие\nПрактика\nРефлексия\n\n---\n\nСценарий 2: Ресурсы\nКруг\nПисьменная практика\nИтоги'}
                                         value={scenarioImportText}
                                         onChange={(e) => setScenarioImportText(e.target.value)}
                                     />

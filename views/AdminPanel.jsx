@@ -243,12 +243,12 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     );
 };
 
-const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState('stats');
     const [contentTab, setContentTab] = useState('library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     const [leagueScenarios, setLeagueScenarios] = useState([]);
-    const [newScenario, setNewScenario] = useState({ title: '', role: 'all', content: '' });
+    const [newScenario, setNewScenario] = useState({ id: null, title: '', role: 'all', content: '' });
     const [isImportingScenarios, setIsImportingScenarios] = useState(false);
     const [allMeetings, setAllMeetings] = useState([]);
     const [allEvents, setAllEvents] = useState([]);
@@ -321,23 +321,38 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
 
         setIsImportingScenarios(true);
         try {
-            const result = await onImportLeagueScenarios([{ title, timeline }]);
-            const inserted = result?.inserted || 0;
-            const skipped = result?.skipped || 0;
-            await refreshLeagueScenarios();
-            if (newScenario.role !== 'all') {
-                onNotify(`Сценарий добавлен (${inserted}), но фильтрация по роли пока не применяется в лиге`);
+            if (newScenario.id && onUpdateLeagueScenario) {
+                await onUpdateLeagueScenario(newScenario.id, { title, timeline });
+                await refreshLeagueScenarios();
+                onNotify('Сценарий обновлен');
             } else {
-                onNotify(`Сценарий добавлен: ${inserted}. Пропущено: ${skipped}`);
+                const result = await onImportLeagueScenarios([{ title, timeline }]);
+                const inserted = result?.inserted || 0;
+                const skipped = result?.skipped || 0;
+                await refreshLeagueScenarios();
+                if (newScenario.role !== 'all') {
+                    onNotify(`Сценарий добавлен (${inserted}), но фильтрация по роли пока не применяется в лиге`);
+                } else {
+                    onNotify(`Сценарий добавлен: ${inserted}. Пропущено: ${skipped}`);
+                }
             }
-            if (inserted > 0) {
-                setNewScenario({ title: '', role: 'all', content: '' });
-            }
+            setNewScenario({ id: null, title: '', role: 'all', content: '' });
         } catch (e) {
             onNotify(e?.message || 'Ошибка публикации сценария');
         } finally {
             setIsImportingScenarios(false);
         }
+    };
+
+    const handleEditLeagueScenario = (scenario) => {
+        const firstStep = Array.isArray(scenario?.timeline) ? scenario.timeline[0] : null;
+        const content = String(firstStep?.description || '');
+        setNewScenario({
+            id: scenario?.id || null,
+            title: scenario?.title || '',
+            role: 'all',
+            content
+        });
     };
 
     const hiddenCourses = librarySettings?.hiddenCourses || [];
@@ -1122,27 +1137,11 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                                 </div>
                                             </div>
                                             <button
-                                                onClick={() => {
-                                                    if (!onDeleteLeagueScenario) return;
-                                                    confirmAction(
-                                                        "Удалить сценарий лиги?",
-                                                        `Вы собираетесь удалить сценарий "${scenario.title || 'Без названия'}".`,
-                                                        async () => {
-                                                            try {
-                                                                await onDeleteLeagueScenario(scenario.id);
-                                                                await refreshLeagueScenarios();
-                                                                onNotify("Сценарий удален");
-                                                            } catch (e) {
-                                                                onNotify(e?.message || "Ошибка удаления сценария");
-                                                            }
-                                                        },
-                                                        'danger'
-                                                    );
-                                                }}
-                                                className="p-2 text-slate-400 hover:text-red-600 transition-colors"
-                                                title="Удалить сценарий"
+                                                onClick={() => handleEditLeagueScenario(scenario)}
+                                                className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                                                title="Редактировать сценарий"
                                             >
-                                                <Trash2 size={16} />
+                                                <Edit2 size={16} />
                                             </button>
                                         </div>
                                     ))}
@@ -1150,7 +1149,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
 
                                 <hr className="border-slate-100 my-6" />
 
-                                <h3 className="font-display font-semibold text-slate-900 mb-4">Добавить сценарий</h3>
+                                <h3 className="font-display font-semibold text-slate-900 mb-4">{newScenario.id ? 'Редактировать сценарий' : 'Добавить сценарий'}</h3>
                                 <div className="space-y-4">
                                     <Input
                                         placeholder="Название"
@@ -1182,7 +1181,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     <div className="flex gap-2">
                                         <Button
                                             variant="secondary"
-                                            onClick={() => setNewScenario({ title: '', role: 'all', content: '' })}
+                                            onClick={() => setNewScenario({ id: null, title: '', role: 'all', content: '' })}
                                             disabled={isImportingScenarios}
                                         >
                                             Очистить
@@ -1192,7 +1191,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                             disabled={isImportingScenarios}
                                             className="w-full"
                                         >
-                                            {isImportingScenarios ? 'Публикуем...' : 'Опубликовать'}
+                                            {isImportingScenarios ? 'Сохраняем...' : (newScenario.id ? 'Сохранить изменения' : 'Опубликовать')}
                                         </Button>
                                     </div>
                                 </div>

@@ -227,6 +227,15 @@ export default function App() {
         }
     };
 
+    const handleUpdateLeagueScenario = async (scenarioId, patch) => {
+        try {
+            return await api.updateScenario(scenarioId, patch);
+        } catch (e) {
+            console.error(e);
+            throw e;
+        }
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600 font-sans">Загрузка...</div>;
 
     return (
@@ -248,7 +257,7 @@ export default function App() {
                             console.error(e);
                             showNotification("Ошибка сохранения (см. консоль)");
                         }
-                    }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onAddNews={async (n) => {
+                    }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n) => {
                         try {
                             const created = await api.addNews(n);
                             if (created) {

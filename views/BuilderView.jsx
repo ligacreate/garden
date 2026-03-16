@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
-import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, User, GripVertical, PenLine, Upload } from 'lucide-react';
+import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, GripVertical, PenLine, Upload } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -14,7 +14,7 @@ const CheckBoxLine = ({ text }) => (
     </div>
 );
 
-const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify }) => {
+const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, extraAction }) => {
     return (
         <ModalShell
             isOpen
@@ -117,6 +117,7 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify }
                                 alert('Ошибка печати: ' + e.message);
                             }
                         }}>Печать</Button>
+                {extraAction}
                 <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={X} onClick={onClose}>Закрыть</Button>
             </div>
             <div id="preview-content" className="max-h-[70vh] overflow-y-auto p-6 bg-white text-slate-800">
@@ -235,7 +236,7 @@ const SaveScenarioModal = ({ onSave, checkActionTimer, onClose, user, onNotify }
     );
 };
 
-const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage, user }) => (
+const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage }) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
         {scenarios.length === 0 ? <p className="text-slate-400 col-span-full text-center py-20">{emptyMessage}</p> :
             scenarios.map(s => (
@@ -247,19 +248,17 @@ const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage, user
                             <span>•</span>
                             <span>{s.timeline.length} практик</span>
                         </div>
-                        {variant === 'league' && s.author_name && (
-                            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-xl mb-2">
-                                <User size={12} className="text-blue-500" />
-                                <span>Автор: <span className="font-medium text-slate-700">{s.author_name}</span></span>
+                        {variant !== 'league' && (
+                            <div className="text-xs text-slate-400 line-clamp-3 italic">
+                                {s.timeline.slice(0, 3).map(i => i.title).join(', ')}{s.timeline.length > 3 ? '...' : ''}
                             </div>
                         )}
-                        <div className="text-xs text-slate-400 line-clamp-3 italic">
-                            {s.timeline.slice(0, 3).map(i => i.title).join(', ')}{s.timeline.length > 3 ? '...' : ''}
-                        </div>
                     </div>
                     <div className="pt-4 border-t border-slate-50 flex justify-between items-center mt-4">
-                        <Button variant="ghost" onClick={() => onLoad(s)} className="!text-blue-600 !px-0 text-xs font-medium hover:!bg-transparent">Открыть</Button>
-                        {(variant === 'my' || (variant === 'league' && s.user_id === user.id)) && (
+                        <Button variant="ghost" onClick={() => onLoad(s)} className="!text-blue-600 !px-0 text-xs font-medium hover:!bg-transparent">
+                            {variant === 'league' ? 'Открыть как материал' : 'Открыть'}
+                        </Button>
+                        {variant === 'my' && (
                             <Button variant="ghost" onClick={(e) => { e.stopPropagation(); onDelete(s.id); }} className="!text-rose-400 hover:!bg-rose-50 !py-1 !px-3 text-xs" icon={Trash2}>Удалить</Button>
                         )}
                     </div>
@@ -310,7 +309,7 @@ const ImportScenarioModal = ({ onImport, onClose }) => {
     );
 };
 
-const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave }) => {
+const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave, onCompleteLeagueScenario }) => {
     const [activeTab, setActiveTab] = useState('builder'); // 'builder', 'my', 'league'
     const [previewType, setPreviewType] = useState(null);
     const [showSaveModal, setShowSaveModal] = useState(false);
@@ -323,6 +322,8 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
     const [draggedTimelineId, setDraggedTimelineId] = useState(null);
     const [isDraggingFromLibrary, setIsDraggingFromLibrary] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
+    const [leaguePreviewScenario, setLeaguePreviewScenario] = useState(null);
+    const [isCompletingLeagueScenario, setIsCompletingLeagueScenario] = useState(false);
 
     // Lists
     const [myScenarios, setMyScenarios] = useState([]);
@@ -539,6 +540,33 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
         setScenarioTitle(scenario.title);
         setActiveTab('builder');
         onNotify(`Загружен сценарий: ${scenario.title}`);
+    };
+
+    const handleOpenLeagueScenario = (scenario) => {
+        setLeaguePreviewScenario(scenario);
+    };
+
+    const handleCompleteLeagueScenario = async () => {
+        if (!leaguePreviewScenario?.id) return;
+        setIsCompletingLeagueScenario(true);
+        try {
+            const result = await api.markCourseLessonCompleted(
+                user.id,
+                `league-scenario-${leaguePreviewScenario.id}`,
+                'Сценарии лиги'
+            );
+            if (result?.inserted) {
+                if (onCompleteLeagueScenario) onCompleteLeagueScenario(leaguePreviewScenario);
+                else onNotify('Сценарий изучен');
+            } else {
+                onNotify('Этот сценарий уже отмечен как изученный');
+            }
+        } catch (e) {
+            console.error(e);
+            onNotify('Не удалось отметить сценарий как изученный');
+        } finally {
+            setIsCompletingLeagueScenario(false);
+        }
     };
 
     return (
@@ -793,7 +821,6 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                             onLoad={handleLoadScenario}
                             onDelete={(id) => setDeleteConfirmation({ isOpen: true, scenarioId: id })}
                             emptyMessage="Вы еще не сохранили ни одного сценария"
-                            user={user}
                         />
                     </div>
                 ) : (
@@ -801,16 +828,34 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave 
                         <ScenarioList
                             scenarios={leagueScenarios}
                             variant="league"
-                            onLoad={handleLoadScenario}
-                            onDelete={(id) => setDeleteConfirmation({ isOpen: true, scenarioId: id })}
+                            onLoad={handleOpenLeagueScenario}
                             emptyMessage="В библиотеке Лиги пока пусто"
-                            user={user}
                         />
                     </div>
                 )}
             </div>
 
             {previewType && <DocumentPreviewModal type={previewType} timeline={timeline} title={scenarioTitle} user={user} onClose={() => setPreviewType(null)} onNotify={onNotify} />}
+            {leaguePreviewScenario && (
+                <DocumentPreviewModal
+                    type="scenario"
+                    timeline={Array.isArray(leaguePreviewScenario.timeline) ? leaguePreviewScenario.timeline : []}
+                    title={leaguePreviewScenario.title}
+                    user={user}
+                    onClose={() => setLeaguePreviewScenario(null)}
+                    onNotify={onNotify}
+                    extraAction={
+                        <Button
+                            variant="primary"
+                            className="!px-3 !py-2 text-xs"
+                            onClick={handleCompleteLeagueScenario}
+                            disabled={isCompletingLeagueScenario}
+                        >
+                            {isCompletingLeagueScenario ? 'Сохраняем...' : 'Изучено (+20 семян)'}
+                        </Button>
+                    }
+                />
+            )}
             {showSaveModal && <SaveScenarioModal onSave={handleSave} onClose={() => setShowSaveModal(false)} user={user} onNotify={onNotify} />}
             {showImportModal && <ImportScenarioModal onImport={handleImportScenario} onClose={() => setShowImportModal(false)} />}
 

@@ -734,6 +734,24 @@ class LocalStorageService {
         return true;
     }
 
+    async updateScenario(scenarioId, patch) {
+        const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
+        const index = allScenarios.findIndex((s) => String(s.id) === String(scenarioId));
+        if (index === -1) throw new Error('Сценарий не найден');
+
+        const sanitized = this._sanitizeFields({
+            ...patch,
+            title: patch?.title
+        }, { plain: ['title', 'author_name'] });
+
+        allScenarios[index] = {
+            ...allScenarios[index],
+            ...sanitized
+        };
+        localStorage.setItem('garden_scenarios', JSON.stringify(allScenarios));
+        return allScenarios[index];
+    }
+
     // Chat messages
     async getMessages(options = {}) {
         const limit = Number(options?.limit) > 0 ? Number(options.limit) : 200;
@@ -1728,6 +1746,20 @@ class RemoteApiService {
     async deleteScenario(scenarioId) {
         await postgrestFetch('scenarios', { id: `eq.${scenarioId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
+    }
+
+    async updateScenario(scenarioId, patch) {
+        const sanitized = this._sanitizeFields({
+            ...patch,
+            title: patch?.title
+        }, { plain: ['title', 'author_name'] });
+
+        const { data } = await postgrestFetch('scenarios', { id: `eq.${scenarioId}` }, {
+            method: 'PATCH',
+            body: sanitized,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     // Chat messages

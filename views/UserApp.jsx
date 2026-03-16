@@ -406,6 +406,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         onNotify(`Урок пройден: ${material.title}${course?.title ? ` (${course.title})` : ''}. +${seedsEarned} семян`);
     };
 
+    const handleLeagueScenarioCompleted = (scenario) => {
+        const seedsEarned = 20;
+        onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
+        onNotify(`Сценарий изучен: ${scenario?.title || 'Без названия'}. +${seedsEarned} семян`);
+    };
+
     const handleUpdateClient = async (updatedClient) => {
         try {
             // Find old client to compare notes
@@ -731,7 +737,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             resetToken={libraryResetToken}
                         />
                     )}
-                    {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} />}
+                    {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} onCompleteLeagueScenario={handleLeagueScenarioCompleted} />}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
                     {view === 'market' && <MarketView />}
                     {view === 'map' && (

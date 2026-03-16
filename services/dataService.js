@@ -654,7 +654,9 @@ class LocalStorageService {
     // Scenarios
     async getScenarios(userId) {
         const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
-        return allScenarios.filter(s => s.user_id === userId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+        return allScenarios
+            .filter(s => s.user_id === userId && s.is_public !== true)
+            .sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
 
     async getPublicScenarios() {
@@ -1660,6 +1662,7 @@ class RemoteApiService {
         const { data } = await postgrestFetch('scenarios', {
             select: '*',
             user_id: `eq.${userId}`,
+            is_public: 'neq.true',
             order: 'created_at.desc'
         });
         return data || [];

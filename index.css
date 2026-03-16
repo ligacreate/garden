@@ -2,6 +2,12 @@
 
 @plugin "tailwindcss-animate";
 
+@layer properties {
+  *,:before,:after,::backdrop {
+    --tw-space-x-reverse: 0;
+  }
+}
+
 @theme {
   --animate-spin-slow: spin 3s linear infinite;
   --font-sans: 'Onest', ui-sans-serif, system-ui, sans-serif;

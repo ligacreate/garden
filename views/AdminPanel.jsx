@@ -1177,21 +1177,24 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     ))}
                                 </div>
 
-                                <div className="border-t border-slate-100 pt-6 space-y-4">
-                                    <h4 className="font-display font-semibold text-slate-900">Импорт сценариев (текст)</h4>
+                                <hr className="border-slate-100 my-6" />
+
+                                <h3 className="font-display font-semibold text-slate-900 mb-4">Добавить сценарии</h3>
+                                <div className="space-y-4">
                                     <p className="text-sm text-slate-500">
                                         Вставьте обычный текст: в каждом блоке первая строка - название сценария, дальше шаги по строкам. Блоки можно разделять пустой строкой или <code>---</code>.
                                     </p>
                                     <textarea
-                                        className="w-full h-[320px] overflow-y-auto bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700 font-mono text-xs"
+                                        className="w-full min-h-[320px] bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700"
                                         placeholder={'Сценарий 1: Знакомство\nПриветствие\nПрактика\nРефлексия\n\n---\n\nСценарий 2: Ресурсы\nКруг\nПисьменная практика\nИтоги'}
                                         value={scenarioImportText}
                                         onChange={(e) => setScenarioImportText(e.target.value)}
                                     />
-                                    <div className="flex justify-end">
+                                    <div className="flex gap-2">
                                         <Button
                                             onClick={handleImportScenarios}
                                             disabled={isImportingScenarios || !scenarioImportText.trim()}
+                                            className="w-full"
                                         >
                                             {isImportingScenarios ? 'Импортируем...' : 'Импортировать сценарии'}
                                         </Button>

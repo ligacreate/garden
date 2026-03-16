@@ -6,6 +6,7 @@ import Button from '../components/Button';
 import { api } from '../services/dataService';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalShell from '../components/ModalShell';
+import DOMPurify from 'dompurify';
 
 const CheckBoxLine = ({ text }) => (
     <div className="flex items-start gap-4 mb-3">
@@ -14,17 +15,145 @@ const CheckBoxLine = ({ text }) => (
     </div>
 );
 
-const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, extraAction }) => {
+const escapeHtml = (text) => String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const splitUrlAndPunctuation = (raw) => {
+    const match = raw.match(/^(.*?)([),.;!?]+)?$/);
+    const core = (match?.[1] || raw).trim();
+    const trailing = match?.[2] || '';
+    return { core, trailing };
+};
+
+const linkifyEscapedText = (escapedText) => {
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    return escapedText.replace(urlRegex, (raw) => {
+        const { core, trailing } = splitUrlAndPunctuation(raw);
+        if (!core) return raw;
+        return `<a href="${core}" target="_blank" rel="noopener noreferrer">${core}</a>${trailing}`;
+    });
+};
+
+const plainTextToHtml = (text) => {
+    const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+    const html = [];
+    let inList = false;
+
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+        const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+
+        if (!trimmed) {
+            if (inList) {
+                html.push('</ul>');
+                inList = false;
+            }
+            html.push('<p><br /></p>');
+            return;
+        }
+
+        if (bulletMatch) {
+            if (!inList) {
+                html.push('<ul>');
+                inList = true;
+            }
+            const escaped = escapeHtml(bulletMatch[1]);
+            html.push(`<li>${linkifyEscapedText(escaped)}</li>`);
+            return;
+        }
+
+        if (inList) {
+            html.push('</ul>');
+            inList = false;
+        }
+
+        const escaped = escapeHtml(line);
+        html.push(`<p>${linkifyEscapedText(escaped)}</p>`);
+    });
+
+    if (inList) html.push('</ul>');
+    return html.join('');
+};
+
+const enhanceLinksInHtml = (html) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
+    const root = doc.getElementById('root');
+    if (!root) return html;
+
+    const textNodes = [];
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+        textNodes.push(node);
+        node = walker.nextNode();
+    }
+
+    textNodes.forEach((textNode) => {
+        const parentEl = textNode.parentElement;
+        const value = textNode.nodeValue || '';
+        if (!value || !parentEl || parentEl.closest('a')) return;
+        if (!/(https?:\/\/[^\s<]+)/.test(value)) return;
+
+        const frag = doc.createDocumentFragment();
+        const parts = value.split(/(https?:\/\/[^\s<]+)/g);
+
+        parts.forEach((part) => {
+            if (!part) return;
+            if (/^https?:\/\/[^\s<]+$/.test(part)) {
+                const { core, trailing } = splitUrlAndPunctuation(part);
+                if (core) {
+                    const a = doc.createElement('a');
+                    a.href = core;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.textContent = core;
+                    frag.appendChild(a);
+                    if (trailing) frag.appendChild(doc.createTextNode(trailing));
+                } else {
+                    frag.appendChild(doc.createTextNode(part));
+                }
+            } else {
+                frag.appendChild(doc.createTextNode(part));
+            }
+        });
+
+        textNode.parentNode?.replaceChild(frag, textNode);
+    });
+
+    return root.innerHTML;
+};
+
+const formatMaterialContent = (content) => {
+    const raw = String(content || '').trim();
+    if (!raw) return '<p>Материал в процессе подготовки.</p>';
+
+    const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
+    const baseHtml = hasHtmlTags ? raw : plainTextToHtml(raw);
+    const sanitized = DOMPurify.sanitize(baseHtml);
+    const withLinks = enhanceLinksInHtml(sanitized);
+    return DOMPurify.sanitize(withLinks, {
+        ADD_ATTR: ['target', 'rel'],
+        FORBID_TAGS: ['style', 'script']
+    });
+};
+
+const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, extraAction, materialContentHtml, materialTags = [] }) => {
     return (
         <ModalShell
             isOpen
             onClose={onClose}
             size="lg"
-            title={type === 'workbook' ? 'Воркбук участницы' : 'Сценарий ведущей'}
+            title={type === 'workbook' ? 'Воркбук участницы' : (type === 'material' ? 'Материал сценария' : 'Сценарий ведущей')}
             description="Предпросмотр документа"
         >
             <div className="flex justify-end gap-2 mb-4">
-                <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={Download} onClick={async () => {
+                {type !== 'material' && (
+                    <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={Download} onClick={async () => {
                             try {
                                 const element = document.getElementById('preview-content');
                                 if (!element) throw new Error('Preview content not found');
@@ -85,7 +214,9 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                 alert('Ошибка при создании PDF: ' + e.message);
                             }
                         }}>PDF</Button>
-                <Button variant="secondary" className="!px-3 !py-2 text-xs" icon={Printer} onClick={() => {
+                )}
+                {type !== 'material' && (
+                    <Button variant="secondary" className="!px-3 !py-2 text-xs" icon={Printer} onClick={() => {
                             try {
                                 onNotify('Подготовка к печати...');
                                 const content = document.getElementById('preview-content');
@@ -117,7 +248,8 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                 alert('Ошибка печати: ' + e.message);
                             }
                         }}>Печать</Button>
-                {extraAction}
+                )}
+                {type !== 'material' && extraAction}
                 <Button variant="ghost" className="!px-3 !py-2 text-xs" icon={X} onClick={onClose}>Закрыть</Button>
             </div>
             <div id="preview-content" className="max-h-[70vh] overflow-y-auto p-6 bg-white text-slate-800">
@@ -137,6 +269,116 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                 </div>
                             ))}
                             <div className="text-center pt-8 text-xs text-slate-400 font-serif italic">С любовью, {user.name}</div>
+                        </div>
+                    ) : type === 'material' ? (
+                        <div className="max-w-4xl mx-auto">
+                            <div className="mb-6 border-b border-slate-100 pb-4">
+                                <div className="text-xs uppercase tracking-wider text-slate-400">Материал</div>
+                                <div className="text-2xl font-medium text-slate-900">{title || 'Без названия'}</div>
+                                <div className="text-xs text-slate-400 mt-1">Сценарии лиги</div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mb-6">
+                                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Сценарий</span>
+                                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Документ</span>
+                                {materialTags.map((tag) => (
+                                    <span key={tag} className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{tag}</span>
+                                ))}
+                            </div>
+                            <div
+                                className="prose prose-slate max-w-none text-sm [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200"
+                                dangerouslySetInnerHTML={{ __html: materialContentHtml || '<p>Материал в процессе подготовки.</p>' }}
+                            />
+                            <div className="border-t border-slate-100 pt-5 mt-8 flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap gap-2">
+                                    <Button variant="primary" className="!px-3 !py-2 text-xs" icon={Download} onClick={async () => {
+                                        try {
+                                            const element = document.getElementById('preview-content');
+                                            if (!element) throw new Error('Preview content not found');
+
+                                            const safeTitle = (title || 'scenario').replace(/[^a-zа-яё0-9\s.-]/gi, '_').trim();
+                                            const filename = `${safeTitle}.pdf`;
+
+                                            onNotify('Генерация PDF...');
+                                            const clone = element.cloneNode(true);
+                                            Object.assign(clone.style, {
+                                                position: 'absolute',
+                                                top: '-9999px',
+                                                left: '0',
+                                                width: '800px',
+                                                height: 'auto',
+                                                overflow: 'visible',
+                                                maxHeight: 'none'
+                                            });
+                                            document.body.appendChild(clone);
+                                            const canvas = await html2canvas(clone, {
+                                                scale: 2,
+                                                useCORS: true,
+                                                logging: false,
+                                                windowWidth: 800
+                                            });
+                                            document.body.removeChild(clone);
+
+                                            const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                                            const pdfWidth = 190;
+                                            const pageHeight = 297;
+                                            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                                            const doc = new jsPDF('p', 'mm', 'a4');
+                                            let heightLeft = pdfHeight;
+                                            let position = 10;
+
+                                            doc.addImage(imgData, 'JPEG', 10, position, pdfWidth, pdfHeight);
+                                            heightLeft -= (pageHeight - 20);
+                                            while (heightLeft > 0) {
+                                                position -= 297;
+                                                doc.addPage();
+                                                doc.addImage(imgData, 'JPEG', 10, position, pdfWidth, pdfHeight);
+                                                heightLeft -= 297;
+                                            }
+                                            doc.save(filename);
+                                        } catch (e) {
+                                            console.error('PDF Error:', e);
+                                            alert('Ошибка при создании PDF: ' + e.message);
+                                        }
+                                    }}>
+                                        PDF
+                                    </Button>
+                                    <Button variant="secondary" className="!px-3 !py-2 text-xs" icon={Printer} onClick={() => {
+                                        try {
+                                            onNotify('Подготовка к печати...');
+                                            const content = document.getElementById('preview-content');
+                                            if (!content) throw new Error('Content not found');
+
+                                            const iframe = document.createElement('iframe');
+                                            iframe.style.position = 'fixed';
+                                            iframe.style.right = '0';
+                                            iframe.style.bottom = '0';
+                                            iframe.style.width = '0';
+                                            iframe.style.height = '0';
+                                            iframe.style.border = '0';
+                                            document.body.appendChild(iframe);
+
+                                            const doc = iframe.contentWindow.document;
+                                            const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
+                                            styles.forEach(s => doc.head.appendChild(s.cloneNode(true)));
+
+                                            doc.body.innerHTML = content.innerHTML;
+                                            doc.body.className = 'p-8 bg-white text-black';
+
+                                            setTimeout(() => {
+                                                iframe.contentWindow.focus();
+                                                iframe.contentWindow.print();
+                                                setTimeout(() => document.body.removeChild(iframe), 5000);
+                                            }, 1000);
+                                        } catch (e) {
+                                            console.error('Print Error:', e);
+                                            alert('Ошибка печати: ' + e.message);
+                                        }
+                                    }}>
+                                        Печать
+                                    </Button>
+                                </div>
+                                {extraAction}
+                            </div>
                         </div>
                     ) : (
                         <div className="space-y-8 font-sans max-w-xl mx-auto">
@@ -546,6 +788,27 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
         setLeaguePreviewScenario(scenario);
     };
 
+    const leaguePreviewMaterialHtml = useMemo(() => {
+        if (!leaguePreviewScenario) return '<p>Материал в процессе подготовки.</p>';
+        const scenarioTimeline = Array.isArray(leaguePreviewScenario.timeline) ? leaguePreviewScenario.timeline : [];
+        const mainContent = String(
+            scenarioTimeline.find((step) => String(step?.description || '').trim())?.description || ''
+        ).trim();
+        if (mainContent) return formatMaterialContent(mainContent);
+
+        const fallbackText = scenarioTimeline
+            .map((step, index) => `${index + 1}. ${step?.title || `Шаг ${index + 1}`}`)
+            .join('\n');
+        return formatMaterialContent(fallbackText || 'Материал в процессе подготовки.');
+    }, [leaguePreviewScenario]);
+
+    const leaguePreviewMaterialTags = useMemo(() => {
+        if (!leaguePreviewScenario) return [];
+        const scenarioTimeline = Array.isArray(leaguePreviewScenario.timeline) ? leaguePreviewScenario.timeline : [];
+        const types = Array.from(new Set(scenarioTimeline.map((step) => String(step?.type || '').trim()).filter(Boolean)));
+        return types.slice(0, 4);
+    }, [leaguePreviewScenario]);
+
     const handleCompleteLeagueScenario = async () => {
         if (!leaguePreviewScenario?.id) return;
         setIsCompletingLeagueScenario(true);
@@ -838,12 +1101,14 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
             {previewType && <DocumentPreviewModal type={previewType} timeline={timeline} title={scenarioTitle} user={user} onClose={() => setPreviewType(null)} onNotify={onNotify} />}
             {leaguePreviewScenario && (
                 <DocumentPreviewModal
-                    type="scenario"
+                    type="material"
                     timeline={Array.isArray(leaguePreviewScenario.timeline) ? leaguePreviewScenario.timeline : []}
                     title={leaguePreviewScenario.title}
                     user={user}
                     onClose={() => setLeaguePreviewScenario(null)}
                     onNotify={onNotify}
+                    materialContentHtml={leaguePreviewMaterialHtml}
+                    materialTags={leaguePreviewMaterialTags}
                     extraAction={
                         <Button
                             variant="primary"

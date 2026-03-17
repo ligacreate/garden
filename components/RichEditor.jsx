@@ -7,8 +7,17 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
     const uploadSelectionRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
 
+    const normalizeEditorHtml = () => {
+        if (!editorRef.current) return '';
+        const sanitized = sanitizeIncomingHtml(editorRef.current.innerHTML);
+        if (editorRef.current.innerHTML !== sanitized) {
+            editorRef.current.innerHTML = sanitized;
+        }
+        return sanitized;
+    };
+
     const emitChange = () => {
-        if (editorRef.current) onChange(editorRef.current.innerHTML);
+        onChange(normalizeEditorHtml());
     };
 
     const sanitizeIncomingHtml = (rawHtml) => {
@@ -188,8 +197,8 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
                 ref={editorRef}
                 className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_i]:italic [&_li]:mb-1"
                 contentEditable
-                dangerouslySetInnerHTML={{ __html: value }}
-                onBlur={(e) => onChange(e.currentTarget.innerHTML)}
+                dangerouslySetInnerHTML={{ __html: sanitizeIncomingHtml(value) }}
+                onBlur={() => onChange(normalizeEditorHtml())}
                 onPaste={(e) => {
                     const html = e.clipboardData?.getData('text/html') || '';
                     const text = e.clipboardData?.getData('text/plain') || '';

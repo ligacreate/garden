@@ -21,10 +21,17 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
     const formatNewsBody = (value) => {
         const raw = decodeEntities(value);
         const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
+        const allowedTags = [
+            'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'ul', 'ol', 'li', 'a', 'b', 'strong', 'i', 'em',
+            'u', 's', 'blockquote', 'pre', 'code', 'img'
+        ];
+        const allowedAttrs = ['href', 'target', 'rel', 'src', 'alt'];
 
         if (hasHtmlTags) {
             return DOMPurify.sanitize(raw, {
-                FORBID_ATTR: ['style', 'class', 'id']
+                ALLOWED_TAGS: allowedTags,
+                ALLOWED_ATTR: allowedAttrs
             });
         }
 

@@ -612,11 +612,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                             onClick={() => handleViewChange('communications')}
                                         />
                                     )}
-                                    {hasAccess(normalizedRole, 'leader') && (
+                                    {hasAccess(normalizedRole, 'intern') && (
                                         <>
                                             <SidebarItem
                                                 icon={Users}
-                                                label="Люди"
+                                                label="Люди CRM"
                                                 active={view === 'crm'}
                                                 onClick={() => handleViewChange('crm')}
                                             />
@@ -682,9 +682,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             {isAdmin && (
                                 <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
                             )}
-                            {hasAccess(normalizedRole, 'leader') && (
+                            {hasAccess(normalizedRole, 'intern') && (
                                 <>
-                                    <SidebarItem icon={Users} label="Люди" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
+                                    <SidebarItem icon={Users} label="Люди CRM" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
                                 </>
                             )}
                             <div className="h-px bg-slate-100 my-4"></div>

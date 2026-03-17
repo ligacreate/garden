@@ -22,7 +22,11 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
         const raw = decodeEntities(value);
         const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
 
-        if (hasHtmlTags) return DOMPurify.sanitize(raw);
+        if (hasHtmlTags) {
+            return DOMPurify.sanitize(raw, {
+                FORBID_ATTR: ['style', 'class', 'id']
+            });
+        }
 
         const plain = DOMPurify.sanitize(raw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
         return plain.replace(/\n/g, '<br />');
@@ -258,7 +262,7 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                                     <div className="text-sm font-medium text-slate-700">{item.title}</div>
                                     {item.body && (
                                         <div
-                                            className="text-xs text-slate-500 mt-1 whitespace-pre-wrap [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_li]:my-1"
+                                            className="text-xs text-slate-500 mt-1 whitespace-pre-wrap clean-rich-text [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_li]:my-1"
                                             dangerouslySetInnerHTML={{ __html: formatNewsBody(item.body) }}
                                         />
                                     )}

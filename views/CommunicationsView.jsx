@@ -101,7 +101,7 @@ const CommunicationsView = ({ user, channelItems = [], onNotify }) => {
                                         <span>{new Date(item.created_at || item.timestamp || Date.now()).toLocaleString()}</span>
                                     </div>
                                     <div
-                                        className="text-sm text-slate-700 mt-3 prose prose-sm max-w-none"
+                                        className="text-sm text-slate-700 mt-3 prose prose-sm max-w-none clean-rich-text"
                                         dangerouslySetInnerHTML={{ __html: item.body || '' }}
                                     />
                                 </article>

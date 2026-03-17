@@ -11,6 +11,76 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         if (editorRef.current) onChange(editorRef.current.innerHTML);
     };
 
+    const sanitizeIncomingHtml = (rawHtml) => {
+        const html = String(rawHtml || '');
+        if (!html.trim()) return '';
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
+        const root = doc.getElementById('root');
+        if (!root) return '';
+
+        const allowedTags = new Set([
+            'P', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+            'UL', 'OL', 'LI', 'A', 'B', 'STRONG', 'I', 'EM',
+            'U', 'S', 'BLOCKQUOTE', 'PRE', 'CODE', 'IMG'
+        ]);
+
+        const walk = (node) => {
+            Array.from(node.children || []).forEach((child) => {
+                const tag = child.tagName;
+                if (!allowedTags.has(tag)) {
+                    // Keep text/content, but remove wrapper tag and all its styles.
+                    const fragment = doc.createDocumentFragment();
+                    while (child.firstChild) fragment.appendChild(child.firstChild);
+                    child.replaceWith(fragment);
+                    return;
+                }
+
+                // Remove visual styling that comes from external editors.
+                child.removeAttribute('style');
+                child.removeAttribute('class');
+                child.removeAttribute('id');
+
+                // Keep only safe attributes for links and images.
+                if (tag === 'A') {
+                    const href = (child.getAttribute('href') || '').trim();
+                    if (!/^https?:\/\//i.test(href)) {
+                        child.removeAttribute('href');
+                    } else {
+                        child.setAttribute('href', href);
+                        child.setAttribute('target', '_blank');
+                        child.setAttribute('rel', 'noopener noreferrer');
+                    }
+                    Array.from(child.attributes).forEach((attr) => {
+                        if (!['href', 'target', 'rel'].includes(attr.name)) child.removeAttribute(attr.name);
+                    });
+                } else if (tag === 'IMG') {
+                    const src = (child.getAttribute('src') || '').trim();
+                    if (!/^https?:\/\//i.test(src) && !/^data:image\//i.test(src)) {
+                        child.remove();
+                        return;
+                    }
+                    child.setAttribute('src', src);
+                    Array.from(child.attributes).forEach((attr) => {
+                        if (!['src', 'alt'].includes(attr.name)) child.removeAttribute(attr.name);
+                    });
+                } else {
+                    Array.from(child.attributes).forEach((attr) => child.removeAttribute(attr.name));
+                }
+
+                walk(child);
+            });
+        };
+
+        walk(root);
+        return root.innerHTML;
+    };
+
+    const escapeHtml = (text) => String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
     const saveSelection = () => {
         const selection = window.getSelection();
         return selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
@@ -120,6 +190,17 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
                 contentEditable
                 dangerouslySetInnerHTML={{ __html: value }}
                 onBlur={(e) => onChange(e.currentTarget.innerHTML)}
+                onPaste={(e) => {
+                    const html = e.clipboardData?.getData('text/html') || '';
+                    const text = e.clipboardData?.getData('text/plain') || '';
+                    if (!html && !text) return;
+                    e.preventDefault();
+                    const normalized = html
+                        ? sanitizeIncomingHtml(html)
+                        : escapeHtml(text).replace(/\n/g, '<br>');
+                    document.execCommand('insertHTML', false, normalized);
+                    emitChange();
+                }}
                 placeholder={placeholder}
             />
         </div>

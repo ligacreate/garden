@@ -138,7 +138,8 @@ const formatMaterialContent = (content) => {
     const withLinks = enhanceLinksInHtml(sanitized);
     return DOMPurify.sanitize(withLinks, {
         ADD_ATTR: ['target', 'rel'],
-        FORBID_TAGS: ['style', 'script']
+        FORBID_TAGS: ['style', 'script'],
+        FORBID_ATTR: ['style', 'class', 'id']
     });
 };
 
@@ -306,7 +307,7 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                     <div className="text-2xl font-medium text-slate-900">{title || 'Без названия'}</div>
                                 </div>
                                 <div
-                                    className="prose prose-slate max-w-none text-sm [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200"
+                                    className="prose prose-slate max-w-none text-sm clean-rich-text [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200"
                                     dangerouslySetInnerHTML={{ __html: materialContentHtml || '<p>Материал в процессе подготовки.</p>' }}
                                 />
                             </div>

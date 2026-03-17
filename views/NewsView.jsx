@@ -91,7 +91,7 @@ const NewsView = ({ news = [], users = [] }) => {
                             </div>
                             <h3 className="font-bold text-lg text-slate-800 mb-1">{item.title}</h3>
                             <div
-                                className="text-slate-600 text-sm whitespace-pre-wrap [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1"
+                                className="text-slate-600 text-sm whitespace-pre-wrap clean-rich-text [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1"
                                 dangerouslySetInnerHTML={{ __html: formatNewsBody(item.body) }}
                             />
                         </div>
@@ -129,7 +129,9 @@ export default NewsView;
         const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
 
         if (hasHtmlTags) {
-            return DOMPurify.sanitize(raw);
+            return DOMPurify.sanitize(raw, {
+                FORBID_ATTR: ['style', 'class', 'id']
+            });
         }
 
         const plain = DOMPurify.sanitize(raw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });

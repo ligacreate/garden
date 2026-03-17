@@ -379,7 +379,9 @@ class LocalStorageService {
 
     _sanitizeRich(dirty) {
         if (typeof dirty !== 'string') return dirty;
-        return DOMPurify.sanitize(dirty); // Allow safe HTML for rich text
+        return DOMPurify.sanitize(dirty, {
+            FORBID_ATTR: ['style', 'class', 'id']
+        }); // Keep rich HTML, but strip external visual styles
     }
 
     _sanitizeFields(source, { plain = [], rich = [] } = {}) {
@@ -882,7 +884,9 @@ class RemoteApiService {
 
     _sanitizeRich(dirty) {
         if (typeof dirty !== 'string') return dirty;
-        return DOMPurify.sanitize(dirty);
+        return DOMPurify.sanitize(dirty, {
+            FORBID_ATTR: ['style', 'class', 'id']
+        });
     }
 
     _sanitizeIfString(value) {

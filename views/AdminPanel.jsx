@@ -469,7 +469,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 <div key={n.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
                                     <div>
                                         <div className="font-bold text-slate-800">{n.title}</div>
-                                        <div className="text-sm text-slate-600 mt-1" dangerouslySetInnerHTML={{ __html: n.body }} />
+                                        <div className="text-sm text-slate-600 mt-1 clean-rich-text" dangerouslySetInnerHTML={{ __html: n.body }} />
                                         <div className="text-xs text-slate-400 mt-2">{new Date(n.created_at || Date.now()).toLocaleDateString()}</div>
                                     </div>
                                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

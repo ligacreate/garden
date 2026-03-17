@@ -431,7 +431,8 @@ const CourseLibraryView = ({
 
         return DOMPurify.sanitize(withLinks, {
             ADD_ATTR: ['target', 'rel'],
-            FORBID_TAGS: ['style', 'script']
+        FORBID_TAGS: ['style', 'script'],
+        FORBID_ATTR: ['style', 'class', 'id']
         });
     };
 
@@ -1263,7 +1264,7 @@ const CourseLibraryView = ({
                         ))}
                     </div>
 
-                    <div className="prose prose-slate max-w-none text-sm mb-8 [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200" dangerouslySetInnerHTML={{ __html: selectedMaterialContentHtml }} />
+                    <div className="prose prose-slate max-w-none text-sm mb-8 clean-rich-text [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200" dangerouslySetInnerHTML={{ __html: selectedMaterialContentHtml }} />
 
                     <div className="border-t border-slate-100 pt-5 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap gap-2">

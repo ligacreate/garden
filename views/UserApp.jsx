@@ -58,6 +58,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [courseNavKey, setCourseNavKey] = useState(null);
     const [leaderUser, setLeaderUser] = useState(null);
     const [birthdayTemplates, setBirthdayTemplates] = useState([]);
+    const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', enabled: false, isStandalone: false, loading: false });
     const mergedUsers = useMemo(
         () => users.map(u => (u.id === user.id ? { ...u, ...user } : u)),
         [users, user]
@@ -82,6 +83,19 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             .then(setBirthdayTemplates)
             .catch(() => setBirthdayTemplates([]));
     }, []);
+
+    useEffect(() => {
+        let mounted = true;
+        if (!api.getPushStatus) return () => { mounted = false; };
+        api.getPushStatus()
+            .then((status) => {
+                if (mounted) setPushStatus((prev) => ({ ...prev, ...status }));
+            })
+            .catch(() => {
+                if (mounted) setPushStatus((prev) => ({ ...prev, supported: false }));
+            });
+        return () => { mounted = false; };
+    }, [user?.id]);
 
     const birthdayUsers = useMemo(() => {
         const today = new Date();
@@ -513,6 +527,25 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         }
     };
 
+    const handleEnablePushNotifications = async () => {
+        if (!api.enablePushNotifications) {
+            onNotify('Push-уведомления пока не поддерживаются в текущем режиме.');
+            return;
+        }
+        try {
+            setPushStatus((prev) => ({ ...prev, loading: true }));
+            await api.enablePushNotifications(user);
+            const next = await api.getPushStatus?.();
+            if (next) setPushStatus((prev) => ({ ...prev, ...next, loading: false }));
+            else setPushStatus((prev) => ({ ...prev, enabled: true, loading: false }));
+            onNotify('Push-уведомления включены.');
+        } catch (e) {
+            console.error(e);
+            setPushStatus((prev) => ({ ...prev, loading: false }));
+            onNotify(e?.message || 'Не удалось включить уведомления');
+        }
+    };
+
     return (
         <div className="flex h-screen bg-transparent overflow-hidden selection:bg-blue-100 selection:text-blue-900 font-sans text-slate-700">
             {/* Desktop Sidebar - The Glass Dock */}
@@ -773,6 +806,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             onNotify={onNotify}
                             skillOptions={skillOptions}
                             onOpenLeaderPage={() => handleOpenLeader(user)}
+                            onEnablePushNotifications={handleEnablePushNotifications}
+                            pushStatus={pushStatus}
                         />
                     )}
                 </div>

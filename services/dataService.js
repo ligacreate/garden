@@ -6,6 +6,7 @@ import imageCompression from 'browser-image-compression';
 
 const POSTGREST_URL = import.meta.env.VITE_POSTGREST_URL || 'https://api.skrebeyko.ru';
 const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.skrebeyko.ru';
+const PUSH_URL = import.meta.env.VITE_PUSH_URL || AUTH_URL;
 
 const getAuthToken = () => localStorage.getItem('garden_auth_token') || '';
 const setAuthToken = (token) => {
@@ -81,6 +82,26 @@ const authFetch = async (path, options = {}) => {
     return data;
 };
 
+const pushFetch = async (path, options = {}) => {
+    const url = new URL(path, PUSH_URL);
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const token = getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(url.toString(), {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const message = data?.error || data?.message || data?.detail || `Ошибка push-запроса (${response.status})`;
+        throw new Error(message);
+    }
+    return data;
+};
+
 const extensionByContentType = (contentType) => {
     switch (contentType) {
         case 'image/jpeg':
@@ -108,6 +129,7 @@ const buildUploadFileName = (folder, fileName, contentType) => {
 
 const SUPPORTED_UPLOAD_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const STORAGE_SIGN_PATHS = ['/storage/sign', '/api/storage/sign'];
+const PUSH_PUBLIC_KEY = import.meta.env.VITE_WEB_PUSH_PUBLIC_KEY || '';
 
 const convertImageToJpegFile = async (file, maxSize = 1200, quality = 0.82) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -213,7 +235,31 @@ const LIBRARY_SETTINGS_STORAGE_KEY = 'garden_library_settings';
 const DEFAULT_LIBRARY_SETTINGS = { hiddenCourses: [], materialOrder: {} };
 const CHAT_MESSAGES_STORAGE_KEY = 'garden_chat_messages';
 const MAX_CHAT_MESSAGE_LENGTH = 2000;
+const PUSH_SUBSCRIPTION_STORAGE_KEY = 'garden_push_enabled';
 const IS_DEV_MODE = Boolean(import.meta.env?.DEV);
+
+const isPushSupported = () =>
+    typeof window !== 'undefined'
+    && 'serviceWorker' in navigator
+    && 'PushManager' in window
+    && 'Notification' in window;
+
+const isStandalonePwa = () =>
+    window.matchMedia?.('(display-mode: standalone)')?.matches
+    || window.navigator?.standalone === true;
+
+const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+};
+
+const stripHtmlToText = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
 const normalizeLibrarySettings = (raw) => {
     const hiddenCourses = Array.isArray(raw?.hiddenCourses)
@@ -851,6 +897,32 @@ class LocalStorageService {
     async uploadChatImage(file) {
         if (!file) return null;
         return this.uploadAvatar(file);
+    }
+
+    async getPushStatus() {
+        const permission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+        return {
+            supported: isPushSupported(),
+            permission,
+            isStandalone: isStandalonePwa(),
+            enabled: localStorage.getItem(PUSH_SUBSCRIPTION_STORAGE_KEY) === '1'
+        };
+    }
+
+    async enablePushNotifications() {
+        if (!isPushSupported()) throw new Error('Push-уведомления не поддерживаются на этом устройстве.');
+        if (!isStandalonePwa()) {
+            throw new Error('Для iPhone откройте сайт с экрана "Домой" (PWA), затем включите уведомления.');
+        }
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('Разрешение на уведомления не выдано.');
+        localStorage.setItem(PUSH_SUBSCRIPTION_STORAGE_KEY, '1');
+        return true;
+    }
+
+    async sendNewsPush() {
+        // Local mode has no server channel for web push.
+        return false;
     }
 
     _saveUsers() {
@@ -1946,6 +2018,93 @@ class RemoteApiService {
         if (!file) return null;
         const fileToUpload = await this.compressMeetingImage(file);
         return await this._uploadToS3(fileToUpload, 'chat-images');
+    }
+
+    async getPushStatus() {
+        const permission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+        return {
+            supported: isPushSupported(),
+            permission,
+            isStandalone: isStandalonePwa(),
+            enabled: localStorage.getItem(PUSH_SUBSCRIPTION_STORAGE_KEY) === '1'
+        };
+    }
+
+    async enablePushNotifications(currentUser) {
+        if (!isPushSupported()) throw new Error('Push-уведомления не поддерживаются на этом устройстве.');
+        if (!isStandalonePwa()) {
+            throw new Error('Для iPhone откройте сайт с экрана "Домой" (PWA), затем включите уведомления.');
+        }
+
+        const permission = Notification.permission === 'granted'
+            ? 'granted'
+            : await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('Разрешение на уведомления не выдано.');
+
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+            let publicKey = PUSH_PUBLIC_KEY;
+            if (!publicKey) {
+                const keyResponse = await pushFetch('/push/public-key').catch(() => null);
+                publicKey = keyResponse?.publicKey || '';
+            }
+            if (!publicKey) {
+                throw new Error('Не настроен VAPID public key. Добавьте VITE_WEB_PUSH_PUBLIC_KEY или endpoint /push/public-key.');
+            }
+            subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicKey)
+            });
+        }
+
+        const payload = {
+            subscription,
+            user_id: currentUser?.id || null,
+            user_name: currentUser?.name || null,
+            platform: navigator.userAgent,
+            is_pwa: isStandalonePwa()
+        };
+
+        try {
+            await pushFetch('/push/subscribe', { method: 'POST', body: payload });
+        } catch {
+            // Fallback storage if server endpoint is not ready yet.
+            try {
+                await postgrestFetch('push_subscriptions', {}, {
+                    method: 'POST',
+                    body: [{
+                        user_id: payload.user_id,
+                        endpoint: subscription.endpoint,
+                        keys: subscription.toJSON()?.keys || {},
+                        user_agent: payload.platform,
+                        is_active: true
+                    }],
+                    returnRepresentation: true
+                });
+            } catch {
+                throw new Error('Не удалось сохранить push-подписку. Нужен endpoint /push/subscribe или таблица push_subscriptions.');
+            }
+        }
+
+        localStorage.setItem(PUSH_SUBSCRIPTION_STORAGE_KEY, '1');
+        return true;
+    }
+
+    async sendNewsPush(newsItem) {
+        const title = String(newsItem?.title || 'Новая новость');
+        const body = stripHtmlToText(newsItem?.body || '').slice(0, 180) || 'Откройте приложение, чтобы прочитать новость.';
+        const payload = {
+            title,
+            body,
+            url: '/',
+            tag: `news-${newsItem?.id || Date.now()}`
+        };
+
+        return await pushFetch('/push/news', {
+            method: 'POST',
+            body: payload
+        });
     }
 
     // Goals

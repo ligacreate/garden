@@ -256,6 +256,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     const [eventArchiveOpen, setEventArchiveOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
     const [draggingItemId, setDraggingItemId] = useState(null);
+    const [sendPushOnNews, setSendPushOnNews] = useState(true);
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -501,11 +502,25 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                             />
                             <div className="flex gap-2">
                                 {newContent.id && <Button variant="secondary" onClick={() => setNewContent({ title: '', body: '' })}>Отмена</Button>}
+                                {!newContent.id && (
+                                    <label className="inline-flex items-center gap-2 text-xs text-slate-500 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50">
+                                        <input
+                                            type="checkbox"
+                                            checked={sendPushOnNews}
+                                            onChange={(e) => setSendPushOnNews(e.target.checked)}
+                                            className="h-4 w-4 accent-blue-600"
+                                        />
+                                        Отправить push-уведомление
+                                    </label>
+                                )}
                                 <Button onClick={() => {
                                     if (newContent.id) {
                                         if (onUpdateNews) onUpdateNews(newContent);
                                     } else {
-                                        onAddNews({ id: Date.now(), title: newContent.title, body: newContent.body, created_at: new Date().toISOString() });
+                                        onAddNews(
+                                            { id: Date.now(), title: newContent.title, body: newContent.body, created_at: new Date().toISOString() },
+                                            { sendPush: sendPushOnNews }
+                                        );
                                     }
                                     setNewContent({ title: '', body: '' }); // Clear
                                 }}>{newContent.id ? 'Сохранить изменения' : 'Опубликовать новость'}</Button>

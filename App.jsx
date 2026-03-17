@@ -257,11 +257,20 @@ export default function App() {
                             console.error(e);
                             showNotification("Ошибка сохранения (см. консоль)");
                         }
-                    }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n) => {
+                    }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n, options = {}) => {
                         try {
                             const created = await api.addNews(n);
                             if (created) {
                                 setNews([created, ...news]);
+                                if (options.sendPush && api.sendNewsPush) {
+                                    try {
+                                        await api.sendNewsPush(created);
+                                        showNotification("Push-уведомление отправлено");
+                                    } catch (pushError) {
+                                        console.error(pushError);
+                                        showNotification(pushError?.message || "Новость опубликована, но push не отправлен");
+                                    }
+                                }
                             } else {
                                 const fresh = await api.getNews();
                                 setNews(fresh || []);

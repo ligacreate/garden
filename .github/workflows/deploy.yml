@@ -3,6 +3,7 @@ name: Deploy to FTP
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -15,14 +16,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
 
       - name: Install deps
-        run: npm install
+        run: npm ci
 
       - name: Create env file
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
+          echo "VITE_PUSH_URL=${{ secrets.VITE_PUSH_URL }}" >> .env
+          echo "VITE_WEB_PUSH_PUBLIC_KEY=${{ secrets.VITE_WEB_PUSH_PUBLIC_KEY }}" >> .env
 
       - name: Build
         run: npm run build

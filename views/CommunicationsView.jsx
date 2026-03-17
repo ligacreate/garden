@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Megaphone, MessageCircle, Send, Clock3, User } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
+import { subscribeToMessages } from '../services/realtimeMessages';
 
 const CommunicationsView = ({ user, channelItems = [], onNotify }) => {
     const [tab, setTab] = useState('channel');
@@ -30,8 +31,36 @@ const CommunicationsView = ({ user, channelItems = [], onNotify }) => {
     useEffect(() => {
         if (tab !== 'chat') return;
         loadMessages();
-        const timer = setInterval(loadMessages, 5000);
-        return () => clearInterval(timer);
+        const unsubscribe = subscribeToMessages({
+            onInsert: (message) => {
+                if (!message?.id) return;
+                setMessages((prev) => {
+                    if (prev.some((item) => String(item.id) === String(message.id))) return prev;
+                    return [...prev, message];
+                });
+            },
+            onUpdate: (message) => {
+                if (!message?.id) return;
+                setMessages((prev) =>
+                    prev.map((item) => (String(item.id) === String(message.id) ? { ...item, ...message } : item))
+                );
+            },
+            onDelete: (message) => {
+                if (!message?.id) return;
+                setMessages((prev) => prev.filter((item) => String(item.id) !== String(message.id)));
+            },
+            onError: () => {
+                onNotify?.('Realtime временно недоступен, включен авто-рефреш чата');
+            }
+        });
+
+        // Fallback for setups without configured realtime credentials.
+        const timer = unsubscribe ? null : setInterval(loadMessages, 5000);
+
+        return () => {
+            if (timer) clearInterval(timer);
+            unsubscribe?.();
+        };
     }, [tab]);
 
     const handleSend = async () => {
@@ -46,7 +75,10 @@ const CommunicationsView = ({ user, channelItems = [], onNotify }) => {
             });
             setNewMessage('');
             if (created) {
-                setMessages((prev) => [...prev, created]);
+                setMessages((prev) => {
+                    if (prev.some((item) => String(item.id) === String(created.id))) return prev;
+                    return [...prev, created];
+                });
             } else {
                 await loadMessages();
             }

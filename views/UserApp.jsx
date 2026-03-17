@@ -758,8 +758,10 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                     {view === 'communications' && isAdmin && (
                         <CommunicationsView
                             user={user}
+                            users={mergedUsers}
                             channelItems={news}
                             onNotify={onNotify}
+                            onOpenProfile={handleOpenLeader}
                         />
                     )}
                     {view === 'profile' && (

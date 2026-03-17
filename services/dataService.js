@@ -212,7 +212,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const LIBRARY_SETTINGS_STORAGE_KEY = 'garden_library_settings';
 const DEFAULT_LIBRARY_SETTINGS = { hiddenCourses: [], materialOrder: {} };
 const CHAT_MESSAGES_STORAGE_KEY = 'garden_chat_messages';
-const COURSE_PROGRESS_FALLBACK_STORAGE_KEY = 'garden_course_progress_fallback';
 const IS_DEV_MODE = Boolean(import.meta.env?.DEV);
 
 const normalizeLibrarySettings = (raw) => {
@@ -288,29 +287,6 @@ const normalizeImportedScenarioInput = (input, index) => {
 
 const loadLocalMessages = () => JSON.parse(localStorage.getItem(CHAT_MESSAGES_STORAGE_KEY) || '[]');
 const saveLocalMessages = (items) => localStorage.setItem(CHAT_MESSAGES_STORAGE_KEY, JSON.stringify(items || []));
-const makeCourseProgressFallbackKey = (userId, courseTitle) => `${String(userId || '').trim()}::${String(courseTitle || '').trim()}`;
-const loadCourseProgressFallbackMap = () => {
-    try {
-        const raw = JSON.parse(localStorage.getItem(COURSE_PROGRESS_FALLBACK_STORAGE_KEY) || '{}');
-        return raw && typeof raw === 'object' ? raw : {};
-    } catch {
-        return {};
-    }
-};
-const getCourseProgressFallbackIds = (userId, courseTitle) => {
-    const key = makeCourseProgressFallbackKey(userId, courseTitle);
-    const map = loadCourseProgressFallbackMap();
-    const stored = map[key];
-    return Array.isArray(stored) ? stored.map(String).filter(Boolean) : [];
-};
-const saveCourseProgressFallbackId = (userId, courseTitle, materialId) => {
-    const key = makeCourseProgressFallbackKey(userId, courseTitle);
-    const map = loadCourseProgressFallbackMap();
-    const next = new Set(getCourseProgressFallbackIds(userId, courseTitle));
-    next.add(String(materialId));
-    map[key] = Array.from(next);
-    localStorage.setItem(COURSE_PROGRESS_FALLBACK_STORAGE_KEY, JSON.stringify(map));
-};
 const logCourseProgressDebug = (message, payload = null) => {
     if (!IS_DEV_MODE) return;
     if (payload && typeof payload === 'object') {
@@ -318,6 +294,18 @@ const logCourseProgressDebug = (message, payload = null) => {
         return;
     }
     console.info(`[course-progress] ${message}`);
+};
+const isCourseProgressAccessError = (error) => {
+    const payload = parsePostgrestErrorPayload(error);
+    const code = String(payload?.code || '').toUpperCase();
+    const message = String(payload?.message || error?.message || '').toLowerCase();
+    if (code === '42501') return true; // insufficient_privilege
+    if (message.includes('permission denied')) return true;
+    if (message.includes('row-level security')) return true;
+    if (message.includes('not authorized')) return true;
+    if (message.includes('forbidden')) return true;
+    if (message.includes('401') || message.includes('403')) return true;
+    return false;
 };
 
 class LocalStorageService {
@@ -1276,18 +1264,19 @@ class RemoteApiService {
     async getCourseProgress(userId, courseTitle) {
         const params = { select: 'material_id', user_id: `eq.${userId}` };
         if (courseTitle) params.course_title = `eq.${courseTitle}`;
-        const { data } = await postgrestFetch('course_progress', params);
-        const remoteIds = (data || []).map(row => row.material_id);
-        const fallbackIds = getCourseProgressFallbackIds(userId, courseTitle);
-        if (fallbackIds.length > 0) {
-            logCourseProgressDebug('merged fallback progress ids', {
-                userId,
-                courseTitle,
-                remoteCount: remoteIds.length,
-                fallbackCount: fallbackIds.length
-            });
+        try {
+            const { data } = await postgrestFetch('course_progress', params);
+            return (data || []).map(row => String(row.material_id));
+        } catch (e) {
+            if (isCourseProgressAccessError(e)) {
+                logCourseProgressDebug('remote progress read blocked', {
+                    userId,
+                    courseTitle
+                });
+                throw new Error('Нет доступа к чтению прогресса в БД (course_progress). Проверьте RLS policies.');
+            }
+            throw e;
         }
-        return Array.from(new Set([...remoteIds.map(String), ...fallbackIds]));
     }
 
     async markCourseLessonCompleted(userId, materialId, courseTitle) {
@@ -1303,9 +1292,6 @@ class RemoteApiService {
                 body: [payload],
                 returnRepresentation: true
             });
-            // Some deployments may allow INSERT but not SELECT on this table,
-            // returning an empty representation despite a successful write.
-            saveCourseProgressFallbackId(userId, courseTitle, materialId);
             logCourseProgressDebug('lesson marked completed', {
                 userId,
                 courseTitle,
@@ -1314,6 +1300,14 @@ class RemoteApiService {
             return { inserted: true };
         } catch (e) {
             if (String(e.message).includes('23505')) return { inserted: false };
+            if (isCourseProgressAccessError(e)) {
+                logCourseProgressDebug('remote progress write blocked', {
+                    userId,
+                    courseTitle,
+                    materialId: String(materialId)
+                });
+                throw new Error('Нет доступа к записи прогресса в БД (course_progress). Проверьте RLS policies.');
+            }
             throw e;
         }
     }

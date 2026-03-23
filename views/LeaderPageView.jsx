@@ -17,11 +17,25 @@ const REVIEW_COLORS = [
 ];
 
 const normalizeReviews = (raw) => {
-    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw)) {
+        return raw
+            .filter((item) => item && typeof item === 'object')
+            .map((item, index) => {
+                const fallbackId = `${Date.now()}-${index}`;
+                return {
+                    id: item.id ?? fallbackId,
+                    text: String(item.text || ''),
+                    author: String(item.author || 'Без имени'),
+                    color: item.color || REVIEW_COLORS[0].value,
+                    breakfastDate: item.breakfastDate || '',
+                    breakfastTopic: item.breakfastTopic || ''
+                };
+            });
+    }
     if (typeof raw === 'string') {
         try {
             const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
+            return normalizeReviews(parsed);
         } catch {
             return [];
         }
@@ -29,10 +43,22 @@ const normalizeReviews = (raw) => {
     return [];
 };
 
+const escapeHtml = (value) => String(value || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const formatReviewDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleDateString('ru-RU');
+};
+
 const openReviewCard = (review) => {
     const color = review.color || '#ffffff';
     const text = review.text || '';
     const author = review.author || 'Без имени';
+    const breakfastTopic = String(review.breakfastTopic || '').trim();
+    const breakfastDate = formatReviewDate(review.breakfastDate);
+    const hasMeta = Boolean(breakfastDate || breakfastTopic);
     const win = window.open('', '_blank', 'width=740,height=740');
     if (!win) return;
     win.document.write(`<!doctype html>
@@ -47,6 +73,9 @@ const openReviewCard = (review) => {
   .card{width:560px;min-height:420px;padding:36px;border-radius:24px;background:${color};box-shadow:0 24px 60px rgba(28,28,28,0.12);display:flex;flex-direction:column;gap:18px;}
   .title{font-size:12px;letter-spacing:0.28em;text-transform:uppercase;color:#7a7a7a;font-weight:600;}
   .text{font-size:20px;line-height:1.5;color:#1f1f1f;}
+  .meta{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.9);}
+  .meta-row{font-size:13px;color:#3e3e3e;}
+  .meta-label{font-weight:600;color:#606060;}
   .author{margin-top:auto;font-weight:600;color:#2b2b2b;}
   .badge{align-self:flex-start;padding:6px 10px;border-radius:999px;background:#eef4ef;color:#3a6d57;font-size:11px;font-weight:700;letter-spacing:0.08em;}
 </style>
@@ -54,8 +83,12 @@ const openReviewCard = (review) => {
 <body>
   <div class="card">
     <span class="badge">ОТЗЫВ</span>
-    <div class="text">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-    <div class="author">${author.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+    <div class="text">${escapeHtml(text)}</div>
+    ${hasMeta ? `<div class="meta">
+      ${breakfastDate ? `<div class="meta-row"><span class="meta-label">Дата завтрака:</span> ${escapeHtml(breakfastDate)}</div>` : ''}
+      ${breakfastTopic ? `<div class="meta-row"><span class="meta-label">Тема завтрака:</span> ${escapeHtml(breakfastTopic)}</div>` : ''}
+    </div>` : ''}
+    <div class="author">${escapeHtml(author)}</div>
   </div>
 </body>
 </html>`);
@@ -109,7 +142,40 @@ const buildReviewCardNode = (review) => {
     author.style.fontSize = '28px';
     author.style.color = '#2b2b2b';
 
-    card.append(badge, text, author);
+    const breakfastDate = formatReviewDate(review.breakfastDate);
+    const breakfastTopic = String(review.breakfastTopic || '').trim();
+    let meta = null;
+    if (breakfastDate || breakfastTopic) {
+        meta = document.createElement('div');
+        meta.style.display = 'flex';
+        meta.style.flexDirection = 'column';
+        meta.style.gap = '8px';
+        meta.style.padding = '16px 20px';
+        meta.style.borderRadius = '20px';
+        meta.style.background = 'rgba(255, 255, 255, 0.55)';
+        meta.style.border = '1px solid rgba(255, 255, 255, 0.9)';
+
+        if (breakfastDate) {
+            const dateRow = document.createElement('div');
+            dateRow.textContent = `Дата завтрака: ${breakfastDate}`;
+            dateRow.style.fontSize = '22px';
+            dateRow.style.color = '#3e3e3e';
+            meta.appendChild(dateRow);
+        }
+        if (breakfastTopic) {
+            const topicRow = document.createElement('div');
+            topicRow.textContent = `Тема завтрака: ${breakfastTopic}`;
+            topicRow.style.fontSize = '22px';
+            topicRow.style.color = '#3e3e3e';
+            meta.appendChild(topicRow);
+        }
+    }
+
+    if (meta) {
+        card.append(badge, text, meta, author);
+    } else {
+        card.append(badge, text, author);
+    }
     return card;
 };
 
@@ -121,12 +187,24 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
     const isOwner = currentUser?.id && leader?.id && currentUser.id === leader.id;
 
     const [reviews, setReviews] = useState(() => normalizeReviews(leader?.leader_reviews));
-    const [reviewDraft, setReviewDraft] = useState({ text: '', author: '', color: REVIEW_COLORS[0].value });
+    const [reviewDraft, setReviewDraft] = useState({
+        text: '',
+        author: '',
+        color: REVIEW_COLORS[0].value,
+        breakfastDate: '',
+        breakfastTopic: ''
+    });
     const [editingReviewId, setEditingReviewId] = useState(null);
 
     useEffect(() => {
         setReviews(normalizeReviews(leader?.leader_reviews));
-        setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
+        setReviewDraft({
+            text: '',
+            author: '',
+            color: REVIEW_COLORS[0].value,
+            breakfastDate: '',
+            breakfastTopic: ''
+        });
         setEditingReviewId(null);
     }, [leader?.id]);
 
@@ -181,7 +259,9 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
         setReviewDraft({
             text: review.text || '',
             author: review.author || '',
-            color: review.color || REVIEW_COLORS[0].value
+            color: review.color || REVIEW_COLORS[0].value,
+            breakfastDate: review.breakfastDate || '',
+            breakfastTopic: review.breakfastTopic || ''
         });
     };
 
@@ -195,12 +275,20 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                 id: Date.now(),
                 text: reviewDraft.text.trim(),
                 author: reviewDraft.author.trim() || 'Без имени',
-                color: reviewDraft.color
+                color: reviewDraft.color,
+                breakfastDate: reviewDraft.breakfastDate || '',
+                breakfastTopic: reviewDraft.breakfastTopic.trim()
             };
             nextReviews = [next, ...reviews];
         }
         setReviews(nextReviews);
-        setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
+        setReviewDraft({
+            text: '',
+            author: '',
+            color: REVIEW_COLORS[0].value,
+            breakfastDate: '',
+            breakfastTopic: ''
+        });
         setEditingReviewId(null);
         handleSaveReviews(nextReviews);
     };
@@ -210,7 +298,13 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
         setReviews(nextReviews);
         if (editingReviewId === id) {
             setEditingReviewId(null);
-            setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
+            setReviewDraft({
+                text: '',
+                author: '',
+                color: REVIEW_COLORS[0].value,
+                breakfastDate: '',
+                breakfastTopic: ''
+            });
         }
         handleSaveReviews(nextReviews);
     };
@@ -365,6 +459,20 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                                             style={{ background: review.color || '#fff' }}
                                         >
                                             <div className="text-sm text-slate-800 leading-relaxed">{review.text}</div>
+                                            {(review.breakfastDate || review.breakfastTopic) && (
+                                                <div className="mt-3 rounded-xl border border-white/70 bg-white/55 px-3 py-2 text-xs text-slate-600 space-y-1">
+                                                    {review.breakfastDate && (
+                                                        <div>
+                                                            <span className="font-semibold">Дата завтрака:</span> {formatReviewDate(review.breakfastDate)}
+                                                        </div>
+                                                    )}
+                                                    {review.breakfastTopic && (
+                                                        <div>
+                                                            <span className="font-semibold">Тема завтрака:</span> {review.breakfastTopic}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                             <div className="mt-3 text-xs font-semibold text-slate-700">{review.author}</div>
                                             <div className="mt-4 flex flex-wrap gap-2">
                                                 <button
@@ -416,6 +524,26 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                                         placeholder="Например: Анна К."
                                     />
                                 </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Дата завтрака (опционально)</label>
+                                        <input
+                                            type="date"
+                                            className="w-full mt-2 bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400"
+                                            value={reviewDraft.breakfastDate}
+                                            onChange={(e) => setReviewDraft({ ...reviewDraft, breakfastDate: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Тема завтрака (опционально)</label>
+                                        <input
+                                            className="w-full mt-2 bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400"
+                                            value={reviewDraft.breakfastTopic}
+                                            onChange={(e) => setReviewDraft({ ...reviewDraft, breakfastTopic: e.target.value })}
+                                            placeholder="Например: Ресурс и устойчивость"
+                                        />
+                                    </div>
+                                </div>
                                 <div>
                                     <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Цвет карточки</label>
                                     <div className="flex flex-wrap gap-2 mt-2">
@@ -438,7 +566,13 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                                             className="!rounded-xl"
                                             onClick={() => {
                                                 setEditingReviewId(null);
-                                                setReviewDraft({ text: '', author: '', color: REVIEW_COLORS[0].value });
+                                                setReviewDraft({
+                                                    text: '',
+                                                    author: '',
+                                                    color: REVIEW_COLORS[0].value,
+                                                    breakfastDate: '',
+                                                    breakfastTopic: ''
+                                                });
                                             }}
                                         >
                                             Сбросить
@@ -449,6 +583,20 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                                     <div className="text-sm text-slate-800 leading-relaxed">
                                         {reviewDraft.text || 'Превью отзыва...'}
                                     </div>
+                                    {(reviewDraft.breakfastDate || reviewDraft.breakfastTopic) && (
+                                        <div className="mt-3 rounded-xl border border-white/70 bg-white/55 px-3 py-2 text-xs text-slate-600 space-y-1">
+                                            {reviewDraft.breakfastDate && (
+                                                <div>
+                                                    <span className="font-semibold">Дата завтрака:</span> {formatReviewDate(reviewDraft.breakfastDate)}
+                                                </div>
+                                            )}
+                                            {reviewDraft.breakfastTopic && (
+                                                <div>
+                                                    <span className="font-semibold">Тема завтрака:</span> {reviewDraft.breakfastTopic}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     <div className="mt-3 text-xs font-semibold text-slate-700">
                                         {reviewDraft.author || 'Имя участницы'}
                                     </div>

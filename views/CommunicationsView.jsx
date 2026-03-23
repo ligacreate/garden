@@ -549,7 +549,7 @@ const CommunicationsView = ({ user, users = [], channelItems = [], onNotify, onO
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                        )
+                                                        )}
                                                     </div>
                                                 </div>
                                             </React.Fragment>

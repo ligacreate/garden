@@ -1651,12 +1651,25 @@ class RemoteApiService {
         // For events mirrored from meetings, also persist back to the source meeting.
         if (event.garden_id) {
             const meetingPatch = {
+                title: cleaned.title,
+                description: cleaned.description,
+                date: cleaned.date,
+                time: cleaned.time,
+                city: cleaned.city,
+                city_key: cleaned.city_key,
+                address: cleaned.location,
+                payment_link: cleaned.registration_link,
+                meeting_format: cleaned.meeting_format,
+                online_visibility: cleaned.online_visibility,
                 image_focus_x: Number.isNaN(focusX) ? null : focusX,
                 image_focus_y: Number.isNaN(focusY) ? null : focusY
             };
             if (typeof rest.image_url === 'string') {
                 meetingPatch.cover_image = cleaned.image_url || null;
             }
+            Object.keys(meetingPatch).forEach((key) => {
+                if (meetingPatch[key] === undefined) delete meetingPatch[key];
+            });
             try {
                 await postgrestFetch('meetings', { id: `eq.${event.garden_id}` }, {
                     method: 'PATCH',

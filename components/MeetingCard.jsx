@@ -1,9 +1,19 @@
 import React, { useState } from 'react';
-import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Users, Edit2, AlertCircle, Trash2 } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Edit2, AlertCircle, Trash2, Copy } from 'lucide-react';
 import Button from './Button';
 import { getMeetingInstant, getMeetingTimezone, isMeetingPast } from '../utils/meetingTime';
 
-const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete, onUpdate }) => {
+const MeetingCard = ({
+    meeting,
+    users = [],
+    onEdit,
+    onResult,
+    onCancel,
+    onDelete,
+    onUpdate,
+    onDuplicate,
+    onRescheduleCancelled
+}) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     // Helpers
@@ -188,6 +198,12 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                                     <Edit2 size={14} /> Редактировать
                                 </button>
                                 <button
+                                    onClick={(e) => { e.stopPropagation(); onDuplicate?.(meeting); }}
+                                    className="text-indigo-600 text-sm font-medium hover:underline flex items-center gap-2"
+                                >
+                                    <Copy size={14} /> Дублировать
+                                </button>
+                                <button
                                     onClick={handleDelete}
                                     className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
                                 >
@@ -241,6 +257,12 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                                     <Edit2 size={14} /> Изменить итоги
                                 </button>
                                 <button
+                                    onClick={(e) => { e.stopPropagation(); onDuplicate?.(meeting); }}
+                                    className="text-indigo-600 text-sm font-medium hover:underline flex items-center gap-2"
+                                >
+                                    <Copy size={14} /> Дублировать
+                                </button>
+                                <button
                                     onClick={handleDelete}
                                     className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
                                 >
@@ -258,6 +280,12 @@ const MeetingCard = ({ meeting, users = [], onEdit, onResult, onCancel, onDelete
                                 <p className="text-slate-500 italic text-sm">{meeting.fail_reason || 'Не указана'}</p>
                             </div>
                             <div className="flex gap-3 mt-4">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onRescheduleCancelled?.(meeting); }}
+                                    className="text-indigo-600 text-sm font-medium hover:underline flex items-center gap-2"
+                                >
+                                    <Copy size={14} /> Перенос встречи
+                                </button>
                                 <button
                                     onClick={handleDelete}
                                     className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"

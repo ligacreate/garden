@@ -190,7 +190,17 @@ const MonthAnalytics = ({ meetings, currentDate }) => {
 };
 
 // 2. Meetings Tab Content
-const MeetingsTab = ({ meetings, users, onPlanClick, onResultClick, onCancelClick, onDeleteClick, onUpdateMeeting }) => {
+const MeetingsTab = ({
+    meetings,
+    users,
+    onPlanClick,
+    onResultClick,
+    onCancelClick,
+    onDeleteClick,
+    onUpdateMeeting,
+    onDuplicateClick,
+    onRescheduleCancelledClick
+}) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     // 1. Filter by selected month
@@ -249,6 +259,8 @@ const MeetingsTab = ({ meetings, users, onPlanClick, onResultClick, onCancelClic
                                 onCancel={onCancelClick}
                                 onDelete={onDeleteClick}
                                 onUpdate={onUpdateMeeting}
+                                onDuplicate={onDuplicateClick}
+                                onRescheduleCancelled={onRescheduleCancelledClick}
                             />
                         ))}
                     </div>
@@ -651,6 +663,7 @@ const MeetingsView = ({
     // Form States
     const [formData, setFormData] = useState({});
     const [goalFormData, setGoalFormData] = useState({});
+    const [planMode, setPlanMode] = useState('create');
 
     useEffect(() => {
         console.log("MeetingsView Loaded - Connected to UserApp");
@@ -673,7 +686,37 @@ const MeetingsView = ({
     // --- Handlers ---
 
     // 1. Plan Meeting
-    const handleOpenPlan = (meeting = null) => {
+    const buildDraftFromMeeting = (meeting, { source = 'duplicate' } = {}) => {
+        const checklist = Array.isArray(meeting?.checklist)
+            ? meeting.checklist.map((item) => ({ ...item, completed: false }))
+            : [];
+
+        const draft = {
+            ...(meeting || {}),
+            status: 'planned',
+            date: '',
+            fail_reason: '',
+            guests: '',
+            new_guests: '',
+            income: '',
+            keep_notes: '',
+            change_notes: '',
+            seeds_awarded: null,
+            rescheduled_to: null,
+            checklist
+        };
+
+        delete draft.id;
+        delete draft.created_at;
+        delete draft.updated_at;
+
+        if (source === 'reschedule_cancelled') {
+            draft.fail_reason = '';
+        }
+        return draft;
+    };
+
+    const handleOpenPlan = (meeting = null, options = {}) => {
         const ensurePhotoChecklistItems = (checklist = []) => {
             const items = Array.isArray(checklist) ? [...checklist] : [];
             const normalized = items.map((i) => String(i?.text || '').toLowerCase().trim());
@@ -704,6 +747,7 @@ const MeetingsView = ({
         const fallbackTz = DEFAULT_TIMEZONE;
         const resolvedTz = resolveCityTimezone(meeting?.city, meeting?.timezone || fallbackTz);
         const meetingFormat = normalizeMeetingFormat(meeting);
+        setPlanMode(options.mode || (meeting?.id ? 'edit' : 'create'));
         setFormData(meeting ? {
             ...meeting,
             checklist: ensurePhotoChecklistItems(meeting.checklist || []),
@@ -729,6 +773,17 @@ const MeetingsView = ({
             image_focus_y: 50
         });
         setIsPlanModalOpen(true);
+    };
+
+    const handleDuplicateMeeting = (meeting) => {
+        const draft = buildDraftFromMeeting(meeting, { source: 'duplicate' });
+        handleOpenPlan(draft, { mode: 'duplicate' });
+    };
+
+    const handleRescheduleCancelledMeeting = (meeting) => {
+        if (meeting?.status !== 'cancelled') return;
+        const draft = buildDraftFromMeeting(meeting, { source: 'reschedule_cancelled' });
+        handleOpenPlan(draft, { mode: 'reschedule_cancelled' });
     };
 
     const validatePublicFields = (data) => {
@@ -809,6 +864,12 @@ const MeetingsView = ({
         if (isSaving) return;
         setIsSaving(true);
         try {
+            const requiresDateSelection = planMode === 'duplicate' || planMode === 'reschedule_cancelled';
+            if (requiresDateSelection && !String(formData.date || '').trim()) {
+                onNotify('Выберите новую дату встречи перед сохранением.');
+                setIsSaving(false);
+                return;
+            }
             const meetingFormat = normalizeMeetingFormat(formData);
             const normalizedCity = String(formData.city || '').trim();
             const finalCity = meetingFormat === 'online' ? 'Онлайн' : normalizedCity;
@@ -1101,6 +1162,8 @@ const MeetingsView = ({
                             onCancelClick={handleOpenCancel}
                             onDeleteClick={handleDeleteMeeting}
                             onUpdateMeeting={onUpdateMeeting}
+                            onDuplicateClick={handleDuplicateMeeting}
+                            onRescheduleCancelledClick={handleRescheduleCancelledMeeting}
                         />
                     ) : (
                         <MasteryTab
@@ -1119,7 +1182,15 @@ const MeetingsView = ({
             <ModalShell
                 isOpen={isPlanModalOpen}
                 onClose={() => setIsPlanModalOpen(false)}
-                title={formData.id ? 'Редактировать встречу' : 'Запланировать встречу'}
+                title={
+                    planMode === 'edit'
+                        ? 'Редактировать встречу'
+                        : planMode === 'reschedule_cancelled'
+                            ? 'Перенос встречи'
+                            : planMode === 'duplicate'
+                                ? 'Дублировать встречу'
+                                : 'Запланировать встречу'
+                }
                 size="lg"
             >
                 <div className="max-h-[70vh] overflow-y-auto custom-scrollbar space-y-6">
@@ -1146,6 +1217,11 @@ const MeetingsView = ({
                                             placeholder="90"
                                         />
                                     </div>
+                                    {(planMode === 'duplicate' || planMode === 'reschedule_cancelled') && !formData.date && (
+                                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                                            Выберите новую дату: без неё копия встречи не сохранится.
+                                        </div>
+                                    )}
                                     <div className="text-xs text-slate-400">
                                         Время встречи указывается в часовом поясе города события: <span className="font-medium text-slate-500">{resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)}</span>.
                                         Участницы увидят своё локальное время.
@@ -1479,7 +1555,11 @@ const MeetingsView = ({
 
                 <div className="pt-6 border-t border-slate-100">
                     <Button onClick={handleSavePlan} disabled={isSaving} className="w-full justify-center">
-                        {isSaving ? 'Сохранение...' : 'Сохранить и запланировать'}
+                        {isSaving
+                            ? 'Сохранение...'
+                            : (planMode === 'duplicate' || planMode === 'reschedule_cancelled')
+                                ? 'Сохранить как новую встречу'
+                                : 'Сохранить и запланировать'}
                     </Button>
                 </div>
             </ModalShell>

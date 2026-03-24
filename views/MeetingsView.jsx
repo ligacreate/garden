@@ -966,22 +966,25 @@ const MeetingsView = ({
 
     const handleSaveCancel = async () => {
         try {
+            const sourceMeeting = selectedMeeting || meetings.find((m) => String(m.id) === String(formData.id));
+            if (!sourceMeeting) {
+                throw new Error('Не удалось найти исходную встречу для отмены.');
+            }
+
             await onUpdateMeeting({
-                id: formData.id,
+                ...sourceMeeting,
                 status: 'cancelled',
                 fail_reason: formData.fail_reason
             });
 
             if (formData.reschedule && formData.new_date) {
+                const draft = buildDraftFromMeeting(sourceMeeting, { source: 'reschedule_cancelled' });
                 const newMeeting = {
-                    title: formData.title,
+                    ...draft,
                     date: formData.new_date,
-                    time: formData.time,
-                    duration: formData.duration,
                     user_id: user.id,
                     status: 'planned',
-                    checklist: formData.checklist,
-                    timezone: resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)
+                    timezone: resolveCityTimezone(sourceMeeting.city, sourceMeeting.timezone || DEFAULT_TIMEZONE)
                 };
                 await onAddMeeting(newMeeting);
             }

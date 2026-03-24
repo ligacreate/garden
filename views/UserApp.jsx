@@ -269,9 +269,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             const newMeeting = { ...meetingData, user_id: user.id, seeds_awarded: false };
 
             const saved = await api.addMeeting(newMeeting);
-            const localMeeting = { ...saved, title: meetingData.title };
+            const localMeeting = { ...saved, title: saved?.title || meetingData.title };
 
-            setMeetings([localMeeting, ...meetings]);
+            setMeetings((prev) => [localMeeting, ...prev]);
 
             const updatedUser = { ...user, seeds: (user.seeds || 0) + seedsEarned };
             onUpdateUser(updatedUser);
@@ -303,8 +303,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                 ? { ...updatedMeeting, seeds_awarded: true }
                 : updatedMeeting;
             const saved = await api.updateMeeting(nextPayload);
-            const localUpdated = { ...saved, title: updatedMeeting.title };
-            setMeetings(meetings.map(m => m.id === localUpdated.id ? localUpdated : m));
+            const localUpdated = saved || nextPayload;
+            setMeetings((prev) => prev.map((m) => (
+                m.id === updatedMeeting.id
+                    ? { ...m, ...localUpdated }
+                    : m
+            )));
 
             if (!wasCompleted && willBeCompleted && !alreadyAwarded) {
                 const seedsEarned = 25;

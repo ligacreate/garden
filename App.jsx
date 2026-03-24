@@ -67,7 +67,8 @@ export default function App() {
         } catch (e) {
             console.error(e);
             let msg = e.message || "Ошибка входа";
-            if (msg.includes("Invalid login credentials")) {
+            const normalizedMsg = String(msg).toLowerCase();
+            if (normalizedMsg.includes("invalid login credentials") || normalizedMsg === "invalid" || normalizedMsg.includes("invalid credentials")) {
                 msg = "Неверные данные, либо ваша почта не подтверждена. Проверьте пароль, найдите письмо подтверждения или попробуйте 'Создать аккаунт'.";
             } else if (msg.includes("Email not confirmed")) {
                 msg = "Ваша почта не подтверждена. Пожалуйста, найдите письмо от сервиса авторизации (проверьте спам) и перейдите по ссылке. Или зарегистрируйтесь с другой почтой.";

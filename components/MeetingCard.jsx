@@ -63,6 +63,23 @@ const MeetingCard = ({
     const localTimeLabel = meetingInstant
         ? new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false }).format(meetingInstant)
         : null;
+    const moscowTimeLabel = meetingInstant
+        ? new Intl.DateTimeFormat('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Europe/Moscow'
+        }).format(meetingInstant)
+        : null;
+    const normalizeTime = (value) => {
+        const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
+        if (!match) return String(value || '').trim();
+        return `${match[1].padStart(2, '0')}:${match[2]}`;
+    };
+    const showMoscowTime = Boolean(
+        moscowTimeLabel
+        && normalizeTime(moscowTimeLabel) !== normalizeTime(meeting.time)
+    );
     const showLocalTime = meetingInstant && meetingTimezone && meetingTimezone !== viewerTz;
 
     const handleDelete = (e) => {
@@ -107,16 +124,21 @@ const MeetingCard = ({
                         {meeting.title || 'Без названия'}
                     </h3>
                     {meeting.time && (
-                        <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
-                            <Clock size={14} />
-                            <span>{meeting.time}{timeZoneLabel ? ` ${timeZoneLabel}` : ''}</span>
-                            {meeting.duration ? (
-                                <span className="text-slate-500">• {meeting.duration} мин</span>
-                            ) : null}
-                            {showLocalTime && (
-                                <span className="text-xs text-slate-400">
-                                    • у вас будет {localTimeLabel}
-                                </span>
+                        <div>
+                            <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
+                                <Clock size={14} />
+                                <span>{meeting.time}{timeZoneLabel ? ` ${timeZoneLabel}` : ''}</span>
+                                {meeting.duration ? (
+                                    <span className="text-slate-500">• {meeting.duration} мин</span>
+                                ) : null}
+                                {showLocalTime && (
+                                    <span className="text-xs text-slate-400">
+                                        • у вас будет {localTimeLabel}
+                                    </span>
+                                )}
+                            </div>
+                            {showMoscowTime && (
+                                <div className="text-[11px] text-slate-400 mt-1">по Москве: {moscowTimeLabel} мск</div>
                             )}
                         </div>
                     )}

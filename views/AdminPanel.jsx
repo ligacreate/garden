@@ -657,6 +657,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     const contactLink = meeting?.payment_link || ev.registration_link || null;
                                     const localTime = String(ev.time || '').trim();
                                     const moscowTime = getEventMoscowTimeLabel(ev);
+                                    const showMoscowTime = Boolean(moscowTime && moscowTime !== localTime);
                                     return (
                                         <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
                                             <div className="min-w-0 flex-1">
@@ -664,7 +665,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                                 <div className="text-xs text-slate-400 mt-1">
                                                     {ev.date || '—'} • {ev.city || '—'}{localTime ? ` • ${localTime}` : ''}
                                                 </div>
-                                                {moscowTime && (
+                                                {showMoscowTime && (
                                                     <div className="text-[11px] text-slate-400 mt-0.5">по Москве: {moscowTime} мск</div>
                                                 )}
                                                 <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>

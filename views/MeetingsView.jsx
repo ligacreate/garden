@@ -1221,17 +1221,13 @@ const MeetingsView = ({
                                         />
                                     </div>
                                     <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-                                        В поле времени указывайте локальное время города встречи. Московское время показывается автоматически отдельной строкой.
+                                        В поле времени указывайте локальное время города встречи. Для регионов, где время отличается от московского, время по Москве показывается автоматически отдельной строкой.
                                     </div>
                                     {(planMode === 'duplicate' || planMode === 'reschedule_cancelled') && !formData.date && (
                                         <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
                                             Выберите новую дату: без неё копия встречи не сохранится.
                                         </div>
                                     )}
-                                    <div className="text-xs text-slate-400">
-                                        Время встречи указывается в часовом поясе города события: <span className="font-medium text-slate-500">{resolveCityTimezone(formData.city, formData.timezone || DEFAULT_TIMEZONE)}</span>.
-                                        Участницы увидят своё локальное время.
-                                    </div>
                                 </div>
 
                                 {/* Co-hosts */}

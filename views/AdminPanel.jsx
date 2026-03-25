@@ -5,6 +5,8 @@ import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
+import { getMeetingInstant } from '../utils/meetingTime';
+import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
 
 const COURSE_TITLES = [
     "Инструкции",
@@ -291,6 +293,45 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     };
 
     const stripHtml = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const normalizeEventDateToIso = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+        const ru = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        if (ru) {
+            const d = ru[1].padStart(2, '0');
+            const m = ru[2].padStart(2, '0');
+            return `${ru[3]}-${m}-${d}`;
+        }
+        return '';
+    };
+    const getEventMoscowTimeLabel = (event) => {
+        const startsAt = String(event?.starts_at || '').trim();
+        if (startsAt) {
+            const instant = new Date(startsAt);
+            if (!Number.isNaN(instant.getTime())) {
+                return new Intl.DateTimeFormat('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                    timeZone: 'Europe/Moscow'
+                }).format(instant);
+            }
+        }
+        const isoDate = normalizeEventDateToIso(event?.date);
+        const localTime = String(event?.time || '').trim();
+        if (!isoDate || !localTime) return '';
+        const tz = resolveCityTimezone(event?.city, DEFAULT_TIMEZONE) || DEFAULT_TIMEZONE;
+        const instant = getMeetingInstant({ date: isoDate, time: localTime, city: event?.city, timezone: tz }, DEFAULT_TIMEZONE);
+        if (!instant || Number.isNaN(instant.getTime())) return '';
+        return new Intl.DateTimeFormat('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Europe/Moscow'
+        }).format(instant);
+    };
 
     const refreshLeagueScenarios = async () => {
         if (!onGetLeagueScenarios) return;
@@ -614,11 +655,18 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     const leader = meeting ? users.find(u => u.id === meeting.user_id) : null;
                                     const leaderName = leader?.name || '—';
                                     const contactLink = meeting?.payment_link || ev.registration_link || null;
+                                    const localTime = String(ev.time || '').trim();
+                                    const moscowTime = getEventMoscowTimeLabel(ev);
                                     return (
                                         <div key={ev.id} className="p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex justify-between items-start group">
                                             <div className="min-w-0 flex-1">
                                                 <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
-                                                <div className="text-xs text-slate-400 mt-1">{ev.date || '—'} • {ev.city || '—'}</div>
+                                                <div className="text-xs text-slate-400 mt-1">
+                                                    {ev.date || '—'} • {ev.city || '—'}{localTime ? ` • ${localTime}` : ''}
+                                                </div>
+                                                {moscowTime && (
+                                                    <div className="text-[11px] text-slate-400 mt-0.5">по Москве: {moscowTime} мск</div>
+                                                )}
                                                 <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>
                                                 {contactLink && (
                                                     <div className="text-xs text-slate-500 mt-1.5 break-all" title="Ссылка на контакт / кнопку «Записаться»">

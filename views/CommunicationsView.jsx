@@ -79,7 +79,7 @@ const CommunicationsView = ({ user, users = [], channelItems = [], onNotify, onO
             y.getFullYear() === date.getFullYear()
             && y.getMonth() === date.getMonth()
             && y.getDate() === date.getDate();
-        const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
         if (isSameDay) return `сегодня ${time}`;
         if (isYesterday) return `вчера ${time}`;
         return date.toLocaleString();

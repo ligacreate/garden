@@ -61,7 +61,7 @@ const MeetingCard = ({
             .find(p => p.type === 'timeZoneName')?.value
         : meetingTimezone;
     const localTimeLabel = meetingInstant
-        ? new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(meetingInstant)
+        ? new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false }).format(meetingInstant)
         : null;
     const showLocalTime = meetingInstant && meetingTimezone && meetingTimezone !== viewerTz;
 

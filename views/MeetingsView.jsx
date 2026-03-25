@@ -1221,7 +1221,7 @@ const MeetingsView = ({
                                         />
                                     </div>
                                     <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-                                        В поле времени указывайте локальное время города встречи. Для регионов, где время отличается от московского, время по Москве показывается автоматически отдельной строкой.
+                                        В поле времени указывайте локальное время города встречи. Для регионов, где время отличается от московского, время по Москве показывается рядом с основным временем.
                                     </div>
                                     {(planMode === 'duplicate' || planMode === 'reschedule_cancelled') && !formData.date && (
                                         <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">

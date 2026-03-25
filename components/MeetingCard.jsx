@@ -127,7 +127,22 @@ const MeetingCard = ({
                         <div>
                             <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
                                 <Clock size={14} />
-                                <span>{meeting.time}{timeZoneLabel ? ` ${timeZoneLabel}` : ''}</span>
+                                <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                    <span>
+                                        {meeting.time}
+                                        {timeZoneLabel ? ` ${timeZoneLabel}` : ''}
+                                    </span>
+                                    {showMoscowTime && (
+                                        <>
+                                            <span className="text-slate-300" aria-hidden>
+                                                ·
+                                            </span>
+                                            <span className="text-xs text-slate-400 tabular-nums">
+                                                {moscowTimeLabel} мск
+                                            </span>
+                                        </>
+                                    )}
+                                </span>
                                 {meeting.duration ? (
                                     <span className="text-slate-500">• {meeting.duration} мин</span>
                                 ) : null}
@@ -137,9 +152,6 @@ const MeetingCard = ({
                                     </span>
                                 )}
                             </div>
-                            {showMoscowTime && (
-                                <div className="text-[11px] text-slate-400 mt-1">по Москве: {moscowTimeLabel} мск</div>
-                            )}
                         </div>
                     )}
                     {coHostNames.length > 0 && (

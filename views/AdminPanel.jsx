@@ -663,11 +663,21 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                             <div className="min-w-0 flex-1">
                                                 <div className="font-medium text-slate-800 truncate">{ev.title || 'Без названия'}</div>
                                                 <div className="text-xs text-slate-400 mt-1">
-                                                    {ev.date || '—'} • {ev.city || '—'}{localTime ? ` • ${localTime}` : ''}
+                                                    {ev.date || '—'} • {ev.city || '—'}
+                                                    {localTime ? (
+                                                        <>
+                                                            {' '}
+                                                            •{' '}
+                                                            <span className="text-slate-500">{localTime}</span>
+                                                            {showMoscowTime && (
+                                                                <>
+                                                                    <span className="text-slate-300"> · </span>
+                                                                    <span className="text-slate-400 tabular-nums">{moscowTime} мск</span>
+                                                                </>
+                                                            )}
+                                                        </>
+                                                    ) : null}
                                                 </div>
-                                                {showMoscowTime && (
-                                                    <div className="text-[11px] text-slate-400 mt-0.5">по Москве: {moscowTime} мск</div>
-                                                )}
                                                 <div className="text-xs text-emerald-600 mt-0.5">{leaderName}</div>
                                                 {contactLink && (
                                                     <div className="text-xs text-slate-500 mt-1.5 break-all" title="Ссылка на контакт / кнопку «Записаться»">

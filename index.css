@@ -167,6 +167,19 @@ body::before {
     text-shadow: none !important;
     -webkit-text-stroke: 0 !important;
   }
+
+  /*
+   * Pasted Word/Docs HTML often sets white backgrounds on p/div/span.
+   * Our cards use warm slate-50 — those read as harsh “white plates”.
+   */
+  .clean-rich-text :where(p, div, span, li, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+    background-color: transparent !important;
+    background-image: none !important;
+  }
+
+  .clean-rich-text :where(pre, code) {
+    background-color: var(--color-slate-100) !important;
+  }
 }
 
 @media print {

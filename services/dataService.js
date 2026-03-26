@@ -553,6 +553,28 @@ class LocalStorageService {
         return sanitized;
     }
 
+    async addKnowledge(item) {
+        const body = { ...item, content: item.content || item.body || '' };
+        const sanitized = this._sanitizeFields(body, { plain: ['title', 'description'], rich: ['content'] });
+        if (sanitized.id === undefined || sanitized.id === null) {
+            sanitized.id = Date.now();
+        }
+        this.knowledgeBase.push(sanitized);
+        localStorage.setItem('garden_knowledgeBase', JSON.stringify(this.knowledgeBase));
+        return sanitized;
+    }
+
+    async updateKnowledge(item) {
+        const idx = this.knowledgeBase.findIndex((k) => String(k.id) === String(item.id));
+        if (idx === -1) throw new Error('Материал не найден');
+        const body = { ...item, content: item.content || item.body || '' };
+        const sanitized = this._sanitizeFields(body, { plain: ['title', 'description'], rich: ['content'] });
+        const keepId = this.knowledgeBase[idx].id;
+        this.knowledgeBase[idx] = { ...this.knowledgeBase[idx], ...sanitized, id: keepId };
+        localStorage.setItem('garden_knowledgeBase', JSON.stringify(this.knowledgeBase));
+        return this.knowledgeBase[idx];
+    }
+
     async getLibrarySettings() {
         const raw = JSON.parse(localStorage.getItem(LIBRARY_SETTINGS_STORAGE_KEY) || 'null');
         return normalizeLibrarySettings(raw || DEFAULT_LIBRARY_SETTINGS);
@@ -811,9 +833,21 @@ class LocalStorageService {
         const index = allScenarios.findIndex((s) => String(s.id) === String(scenarioId));
         if (index === -1) throw new Error('Сценарий не найден');
 
+        const merged = { ...patch };
+        if (Array.isArray(merged.timeline)) {
+            merged.timeline = merged.timeline.map((step) => {
+                if (!step || typeof step !== 'object') return step;
+                const desc = step.description;
+                return {
+                    ...step,
+                    description: typeof desc === 'string' ? this._sanitizeRich(desc) : desc
+                };
+            });
+        }
+
         const sanitized = this._sanitizeFields({
-            ...patch,
-            title: patch?.title
+            ...merged,
+            title: merged?.title
         }, { plain: ['title', 'author_name'] });
 
         allScenarios[index] = {
@@ -1360,6 +1394,24 @@ class RemoteApiService {
         );
         const { id, ...rest } = sanitized;
         await postgrestFetch('knowledge_base', {}, { method: 'POST', body: [rest], returnRepresentation: true });
+        return true;
+    }
+
+    async updateKnowledge(item) {
+        this.checkActionTimer();
+        const id = item?.id;
+        if (id === undefined || id === null || id === '') {
+            throw new Error('Не указан id материала для обновления');
+        }
+        const { id: _omitId, ...rest } = this._sanitizeFields(
+            { ...item, content: item.content || item.body || '' },
+            { plain: ['title', 'description'], rich: ['content'] }
+        );
+        await postgrestFetch('knowledge_base', { id: `eq.${id}` }, {
+            method: 'PATCH',
+            body: rest,
+            returnRepresentation: true
+        });
         return true;
     }
 
@@ -1934,9 +1986,20 @@ class RemoteApiService {
     }
 
     async updateScenario(scenarioId, patch) {
+        const merged = { ...patch };
+        if (Array.isArray(merged.timeline)) {
+            merged.timeline = merged.timeline.map((step) => {
+                if (!step || typeof step !== 'object') return step;
+                const desc = step.description;
+                return {
+                    ...step,
+                    description: typeof desc === 'string' ? this._sanitizeRich(desc) : desc
+                };
+            });
+        }
         const sanitized = this._sanitizeFields({
-            ...patch,
-            title: patch?.title
+            ...merged,
+            title: merged?.title
         }, { plain: ['title', 'author_name'] });
 
         const { data } = await postgrestFetch('scenarios', { id: `eq.${scenarioId}` }, {

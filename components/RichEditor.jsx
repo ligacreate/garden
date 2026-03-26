@@ -1,24 +1,13 @@
-import React, { useRef, useState } from 'react';
-import { Bold, Italic, Link, List, Type, Image, Upload } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Bold, Italic, Link, List, ListOrdered, Type, Image, Upload } from 'lucide-react';
 
 const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
     const editorRef = useRef(null);
     const fileInputRef = useRef(null);
     const uploadSelectionRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
-
-    const normalizeEditorHtml = () => {
-        if (!editorRef.current) return '';
-        const sanitized = sanitizeIncomingHtml(editorRef.current.innerHTML);
-        if (editorRef.current.innerHTML !== sanitized) {
-            editorRef.current.innerHTML = sanitized;
-        }
-        return sanitized;
-    };
-
-    const emitChange = () => {
-        onChange(normalizeEditorHtml());
-    };
+    /** Предотвращает перезапись DOM из props сразу после правок пользователя (иначе «теряется» текст при сохранении без blur). */
+    const skipExternalSyncRef = useRef(false);
 
     const sanitizeIncomingHtml = (rawHtml) => {
         const html = String(rawHtml || '');
@@ -31,26 +20,24 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         const allowedTags = new Set([
             'P', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
             'UL', 'OL', 'LI', 'A', 'B', 'STRONG', 'I', 'EM',
-            'U', 'S', 'BLOCKQUOTE', 'PRE', 'CODE', 'IMG'
+            'U', 'S', 'BLOCKQUOTE', 'PRE', 'CODE', 'IMG',
+            'DIV', 'SPAN'
         ]);
 
         const walk = (node) => {
             Array.from(node.children || []).forEach((child) => {
                 const tag = child.tagName;
                 if (!allowedTags.has(tag)) {
-                    // Keep text/content, but remove wrapper tag and all its styles.
                     const fragment = doc.createDocumentFragment();
                     while (child.firstChild) fragment.appendChild(child.firstChild);
                     child.replaceWith(fragment);
                     return;
                 }
 
-                // Remove visual styling that comes from external editors.
                 child.removeAttribute('style');
                 child.removeAttribute('class');
                 child.removeAttribute('id');
 
-                // Keep only safe attributes for links and images.
                 if (tag === 'A') {
                     const href = (child.getAttribute('href') || '').trim();
                     if (!/^https?:\/\//i.test(href)) {
@@ -85,6 +72,39 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         return root.innerHTML;
     };
 
+    const normalizeEditorHtml = () => {
+        if (!editorRef.current) return '';
+        const sanitized = sanitizeIncomingHtml(editorRef.current.innerHTML);
+        if (editorRef.current.innerHTML !== sanitized) {
+            editorRef.current.innerHTML = sanitized;
+        }
+        return sanitized;
+    };
+
+    /** Во время набора не переписываем innerHTML — иначе сбивается курсор. Сырой HTML чистится при blur и на сервере. */
+    const pushToParent = () => {
+        skipExternalSyncRef.current = true;
+        onChange(editorRef.current ? editorRef.current.innerHTML : '');
+        window.setTimeout(() => {
+            skipExternalSyncRef.current = false;
+        }, 0);
+    };
+
+    const flushSanitized = () => {
+        skipExternalSyncRef.current = true;
+        onChange(normalizeEditorHtml());
+        window.setTimeout(() => {
+            skipExternalSyncRef.current = false;
+        }, 0);
+    };
+
+    useEffect(() => {
+        if (!editorRef.current || skipExternalSyncRef.current) return;
+        const sanitized = sanitizeIncomingHtml(value || '');
+        if (editorRef.current.innerHTML === sanitized) return;
+        editorRef.current.innerHTML = sanitized;
+    }, [value]);
+
     const escapeHtml = (text) => String(text || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -104,9 +124,9 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
     };
 
     const handleCommand = (e, command, val = null) => {
-        e.preventDefault(); // Prevent button from stealing focus
+        e.preventDefault();
         document.execCommand(command, false, val);
-        emitChange();
+        pushToParent();
     };
 
     const handleInsertImageByUrl = (e) => {
@@ -119,7 +139,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             if (!/^https?:\/\//i.test(trimmed)) return;
             restoreSelection(range);
             document.execCommand('insertImage', false, trimmed);
-            emitChange();
+            flushSanitized();
         }, 0);
     };
 
@@ -135,7 +155,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             if (!url) return;
             restoreSelection(range);
             document.execCommand('insertImage', false, url);
-            emitChange();
+            flushSanitized();
         } catch (error) {
             console.error('Rich image upload failed:', error);
             alert('Не удалось загрузить изображение');
@@ -145,35 +165,46 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         }
     };
 
+    const handlePaste = (e) => {
+        const html = e.clipboardData?.getData('text/html') || '';
+        const text = e.clipboardData?.getData('text/plain') || '';
+        if (!html && !text) return;
+        e.preventDefault();
+        const normalized = html
+            ? sanitizeIncomingHtml(html)
+            : escapeHtml(text).replace(/\n/g, '<br>');
+        document.execCommand('insertHTML', false, normalized);
+        flushSanitized();
+    };
+
     return (
         <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white/90 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-            <div className="sticky top-0 z-10 flex items-center gap-1 p-2 border-b border-slate-100 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
-                <button onMouseDown={(e) => handleCommand(e, 'bold')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Жирный"><Bold size={16} /></button>
-                <button onMouseDown={(e) => handleCommand(e, 'italic')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Курсив"><Italic size={16} /></button>
-                <button onMouseDown={(e) => handleCommand(e, 'formatBlock', '<h3>')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Заголовок"><Type size={16} /></button>
-                <button onMouseDown={(e) => handleCommand(e, 'insertUnorderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Список"><List size={16} /></button>
-                <button onMouseDown={(e) => {
+            <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 p-2 border-b border-slate-100 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
+                <button type="button" onMouseDown={(e) => handleCommand(e, 'bold')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Жирный"><Bold size={16} /></button>
+                <button type="button" onMouseDown={(e) => handleCommand(e, 'italic')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Курсив"><Italic size={16} /></button>
+                <button type="button" onMouseDown={(e) => handleCommand(e, 'formatBlock', '<h3>')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Заголовок"><Type size={16} /></button>
+                <button type="button" onMouseDown={(e) => handleCommand(e, 'insertUnorderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Маркированный список"><List size={16} /></button>
+                <button type="button" onMouseDown={(e) => handleCommand(e, 'insertOrderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Нумерованный список"><ListOrdered size={16} /></button>
+                <button type="button" onMouseDown={(e) => {
                     e.preventDefault();
-                    // Save selection immediately
                     const selection = window.getSelection();
                     const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
 
-                    // Use timeout to allow UI to settle, though prompt blocks
                     setTimeout(() => {
                         const url = prompt('Введите ссылку:');
-                        // Restore selection and execute
                         if (range) {
                             selection.removeAllRanges();
                             selection.addRange(range);
                         }
                         if (url) {
                             document.execCommand('createLink', false, url);
-                            emitChange();
+                            flushSanitized();
                         }
                     }, 0);
                 }} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Ссылка"><Link size={16} /></button>
-                <button onMouseDown={handleInsertImageByUrl} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Изображение по ссылке"><Image size={16} /></button>
+                <button type="button" onMouseDown={handleInsertImageByUrl} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Изображение по ссылке"><Image size={16} /></button>
                 <button
+                    type="button"
                     onMouseDown={(e) => {
                         e.preventDefault();
                         uploadSelectionRef.current = saveSelection();
@@ -195,23 +226,21 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             </div>
             <div
                 ref={editorRef}
-                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_i]:italic [&_li]:mb-1"
+                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_li]:mb-1"
                 contentEditable
-                dangerouslySetInnerHTML={{ __html: sanitizeIncomingHtml(value) }}
-                onBlur={() => onChange(normalizeEditorHtml())}
-                onPaste={(e) => {
-                    const html = e.clipboardData?.getData('text/html') || '';
-                    const text = e.clipboardData?.getData('text/plain') || '';
-                    if (!html && !text) return;
-                    e.preventDefault();
-                    const normalized = html
-                        ? sanitizeIncomingHtml(html)
-                        : escapeHtml(text).replace(/\n/g, '<br>');
-                    document.execCommand('insertHTML', false, normalized);
-                    emitChange();
-                }}
-                placeholder={placeholder}
+                suppressContentEditableWarning
+                data-placeholder={placeholder || ''}
+                onInput={pushToParent}
+                onBlur={flushSanitized}
+                onPaste={handlePaste}
             />
+            <style>{`
+                [data-placeholder]:empty:before {
+                    content: attr(data-placeholder);
+                    color: rgb(148 163 184);
+                    pointer-events: none;
+                }
+            `}</style>
         </div>
     );
 };

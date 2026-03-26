@@ -445,14 +445,16 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     };
 
     const handleAdd = () => {
-        onAddContent({
-            id: Date.now(),
+        const payload = {
             ...newContent,
             type: 'Статья',
             tags: parseTags(newContent.tags)
-        });
+        };
+        if (payload.id === undefined || payload.id === null || payload.id === '') {
+            payload.id = Date.now();
+        }
+        onAddContent(payload);
         setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
-        onNotify("Материал добавлен в базу знаний");
     };
 
     const confirmAction = (title, message, onConfirm, variant = 'primary') => {
@@ -536,8 +538,9 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                         <div className="space-y-4">
                             <Input placeholder="Заголовок новости" value={newContent.title} onChange={e => setNewContent({ ...newContent, title: e.target.value })} />
                             <RichEditor
+                                key={newContent.id != null ? `news-${newContent.id}` : 'news-new'}
                                 value={newContent.body || ''}
-                                onChange={val => setNewContent({ ...newContent, body: val })}
+                                onChange={(val) => setNewContent((prev) => ({ ...prev, body: val }))}
                                 onUploadImage={api.uploadMeetingImage.bind(api)}
                                 placeholder="Текст новости..."
                             />
@@ -1165,8 +1168,9 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 </div>
 
                                 <RichEditor
+                                    key={newContent.id != null ? `kb-${newContent.id}` : 'kb-new'}
                                     value={newContent.content || ''}
-                                    onChange={val => setNewContent({ ...newContent, content: val })}
+                                    onChange={(val) => setNewContent((prev) => ({ ...prev, content: val }))}
                                     onUploadImage={api.uploadMeetingImage.bind(api)}
                                     placeholder="Напишите текст материала..."
                                 />
@@ -1246,8 +1250,9 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     </div>
 
                                     <RichEditor
+                                        key={newScenario.id != null ? `scenario-${newScenario.id}` : 'scenario-new'}
                                         value={newScenario.content || ''}
-                                        onChange={(val) => setNewScenario({ ...newScenario, content: val })}
+                                        onChange={(val) => setNewScenario((prev) => ({ ...prev, content: val }))}
                                         onUploadImage={api.uploadMeetingImage.bind(api)}
                                         placeholder="Текст сценария..."
                                     />

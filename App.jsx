@@ -250,13 +250,20 @@ export default function App() {
                         showNotification("Список пользователей обновлен");
                     }} onAddContent={async (c) => {
                         try {
-                            // Optimistic update
-                            setKnowledgeBase([...knowledgeBase, c]);
-                            await api.addKnowledge(c);
-                            showNotification("Материал сохранен в базе");
+                            const id = c?.id;
+                            const isUpdate = id != null && id !== '' && knowledgeBase.some((k) => String(k.id) === String(id));
+                            if (isUpdate) {
+                                await api.updateKnowledge(c);
+                                setKnowledgeBase((prev) => prev.map((k) => (String(k.id) === String(id) ? { ...k, ...c } : k)));
+                                showNotification('Материал обновлён');
+                            } else {
+                                await api.addKnowledge(c);
+                                setKnowledgeBase((prev) => [...prev, c]);
+                                showNotification('Материал добавлен в базу');
+                            }
                         } catch (e) {
                             console.error(e);
-                            showNotification("Ошибка сохранения (см. консоль)");
+                            showNotification(e?.message || 'Ошибка сохранения (см. консоль)');
                         }
                     }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n, options = {}) => {
                         try {

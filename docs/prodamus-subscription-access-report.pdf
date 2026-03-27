@@ -1,0 +1,496 @@
+%PDF-1.3
+%ºß¬à
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 4085
+>>
+stream
+0.200025 w
+0 G
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 793.8899999999999864 Td
+(Garden Platform: Prodamus Subscription Access Report) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 765.8899999999999864 Td
+(Generated: 2026-03-27T16:21:47.779Z) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 742.8899999999999864 Td
+(Scope: webhook processing, server-side access guard, blocked-screen UX, session hardening plan.) Tj
+ET
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 711.8899999999999864 Td
+(Implemented Changes) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 683.8899999999999864 Td
+(- Added migration: migrations/21_billing_subscription_access.sql.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 660.8899999999999864 Td
+(- Profiles now include access_status, subscription_status, paid_until, provider identifiers, and) Tj
+T* (session_version.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 622.8899999999999864 Td
+(- Added tables: subscriptions and billing_webhook_logs.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 599.8899999999999864 Td
+(- Added strict RLS guard via has_platform_access\(auth.uid\(\)\) for protected tables.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 576.8899999999999864 Td
+(- Added trigger touch_subscriptions_updated_at\(\) to keep subscriptions.updated_at current on update.) Tj
+ET
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 547.8899999999999864 Td
+(Access Control Model) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 519.8899999999999864 Td
+(- Single source of truth for platform access is access_status \(except admin role\).) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 496.8899999999999864 Td
+(- Removed hardcoded email bypass from client access checks and profile normalization.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 473.8899999999999864 Td
+(- Private data is blocked server-side through PostgREST + RLS, not only at UI level.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 450.8899999999999864 Td
+(- Manual pause \(paused_manual\) is separated from billing pause \(paused_expired\).) Tj
+ET
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 421.8899999999999864 Td
+(Webhook Reliability and Idempotency) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 393.8899999999999864 Td
+(- Webhook endpoint: /api/billing/prodamus/webhook \(alias /webhooks/prodamus\).) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 370.8899999999999864 Td
+(- IP allowlist check and signature validation are applied before processing.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 347.8899999999999864 Td
+(- external_id is deterministic: eventName:providerEventId, or) Tj
+T* (eventName:payload:sha256\(canonicalPayload\).) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 309.8899999999999864 Td
+(- Idempotency: insert log on conflict do nothing, then reuse existing log.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 286.8899999999999864 Td
+(- Race protection: pg_advisory_xact_lock\(hashtext\(lockKey\)\) per external_id.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 263.8899999999999864 Td
+(- profile_not_found is now replayable: is_processed=false, status 202, reason) Tj
+T* (profile_not_found_replayable.) Tj
+ET
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 219.8899999999999864 Td
+(User-Facing Behavior) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 191.8899999999999864 Td
+(- When access is paused due to subscription end, login is blocked and a renewal screen is shown.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 168.8899999999999864 Td
+(- After successful payment webhook \(payment_success/auto_payment\), access is restored) Tj
+T* (automatically.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 130.8899999999999864 Td
+(- If account is paused_manual, successful payment does not auto-restore access.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 107.8899999999999864 Td
+(- Nightly reconcile job blocks overdue users as fallback when paid_until < now\(\).) Tj
+ET
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 78.8899999999999864 Td
+(Session Invalidation Status \(Honest State\)) Tj
+ET
+endstream
+endobj
+5 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 1144
+>>
+stream
+0.200025 w
+0 G
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 793.8899999999999864 Td
+(- Current repo performs server-side data blocking immediately via RLS.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 770.8899999999999864 Td
+(- Current repo sends best-effort POST /auth/logout-all on blocking events.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 747.8899999999999864 Td
+(- Guaranteed forced logout for already-issued tokens requires auth-service validation of JWT) Tj
+T* (session_version.) Tj
+ET
+BT
+/F2 16 Tf
+18.3999999999999986 TL
+0 g
+48. 703.8899999999999864 Td
+(Prepared Delivery Artifacts) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 675.8899999999999864 Td
+(- docs/auth-service-session-version-patch.md: exact middleware contract and pseudocode for) Tj
+T* (auth-service.) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 637.8899999999999864 Td
+(- docs/prodamus-replay-scenarios.sql: real staging runbook \(SQL before/after + webhook checks\).) Tj
+ET
+BT
+/F1 11 Tf
+12.6499999999999986 TL
+0 g
+48. 614.8899999999999864 Td
+(- docs/rls-audit-check.sql: query to audit permissive/restrictive RLS policies table by table.) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R 5 0 R ]
+/Count 2
+>>
+endobj
+7 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+8 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+9 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+10 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+19 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+20 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 7 0 R
+/F2 8 0 R
+/F3 9 0 R
+/F4 10 0 R
+/F5 11 0 R
+/F6 12 0 R
+/F7 13 0 R
+/F8 14 0 R
+/F9 15 0 R
+/F10 16 0 R
+/F11 17 0 R
+/F12 18 0 R
+/F13 19 0 R
+/F14 20 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+21 0 obj
+<<
+/Producer (jsPDF 3.0.4)
+/CreationDate (D:20260327192147+03'00')
+>>
+endobj
+22 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 23
+0000000000 65535 f 
+0000005622 00000 n 
+0000007447 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000004289 00000 n 
+0000004426 00000 n 
+0000005685 00000 n 
+0000005810 00000 n 
+0000005940 00000 n 
+0000006073 00000 n 
+0000006211 00000 n 
+0000006335 00000 n 
+0000006464 00000 n 
+0000006596 00000 n 
+0000006732 00000 n 
+0000006860 00000 n 
+0000006987 00000 n 
+0000007116 00000 n 
+0000007249 00000 n 
+0000007351 00000 n 
+0000007697 00000 n 
+0000007783 00000 n 
+trailer
+<<
+/Size 23
+/Root 22 0 R
+/Info 21 0 R
+/ID [ <DE4E871E01EDC7DD5B93FA53FDD476B4> <DE4E871E01EDC7DD5B93FA53FDD476B4> ]
+>>
+startxref
+7887
+%%EOF

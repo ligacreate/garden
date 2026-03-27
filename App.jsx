@@ -3,6 +3,7 @@ import Toast from './components/Toast';
 import AuthScreen from './views/AuthScreen';
 import AdminPanel from './views/AdminPanel';
 import UserApp from './views/UserApp';
+import SubscriptionExpiredScreen from './views/SubscriptionExpiredScreen';
 import { INITIAL_KNOWLEDGE } from './data/data';
 import { api } from './services/dataService';
 
@@ -15,6 +16,7 @@ export default function App() {
     const [viewMode, setViewMode] = useState('default');
     const [loading, setLoading] = useState(true);
     const [librarySettings, setLibrarySettings] = useState({ hiddenCourses: [], materialOrder: {} });
+    const [accessBlock, setAccessBlock] = useState(null);
 
     const showNotification = (msg) => setNotification(msg);
 
@@ -77,7 +79,11 @@ export default function App() {
         const init = async () => {
             try {
                 const user = await api.getCurrentUser();
-                if (user) setCurrentUser(user);
+                if (!user) {
+                    setLoading(false);
+                    return;
+                }
+                setCurrentUser(user);
 
                 const allUsers = await api.getUsers();
                 setUsers(allUsers || []);
@@ -92,12 +98,40 @@ export default function App() {
                 setNews(newsData || []);
             } catch (e) {
                 console.error("Init error:", e);
+                if (e?.code === 'SUBSCRIPTION_EXPIRED' || e?.code === 'ACCESS_PAUSED_MANUAL') {
+                    setAccessBlock({
+                        code: e.code,
+                        message: e.message,
+                        botRenewUrl: e.botRenewUrl || null
+                    });
+                }
             } finally {
                 setLoading(false);
             }
         };
         init();
     }, []);
+
+    useEffect(() => {
+        if (!currentUser?.id) return undefined;
+        const timer = window.setInterval(async () => {
+            try {
+                await api.getCurrentUser();
+            } catch (e) {
+                if (e?.code === 'SUBSCRIPTION_EXPIRED' || e?.code === 'ACCESS_PAUSED_MANUAL') {
+                    await api.logout();
+                    setCurrentUser(null);
+                    setViewMode('default');
+                    setAccessBlock({
+                        code: e.code,
+                        message: e.message,
+                        botRenewUrl: e.botRenewUrl || null
+                    });
+                }
+            }
+        }, 60000);
+        return () => window.clearInterval(timer);
+    }, [currentUser?.id]);
 
     const handleLogin = async (authData) => {
         try {
@@ -114,12 +148,27 @@ export default function App() {
             }
 
             setCurrentUser(user);
+            setAccessBlock(null);
             // Refresh users list
             const allUsers = await api.getUsers();
             setUsers(allUsers || []);
+            const kb = await api.getKnowledgeBase();
+            if (kb && kb.length > 0) setKnowledgeBase(kb);
+            const settings = await api.getLibrarySettings();
+            if (settings) setLibrarySettings(settings);
+            const newsData = await api.getNews();
+            setNews(newsData || []);
             return true;
         } catch (e) {
             console.error(e);
+            if (e?.code === 'SUBSCRIPTION_EXPIRED' || e?.code === 'ACCESS_PAUSED_MANUAL') {
+                setAccessBlock({
+                    code: e.code,
+                    message: e.message,
+                    botRenewUrl: e.botRenewUrl || null
+                });
+                return false;
+            }
             let msg = e.message || "Ошибка входа";
             const normalizedMsg = String(msg).toLowerCase();
             if (normalizedMsg.includes("invalid login credentials") || normalizedMsg === "invalid" || normalizedMsg.includes("invalid credentials")) {
@@ -147,6 +196,7 @@ export default function App() {
     const handleLogout = async () => {
         await api.logout();
         setCurrentUser(null);
+        setAccessBlock(null);
         setViewMode('default');
     };
 
@@ -297,7 +347,30 @@ export default function App() {
         <div className={`min-h-screen bg-transparent font-sans text-slate-700 selection:bg-blue-100 selection:text-blue-900 flex justify-center relative`}>
             <div className="w-full max-w-[480px] md:max-w-full bg-transparent min-h-screen relative flex flex-col">
                 <Toast message={notification} onClose={() => setNotification(null)} />
-                {!currentUser ? <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
+                {!currentUser ? (
+                    accessBlock?.code === 'SUBSCRIPTION_EXPIRED' ? (
+                        <SubscriptionExpiredScreen
+                            renewUrl={accessBlock.botRenewUrl || import.meta.env.VITE_DEFAULT_BOT_RENEW_URL || ''}
+                            message={accessBlock.message}
+                            onRetry={async () => {
+                                try {
+                                    const user = await api.getCurrentUser();
+                                    if (user) {
+                                        setCurrentUser(user);
+                                        setAccessBlock(null);
+                                        showNotification('Доступ восстановлен');
+                                    }
+                                } catch (e) {
+                                    if (e?.code !== 'SUBSCRIPTION_EXPIRED') {
+                                        alert(e?.message || 'Пока не удалось восстановить доступ');
+                                    }
+                                }
+                            }}
+                        />
+                    ) : (
+                        <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
+                    )
+                )
                     : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);

@@ -20,6 +20,8 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
     const headers = { 'Content-Type': 'application/json' };
+    const token = getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
     if (options.count) headers['Prefer'] = 'count=exact';
     if (options.returnRepresentation) headers['Prefer'] = 'return=representation';
 
@@ -31,7 +33,9 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
 
     if (!response.ok) {
         const text = await response.text();
-        throw new Error(text);
+        const err = new Error(text || `PostgREST error (${response.status})`);
+        err.status = response.status;
+        throw err;
     }
 
     const data = await response.json();
@@ -355,6 +359,26 @@ const isCourseProgressAccessError = (error) => {
     return false;
 };
 
+const ACCESS_STATUS = {
+    ACTIVE: 'active',
+    PAUSED_EXPIRED: 'paused_expired',
+    PAUSED_MANUAL: 'paused_manual'
+};
+
+const SUBSCRIPTION_STATUS = {
+    ACTIVE: 'active',
+    OVERDUE: 'overdue',
+    DEACTIVATED: 'deactivated',
+    FINISHED: 'finished'
+};
+
+const makeAccessError = (message, code, extra = {}) => {
+    const err = new Error(message);
+    err.code = code;
+    Object.assign(err, extra);
+    return err;
+};
+
 class LocalStorageService {
     constructor() {
         this.users = JSON.parse(localStorage.getItem('garden_users')) || INITIAL_USERS;
@@ -369,18 +393,18 @@ class LocalStorageService {
         await delay(500);
         let user = this.users.find(u => u.email.toLowerCase() === email.toLowerCase().trim() && u.password === password);
 
-        // Fallback: Check INITIAL_USERS (admin) code
+        // Fallback: Check INITIAL_USERS admin account in local mode.
         if (!user) {
-            // ... (existing fallback logic)
-            const initialAdmin = INITIAL_USERS.find(u => u.email === 'olga@skrebeyko.com');
+            const initialAdmin = INITIAL_USERS.find(u => String(u.role || '').toLowerCase() === ROLES.ADMIN);
             if (initialAdmin && initialAdmin.email.toLowerCase() === email.toLowerCase().trim() && initialAdmin.password === password) {
                 user = initialAdmin;
             }
         }
 
         if (user) {
-            localStorage.setItem('garden_currentUser', JSON.stringify(user));
-            return user;
+            const checked = this._assertPlatformAccess(user);
+            localStorage.setItem('garden_currentUser', JSON.stringify(checked));
+            return checked;
         }
         throw new Error('Неверный email или пароль');
     }
@@ -500,7 +524,31 @@ class LocalStorageService {
     }
 
     async getCurrentUser() {
-        return JSON.parse(localStorage.getItem('garden_currentUser'));
+        const user = JSON.parse(localStorage.getItem('garden_currentUser'));
+        return this._assertPlatformAccess(user);
+    }
+
+    _assertPlatformAccess(profile) {
+        if (!profile) return null;
+        const role = String(profile.role || '').toLowerCase();
+        if (role === ROLES.ADMIN) {
+            return profile;
+        }
+        const accessStatus = String(profile.access_status || ACCESS_STATUS.ACTIVE).toLowerCase();
+        if (accessStatus === ACCESS_STATUS.PAUSED_MANUAL) {
+            throw makeAccessError(
+                'Ваш аккаунт приостановлен администратором. Обратитесь к куратору.',
+                'ACCESS_PAUSED_MANUAL'
+            );
+        }
+        if (accessStatus === ACCESS_STATUS.PAUSED_EXPIRED) {
+            throw makeAccessError(
+                'Доступ закрыт: подписка завершена. Продлите подписку в боте.',
+                'SUBSCRIPTION_EXPIRED',
+                { botRenewUrl: profile?.bot_renew_url || null }
+            );
+        }
+        return profile;
     }
 
     async getUsers() {
@@ -1074,8 +1122,25 @@ class RemoteApiService {
     }
 
     _assertActive(profile) {
-        if (profile?.status === 'suspended') {
-            throw new Error("Ваш аккаунт приостановлен. Обратитесь к администратору.");
+        if (!profile) return profile;
+        const role = String(profile.role || '').toLowerCase();
+        if (role === ROLES.ADMIN) {
+            return profile;
+        }
+
+        if (String(profile?.access_status || '').toLowerCase() === ACCESS_STATUS.PAUSED_MANUAL) {
+            throw makeAccessError(
+                "Ваш аккаунт приостановлен администратором. Обратитесь к куратору.",
+                'ACCESS_PAUSED_MANUAL'
+            );
+        }
+
+        if (String(profile?.access_status || ACCESS_STATUS.ACTIVE).toLowerCase() !== ACCESS_STATUS.ACTIVE) {
+            throw makeAccessError(
+                "Доступ к платформе закрыт: подписка завершена. Продлите подписку в боте.",
+                'SUBSCRIPTION_EXPIRED',
+                { botRenewUrl: profile?.bot_renew_url || null }
+            );
         }
         return profile;
     }
@@ -1381,9 +1446,10 @@ class RemoteApiService {
     }
 
     async toggleUserStatus(userId, newStatus) {
+        const accessStatus = newStatus === 'suspended' ? ACCESS_STATUS.PAUSED_MANUAL : ACCESS_STATUS.ACTIVE;
         await postgrestFetch('profiles', { id: `eq.${userId}` }, {
             method: 'PATCH',
-            body: { status: newStatus },
+            body: { status: newStatus, access_status: accessStatus },
             returnRepresentation: true
         });
         return true;
@@ -2398,15 +2464,11 @@ class RemoteApiService {
     _normalizeProfile(profile) {
         if (!profile) return null;
         const data = { ...profile };
-        if (data.email === 'olga@skrebeyko.com') {
-            data.role = 'admin';
-            data.status = 'active';
-        }
         return {
             ...data,
             avatar: data.avatar_url || data.avatar,
             treeDesc: data.tree_desc || data.treeDesc,
-            role: data.email === 'olga@skrebeyko.com' ? 'admin' : data.role,
+            role: data.role,
             dob: data.dob,
             seeds: data.seeds || 0,
             skills: Array.isArray(data.skills) ? data.skills : [],
@@ -2416,7 +2478,17 @@ class RemoteApiService {
             leader_signature: data.leader_signature || '',
             leader_reviews: Array.isArray(data.leader_reviews) ? data.leader_reviews : [],
             telegram: data.telegram || '',
-            join_date: data.join_date
+            join_date: data.join_date,
+            access_status: data.access_status || ACCESS_STATUS.ACTIVE,
+            subscription_status: data.subscription_status || SUBSCRIPTION_STATUS.ACTIVE,
+            paid_until: data.paid_until || null,
+            prodamus_subscription_id: data.prodamus_subscription_id || null,
+            prodamus_customer_id: data.prodamus_customer_id || null,
+            last_payment_at: data.last_payment_at || null,
+            last_prodamus_event: data.last_prodamus_event || null,
+            last_prodamus_payload: data.last_prodamus_payload || null,
+            bot_renew_url: data.bot_renew_url || null,
+            session_version: Number.isFinite(Number(data.session_version)) ? Number(data.session_version) : 1
         };
     }
 }

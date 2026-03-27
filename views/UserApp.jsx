@@ -113,7 +113,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         const manualNews = (news || []).map(n => ({
             ...n,
             type: 'manual',
-            date: new Date(n.created_at || n.timestamp || Date.now())
+            date: new Date(n.timestamp || Date.now())
         }));
 
         if (!birthdayTemplates || birthdayTemplates.length === 0) {

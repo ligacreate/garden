@@ -27,7 +27,7 @@ const NewsView = ({ news = [], users = [] }) => {
 
     // Merge manual news with birthday auto-news
     const allNews = useMemo(() => {
-        const manualNews = news.map(n => ({ ...n, type: 'manual', date: new Date(n.created_at || n.timestamp || Date.now()) }));
+        const manualNews = news.map(n => ({ ...n, type: 'manual', date: new Date(n.timestamp || Date.now()) }));
 
         if (templates.length === 0) return manualNews; // Wait for templates
 

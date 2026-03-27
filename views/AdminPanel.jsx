@@ -961,7 +961,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                             </td>
                                             <td className="py-4">
                                                 <div className="flex items-center gap-2">
-                                                    {u.email !== 'olga@skrebeyko.com' && (
+                                                    {String(u.role || '').toLowerCase() !== 'admin' && (
                                                         <>
                                                             <button
                                                                 onClick={async () => {

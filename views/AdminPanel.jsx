@@ -245,7 +245,7 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     );
 };
 
-const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState('stats');
     const [contentTab, setContentTab] = useState('library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
@@ -260,6 +260,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     const [draggingItemId, setDraggingItemId] = useState(null);
     const [sendPushOnNews, setSendPushOnNews] = useState(true);
     const [editingMaterialId, setEditingMaterialId] = useState(null);
+    const [isNormalizingKnowledge, setIsNormalizingKnowledge] = useState(false);
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -1054,7 +1055,33 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 </div>
                             </div>
 
-                            <h3 className="font-display font-semibold text-slate-900 mb-4">База знаний ({knowledgeBase.length})</h3>
+                            <div className="flex items-center justify-between gap-3 mb-4">
+                                <h3 className="font-display font-semibold text-slate-900">База знаний ({knowledgeBase.length})</h3>
+                                <Button
+                                    variant="secondary"
+                                    className="!py-2 !px-3 text-xs"
+                                    disabled={!onNormalizeKnowledgeContent || isNormalizingKnowledge}
+                                    onClick={() => {
+                                        confirmAction(
+                                            "Нормализовать все материалы?",
+                                            "Система массово пересохранит rich-текст материалов по новым правилам (заголовки/абзацы/внешняя вставка).",
+                                            async () => {
+                                                try {
+                                                    setIsNormalizingKnowledge(true);
+                                                    await onNormalizeKnowledgeContent?.();
+                                                } catch (e) {
+                                                    onNotify(e?.message || 'Ошибка нормализации материалов');
+                                                } finally {
+                                                    setIsNormalizingKnowledge(false);
+                                                }
+                                            },
+                                            'primary'
+                                        );
+                                    }}
+                                >
+                                    {isNormalizingKnowledge ? 'Нормализация...' : 'Нормализовать все материалы'}
+                                </Button>
+                            </div>
                             <div className="space-y-3 max-h-[420px] overflow-y-auto mb-6">
                                 {groupedKnowledgeBase.map(({ category, items }) => (
                                     <details key={category} className="group bg-white/70 rounded-2xl border border-slate-100">

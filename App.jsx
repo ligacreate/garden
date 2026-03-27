@@ -18,6 +18,60 @@ export default function App() {
 
     const showNotification = (msg) => setNotification(msg);
 
+    const normalizeLegacyRichContent = (rawContent) => {
+        const raw = String(rawContent || '');
+        if (!raw.trim()) return raw;
+        if (!/<\/?[a-z][\s\S]*>/i.test(raw)) return raw;
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div id="root">${raw}</div>`, 'text/html');
+        const root = doc.getElementById('root');
+        if (!root) return raw;
+
+        const replaceTag = (node, nextTag) => {
+            if (!node || node.tagName === nextTag.toUpperCase()) return node;
+            const replacement = doc.createElement(nextTag);
+            while (node.firstChild) replacement.appendChild(node.firstChild);
+            node.replaceWith(replacement);
+            return replacement;
+        };
+
+        Array.from(root.querySelectorAll('*')).forEach((node) => {
+            const style = String(node.getAttribute('style') || '').toLowerCase();
+            const className = String(node.getAttribute('class') || '').toLowerCase();
+            const classLooksHeading = /(heading|title|subtitle|msoheading|ql-size-huge|ql-size-large)/.test(className);
+            const sizeMatch = style.match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/);
+            const sizeRaw = sizeMatch ? parseFloat(sizeMatch[1]) : NaN;
+            const sizePx = Number.isFinite(sizeRaw) ? (sizeMatch[2] === 'pt' ? sizeRaw * 1.333 : sizeRaw) : null;
+            const isBold = /font-weight\s*:\s*(bold|[6-9]00)/.test(style);
+            const isItalic = /font-style\s*:\s*italic/.test(style);
+
+            if (['DIV', 'P', 'SPAN'].includes(node.tagName) && (sizePx != null || classLooksHeading)) {
+                if (sizePx >= 24) replaceTag(node, 'h2');
+                else if (sizePx >= 19) replaceTag(node, 'h3');
+                else if (sizePx >= 16 && isBold) replaceTag(node, 'h4');
+                else if (classLooksHeading && isBold) replaceTag(node, 'h3');
+            } else if (node.tagName === 'SPAN' && isBold) {
+                replaceTag(node, 'strong');
+            } else if (node.tagName === 'SPAN' && isItalic) {
+                replaceTag(node, 'em');
+            } else if (node.tagName === 'INPUT') {
+                node.remove();
+            }
+        });
+
+        Array.from(root.querySelectorAll('div')).forEach((div) => {
+            const hasOnlyInlineChildren = Array.from(div.children).every((c) => ['SPAN', 'A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR'].includes(c.tagName));
+            if (hasOnlyInlineChildren && div.parentElement && !['LI', 'TD', 'TH'].includes(div.parentElement.tagName)) {
+                const p = doc.createElement('p');
+                while (div.firstChild) p.appendChild(div.firstChild);
+                div.replaceWith(p);
+            }
+        });
+
+        return root.innerHTML;
+    };
+
     // Initial Data Fetch
     useEffect(() => {
         const init = async () => {
@@ -270,6 +324,23 @@ export default function App() {
                             console.error(e);
                             showNotification(e?.message || 'Ошибка сохранения (см. консоль)');
                         }
+                    }} onNormalizeKnowledgeContent={async () => {
+                        if (!Array.isArray(knowledgeBase) || knowledgeBase.length === 0) {
+                            showNotification('Нет материалов для нормализации');
+                            return { updated: 0, total: 0 };
+                        }
+                        let updated = 0;
+                        for (const item of knowledgeBase) {
+                            const current = String(item?.content || item?.body || '');
+                            const normalized = normalizeLegacyRichContent(current);
+                            if (normalized === current) continue;
+                            await api.updateKnowledge({ ...item, content: normalized });
+                            updated += 1;
+                        }
+                        const fresh = await api.getKnowledgeBase();
+                        if (Array.isArray(fresh)) setKnowledgeBase(fresh);
+                        showNotification(`Нормализация завершена: обновлено ${updated} из ${knowledgeBase.length}`);
+                        return { updated, total: knowledgeBase.length };
                     }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n, options = {}) => {
                         try {
                             const created = await api.addNews(n);

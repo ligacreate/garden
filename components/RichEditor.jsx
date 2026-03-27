@@ -333,6 +333,14 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         flushSanitized();
     };
 
+    const handleKeyDown = (e) => {
+        if (e.key !== 'Enter') return;
+        // Unify Enter and Shift+Enter: always create a new paragraph block.
+        e.preventDefault();
+        document.execCommand('insertParagraph');
+        pushToParent();
+    };
+
     const handleInsertTable = (e) => {
         e.preventDefault();
         const rows = Math.min(20, Math.max(1, parseInt(prompt('Сколько строк? (1-20)', '3') || '3', 10) || 3));
@@ -394,13 +402,14 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             </div>
             <div
                 ref={editorRef}
-                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1.5 [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5"
+                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_p]:my-2 [&_p]:leading-relaxed [&_div]:my-2 [&_div]:leading-relaxed [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1.5 [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5"
                 contentEditable
                 suppressContentEditableWarning
                 data-placeholder={placeholder || ''}
                 onInput={pushToParent}
                 onBlur={flushSanitized}
                 onPaste={handlePaste}
+                onKeyDown={handleKeyDown}
             />
             <style>{`
                 [data-placeholder]:empty:before {

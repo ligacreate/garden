@@ -110,6 +110,68 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
+    const parseTextLineType = (line) => {
+        const trimmed = String(line || '').trim();
+        if (!trimmed) return { type: 'empty', value: '' };
+
+        const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+            const lvl = Math.min(6, heading[1].length);
+            return { type: 'heading', level: lvl, value: heading[2].trim() };
+        }
+
+        const ordered = trimmed.match(/^(\d+)[\.\)]\s+(.+)$/);
+        if (ordered) {
+            return { type: 'ol', value: ordered[2].trim() };
+        }
+
+        const unordered = trimmed.match(/^[-*•]\s+(.+)$/);
+        if (unordered) {
+            return { type: 'ul', value: unordered[1].trim() };
+        }
+
+        return { type: 'p', value: trimmed };
+    };
+
+    const plainTextToStructuredHtml = (text) => {
+        const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+        const out = [];
+        let list = null;
+
+        const closeList = () => {
+            if (!list) return;
+            out.push(`<${list.type}>${list.items.join('')}</${list.type}>`);
+            list = null;
+        };
+
+        for (const line of lines) {
+            const token = parseTextLineType(line);
+            if (token.type === 'empty') {
+                closeList();
+                continue;
+            }
+
+            if (token.type === 'ul' || token.type === 'ol') {
+                if (!list || list.type !== token.type) {
+                    closeList();
+                    list = { type: token.type, items: [] };
+                }
+                list.items.push(`<li>${escapeHtml(token.value)}</li>`);
+                continue;
+            }
+
+            closeList();
+            if (token.type === 'heading') {
+                out.push(`<h${token.level}>${escapeHtml(token.value)}</h${token.level}>`);
+            } else {
+                out.push(`<p>${escapeHtml(token.value)}</p>`);
+            }
+        }
+
+        closeList();
+        return out.join('');
+    };
+
     const saveSelection = () => {
         const selection = window.getSelection();
         return selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
@@ -172,7 +234,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         e.preventDefault();
         const normalized = html
             ? sanitizeIncomingHtml(html)
-            : escapeHtml(text).replace(/\n/g, '<br>');
+            : plainTextToStructuredHtml(text);
         document.execCommand('insertHTML', false, normalized);
         flushSanitized();
     };

@@ -352,7 +352,10 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-blue-500" />
                                         <div className="flex items-baseline justify-between mb-1"><h3 className="font-bold text-slate-900 text-lg">{item.title}</h3><span className="font-mono text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded">{item.time}</span></div>
                                         <div className="mb-3"><span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{item.type}</span></div>
-                                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-sm text-slate-600 leading-relaxed">{item.description || "Нет описания для этой практики."}</div>
+                                        <div
+                                            className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-sm text-slate-600 leading-relaxed prose prose-slate max-w-none clean-rich-text [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_li]:my-1"
+                                            dangerouslySetInnerHTML={{ __html: formatMaterialContent(item.description || 'Нет описания для этой практики.') }}
+                                        />
                                     </div>
                                 ))}
                             </div>

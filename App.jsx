@@ -251,10 +251,12 @@ export default function App() {
                     }} onAddContent={async (c) => {
                         try {
                             const id = c?.id;
-                            const isUpdate = id != null && id !== '' && knowledgeBase.some((k) => String(k.id) === String(id));
+                            const isUpdate = id != null && id !== '';
                             if (isUpdate) {
                                 await api.updateKnowledge(c);
-                                setKnowledgeBase((prev) => prev.map((k) => (String(k.id) === String(id) ? { ...k, ...c } : k)));
+                                const fresh = await api.getKnowledgeBase();
+                                if (Array.isArray(fresh) && fresh.length > 0) setKnowledgeBase(fresh);
+                                else setKnowledgeBase((prev) => prev.map((k) => (String(k.id) === String(id) ? { ...k, ...c } : k)));
                                 showNotification('Материал обновлён');
                             } else {
                                 await api.addKnowledge(c);

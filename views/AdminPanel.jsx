@@ -450,9 +450,6 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
             type: 'Статья',
             tags: parseTags(newContent.tags)
         };
-        if (payload.id === undefined || payload.id === null || payload.id === '') {
-            payload.id = Date.now();
-        }
         onAddContent(payload);
         setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     };

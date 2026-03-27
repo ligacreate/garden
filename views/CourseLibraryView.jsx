@@ -118,7 +118,7 @@ const LEAGUE_SCENARIOS_CARD = {
     id: 'league-scenarios',
     title: 'Сценарии лиги',
     description: 'Библиотека сценариев сообщества. Откройте раздел и изучайте готовые сценарии встреч.',
-    image: 'https://images.unsplash.com/photo-1456324504439-367cee3b3c32?auto=format&fit=crop&q=80&w=800',
+    image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=800',
     tag: 'Курсы',
     minRole: ROLES.APPLICANT
 };

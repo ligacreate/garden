@@ -329,18 +329,18 @@ export default function App() {
                             showNotification('Нет материалов для нормализации');
                             return { updated: 0, total: 0 };
                         }
-                        let updated = 0;
+                        const changedItems = [];
                         for (const item of knowledgeBase) {
                             const current = String(item?.content || item?.body || '');
                             const normalized = normalizeLegacyRichContent(current);
                             if (normalized === current) continue;
-                            await api.updateKnowledge({ ...item, content: normalized });
-                            updated += 1;
+                            changedItems.push({ ...item, content: normalized });
                         }
+                        if (changedItems.length > 0) await api.bulkUpdateKnowledge(changedItems);
                         const fresh = await api.getKnowledgeBase();
                         if (Array.isArray(fresh)) setKnowledgeBase(fresh);
-                        showNotification(`Нормализация завершена: обновлено ${updated} из ${knowledgeBase.length}`);
-                        return { updated, total: knowledgeBase.length };
+                        showNotification(`Нормализация завершена: обновлено ${changedItems.length} из ${knowledgeBase.length}`);
+                        return { updated: changedItems.length, total: knowledgeBase.length };
                     }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n, options = {}) => {
                         try {
                             const created = await api.addNews(n);

@@ -575,6 +575,17 @@ class LocalStorageService {
         return this.knowledgeBase[idx];
     }
 
+    async bulkUpdateKnowledge(items = []) {
+        const list = Array.isArray(items) ? items : [];
+        let updated = 0;
+        for (const item of list) {
+            if (!item?.id && item?.id !== 0) continue;
+            await this.updateKnowledge(item);
+            updated += 1;
+        }
+        return { updated };
+    }
+
     async getLibrarySettings() {
         const raw = JSON.parse(localStorage.getItem(LIBRARY_SETTINGS_STORAGE_KEY) || 'null');
         return normalizeLibrarySettings(raw || DEFAULT_LIBRARY_SETTINGS);
@@ -1413,6 +1424,26 @@ class RemoteApiService {
             returnRepresentation: true
         });
         return true;
+    }
+
+    async bulkUpdateKnowledge(items = []) {
+        const list = Array.isArray(items) ? items : [];
+        let updated = 0;
+        for (const item of list) {
+            const id = item?.id;
+            if (id === undefined || id === null || id === '') continue;
+            const { id: _omitId, ...rest } = this._sanitizeFields(
+                { ...item, content: item.content || item.body || '' },
+                { plain: ['title', 'description'], rich: ['content'] }
+            );
+            await postgrestFetch('knowledge_base', { id: `eq.${id}` }, {
+                method: 'PATCH',
+                body: rest,
+                returnRepresentation: true
+            });
+            updated += 1;
+        }
+        return { updated };
     }
 
     async addKnowledgeBaseItem(item) {

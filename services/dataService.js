@@ -20,8 +20,7 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
     const headers = { 'Content-Type': 'application/json' };
-    const token = getAuthToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
+    // Temporary fallback: keep PostgREST requests anonymous until auth-service/PostgREST JWT config is aligned.
     if (options.count) headers['Prefer'] = 'count=exact';
     if (options.returnRepresentation) headers['Prefer'] = 'return=representation';
 
@@ -529,25 +528,7 @@ class LocalStorageService {
     }
 
     _assertPlatformAccess(profile) {
-        if (!profile) return null;
-        const role = String(profile.role || '').toLowerCase();
-        if (role === ROLES.ADMIN) {
-            return profile;
-        }
-        const accessStatus = String(profile.access_status || ACCESS_STATUS.ACTIVE).toLowerCase();
-        if (accessStatus === ACCESS_STATUS.PAUSED_MANUAL) {
-            throw makeAccessError(
-                'Ваш аккаунт приостановлен администратором. Обратитесь к куратору.',
-                'ACCESS_PAUSED_MANUAL'
-            );
-        }
-        if (accessStatus === ACCESS_STATUS.PAUSED_EXPIRED) {
-            throw makeAccessError(
-                'Доступ закрыт: подписка завершена. Продлите подписку в боте.',
-                'SUBSCRIPTION_EXPIRED',
-                { botRenewUrl: profile?.bot_renew_url || null }
-            );
-        }
+        // Temporary open access mode: local storage auth should not block by subscription.
         return profile;
     }
 
@@ -1122,26 +1103,7 @@ class RemoteApiService {
     }
 
     _assertActive(profile) {
-        if (!profile) return profile;
-        const role = String(profile.role || '').toLowerCase();
-        if (role === ROLES.ADMIN) {
-            return profile;
-        }
-
-        if (String(profile?.access_status || '').toLowerCase() === ACCESS_STATUS.PAUSED_MANUAL) {
-            throw makeAccessError(
-                "Ваш аккаунт приостановлен администратором. Обратитесь к куратору.",
-                'ACCESS_PAUSED_MANUAL'
-            );
-        }
-
-        if (String(profile?.access_status || ACCESS_STATUS.ACTIVE).toLowerCase() !== ACCESS_STATUS.ACTIVE) {
-            throw makeAccessError(
-                "Доступ к платформе закрыт: подписка завершена. Продлите подписку в боте.",
-                'SUBSCRIPTION_EXPIRED',
-                { botRenewUrl: profile?.bot_renew_url || null }
-            );
-        }
+        // Temporary open access mode: do not block login by subscription status.
         return profile;
     }
 

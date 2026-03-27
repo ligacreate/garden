@@ -25,55 +25,121 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             'DIV', 'SPAN'
         ]);
 
+        const styleToSemantic = (node) => {
+            const style = String(node?.getAttribute?.('style') || '').toLowerCase();
+            const className = String(node?.getAttribute?.('class') || '').toLowerCase();
+            if (!style && !className) return node;
+
+            const parseFontSizePx = () => {
+                const m = style.match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/);
+                if (!m) return null;
+                const value = parseFloat(m[1]);
+                if (!Number.isFinite(value)) return null;
+                return m[2] === 'pt' ? value * 1.333 : value;
+            };
+
+            const replaceTag = (sourceNode, nextTag) => {
+                if (!sourceNode || sourceNode.tagName === nextTag.toUpperCase()) return sourceNode;
+                const replacement = doc.createElement(nextTag);
+                while (sourceNode.firstChild) replacement.appendChild(sourceNode.firstChild);
+                sourceNode.replaceWith(replacement);
+                return replacement;
+            };
+
+            let current = node;
+            const sizePx = parseFontSizePx();
+            const isBold = /font-weight\s*:\s*(bold|[6-9]00)/.test(style);
+            const isItalic = /font-style\s*:\s*italic/.test(style);
+            const isBlock = ['DIV', 'P', 'SPAN'].includes(current.tagName);
+            const classLooksHeading = /(heading|title|subtitle|msoheading|ql-size-huge|ql-size-large)/.test(className);
+
+            if (isBlock && (sizePx != null || classLooksHeading)) {
+                if (sizePx >= 24) current = replaceTag(current, 'h2');
+                else if (sizePx >= 19) current = replaceTag(current, 'h3');
+                else if (sizePx >= 16 && isBold) current = replaceTag(current, 'h4');
+                else if (classLooksHeading && isBold) current = replaceTag(current, 'h3');
+            }
+
+            if (current.tagName === 'SPAN' && isBold) current = replaceTag(current, 'strong');
+            if (current.tagName === 'SPAN' && isItalic) current = replaceTag(current, 'em');
+
+            return current;
+        };
+
         const walk = (node) => {
             Array.from(node.children || []).forEach((child) => {
-                const tag = child.tagName;
+                let current = styleToSemantic(child);
+                const tag = current.tagName;
                 if (!allowedTags.has(tag)) {
                     const fragment = doc.createDocumentFragment();
-                    while (child.firstChild) fragment.appendChild(child.firstChild);
-                    child.replaceWith(fragment);
+                    while (current.firstChild) fragment.appendChild(current.firstChild);
+                    current.replaceWith(fragment);
                     return;
                 }
 
-                child.removeAttribute('style');
-                child.removeAttribute('class');
-                child.removeAttribute('id');
+                current.removeAttribute('style');
+                current.removeAttribute('class');
+                current.removeAttribute('id');
 
                 if (tag === 'A') {
-                    const href = (child.getAttribute('href') || '').trim();
+                    const href = (current.getAttribute('href') || '').trim();
                     if (!/^https?:\/\//i.test(href)) {
-                        child.removeAttribute('href');
+                        current.removeAttribute('href');
                     } else {
-                        child.setAttribute('href', href);
-                        child.setAttribute('target', '_blank');
-                        child.setAttribute('rel', 'noopener noreferrer');
+                        current.setAttribute('href', href);
+                        current.setAttribute('target', '_blank');
+                        current.setAttribute('rel', 'noopener noreferrer');
                     }
-                    Array.from(child.attributes).forEach((attr) => {
-                        if (!['href', 'target', 'rel'].includes(attr.name)) child.removeAttribute(attr.name);
+                    Array.from(current.attributes).forEach((attr) => {
+                        if (!['href', 'target', 'rel'].includes(attr.name)) current.removeAttribute(attr.name);
                     });
                 } else if (tag === 'IMG') {
-                    const src = (child.getAttribute('src') || '').trim();
+                    const src = (current.getAttribute('src') || '').trim();
                     if (!/^https?:\/\//i.test(src) && !/^data:image\//i.test(src)) {
-                        child.remove();
+                        current.remove();
                         return;
                     }
-                    child.setAttribute('src', src);
-                    Array.from(child.attributes).forEach((attr) => {
-                        if (!['src', 'alt'].includes(attr.name)) child.removeAttribute(attr.name);
+                    current.setAttribute('src', src);
+                    Array.from(current.attributes).forEach((attr) => {
+                        if (!['src', 'alt'].includes(attr.name)) current.removeAttribute(attr.name);
                     });
+                } else if (tag === 'INPUT') {
+                    // Checklists from Notion/Docs often have checkbox inputs in list items.
+                    current.remove();
+                    return;
                 } else if (tag === 'TD' || tag === 'TH') {
-                    const colspan = child.getAttribute('colspan');
-                    const rowspan = child.getAttribute('rowspan');
-                    Array.from(child.attributes).forEach((attr) => child.removeAttribute(attr.name));
-                    if (colspan && /^\d+$/.test(colspan)) child.setAttribute('colspan', colspan);
-                    if (rowspan && /^\d+$/.test(rowspan)) child.setAttribute('rowspan', rowspan);
+                    const colspan = current.getAttribute('colspan');
+                    const rowspan = current.getAttribute('rowspan');
+                    Array.from(current.attributes).forEach((attr) => current.removeAttribute(attr.name));
+                    if (colspan && /^\d+$/.test(colspan)) current.setAttribute('colspan', colspan);
+                    if (rowspan && /^\d+$/.test(rowspan)) current.setAttribute('rowspan', rowspan);
                 } else {
-                    Array.from(child.attributes).forEach((attr) => child.removeAttribute(attr.name));
+                    Array.from(current.attributes).forEach((attr) => current.removeAttribute(attr.name));
                 }
 
-                walk(child);
+                walk(current);
             });
         };
+
+        // Pre-normalize common foreign clipboard structures before attribute cleanup.
+        Array.from(root.querySelectorAll('p,div')).forEach((el) => {
+            const className = String(el.getAttribute('class') || '').toLowerCase();
+            if (/(heading|title|subtitle|msoheading)/.test(className) && el.tagName !== 'H2' && el.tagName !== 'H3') {
+                const heading = doc.createElement('h3');
+                while (el.firstChild) heading.appendChild(el.firstChild);
+                el.replaceWith(heading);
+            }
+        });
+
+        // Flatten nested block containers from Office/Notion exports where possible.
+        Array.from(root.querySelectorAll('div')).forEach((div) => {
+            const hasOnlyInlineChildren = Array.from(div.children).every((c) => ['SPAN', 'A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR'].includes(c.tagName));
+            if (hasOnlyInlineChildren && div.parentElement && !['LI', 'TD', 'TH'].includes(div.parentElement.tagName)) {
+                const p = doc.createElement('p');
+                while (div.firstChild) p.appendChild(div.firstChild);
+                div.replaceWith(p);
+            }
+        });
 
         walk(root);
         return root.innerHTML;

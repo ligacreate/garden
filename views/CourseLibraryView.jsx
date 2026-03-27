@@ -420,12 +420,65 @@ const CourseLibraryView = ({
         return root.innerHTML;
     };
 
+const normalizeStyledHtmlToSemantic = (html) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
+    const root = doc.getElementById('root');
+    if (!root) return html;
+
+    const toArray = Array.from(root.querySelectorAll('*'));
+    toArray.forEach((node) => {
+        const style = String(node.getAttribute('style') || '').toLowerCase();
+        const className = String(node.getAttribute('class') || '').toLowerCase();
+        if (!style && !className) return;
+
+        const fontSizeMatch = style.match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/);
+        const rawSize = fontSizeMatch ? parseFloat(fontSizeMatch[1]) : NaN;
+        const sizePx = Number.isFinite(rawSize)
+            ? (fontSizeMatch[2] === 'pt' ? rawSize * 1.333 : rawSize)
+            : null;
+        const isBold = /font-weight\s*:\s*(bold|[6-9]00)/.test(style);
+        const isItalic = /font-style\s*:\s*italic/.test(style);
+        const classLooksHeading = /(heading|title|subtitle|msoheading|ql-size-huge|ql-size-large)/.test(className);
+
+        const replaceWithTag = (nextTag) => {
+            if (node.tagName === nextTag.toUpperCase()) return node;
+            const replacement = doc.createElement(nextTag);
+            while (node.firstChild) replacement.appendChild(node.firstChild);
+            node.replaceWith(replacement);
+            return replacement;
+        };
+
+        if (['DIV', 'P', 'SPAN'].includes(node.tagName) && (sizePx != null || classLooksHeading)) {
+            if (sizePx >= 24) replaceWithTag('h2');
+            else if (sizePx >= 19) replaceWithTag('h3');
+            else if (sizePx >= 16 && isBold) replaceWithTag('h4');
+            else if (classLooksHeading && isBold) replaceWithTag('h3');
+        } else if (node.tagName === 'SPAN' && isBold) {
+            replaceWithTag('strong');
+        } else if (node.tagName === 'SPAN' && isItalic) {
+            replaceWithTag('em');
+        }
+    });
+
+    Array.from(root.querySelectorAll('div')).forEach((div) => {
+        const hasOnlyInlineChildren = Array.from(div.children).every((c) => ['SPAN', 'A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR'].includes(c.tagName));
+        if (hasOnlyInlineChildren && div.parentElement && !['LI', 'TD', 'TH'].includes(div.parentElement.tagName)) {
+            const p = doc.createElement('p');
+            while (div.firstChild) p.appendChild(div.firstChild);
+            div.replaceWith(p);
+        }
+    });
+
+    return root.innerHTML;
+};
+
     const formatMaterialContent = (content) => {
         const raw = String(content || '').trim();
         if (!raw) return '<p>Материал в процессе подготовки.</p>';
 
         const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
-        const baseHtml = hasHtmlTags ? raw : plainTextToHtml(raw);
+    const baseHtml = hasHtmlTags ? normalizeStyledHtmlToSemantic(raw) : plainTextToHtml(raw);
         const sanitized = DOMPurify.sanitize(baseHtml);
         const withLinks = enhanceLinksInHtml(sanitized);
 
@@ -1264,7 +1317,7 @@ const CourseLibraryView = ({
                         ))}
                     </div>
 
-                    <div className="prose prose-slate max-w-none text-sm mb-8 clean-rich-text [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200" dangerouslySetInnerHTML={{ __html: selectedMaterialContentHtml }} />
+                    <div className="prose prose-slate max-w-none text-sm mb-8 clean-rich-text [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:leading-tight [&_h1]:my-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight [&_h2]:my-4 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-3 [&_h4]:text-base [&_h4]:font-semibold [&_h4]:my-3 [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_div]:my-3 [&_div]:leading-relaxed [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200" dangerouslySetInnerHTML={{ __html: selectedMaterialContentHtml }} />
 
                     <div className="border-t border-slate-100 pt-5 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap gap-2">

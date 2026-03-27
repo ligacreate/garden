@@ -248,11 +248,14 @@ export default function App() {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);
                         showNotification("Список пользователей обновлен");
-                    }} onAddContent={async (c) => {
+                    }} onAddContent={async (c, options = {}) => {
                         try {
                             const id = c?.id;
-                            const isUpdate = id != null && id !== '';
+                            const isUpdate = options?.isEdit === true || (id != null && id !== '');
                             if (isUpdate) {
+                                if (id == null || id === '') {
+                                    throw new Error('Не найден id материала для сохранения изменений');
+                                }
                                 await api.updateKnowledge(c);
                                 const fresh = await api.getKnowledgeBase();
                                 if (Array.isArray(fresh) && fresh.length > 0) setKnowledgeBase(fresh);

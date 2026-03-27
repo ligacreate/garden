@@ -259,6 +259,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     const [editingEvent, setEditingEvent] = useState(null);
     const [draggingItemId, setDraggingItemId] = useState(null);
     const [sendPushOnNews, setSendPushOnNews] = useState(true);
+    const [editingMaterialId, setEditingMaterialId] = useState(null);
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -445,12 +446,17 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     };
 
     const handleAdd = () => {
+        const isEdit = editingMaterialId != null && editingMaterialId !== '';
         const payload = {
             ...newContent,
             type: 'Статья',
             tags: parseTags(newContent.tags)
         };
-        onAddContent(payload);
+        if (isEdit) {
+            payload.id = editingMaterialId;
+        }
+        onAddContent(payload, { isEdit });
+        setEditingMaterialId(null);
         setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     };
 
@@ -1088,7 +1094,10 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                                         </div>
                                                     </div>
                                                     <div className="flex gap-2">
-                                                        <button onClick={() => setNewContent({ ...item, tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || '') })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                                        <button onClick={() => {
+                                                            setEditingMaterialId(item?.id ?? null);
+                                                            setNewContent({ ...item, tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || '') });
+                                                        }} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
                                                         <button onClick={async () => {
                                                             confirmAction(
                                                                 "Удалить материал?",
@@ -1117,7 +1126,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
 
                             <hr className="border-slate-100 my-6" />
 
-                            <h3 className="font-display font-semibold text-slate-900 mb-4">{newContent.id ? 'Редактировать материал' : 'Добавить материал'}</h3>
+                            <h3 className="font-display font-semibold text-slate-900 mb-4">{editingMaterialId != null ? 'Редактировать материал' : 'Добавить материал'}</h3>
                             <div className="space-y-4">
                                 <Input placeholder="Название" value={newContent.title} onChange={e => setNewContent({ ...newContent, title: e.target.value })} />
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1165,7 +1174,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 </div>
 
                                 <RichEditor
-                                    key={newContent.id != null ? `kb-${newContent.id}` : 'kb-new'}
+                                    key={editingMaterialId != null ? `kb-${editingMaterialId}` : 'kb-new'}
                                     value={newContent.content || ''}
                                     onChange={(val) => setNewContent((prev) => ({ ...prev, content: val }))}
                                     onUploadImage={api.uploadMeetingImage.bind(api)}
@@ -1173,8 +1182,11 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 />
 
                                 <div className="flex gap-2">
-                                    {newContent.id && <Button variant="secondary" onClick={() => setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' })}>Отмена</Button>}
-                                    <Button onClick={handleAdd} className="w-full">{newContent.id ? 'Сохранить изменения' : 'Опубликовать'}</Button>
+                                    {editingMaterialId != null && <Button variant="secondary" onClick={() => {
+                                        setEditingMaterialId(null);
+                                        setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
+                                    }}>Отмена</Button>}
+                                    <Button onClick={handleAdd} className="w-full">{editingMaterialId != null ? 'Сохранить изменения' : 'Опубликовать'}</Button>
                                 </div>
                             </div>
                         </div>

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Bold, Italic, Link, List, ListOrdered, Type, Image, Upload } from 'lucide-react';
+import { Bold, Italic, Link, List, ListOrdered, Type, Image, Upload, Table } from 'lucide-react';
 
 const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
     const editorRef = useRef(null);
@@ -21,6 +21,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             'P', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
             'UL', 'OL', 'LI', 'A', 'B', 'STRONG', 'I', 'EM',
             'U', 'S', 'BLOCKQUOTE', 'PRE', 'CODE', 'IMG',
+            'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD',
             'DIV', 'SPAN'
         ]);
 
@@ -60,6 +61,12 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
                     Array.from(child.attributes).forEach((attr) => {
                         if (!['src', 'alt'].includes(attr.name)) child.removeAttribute(attr.name);
                     });
+                } else if (tag === 'TD' || tag === 'TH') {
+                    const colspan = child.getAttribute('colspan');
+                    const rowspan = child.getAttribute('rowspan');
+                    Array.from(child.attributes).forEach((attr) => child.removeAttribute(attr.name));
+                    if (colspan && /^\d+$/.test(colspan)) child.setAttribute('colspan', colspan);
+                    if (rowspan && /^\d+$/.test(rowspan)) child.setAttribute('rowspan', rowspan);
                 } else {
                     Array.from(child.attributes).forEach((attr) => child.removeAttribute(attr.name));
                 }
@@ -134,7 +141,28 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
     };
 
     const plainTextToStructuredHtml = (text) => {
-        const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+        const normalizedText = String(text || '').replace(/\r\n/g, '\n');
+        const tableRows = normalizedText
+            .split('\n')
+            .map((line) => line.trimEnd())
+            .filter((line) => line.trim().length > 0);
+
+        // Excel / Google Sheets usually copy as tab-separated rows.
+        if (tableRows.length >= 2 && tableRows.every((line) => line.includes('\t'))) {
+            const matrix = tableRows.map((line) => line.split('\t').map((cell) => cell.trim()));
+            const colCount = matrix[0]?.length || 0;
+            const isRectangular = colCount > 1 && matrix.every((row) => row.length === colCount);
+            if (isRectangular) {
+                const head = matrix[0].map((cell) => `<th>${escapeHtml(cell)}</th>`).join('');
+                const body = matrix
+                    .slice(1)
+                    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+                    .join('');
+                return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+            }
+        }
+
+        const lines = normalizedText.split('\n');
         const out = [];
         let list = null;
 
@@ -239,6 +267,17 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
         flushSanitized();
     };
 
+    const handleInsertTable = (e) => {
+        e.preventDefault();
+        const rows = Math.min(20, Math.max(1, parseInt(prompt('Сколько строк? (1-20)', '3') || '3', 10) || 3));
+        const cols = Math.min(10, Math.max(1, parseInt(prompt('Сколько колонок? (1-10)', '2') || '2', 10) || 2));
+        const theadCells = Array.from({ length: cols }, (_, i) => `<th>Колонка ${i + 1}</th>`).join('');
+        const bodyRows = Array.from({ length: rows - 1 }, () => `<tr>${Array.from({ length: cols }, () => '<td><br></td>').join('')}</tr>`).join('');
+        const html = `<table><thead><tr>${theadCells}</tr></thead><tbody>${bodyRows || `<tr>${Array.from({ length: cols }, () => '<td><br></td>').join('')}</tr>`}</tbody></table><p><br></p>`;
+        document.execCommand('insertHTML', false, html);
+        flushSanitized();
+    };
+
     return (
         <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white/90 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
             <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 p-2 border-b border-slate-100 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
@@ -247,6 +286,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'formatBlock', '<h3>')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Заголовок"><Type size={16} /></button>
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'insertUnorderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Маркированный список"><List size={16} /></button>
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'insertOrderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Нумерованный список"><ListOrdered size={16} /></button>
+                <button type="button" onMouseDown={handleInsertTable} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Таблица"><Table size={16} /></button>
                 <button type="button" onMouseDown={(e) => {
                     e.preventDefault();
                     const selection = window.getSelection();
@@ -288,7 +328,7 @@ const RichEditor = ({ value, onChange, placeholder, onUploadImage = null }) => {
             </div>
             <div
                 ref={editorRef}
-                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_li]:mb-1"
+                className="p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1.5 [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5"
                 contentEditable
                 suppressContentEditableWarning
                 data-placeholder={placeholder || ''}

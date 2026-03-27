@@ -180,6 +180,24 @@ body::before {
   .clean-rich-text :where(pre, code) {
     background-color: var(--color-slate-100) !important;
   }
+
+  .clean-rich-text :where(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+  }
+
+  .clean-rich-text :where(th, td) {
+    border: 1px solid rgb(226 232 240);
+    padding: 0.45rem 0.6rem;
+    vertical-align: top;
+    text-align: left;
+  }
+
+  .clean-rich-text :where(th) {
+    background: rgb(248 250 252);
+    font-weight: 600;
+  }
 }
 
 @media print {

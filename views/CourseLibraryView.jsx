@@ -114,6 +114,14 @@ const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
 const AI_CAMP_MENTOR_PIN = "1234";
 const AI_CAMP_STUDENT_PIN = "1111";
 const AI_CAMP_LESSON_BADGES = ["Видео", "Урок", "Домашнее задание", "Тест"];
+const LEAGUE_SCENARIOS_CARD = {
+    id: 'league-scenarios',
+    title: 'Сценарии лиги',
+    description: 'Библиотека сценариев сообщества. Откройте раздел и изучайте готовые сценарии встреч.',
+    image: 'https://images.unsplash.com/photo-1456324504439-367cee3b3c32?auto=format&fit=crop&q=80&w=800',
+    tag: 'Курсы',
+    minRole: ROLES.APPLICANT
+};
 
 const buildModuleLessons = (moduleId, moduleTitle) => (
     Array.from({ length: 6 }, (_, index) => {
@@ -272,6 +280,7 @@ const CourseLibraryView = ({
     onNotify,
     onBackToGarden,
     onCourseSidebarChange,
+    onOpenLeagueScenarios,
     externalCourseNavKey,
     resetToken = 0
 }) => {
@@ -523,6 +532,15 @@ const normalizeStyledHtmlToSemantic = (html) => {
                 return a.id - b.id;
             });
     }, [availableCourses, selectedFilter]);
+
+    const visibleLibraryCards = useMemo(() => {
+        const cards = [...filteredCourses];
+        const canShowLeagueCard = selectedFilter === 'Все' || selectedFilter === LEAGUE_SCENARIOS_CARD.tag;
+        if (canShowLeagueCard && hasAccess(role, LEAGUE_SCENARIOS_CARD.minRole)) {
+            cards.push(LEAGUE_SCENARIOS_CARD);
+        }
+        return cards;
+    }, [filteredCourses, role, selectedFilter]);
 
     const selectedCourse = availableCourses.find(c => c.id === selectedCourseId) || null;
 
@@ -781,7 +799,7 @@ const normalizeStyledHtmlToSemantic = (html) => {
                 </div>
                 <div className="text-right hidden md:block">
                     <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
-                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : filteredCourses.length}</div>
+                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : visibleLibraryCards.length}</div>
                 </div>
             </div>
 
@@ -822,11 +840,19 @@ const normalizeStyledHtmlToSemantic = (html) => {
 
             {!selectedCourse ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {filteredCourses.map(course => (
+                    {visibleLibraryCards.map(course => (
                         <div
                             key={course.id}
                             className="bg-white/80 backdrop-blur-xl p-4 rounded-[2.5rem] shadow-sm hover:shadow-md transition-all border border-white/50 group flex flex-col h-full cursor-pointer"
-                            onClick={() => { setSelectedCourseId(course.id); setSelectedMaterial(null); setSelectedTag('Все'); }}
+                            onClick={() => {
+                                if (course.id === LEAGUE_SCENARIOS_CARD.id) {
+                                    onOpenLeagueScenarios?.();
+                                    return;
+                                }
+                                setSelectedCourseId(course.id);
+                                setSelectedMaterial(null);
+                                setSelectedTag('Все');
+                            }}
                         >
                             <div className="h-48 w-full rounded-[30px] overflow-hidden mb-5 relative flex-shrink-0">
                                 <img src={course.image} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -843,7 +869,16 @@ const normalizeStyledHtmlToSemantic = (html) => {
                                     <Button
                                         variant="primary"
                                         className="!py-2 !px-4 text-xs"
-                                        onClick={(e) => { e.stopPropagation(); setSelectedCourseId(course.id); setSelectedMaterial(null); setSelectedTag('Все'); }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (course.id === LEAGUE_SCENARIOS_CARD.id) {
+                                                onOpenLeagueScenarios?.();
+                                                return;
+                                            }
+                                            setSelectedCourseId(course.id);
+                                            setSelectedMaterial(null);
+                                            setSelectedTag('Все');
+                                        }}
                                     >
                                         Открыть
                                     </Button>

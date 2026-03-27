@@ -559,7 +559,7 @@ const ImportScenarioModal = ({ onImport, onClose }) => {
     );
 };
 
-const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave, onCompleteLeagueScenario }) => {
+const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave, onCompleteLeagueScenario, initialTab = 'builder', resetToken = 0 }) => {
     const [activeTab, setActiveTab] = useState('builder'); // 'builder', 'my', 'league'
     const [previewType, setPreviewType] = useState(null);
     const [showSaveModal, setShowSaveModal] = useState(false);
@@ -579,6 +579,12 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
     // Lists
     const [myScenarios, setMyScenarios] = useState([]);
     const [leagueScenarios, setLeagueScenarios] = useState([]);
+
+    useEffect(() => {
+        if (['builder', 'my', 'league'].includes(initialTab)) {
+            setActiveTab(initialTab);
+        }
+    }, [initialTab, resetToken]);
 
     const totalTime = timeline.reduce((acc, item) => acc + (parseInt(item.time) || 0), 0) + 40;
 

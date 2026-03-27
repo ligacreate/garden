@@ -113,7 +113,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         const manualNews = (news || []).map(n => ({
             ...n,
             type: 'manual',
-            date: new Date(n.timestamp || Date.now())
+            date: new Date(n.created_at || n.timestamp || Date.now())
         }));
 
         if (!birthdayTemplates || birthdayTemplates.length === 0) {
@@ -207,6 +207,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     }, [meetings.length, practices.length, scenarios.length, clients.length, goals.length, user?.id]);
     const [initialTab, setInitialTab] = useState('meetings');
     const [libraryResetToken, setLibraryResetToken] = useState(0);
+    const [builderInitialTab, setBuilderInitialTab] = useState('builder');
+    const [builderResetToken, setBuilderResetToken] = useState(0);
 
     const handleViewChange = (newView, tab = null) => {
 
@@ -222,6 +224,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
 
         if (newView === 'library') {
             setLibraryResetToken((v) => v + 1);
+        } else if (newView === 'builder') {
+            const nextBuilderTab = tab || 'builder';
+            setBuilderInitialTab(nextBuilderTab);
+            setBuilderResetToken((v) => v + 1);
+            setCourseSidebar({ enabled: false, title: 'Курс', items: [], activeKey: null });
+            setCourseNavKey(null);
         } else {
             setCourseSidebar({ enabled: false, title: 'Курс', items: [], activeKey: null });
             setCourseNavKey(null);
@@ -770,11 +778,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             onNotify={onNotify}
                             onBackToGarden={() => handleViewChange('dashboard')}
                             onCourseSidebarChange={setCourseSidebar}
+                            onOpenLeagueScenarios={() => handleViewChange('builder', 'league')}
                             externalCourseNavKey={courseNavKey}
                             resetToken={libraryResetToken}
                         />
                     )}
-                    {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} onCompleteLeagueScenario={handleLeagueScenarioCompleted} />}
+                    {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} onCompleteLeagueScenario={handleLeagueScenarioCompleted} initialTab={builderInitialTab} resetToken={builderResetToken} />}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
                     {view === 'market' && <MarketView />}
                     {view === 'map' && (

@@ -526,13 +526,22 @@ export function renderTaskDetail({
     );
 }
 
-export default function PvlTaskDetailView({ role = 'student', onBack }) {
+export default function PvlTaskDetailView({
+    role = 'student',
+    onBack,
+    initialData = null,
+    onStudentSaveDraft,
+    onStudentSubmit,
+    onStudentReply,
+    onMentorReply,
+    onMentorReview,
+}) {
     const [state, setState] = useState({
-        taskDetail: { ...taskDetail },
-        taskDescription: { ...taskDescription },
-        submissionVersions: [...submissionVersions],
-        statusHistory: [...statusHistory],
-        threadMessages: [...threadMessages],
+        taskDetail: initialData?.taskDetail || { ...taskDetail },
+        taskDescription: initialData?.taskDescription || { ...taskDescription },
+        submissionVersions: initialData?.submissionVersions || [...submissionVersions],
+        statusHistory: initialData?.statusHistory || [...statusHistory],
+        threadMessages: initialData?.threadMessages || [...threadMessages],
     });
     const [draftText, setDraftText] = useState(localStorage.getItem('pvl_task_draft_v1') || '');
     const [mentorForm, setMentorForm] = useState({ ...mentorReview });
@@ -543,6 +552,12 @@ export default function PvlTaskDetailView({ role = 'student', onBack }) {
     );
 
     const handleSendThreadMessage = (message) => {
+        if (role === 'mentor' && onMentorReply) {
+            onMentorReply(message);
+        }
+        if (role === 'student' && onStudentReply) {
+            onStudentReply(message);
+        }
         addThreadMessage(setState, message);
     };
 
@@ -553,6 +568,18 @@ export default function PvlTaskDetailView({ role = 'student', onBack }) {
     const handleSaveMentorForm = () => {
         const warningTooManyRevisions = detectTooManyRevisions(mentorForm.nextActions);
         const decision = mentorForm.statusDecision || 'на доработке';
+        if (onMentorReview) {
+            onMentorReview({
+                statusDecision: decision,
+                strengths: mentorForm.strengths,
+                blockers: mentorForm.blockers,
+                nextActions: mentorForm.nextActions
+                    .split('\n')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                generalComment: mentorForm.generalComment,
+            });
+        }
         changeTaskStatus(setState, decision, 'Ментор', mentorForm.generalComment);
         addThreadMessage(setState, {
             authorName: 'Ментор',
@@ -577,8 +604,14 @@ export default function PvlTaskDetailView({ role = 'student', onBack }) {
                 onChangeStatus: (status, comment) => changeTaskStatus(setState, status, role === 'mentor' ? 'Ментор' : 'Участница', comment),
                 onSendThreadMessage: handleSendThreadMessage,
                 onUploadVersion: handleUploadVersion,
-                onSaveDraft: (text) => saveDraftSubmission(setDraftText, text),
-                onSubmitForReview: () => submitForReview(setState),
+                onSaveDraft: (text) => {
+                    saveDraftSubmission(setDraftText, text);
+                    if (onStudentSaveDraft) onStudentSaveDraft(text);
+                },
+                onSubmitForReview: () => {
+                    submitForReview(setState);
+                    if (onStudentSubmit) onStudentSubmit(draftText);
+                },
                 draftText,
                 setDraftText,
                 mentorForm,

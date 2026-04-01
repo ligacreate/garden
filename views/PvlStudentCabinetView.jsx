@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/dataService';
 import PvlTaskDetailView from './PvlTaskDetailView';
+import { Search } from 'lucide-react';
+import { formatDateRu, formatDateTimeRu } from '../utils/dateFormat';
 
 export const studentProfile = {
     id: 'stu-2026-001',
@@ -106,9 +108,19 @@ export const libraryItems = [
 ];
 
 export const mentorPractices = [
-    { id: 'mp-1', title: 'Практикум модуля 2', dateTime: '2026-06-01 19:00', status: 'прошла', link: '#' },
-    { id: 'mp-2', title: 'Сборный завтрак #1', dateTime: '2026-06-03 10:00', status: 'скоро', link: '#' },
-    { id: 'mp-3', title: 'Сборный завтрак #2', dateTime: '2026-06-09 10:00', status: 'запланирована', link: '#' },
+    { id: 'mp-1', title: 'Практикум модуля 2', dateTime: '2026-06-01T19:00:00', status: 'прошла', type: 'практикум', link: '#' },
+    { id: 'mp-2', title: 'Сборный завтрак #1', dateTime: '2026-06-03T10:00:00', status: 'скоро', type: 'сборный завтрак', link: '#' },
+    { id: 'mp-3', title: 'Сборный завтрак #2', dateTime: '2026-06-09T10:00:00', status: 'запланирована', type: 'сборный завтрак', link: '#' },
+    { id: 'mp-4', title: 'Дедлайн: Урок 7', dateTime: '2026-06-09T23:00:00', status: 'запланирована', type: 'дедлайн', link: '#' }
+];
+
+const GLOSSARY_TERMS = [
+    { title: 'Артефакт', description: 'Измеримый результат шага в курсе: файл, текст, запись или отчет.' },
+    { title: 'Антидолг', description: 'Механика отработки просроченных задач по окнам D+1, D+3, D+7, D+10.' },
+    { title: 'Групповая динамика', description: 'Изменение состояния группы в процессе встречи и практики.' },
+    { title: 'Контрольная точка', description: 'Обязательная веха потока, которая влияет на допуск и прогресс.' },
+    { title: 'Письменная практика', description: 'Рефлексивная работа в тексте для закрепления содержания урока.' },
+    { title: 'Рефлексивный отклик', description: 'Краткая фиксация инсайтов после урока, практикума или обратной связи.' }
 ];
 
 export const faqItems = [
@@ -117,7 +129,7 @@ export const faqItems = [
     { id: 'f-3', q: 'СЗ и курсовые баллы — это одно?', a: 'Нет. Курсовые баллы (до 400) отдельно, самооценка СЗ (до 54) отдельно.' },
 ];
 
-const MENU = ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
+const MENU = ['Дашборд', 'О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
 
 export function statusBadge(status) {
     const s = String(status || '').toLowerCase();
@@ -163,18 +175,30 @@ function renderAboutPage() {
     );
 }
 
-function renderGlossaryPage() {
+function renderGlossaryPage(searchTerm = '', selectedLetter = 'Все') {
+    const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
+    const filtered = GLOSSARY_TERMS.filter((term) => {
+        const byLetter = selectedLetter === 'Все' || term.title.toUpperCase().startsWith(selectedLetter);
+        const bySearch = !normalizedSearch
+            || term.title.toLowerCase().includes(normalizedSearch)
+            || term.description.toLowerCase().includes(normalizedSearch);
+        return byLetter && bySearch;
+    });
     return (
         <div className="space-y-3">
-            <input className="w-full rounded-full border border-[#E8D5C4] bg-white px-4 py-2 text-sm" placeholder="Поиск термина..." />
             <div className="grid md:grid-cols-2 gap-3">
-                {['Письменная практика', 'Результат встречи', 'Артефакт', 'Рефлексивный отклик'].map((t) => (
-                    <article key={t} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                        <h4 className="font-display text-xl text-[#4A3728]">{t}</h4>
-                        <p className="text-sm text-[#2C1810] mt-1">Краткое определение термина и практическое применение в курсе.</p>
+                {filtered.map((t) => (
+                    <article key={t.title} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                        <h4 className="font-display text-xl text-[#4A3728]">{t.title}</h4>
+                        <p className="text-sm text-[#2C1810] mt-1">{t.description}</p>
                     </article>
                 ))}
             </div>
+            {filtered.length === 0 && (
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm text-[#9B8B80]">
+                    Ничего не найдено. Измени запрос или выбери другую букву.
+                </div>
+            )}
         </div>
     );
 }
@@ -192,9 +216,15 @@ export function renderLibraryPage(items = libraryItems, filter = 'all') {
                 <div className="text-sm text-[#2C1810]">Пройдено: <strong>{completed}/{items.length}</strong></div>
             </div>
             <div className="flex flex-wrap gap-2">
-                {['all', 'video', 'article', 'pdf', 'checklist'].map((f) => (
-                    <span key={f} className={`text-xs rounded-full border px-3 py-1 ${filter === f ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>
-                        {f === 'all' ? 'все' : f}
+                {[
+                    { key: 'all', label: 'все' },
+                    { key: 'video', label: 'видео' },
+                    { key: 'article', label: 'статья' },
+                    { key: 'pdf', label: 'PDF' },
+                    { key: 'checklist', label: 'чек-лист' }
+                ].map((f) => (
+                    <span key={f.key} className={`text-xs rounded-full border px-3 py-1 ${filter === f.key ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>
+                        {f.label}
                     </span>
                 ))}
             </div>
@@ -214,19 +244,27 @@ export function renderLibraryPage(items = libraryItems, filter = 'all') {
     );
 }
 
-export function renderLessonsPage() {
+export function renderLessonsPage(onOpenLesson = null) {
     return (
         <div className="space-y-3">
             {courseWeeks.map((w) => (
                 <article key={w.weekNumber} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <h4 className="font-display text-2xl text-[#4A3728]">Неделя {w.weekNumber}: {w.title}</h4>
-                        <span className="text-xs text-[#9B8B80]">Дедлайн: {w.deadlineAt}</span>
+                        <span className="text-xs text-[#9B8B80]">Дедлайн: {formatDateRu(w.deadlineAt)}</span>
                     </div>
                     <div className="grid md:grid-cols-3 gap-2 text-sm">
                         <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">Изучить · Выполнить · Сдать</div>
                         <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">Шагов: {w.steps}, форма загрузки: файл/текст</div>
                         <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">Контрольные точки: {w.controlPoints.length ? w.controlPoints.join(', ') : 'нет'}</div>
+                    </div>
+                    <div className="mt-3">
+                        <button
+                            onClick={() => onOpenLesson?.(w)}
+                            className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]"
+                        >
+                            Открыть урок
+                        </button>
                     </div>
                 </article>
             ))}
@@ -234,15 +272,38 @@ export function renderLessonsPage() {
     );
 }
 
-function renderMentorPracticesPage() {
+function renderMentorPracticesPage(events = mentorPractices, selectedDate = null, onSelectDate = null) {
+    const groupedByDate = events.reduce((acc, item) => {
+        const key = formatDateRu(item.dateTime);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(item);
+        return acc;
+    }, {});
+    const dateKeys = Object.keys(groupedByDate);
+    const effectiveDate = selectedDate && groupedByDate[selectedDate] ? selectedDate : dateKeys[0];
+    const dayEvents = effectiveDate ? groupedByDate[effectiveDate] : [];
     return (
         <div className="space-y-3">
-            {mentorPractices.map((item) => (
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h3 className="font-display text-2xl text-[#4A3728] mb-2">Календарь учебного ритма</h3>
+                <div className="flex flex-wrap gap-2">
+                    {dateKeys.map((dateKey) => (
+                        <button
+                            key={dateKey}
+                            onClick={() => onSelectDate?.(dateKey)}
+                            className={`rounded-full border px-3 py-1 text-xs ${effectiveDate === dateKey ? 'border-[#C8855A] bg-[#F5EDE6] text-[#4A3728]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}
+                        >
+                            {dateKey} • {groupedByDate[dateKey].length}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            {dayEvents.map((item) => (
                 <article key={item.id} className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex items-center justify-between gap-3">
                     <div>
                         <h4 className="font-medium text-[#4A3728]">{item.title}</h4>
-                        <p className="text-sm text-[#9B8B80]">{item.dateTime}</p>
-                        <p className="text-xs text-[#9B8B80] mt-1">Напоминание за 24 часа + рефлексия после встречи</p>
+                        <p className="text-sm text-[#9B8B80]">{formatDateTimeRu(item.dateTime)}</p>
+                        <p className="text-xs text-[#9B8B80] mt-1">Тип: {item.type || 'практикум'}</p>
                     </div>
                     <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadge(item.status)}`}>{item.status}</span>
                 </article>
@@ -289,8 +350,8 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
                         </div>
                         <p className="text-xs text-[#9B8B80] mt-1">Неделя {item.week} · {item.type}</p>
                         <div className="grid md:grid-cols-3 gap-2 mt-3 text-sm">
-                            <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {item.deadlineAt}</div>
-                            <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Сдано: {item.submittedAt || '—'}</div>
+                            <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {formatDateRu(item.deadlineAt)}</div>
+                            <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Сдано: {item.submittedAt && item.submittedAt !== '—' ? formatDateRu(item.submittedAt) : '—'}</div>
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Комментарии: {item.mentorCommentCount}</div>
                         </div>
                         <p className="text-sm text-[#2C1810] mt-2">{item.mentorCommentPreview}</p>
@@ -310,18 +371,31 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
     );
 }
 
-export function renderCertificationPage() {
+export function renderCertificationPage(step = 1, onStepChange = null) {
+    const steps = ['Самооценка', 'Критические условия', 'Сверка с ментором', 'Итог'];
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h3 className="font-display text-2xl text-[#4A3728]">Сертификация</h3>
                 <p className="text-sm text-[#2C1810] mt-1">Условия СЗ, критерии, красные флаги, дедлайн записи СЗ.</p>
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {steps.map((label, index) => (
+                        <button
+                            key={label}
+                            onClick={() => onStepChange?.(index + 1)}
+                            className={`rounded-xl border px-2 py-1 text-xs ${step === index + 1 ? 'border-[#C8855A] bg-[#F5EDE6] text-[#4A3728]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}
+                        >
+                            {index + 1}. {label}
+                        </button>
+                    ))}
+                </div>
                 <div className="grid md:grid-cols-2 gap-2 mt-3">
                     <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3 text-sm">Курсовые баллы: <strong>{studentProfile.coursePoints}/400</strong></div>
                     <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3 text-sm">Самооценка СЗ: <strong>{studentProfile.szSelfAssessmentPoints}/54</strong></div>
                 </div>
-                {/* Open question: методологический конфликт источников */}
-                {/* TODO(methodology): В canvas фигурировал порог допуска к СЗ 500, в брифе зафиксирован потолок курсовых 400. Требуется решение методолога, не решаем в коде самостоятельно. */}
+                <div className="mt-3 rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3 text-sm text-[#2C1810]">
+                    Текущий шаг: <strong>{steps[step - 1] || steps[0]}</strong>. Система хранит самооценку, критические условия и итог сравнения с оценкой ментора.
+                </div>
             </div>
         </div>
     );
@@ -434,11 +508,17 @@ export default function PvlStudentCabinetView({ user }) {
     const [activeMenu, setActiveMenu] = useState(initialUi.activeMenu);
     const [libraryFilter, setLibraryFilter] = useState(initialUi.libraryFilter);
     const [resultsFilter, setResultsFilter] = useState(initialUi.resultsFilter);
+    const [glossarySearch, setGlossarySearch] = useState('');
+    const [glossaryLetter, setGlossaryLetter] = useState('Все');
     const [profileState, setProfileState] = useState(studentProfile);
     const [dashboardState, setDashboardState] = useState(studentDashboard);
     const [statsState, setStatsState] = useState(dashboardStats);
     const [libraryState, setLibraryState] = useState(libraryItems);
     const [resultsState, setResultsState] = useState(resultItems);
+    const [practiceEvents, setPracticeEvents] = useState(mentorPractices);
+    const [selectedPracticeDate, setSelectedPracticeDate] = useState(null);
+    const [selectedLesson, setSelectedLesson] = useState(null);
+    const [certificationStep, setCertificationStep] = useState(1);
     const [selectedTask, setSelectedTask] = useState(null);
 
     useEffect(() => {
@@ -536,6 +616,19 @@ export default function PvlStudentCabinetView({ user }) {
                     }));
                     setResultsState(mappedResults);
                 }
+
+                const calendar = await api.getCalendarEvents?.().catch(() => []);
+                if (Array.isArray(calendar) && calendar.length > 0) {
+                    const mappedEvents = calendar.map((event) => ({
+                        id: `cal-${event.id}`,
+                        title: event.title,
+                        dateTime: event.starts_at,
+                        status: 'запланирована',
+                        type: event?.event_types?.title || 'событие',
+                        link: '#'
+                    }));
+                    setPracticeEvents((prev) => [...mappedEvents, ...prev]);
+                }
             } catch (e) {
                 console.warn('PvlStudentCabinetView API fallback to mock state:', e);
             }
@@ -547,47 +640,87 @@ export default function PvlStudentCabinetView({ user }) {
     const content = useMemo(() => {
         if (activeMenu === 'Дашборд') return renderStudentDashboard(setActiveMenu, profileState, statsState, dashboardState);
         if (activeMenu === 'О курсе') return renderAboutPage();
-        if (activeMenu === 'Глоссарий курса') return renderGlossaryPage();
+        if (activeMenu === 'Глоссарий курса') return renderGlossaryPage(glossarySearch, glossaryLetter);
         if (activeMenu === 'Библиотека курса') return renderLibraryPage(libraryState, libraryFilter);
-        if (activeMenu === 'Уроки') return renderLessonsPage();
-        if (activeMenu === 'Практикумы с менторами') return renderMentorPracticesPage();
+        if (activeMenu === 'Уроки') return renderLessonsPage(setSelectedLesson);
+        if (activeMenu === 'Практикумы с менторами') return renderMentorPracticesPage(practiceEvents, selectedPracticeDate, setSelectedPracticeDate);
         if (activeMenu === 'Чек-лист') return renderChecklistPage();
         if (activeMenu === 'Результаты') return renderResultsPage(resultsState, resultsFilter, setSelectedTask);
-        if (activeMenu === 'Сертификация') return renderCertificationPage();
+        if (activeMenu === 'Сертификация') return renderCertificationPage(certificationStep, setCertificationStep);
         if (activeMenu === 'Культурный код Лиги') return renderLeagueCodePage();
         return renderStudentDashboard(setActiveMenu, profileState, statsState, dashboardState);
-    }, [activeMenu, profileState, statsState, dashboardState, libraryState, libraryFilter, resultsState, resultsFilter]);
+    }, [activeMenu, profileState, statsState, dashboardState, libraryState, libraryFilter, resultsState, resultsFilter, glossarySearch, glossaryLetter, practiceEvents, selectedPracticeDate, certificationStep]);
 
     return (
         <div className="grid grid-cols-1 xl:grid-cols-[240px_1fr] gap-4">
             <aside className="surface-card border border-[#E8D5C4] bg-white p-3 h-fit xl:sticky xl:top-6">
                 <div className="mb-3">
-                    <h2 className="font-display text-2xl text-[#4A3728]">ЛК участницы</h2>
+                    <h2 className="font-display text-2xl text-[#4A3728]">Личный кабинет</h2>
                     <p className="text-xs text-[#9B8B80]">{profileState.fullName} · {profileState.cohort}</p>
                 </div>
                 {renderMenu(activeMenu, setActiveMenu)}
+                {activeMenu === 'Глоссарий курса' && (
+                    <div className="mt-3 space-y-2">
+                        <div className="relative">
+                            <input
+                                value={glossarySearch}
+                                onChange={(e) => setGlossarySearch(e.target.value)}
+                                className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 pr-9 text-sm"
+                                placeholder="Поиск термина"
+                            />
+                            <button className="absolute right-1 top-1 rounded-lg border border-[#E8D5C4] p-1 text-[#4A3728] bg-[#F5EDE6]">
+                                <Search size={14} />
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                            {['Все', 'А', 'Г', 'К', 'П', 'Р'].map((letter) => (
+                                <button
+                                    key={letter}
+                                    onClick={() => setGlossaryLetter(letter)}
+                                    className={`rounded-full border px-2 py-0.5 text-xs ${glossaryLetter === letter ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}
+                                >
+                                    {letter}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {activeMenu === 'Библиотека курса' && (
                     <div className="mt-3">
                         <p className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">Фильтр библиотеки</p>
-                        <select value={libraryFilter} onChange={(e) => setLibraryFilter(e.target.value)} className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 text-sm">
-                            <option value="all">Все</option>
-                            <option value="video">Видео</option>
-                            <option value="article">Статья</option>
-                            <option value="pdf">PDF</option>
-                            <option value="checklist">Чек-лист</option>
-                        </select>
+                        <div className="flex flex-wrap gap-1">
+                            {[
+                                { key: 'all', label: 'Все' },
+                                { key: 'video', label: 'Видео' },
+                                { key: 'article', label: 'Статья' },
+                                { key: 'pdf', label: 'PDF' },
+                                { key: 'checklist', label: 'Чек-лист' }
+                            ].map((f) => (
+                                <button
+                                    key={f.key}
+                                    onClick={() => setLibraryFilter(f.key)}
+                                    className={`rounded-full border px-2 py-0.5 text-xs ${libraryFilter === f.key ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
                 {activeMenu === 'Результаты' && (
                     <div className="mt-3">
                         <p className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">Фильтр результатов</p>
-                        <select value={resultsFilter} onChange={(e) => setResultsFilter(e.target.value)} className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 text-sm">
-                            <option value="all">Все</option>
-                            <option value="к проверке">К проверке</option>
-                            <option value="на доработке">На доработке</option>
-                            <option value="принято">Принято</option>
-                            <option value="не сдано">Не сдано</option>
-                        </select>
+                        <div className="flex flex-wrap gap-1">
+                            {['all', 'к проверке', 'на доработке', 'принято', 'не сдано'].map((status) => (
+                                <button
+                                    key={status}
+                                    onClick={() => setResultsFilter(status)}
+                                    className={`rounded-full border px-2 py-0.5 text-xs ${resultsFilter === status ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}
+                                >
+                                    {status}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
             </aside>
@@ -597,7 +730,23 @@ export default function PvlStudentCabinetView({ user }) {
                         role="student"
                         onBack={() => setSelectedTask(null)}
                     />
-                ) : content}
+                ) : (
+                    <div className="grid xl:grid-cols-[1fr_320px] gap-4">
+                        <div>{content}</div>
+                        {selectedLesson && activeMenu === 'Уроки' && (
+                            <aside className="rounded-2xl border border-[#E8D5C4] bg-white p-4 h-fit xl:sticky xl:top-6">
+                                <h3 className="font-display text-2xl text-[#4A3728] mb-2">{selectedLesson.title}</h3>
+                                <p className="text-sm text-[#9B8B80] mb-2">Дедлайн: {formatDateRu(selectedLesson.deadlineAt)}</p>
+                                <div className="space-y-2 text-sm text-[#2C1810]">
+                                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Видео: доступно</div>
+                                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Конспект: доступен</div>
+                                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Задание: в работе</div>
+                                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Комментарий ментора: будет после сдачи</div>
+                                </div>
+                            </aside>
+                        )}
+                    </div>
+                )}
             </main>
         </div>
     );

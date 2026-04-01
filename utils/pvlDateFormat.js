@@ -18,8 +18,8 @@ function parseToDate(input) {
     if (!Number.isNaN(iso.getTime())) return iso;
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
     if (m) {
-        const [, y, mo, d, hh, mm] = m;
-        const dt = new Date(Number(y), Number(mo) - 1, Number(d), hh != null ? Number(hh) : 0, mm != null ? Number(mm) : 0);
+        const [, y, mo, dayNum, hh, mm] = m;
+        const dt = new Date(Number(y), Number(mo) - 1, Number(dayNum), hh != null ? Number(hh) : 0, mm != null ? Number(mm) : 0);
         return Number.isNaN(dt.getTime()) ? null : dt;
     }
     return null;

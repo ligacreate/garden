@@ -37,6 +37,9 @@ let auditLog = [];
 let notifications = [];
 if (!Array.isArray(db.studentLibraryProgress)) db.studentLibraryProgress = [];
 
+const uid = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const nowIso = () => new Date().toISOString();
+
 const LIBRARY_CATEGORIES = [
     { id: 'evidence', title: 'Доказательная база', description: 'Исследования и проверенные источники' },
     { id: 'practice_map', title: 'Карта практик', description: 'Навигация по практикам курса' },
@@ -81,8 +84,6 @@ const LIBRARY_MOCK_ITEMS = Array.from({ length: 15 }, (_, idx) => {
     };
 });
 
-const uid = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-const nowIso = () => new Date().toISOString();
 const pushEvent = (type, payload = {}) => {
     eventLog.push({ id: uid('evt'), type, payload, createdAt: nowIso() });
 };

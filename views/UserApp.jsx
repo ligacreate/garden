@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
@@ -9,7 +9,8 @@ import UserAvatar from '../components/UserAvatar';
 import StatsDashboardView from './StatsDashboardView';
 import MeetingsView from './MeetingsView';
 import PracticesView from './PracticesView';
-import CourseLibraryView from './CourseLibraryView';
+/** Библиотека (включая AL Camp / ПВЛ) грузится отдельным чанком — сад не падает, если в ПВЛ ошибка */
+const CourseLibraryView = lazy(() => import('./CourseLibraryView'));
 import BuilderView from './BuilderView';
 import CRMView from './CRMView';
 import MarketView from './MarketView';
@@ -767,16 +768,24 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
                     {view === 'library' && (
-                        <CourseLibraryView
-                            user={user}
-                            knowledgeBase={knowledgeBase}
-                            librarySettings={librarySettings}
-                            onCompleteLesson={handleLessonCompleted}
-                            onNotify={onNotify}
-                            onBackToGarden={() => handleViewChange('dashboard')}
-                            onCourseSidebarChange={setCourseSidebar}
-                            resetToken={libraryResetToken}
-                        />
+                        <Suspense fallback={(
+                            <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3 text-slate-500">
+                                <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                                <span className="text-sm">Загрузка библиотеки…</span>
+                            </div>
+                        )}
+                        >
+                            <CourseLibraryView
+                                user={user}
+                                knowledgeBase={knowledgeBase}
+                                librarySettings={librarySettings}
+                                onCompleteLesson={handleLessonCompleted}
+                                onNotify={onNotify}
+                                onBackToGarden={() => handleViewChange('dashboard')}
+                                onCourseSidebarChange={setCourseSidebar}
+                                resetToken={libraryResetToken}
+                            />
+                        </Suspense>
                     )}
                     {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} onCompleteLeagueScenario={handleLeagueScenarioCompleted} initialTab={builderInitialTab} resetToken={builderResetToken} />}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}

@@ -13,13 +13,17 @@ alwaysApply: true
 ## Ядро «Сада» (не трогать ради ПВЛ)
 
 - `App.jsx`, `main.jsx`, `components/ErrorBoundary.jsx`
-- `views/UserApp.jsx` — только точка входа в библиотеку (`CourseLibraryView`); **без** импортов `Pvl*`, пунктов меню ПВЛ, отдельных view `pvl-*` / `mentor-dashboard` для курса
+- `views/UserApp.jsx` — библиотека подключается через **`lazy(() => import('./CourseLibraryView'))` + `Suspense`**, без статического импорта `CourseLibraryView`/`Pvl*`. Так дашборд и разделы сада не тянут чанк ПВЛ при первой загрузке.
 - `views/StatsDashboardView.jsx`, `MeetingsView.jsx`, `MapView.jsx`, `BuilderView.jsx`, `PracticesView.jsx`, `CRMView.jsx`, `ProfileView.jsx`, `CommunicationsView.jsx` (если задача не про них)
 - `data/data.js` (кроме согласованных правок не по ПВЛ)
 
 ## Где живёт ПВЛ / AL Camp
 
-- `views/CourseLibraryView.jsx` — ветка курса **AL Camp** и вход по PIN
-- `views/PvlPrototypeApp.jsx`, `Pvl*.jsx`, `data/pvl/**`, `services/pvlMockApi.js`, `services/pvlAppKernel.js`
+- `views/UserApp.jsx` — только `lazy(() => import('./CourseLibraryView'))` + `Suspense` для библиотеки.
+- `views/CourseLibraryView.jsx` — список курсов сада; ветка **AL Camp** с формой PIN; **`lazy(() => import('./PvlPrototypeApp'))`** только после входа; обёртка **`PvlErrorBoundary`** вокруг ПВЛ.
+- `components/PvlErrorBoundary.jsx` — ловит ошибки ПВЛ, не роняет сад.
+- `views/PvlPrototypeApp.jsx`, `Pvl*.jsx`, `data/pvl/**`, `services/pvlMockApi.js` — не грузятся до открытия AL Camp после входа.
+
+**Не делать:** статический `import PvlPrototypeApp` в `CourseLibraryView` или `UserApp`.
 
 Правки ПВЛ — **сначала** проверка сборки, **потом** коммит.

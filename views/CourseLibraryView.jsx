@@ -1,11 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
+import PvlErrorBoundary from '../components/PvlErrorBoundary';
 import { hasAccess, ROLES } from '../utils/roles';
 import { api } from '../services/dataService';
 import DOMPurify from 'dompurify';
 import { clearAppSession, getHomeRouteByRole, loadAppSession, saveAppSession } from '../services/pvlAppKernel';
-import PvlPrototypeApp from './PvlPrototypeApp';
+
+/** Грузится отдельным чанком только после входа в AL Camp — не в стартовом графе библиотеки */
+const PvlPrototypeApp = lazy(() => import('./PvlPrototypeApp'));
 
 const COURSES = [
     {
@@ -197,6 +200,8 @@ const CourseLibraryView = ({
             return null;
         }
     });
+    /** Сброс дочернего lazy Pvl после ошибки в PvlErrorBoundary */
+    const [pvlResetKey, setPvlResetKey] = useState(0);
 
     const filters = ['Все', 'Курсы', 'Полезное'];
 
@@ -695,7 +700,17 @@ const CourseLibraryView = ({
                                 </div>
                             </div>
                             <div className="rounded-[2rem] border border-[#E8D5C4]/40 overflow-hidden bg-white/90 -mx-2 px-2 py-3 md:px-4 max-w-[100vw]">
-                                <PvlPrototypeApp key={`al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
+                                <PvlErrorBoundary
+                                    onExit={handleAiCampLogout}
+                                    onReset={() => setPvlResetKey((k) => k + 1)}
+                                >
+                                    <Suspense fallback={(
+                                        <div className="p-8 text-center text-slate-500 text-sm">Загрузка курса…</div>
+                                    )}
+                                    >
+                                        <PvlPrototypeApp key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
+                                    </Suspense>
+                                </PvlErrorBoundary>
                             </div>
                         </div>
                     )}

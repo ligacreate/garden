@@ -116,11 +116,11 @@ const AI_CAMP_STUDENT_PIN = "1111";
 const AI_CAMP_LESSON_BADGES = ["Видео", "Урок", "Домашнее задание", "Тест"];
 const LEAGUE_SCENARIOS_CARD = {
     id: 'league-scenarios',
-    title: 'AL Camp',
-    description: 'Раздел разработки кабинетов и прототипов AL Camp.',
+    title: 'Сценарии лиги',
+    description: 'Библиотека сценариев сообщества. Откройте раздел и изучайте готовые сценарии встреч.',
     image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=800',
     tag: 'Курсы',
-    minRole: ROLES.ADMIN
+    minRole: ROLES.APPLICANT
 };
 
 const buildModuleLessons = (moduleId, moduleTitle) => (

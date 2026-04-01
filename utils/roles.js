@@ -1,6 +1,7 @@
 // Определение ролей и их иерархии
 export const ROLES = {
     APPLICANT: 'applicant', // Уровень 0: Только вход и обучение
+    STUDENT: 'student',     // Уровень 0: Личный кабинет ученицы
     INTERN: 'intern',       // Уровень 1: Внесение встреч (стажировка)
     LEADER: 'leader',       // Уровень 2: Полный доступ (Магазин, CRM)
     MENTOR: 'mentor',       // Уровень 3: Может обучать
@@ -11,6 +12,7 @@ export const ROLES = {
 // Конфигурация для UI и логики
 export const ROLES_CONFIG = {
     [ROLES.APPLICANT]: { label: 'Абитуриент', level: 0, color: 'text-slate-500', bg: 'bg-slate-50' },
+    [ROLES.STUDENT]: { label: 'Ученица', level: 0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
     [ROLES.INTERN]: { label: 'Стажер', level: 1, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     [ROLES.LEADER]: { label: 'Ведущая', level: 2, color: 'text-blue-600', bg: 'bg-blue-50' },
     [ROLES.MENTOR]: { label: 'Ментор', level: 3, color: 'text-purple-600', bg: 'bg-purple-50' },

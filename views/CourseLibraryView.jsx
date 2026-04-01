@@ -69,7 +69,7 @@ const COURSES = [
     {
         id: 6,
         title: "AL Camp",
-        description: "ПВЛ 2026: единый вход — кабинет ученицы и ментора, материалы курса, уроки и проверка работ (после входа по коду).",
+        description: "ПВЛ 2026: вход ученицы, ментора или администратора курса (учительская ПВЛ) — по коду; материалы, уроки и проверка работ.",
         image: "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
         minRole: ROLES.APPLICANT,
@@ -81,11 +81,20 @@ const COURSES = [
                 title: "Вход в AL Camp",
                 type: "Текст",
                 tags: ["Вход", "Роли"],
-                content: `Внутри курса AL Camp — вход для двух ролей:
+                content: `Внутри курса AL Camp — вход для трёх ролей:
+- ученик;
 - ментор;
-- ученик.
+- администратор курса (учительская ПВЛ, контент и потоки — отдельный код).
 
-После входа показывается соответствующий кабинет.`,
+Это не то же самое, что пункт «Админка» в меню всего сада.`,
+                role: "all"
+            },
+            {
+                id: "aicamp-system-admin",
+                title: "Администратор курса и учительская ПВЛ",
+                type: "Текст",
+                tags: ["Админ курса", "ПВЛ"],
+                content: `Выберите роль «Администратор курса» на экране входа и введите код для этой роли. Откроется интерфейс ПВЛ с разделом «Учительская ПВЛ» (контент-центр, потоки, проверки). Садовская «Админка» в левом меню сада — другой раздел.`,
                 role: "all"
             },
             {
@@ -120,6 +129,8 @@ const AI_CAMP_TITLE = "AL Camp";
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
 const AI_CAMP_MENTOR_PIN = "1234";
 const AI_CAMP_STUDENT_PIN = "1111";
+/** Отдельный PIN для роли admin внутри ПВЛ (учительская / контент) — не путать с «Админкой» всего сада */
+const AI_CAMP_ADMIN_PIN = "2222";
 
 function normalizeStyledHtmlToSemantic(html) {
     const parser = new DOMParser();
@@ -492,30 +503,37 @@ const CourseLibraryView = ({
     );
     const syncPvlSessionFromAlCamp = (session) => {
         if (!session) return;
-        const pvlRole = session.role === 'mentor' ? 'mentor' : 'student';
+        const pvlRole = session.role === 'mentor' ? 'mentor' : session.role === 'admin' ? 'admin' : 'student';
         const prev = loadAppSession();
         if (prev?.role === pvlRole) return;
+        const actingUserId = pvlRole === 'mentor' ? 'u-men-1' : pvlRole === 'admin' ? 'u-adm-1' : 'u-st-1';
         saveAppSession({
             role: pvlRole,
             studentId: 'u-st-1',
-            actingUserId: pvlRole === 'mentor' ? 'u-men-1' : 'u-st-1',
+            actingUserId,
             nowDate: '2026-06-03',
             route: getHomeRouteByRole(pvlRole),
             studentSection: 'О курсе',
-            adminSection: 'Обзор',
+            adminSection: 'Учительская ПВЛ',
         });
     };
 
     const handleAiCampLogin = (e) => {
         e.preventDefault();
-        const expectedPin = aiCampRole === 'mentor' ? AI_CAMP_MENTOR_PIN : AI_CAMP_STUDENT_PIN;
+        const expectedPin = aiCampRole === 'mentor'
+            ? AI_CAMP_MENTOR_PIN
+            : aiCampRole === 'admin'
+                ? AI_CAMP_ADMIN_PIN
+                : AI_CAMP_STUDENT_PIN;
         if (aiCampPin !== expectedPin) {
-            setAiCampError(`Неверный код для роли "${aiCampRole === 'mentor' ? 'Ментор' : 'Ученик'}".`);
+            const roleLabel = aiCampRole === 'mentor' ? 'Ментор' : aiCampRole === 'admin' ? 'Администратор курса' : 'Ученик';
+            setAiCampError(`Неверный код для роли «${roleLabel}».`);
             return;
         }
+        const defaultName = aiCampRole === 'mentor' ? 'Ментор' : aiCampRole === 'admin' ? 'Администратор курса' : 'Ученик';
         const session = {
             role: aiCampRole,
-            name: aiCampName?.trim() || (aiCampRole === 'mentor' ? 'Ментор' : 'Ученик')
+            name: aiCampName?.trim() || defaultName
         };
         setAiCampSession(session);
         localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(session));
@@ -644,7 +662,7 @@ const CourseLibraryView = ({
                             <div className="text-2xl font-medium text-slate-900 mb-2">Вход в AL Camp</div>
                             <div className="text-sm text-slate-500 mb-5">Выберите роль и введите код доступа.</div>
 
-                            <div className="flex gap-2 mb-4">
+                            <div className="flex flex-wrap gap-2 mb-4">
                                 <button
                                     type="button"
                                     onClick={() => setAiCampRole('student')}
@@ -659,12 +677,20 @@ const CourseLibraryView = ({
                                 >
                                     Ментор
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAiCampRole('admin')}
+                                    className={`px-4 py-2 rounded-full text-sm ${aiCampRole === 'admin' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                                    title="Учительская ПВЛ, контент и потоки (не «Админка» всего сада)"
+                                >
+                                    Админ курса
+                                </button>
                             </div>
 
                             <div className="space-y-3">
                                 <input
                                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                                    placeholder={aiCampRole === 'mentor' ? 'Имя ментора' : 'Имя ученика'}
+                                    placeholder={aiCampRole === 'mentor' ? 'Имя ментора' : aiCampRole === 'admin' ? 'Имя или подпись' : 'Имя ученика'}
                                     value={aiCampName}
                                     onChange={(e) => setAiCampName(e.target.value)}
                                 />
@@ -678,7 +704,7 @@ const CourseLibraryView = ({
                             </div>
                             {aiCampError && <div className="text-sm text-rose-600 mt-3">{aiCampError}</div>}
                             <div className="text-xs text-slate-400 mt-2">
-                                Демо-коды: ученик — {AI_CAMP_STUDENT_PIN}, ментор — {AI_CAMP_MENTOR_PIN}
+                                Демо-коды: ученик — {AI_CAMP_STUDENT_PIN}, ментор — {AI_CAMP_MENTOR_PIN}, админ курса — {AI_CAMP_ADMIN_PIN}
                             </div>
                             <div className="mt-4">
                                 <Button variant="primary" type="submit">Войти в систему</Button>
@@ -690,7 +716,7 @@ const CourseLibraryView = ({
                                 <div className="text-sm text-slate-500">
                                     {aiCampSession.name}
                                     <span className="text-slate-400"> · </span>
-                                    {aiCampSession.role === 'mentor' ? 'Ментор' : 'Ученик'}
+                                    {aiCampSession.role === 'mentor' ? 'Ментор' : aiCampSession.role === 'admin' ? 'Администратор курса' : 'Ученик'}
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     <Button variant="secondary" onClick={handleAiCampLogout}>

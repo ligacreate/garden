@@ -261,6 +261,8 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
     const [sendPushOnNews, setSendPushOnNews] = useState(true);
     const [editingMaterialId, setEditingMaterialId] = useState(null);
     const [isNormalizingKnowledge, setIsNormalizingKnowledge] = useState(false);
+    const [pvlMaterials, setPvlMaterials] = useState([]);
+    const [pvlEditor, setPvlEditor] = useState({ id: null, title: '', description: '', stream_id: '', video_url: '', video_title: '', file_url: '', is_published: true });
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -273,6 +275,13 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
             if (onGetAllMeetings) onGetAllMeetings().then(data => { if (data) setAllMeetings(data); });
         }
     }, [tab, onGetAllMeetings, onGetAllEvents]);
+
+    useEffect(() => {
+        if (tab !== 'pvl-teachers') return;
+        api.getCourseLibraryMaterials?.()
+            .then((rows) => setPvlMaterials(Array.isArray(rows) ? rows : []))
+            .catch(() => setPvlMaterials([]));
+    }, [tab]);
 
     useEffect(() => {
         if (tab !== 'content' || contentTab !== 'scenarios' || !onGetLeagueScenarios) return;
@@ -490,7 +499,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
 
                 <div className="flex gap-2 items-center justify-between">
                     <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
-                        {['stats', 'users', 'content', 'news', 'events'].map(t => (
+                        {['stats', 'users', 'content', 'news', 'events', 'pvl-teachers'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => setTab(t)}
@@ -498,7 +507,7 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
-                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'events' ? 'События' : 'Новости'}
+                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'events' ? 'События' : t === 'pvl-teachers' ? 'Учительская ПВЛ' : 'Новости'}
                             </button>
                         ))}
                     </div>
@@ -893,6 +902,96 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 </div>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {tab === 'pvl-teachers' && (
+                    <div className="surface-card p-8 space-y-6">
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-display font-semibold text-slate-900">Учительская ПВЛ</h3>
+                            <Button
+                                variant="ghost"
+                                className="!py-2 !px-3 text-xs"
+                                onClick={() => {
+                                    api.getCourseLibraryMaterials?.()
+                                        .then((rows) => setPvlMaterials(Array.isArray(rows) ? rows : []))
+                                        .catch(() => setPvlMaterials([]));
+                                }}
+                            >
+                                Обновить
+                            </Button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input placeholder="Название материала" value={pvlEditor.title} onChange={(e) => setPvlEditor({ ...pvlEditor, title: e.target.value })} />
+                            <Input placeholder="ID потока (stream_id)" value={pvlEditor.stream_id} onChange={(e) => setPvlEditor({ ...pvlEditor, stream_id: e.target.value })} />
+                            <Input placeholder="video_url / rutube_url" value={pvlEditor.video_url} onChange={(e) => setPvlEditor({ ...pvlEditor, video_url: e.target.value })} />
+                            <Input placeholder="Название видео" value={pvlEditor.video_title} onChange={(e) => setPvlEditor({ ...pvlEditor, video_title: e.target.value })} />
+                            <Input placeholder="Ссылка на файл (PDF/чек-лист)" value={pvlEditor.file_url} onChange={(e) => setPvlEditor({ ...pvlEditor, file_url: e.target.value })} />
+                            <label className="flex items-center gap-2 text-sm text-slate-600">
+                                <input type="checkbox" checked={!!pvlEditor.is_published} onChange={(e) => setPvlEditor({ ...pvlEditor, is_published: e.target.checked })} />
+                                Опубликовано
+                            </label>
+                        </div>
+                        <textarea
+                            className="w-full min-h-[120px] bg-slate-50 border border-slate-200 rounded-2xl p-3 text-slate-700"
+                            placeholder="Описание материала"
+                            value={pvlEditor.description}
+                            onChange={(e) => setPvlEditor({ ...pvlEditor, description: e.target.value })}
+                        />
+                        <div className="flex gap-2">
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        const saved = await api.saveCourseLibraryMaterial?.({
+                                            id: pvlEditor.id || undefined,
+                                            title: pvlEditor.title,
+                                            description: pvlEditor.description,
+                                            stream_id: Number(pvlEditor.stream_id || 0) || null,
+                                            video_url: pvlEditor.video_url,
+                                            video_title: pvlEditor.video_title,
+                                            file_url: pvlEditor.file_url,
+                                            is_published: !!pvlEditor.is_published
+                                        });
+                                        onNotify(saved ? 'Материал ПВЛ сохранен' : 'Материал сохранен');
+                                        setPvlEditor({ id: null, title: '', description: '', stream_id: '', video_url: '', video_title: '', file_url: '', is_published: true });
+                                        const rows = await api.getCourseLibraryMaterials?.();
+                                        setPvlMaterials(Array.isArray(rows) ? rows : []);
+                                    } catch (e) {
+                                        onNotify(e?.message || 'Ошибка сохранения материала ПВЛ');
+                                    }
+                                }}
+                            >
+                                Сохранить материал
+                            </Button>
+                            <Button variant="secondary" onClick={() => setPvlEditor({ id: null, title: '', description: '', stream_id: '', video_url: '', video_title: '', file_url: '', is_published: true })}>Очистить</Button>
+                        </div>
+                        <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                            {pvlMaterials.map((item) => (
+                                <article key={item.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 flex justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="font-medium text-slate-800 truncate">{item.title}</div>
+                                        <div className="text-xs text-slate-500 mt-1">{item.video_provider || 'content'} {item.video_title ? `· ${item.video_title}` : ''}</div>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        className="!py-1 !px-2 text-xs"
+                                        onClick={() => setPvlEditor({
+                                            id: item.id,
+                                            title: item.title || '',
+                                            description: item.description || '',
+                                            stream_id: String(item.stream_id || ''),
+                                            video_url: item.video_url || '',
+                                            video_title: item.video_title || '',
+                                            file_url: item.file_url || '',
+                                            is_published: !!item.is_published
+                                        })}
+                                    >
+                                        Редактировать
+                                    </Button>
+                                </article>
+                            ))}
+                            {pvlMaterials.length === 0 && <div className="text-sm text-slate-400">Материалов ПВЛ пока нет.</div>}
+                        </div>
                     </div>
                 )}
 

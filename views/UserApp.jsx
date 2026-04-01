@@ -19,7 +19,6 @@ import ProfileView from './ProfileView';
 import CommunicationsView from './CommunicationsView';
 import MentorDashboardView from './MentorDashboardView';
 import PvlStudentCabinetView from './PvlStudentCabinetView';
-import PvlPrototypeApp from './PvlPrototypeApp';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
@@ -722,9 +721,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             newsItems={dashboardNews}
                         />
                     )}
-                    {view === 'mentor-dashboard' && <MentorDashboardView />}
+                    {view === 'mentor-dashboard' && <MentorDashboardView user={user} onNotify={onNotify} />}
                     {view === 'pvl-student' && <PvlStudentCabinetView user={user} />}
-                    {view === 'pvl-prototype' && <PvlPrototypeApp />}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
                     {view === 'library' && (

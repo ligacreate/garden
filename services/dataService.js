@@ -280,6 +280,26 @@ const normalizeLibrarySettings = (raw) => {
 };
 
 const normalizeScenarioTitle = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const toIsoDateOnly = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+};
+const normalizeRutubeEmbed = (url) => {
+    const raw = String(url || '').trim();
+    if (!raw) return { video_url: '', video_provider: null, embed_code: null };
+    const rutubeMatch = raw.match(/rutube\.ru\/video\/([a-zA-Z0-9]+)/i);
+    if (rutubeMatch) {
+        const code = rutubeMatch[1];
+        return {
+            video_url: raw,
+            video_provider: 'rutube',
+            embed_code: `https://rutube.ru/play/embed/${code}`
+        };
+    }
+    return { video_url: raw, video_provider: 'url', embed_code: null };
+};
 
 const normalizeScenarioTimelineItem = (entry, index) => {
     if (typeof entry === 'string') {
@@ -624,6 +644,39 @@ class LocalStorageService {
         const normalized = normalizeLibrarySettings(settings || DEFAULT_LIBRARY_SETTINGS);
         localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
         return normalized;
+    }
+
+    async getCourseLibraryMaterials(streamId = null) {
+        const all = JSON.parse(localStorage.getItem('course_library_materials') || '[]');
+        if (!streamId) return all;
+        return all.filter((item) => String(item.stream_id) === String(streamId));
+    }
+
+    async saveCourseLibraryMaterial(material) {
+        const all = JSON.parse(localStorage.getItem('course_library_materials') || '[]');
+        const normalizedVideo = normalizeRutubeEmbed(material.video_url || material.rutube_url || '');
+        const payload = {
+            ...material,
+            ...normalizedVideo,
+            id: material.id || Date.now(),
+            created_at: material.created_at || new Date().toISOString()
+        };
+        const index = all.findIndex((item) => String(item.id) === String(payload.id));
+        if (index >= 0) all[index] = { ...all[index], ...payload };
+        else all.unshift(payload);
+        localStorage.setItem('course_library_materials', JSON.stringify(all));
+        return payload;
+    }
+
+    async getHomeworkResults(userId) {
+        const all = JSON.parse(localStorage.getItem('homework_submissions') || '[]');
+        return all.filter((item) => String(item.student_user_id) === String(userId));
+    }
+
+    async getCalendarEvents(streamId = null) {
+        const all = JSON.parse(localStorage.getItem('calendar_events') || '[]');
+        if (!streamId) return all;
+        return all.filter((item) => String(item.stream_id) === String(streamId));
     }
 
     // Meetings (Mocked for local storage as they were in UserApp state)
@@ -1545,6 +1598,67 @@ class RemoteApiService {
             }
             throw e;
         }
+    }
+
+    async getCourseLibraryMaterials(streamId = null) {
+        const params = {
+            select: 'id,stream_id,lesson_id,title,description,video_url,video_provider,video_title,preview_image,embed_code,file_url,is_published,created_at,material_tag_relations(tag_id,material_tags(code,title))',
+            order: 'created_at.desc'
+        };
+        if (streamId) params.stream_id = `eq.${streamId}`;
+        const { data } = await postgrestFetch('course_materials', params);
+        return data || [];
+    }
+
+    async saveCourseLibraryMaterial(material) {
+        const normalizedVideo = normalizeRutubeEmbed(material.video_url || material.rutube_url || '');
+        const payload = this._sanitizeFields({
+            stream_id: material.stream_id,
+            lesson_id: material.lesson_id || null,
+            title: material.title,
+            description: material.description || '',
+            material_type_id: material.material_type_id || null,
+            video_title: material.video_title || '',
+            preview_image: material.preview_image || null,
+            file_url: material.file_url || null,
+            is_published: material.is_published ?? false,
+            ...normalizedVideo
+        }, { plain: ['title', 'description', 'video_title', 'preview_image', 'file_url', 'video_url', 'embed_code'] });
+
+        if (material.id) {
+            const { data } = await postgrestFetch('course_materials', { id: `eq.${material.id}` }, {
+                method: 'PATCH',
+                body: payload,
+                returnRepresentation: true
+            });
+            return Array.isArray(data) ? data[0] : data;
+        }
+        const { data } = await postgrestFetch('course_materials', {}, {
+            method: 'POST',
+            body: [payload],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
+    }
+
+    async getHomeworkResults(userId) {
+        const { data } = await postgrestFetch('homework_submissions', {
+            select: 'id,status,submitted_at,final_score,homework_items(title,deadline_at,is_control_point),mentor_comments(comment_text,created_at),homework_status_history(previous_status,next_status,changed_at),homework_submission_files(file_name,file_url)',
+            student_user_id: `eq.${userId}`,
+            order: 'submitted_at.desc'
+        });
+        return data || [];
+    }
+
+    async getCalendarEvents(streamId = null, dateFrom = null) {
+        const params = {
+            select: 'id,stream_id,title,starts_at,ends_at,source,event_types(code,title,color)',
+            order: 'starts_at.asc'
+        };
+        if (streamId) params.stream_id = `eq.${streamId}`;
+        if (dateFrom) params.starts_at = `gte.${toIsoDateOnly(dateFrom)}`;
+        const { data } = await postgrestFetch('calendar_events', params);
+        return data || [];
     }
 
     async getMeetings(userId) {

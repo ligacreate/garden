@@ -10,7 +10,7 @@ export const ROUTE_ACCESS_MAP = Object.freeze({
 
 export function getHomeRouteByRole(role) {
     if (role === 'mentor') return '/mentor/dashboard';
-    if (role === 'admin') return '/admin/dashboard';
+    if (role === 'admin') return '/admin/pvl';
     return '/student/dashboard';
 }
 
@@ -28,7 +28,7 @@ export function redirectToAllowedRoute(role, attemptedRoute) {
 
 export function buildSidebarByRole(role) {
     if (role === 'admin') {
-        return ['Обзор', 'Контент-центр', 'Ученицы', 'Менторы', 'Потоки', 'Проверка и риски', 'Сертификация', 'Настройки'];
+        return ['Учительская ПВЛ', 'Сводка', 'Контент-центр', 'Ученицы', 'Менторы', 'Потоки', 'Проверка и риски', 'Сертификация', 'Настройки'];
     }
     if (role === 'mentor') return ['Дашборд ментора'];
     return ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
@@ -93,10 +93,15 @@ export function getAllRoutes() {
         '/student/results',
         '/student/results/:taskId',
         '/student/certification',
+        '/student/self-assessment',
         '/student/cultural-code',
         '/mentor/dashboard',
+        '/mentor/library',
+        '/mentor/library/:itemId',
+        '/mentor/materials',
         '/mentor/mentee/:id',
         '/mentor/mentee/:id/task/:taskId',
+        '/admin/pvl',
         '/admin/dashboard',
         '/admin/content',
         '/admin/students',

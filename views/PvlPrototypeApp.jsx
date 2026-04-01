@@ -5,11 +5,17 @@ import {
     pvlMockData,
     getStudentProfile,
     getUser,
-    getStudentTasks,
-    getStudentRisks,
     getStudentCertification,
 } from '../data/pvlMockData';
-import { pvlDomainApi } from '../services/pvlMockApi';
+import { mapTaskStatus, pvlDomainApi } from '../services/pvlMockApi';
+import { formatPvlDateTime } from '../utils/pvlDateFormat';
+
+/** Совместимость старых демо-id карточек менти с учётками seed API */
+const LEGACY_MENTEE_ROUTE_TO_USER = {
+    'm-101': 'u-st-1',
+    'm-102': 'u-st-2',
+    'm-103': 'u-st-3',
+};
 import {
     buildSidebarByRole,
     canAccessRoute,
@@ -24,8 +30,58 @@ import {
     validateRouteMap,
 } from '../services/pvlAppKernel';
 
-const STUDENT_MENU = ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
-const ADMIN_MENU = ['Обзор', 'Контент-центр', 'Ученицы', 'Менторы', 'Потоки', 'Проверка и риски', 'Сертификация', 'Настройки'];
+/** Единый источник контента для карточек разделов: seed (API) + демо из pvlMockData, плейсменты с contentItemId. */
+function normalizeContentStatus(s) {
+    if (s == null) return 'draft';
+    if (typeof s === 'string') return s.toLowerCase();
+    return String(s).toLowerCase();
+}
+
+function buildMergedCmsState() {
+    const db = pvlDomainApi.db;
+    const dbItems = Array.isArray(db?.contentItems) ? [...db.contentItems] : [];
+    const mockItems = Array.isArray(pvlMockData.contentItems) ? [...pvlMockData.contentItems] : [];
+    const byId = new Map();
+    mockItems.forEach((i) => {
+        if (i?.id) byId.set(i.id, { ...i, status: normalizeContentStatus(i.status) });
+    });
+    dbItems.forEach((i) => {
+        if (!i?.id) return;
+        const prev = byId.get(i.id) || {};
+        byId.set(i.id, { ...prev, ...i, status: normalizeContentStatus(i.status) });
+    });
+    const items = Array.from(byId.values());
+
+    const dbPl = Array.isArray(db?.contentPlacements) ? db.contentPlacements : [];
+    const mockPl = Array.isArray(pvlMockData.contentPlacements) ? pvlMockData.contentPlacements : [];
+    const plById = new Map();
+    mockPl.forEach((p) => {
+        if (!p?.id) return;
+        plById.set(p.id, { ...p, contentId: p.contentId || p.contentItemId });
+    });
+    dbPl.forEach((p) => {
+        if (!p?.id) return;
+        const prev = plById.get(p.id) || {};
+        plById.set(p.id, { ...prev, ...p, contentId: p.contentId || p.contentItemId });
+    });
+    const placements = Array.from(plById.values());
+    return { items, placements };
+}
+
+const STUDENT_MENU = ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Самооценка', 'Культурный код Лиги'];
+const ADMIN_MENU = ['Учительская ПВЛ', 'Сводка', 'Контент-центр', 'Ученицы', 'Менторы', 'Потоки', 'Проверка и риски', 'Сертификация', 'Настройки'];
+
+const ADMIN_NAV_MAP = {
+    'Учительская ПВЛ': '/admin/pvl',
+    Сводка: '/admin/dashboard',
+    'Контент-центр': '/admin/content',
+    Ученицы: '/admin/students',
+    Менторы: '/admin/mentors',
+    Потоки: '/admin/cohorts',
+    'Проверка и риски': '/admin/review',
+    Сертификация: '/admin/certification',
+    Настройки: '/admin/settings',
+};
 
 const STATUS_TONE = (status) => {
     const s = String(status || '').toLowerCase();
@@ -111,7 +167,7 @@ const PointsHistoryList = ({ items = [] }) => (
         {items.length === 0 ? <div className="text-xs text-[#9B8B80]">Пока нет начислений.</div> : items.map((h) => (
             <article key={h.id} className="rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] p-2">
                 <div className="text-xs text-[#2C1810]">{h.sourceLabel}: +{h.pointsDelta}</div>
-                <div className="text-[10px] text-[#9B8B80]">{h.createdAt}</div>
+                <div className="text-[10px] text-[#9B8B80]">{formatPvlDateTime(h.createdAt)}</div>
             </article>
         ))}
     </div>
@@ -128,8 +184,11 @@ const AssessmentComparisonCard = ({ selfPoints, mentorPoints }) => (
 const SidebarMenu = ({ role, studentSection, setStudentSection, adminSection, setAdminSection, navigate }) => (
     <aside className="surface-card border border-[#E8D5C4] bg-white p-3 h-fit xl:sticky xl:top-6">
         <h3 className="font-display text-2xl text-[#4A3728] mb-2">
-            {role === 'student' ? 'Кабинет участницы' : role === 'mentor' ? 'Зона ментора' : 'Учительская'}
+            {role === 'student' ? 'Кабинет участницы' : role === 'mentor' ? 'Зона ментора' : 'Учительская ПВЛ'}
         </h3>
+        {role === 'admin' ? (
+            <p className="text-[11px] text-[#9B8B80] mb-2 leading-snug">Раздел «Учительская ПВЛ» — единая точка входа к управлению материалами и потоками курса в этом приложении.</p>
+        ) : null}
         {role === 'student' ? (
             <nav className="space-y-1">
                 <button onClick={() => navigate('/student/dashboard')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Дашборд</button>
@@ -150,6 +209,8 @@ const SidebarMenu = ({ role, studentSection, setStudentSection, adminSection, se
             role === 'mentor' ? (
                 <nav className="space-y-1">
                     <button onClick={() => navigate('/mentor/dashboard')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Дашборд ментора</button>
+                    <button onClick={() => navigate('/mentor/library')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Библиотека курса</button>
+                    <button onClick={() => navigate('/mentor/materials')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Материалы для ментора</button>
                 </nav>
             ) : (
                 <nav className="space-y-1">
@@ -158,17 +219,7 @@ const SidebarMenu = ({ role, studentSection, setStudentSection, adminSection, se
                             key={item}
                             onClick={() => {
                                 setAdminSection(item);
-                                const map = {
-                                    Обзор: '/admin/dashboard',
-                                    'Контент-центр': '/admin/content',
-                                    Ученицы: '/admin/students',
-                                    Менторы: '/admin/mentors',
-                                    Потоки: '/admin/cohorts',
-                                    'Проверка и риски': '/admin/review',
-                                    Сертификация: '/admin/certification',
-                                    Настройки: '/admin/settings',
-                                };
-                                navigate(map[item] || '/admin/dashboard');
+                                navigate(ADMIN_NAV_MAP[item] || '/admin/pvl');
                             }}
                             className={`w-full text-left rounded-xl px-3 py-2 text-sm ${adminSection === item ? 'bg-[#C8855A]/15 border border-[#E8D5C4] text-[#4A3728]' : 'text-[#9B8B80] hover:bg-[#FAF6F2]'}`}
                         >
@@ -204,7 +255,7 @@ const RoleSwitcher = ({ role, setRole, navigate }) => (
         <span className="text-xs text-[#9B8B80]">Role switch:</span>
         <button onClick={() => { setRole('student'); navigate('/student/dashboard'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'student' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>student</button>
         <button onClick={() => { setRole('mentor'); navigate('/mentor/dashboard'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'mentor' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>mentor</button>
-        <button onClick={() => { setRole('admin'); navigate('/admin/dashboard'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'admin' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>admin</button>
+        <button onClick={() => { setRole('admin'); navigate('/admin/pvl'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'admin' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>admin</button>
     </div>
 );
 
@@ -268,7 +319,12 @@ const SECTION_ROUTE_TO_KEY = {
 };
 
 function getPublishedContentBySection(sectionKey, role = 'student', items = [], placements = [], cohortId = 'cohort-2026-1') {
-    const placementIds = new Set(placements.filter((p) => p.targetSection === sectionKey && (p.targetRole === role || p.targetRole === 'both')).map((p) => p.contentId));
+    const placementIds = new Set(
+        placements
+            .filter((p) => p.targetSection === sectionKey && (p.targetRole === role || p.targetRole === 'both'))
+            .map((p) => p.contentId || p.contentItemId)
+            .filter(Boolean)
+    );
     return items.filter((i) => {
         const roleAllowed = i.targetRole === role || i.targetRole === 'both';
         const visibilityAllowed =
@@ -326,7 +382,7 @@ function sortLibraryItems(items, sortBy = 'order') {
     return arr.sort((a, b) => (a.orderIndex || 999) - (b.orderIndex || 999));
 }
 
-function LibraryPage({ studentId, navigate, initialItemId = '' }) {
+function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student' }) {
     const [loading] = useState(false);
     const [error] = useState('');
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
@@ -412,7 +468,7 @@ function LibraryPage({ studentId, navigate, initialItemId = '' }) {
                                             <button onClick={() => {
                                                 setSelectedItemId(i.id);
                                                 pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
-                                                if (navigate) navigate(`/student/library/${i.id}`);
+                                                if (navigate) navigate(`${routePrefix}/library/${i.id}`);
                                             }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Открыть</button>
                                         </div>
                                     </article>
@@ -428,7 +484,7 @@ function LibraryPage({ studentId, navigate, initialItemId = '' }) {
                             <h3 className="font-display text-2xl text-[#4A3728]">{selectedItem.title}</h3>
                             <div className="flex items-center gap-2">
                                 <button onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Отметить как просмотрено</button>
-                                <button onClick={() => { setSelectedItemId(''); if (navigate) navigate('/student/library'); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Закрыть</button>
+                                <button onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Закрыть</button>
                             </div>
                         </div>
                         <p className="text-sm text-[#2C1810] mt-2">{selectedItem.fullDescription || selectedItem.shortDescription}</p>
@@ -465,33 +521,35 @@ function buildTaskDetailStateFromApi(studentId, taskId) {
     const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, taskId);
     const task = detail.task || {};
     const state = detail.state || {};
+    const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
     const thread = (detail.thread || []).map((m) => ({
         id: m.id,
         type: m.isSystem ? 'system' : 'message',
         authorName: m.authorRole === 'mentor' ? 'Ментор' : m.authorRole === 'student' ? 'Участница' : 'Система',
         authorRole: m.authorRole,
-        createdAt: m.createdAt,
+        createdAt: formatPvlDateTime(m.createdAt),
         text: m.text,
         attachments: m.attachments || [],
         linkedStatusChange: m.linkedStatusHistoryId || null,
         linkedVersionId: m.linkedVersionId || null,
         isUnreadForCurrentUser: !(m.readBy || []).includes(studentId),
     }));
+    const typeLabel = task.isControlPoint || task.taskType === 'control_point' ? 'контрольная точка' : 'домашнее задание';
     return {
         taskDetail: {
             id: task.id,
             title: task.title,
-            weekNumber: Number(String(task.weekId || '').split('w').pop() || 0),
-            moduleNumber: 0,
-            type: task.taskType,
+            weekNumber: weekRow?.weekNumber ?? Number(String(task.weekId || '').split('w').pop() || 0),
+            moduleNumber: weekRow?.moduleNumber ?? 0,
+            type: typeLabel,
             isControlPoint: task.isControlPoint,
             controlPointId: task.controlPointId,
-            status: state.status || 'in_progress',
-            deadlineAt: task.deadlineAt,
-            submittedAt: state.submittedAt,
-            lastStatusChangedAt: state.lastStatusChangedAt,
-            score: state.totalTaskPoints || 0,
-            maxScore: task.scoreMax || 0,
+            status: state.status ? mapTaskStatus(state.status) : 'не начато',
+            deadlineAt: formatPvlDateTime(task.deadlineAt),
+            submittedAt: state.submittedAt ? formatPvlDateTime(state.submittedAt) : null,
+            lastStatusChangedAt: state.lastStatusChangedAt ? formatPvlDateTime(state.lastStatusChangedAt) : null,
+            score: state.totalTaskPoints ?? 0,
+            maxScore: task.scoreMax ?? 0,
         },
         taskDescription: {
             summary: task.description || '',
@@ -503,7 +561,7 @@ function buildTaskDetailStateFromApi(studentId, taskId) {
         submissionVersions: (detail.versions || []).map((v) => ({
             id: v.id,
             versionNumber: v.versionNumber,
-            createdAt: v.createdAt,
+            createdAt: formatPvlDateTime(v.createdAt),
             authorRole: v.authorRole,
             textContent: v.textContent,
             attachments: v.attachments || [],
@@ -514,7 +572,7 @@ function buildTaskDetailStateFromApi(studentId, taskId) {
             id: h.id,
             fromStatus: h.fromStatus,
             toStatus: h.toStatus,
-            changedAt: h.createdAt,
+            changedAt: formatPvlDateTime(h.createdAt),
             changedBy: h.changedByUserId,
             comment: h.comment,
         })),
@@ -532,6 +590,7 @@ function toRoute(name) {
         'Чек-лист': 'checklist',
         Результаты: 'results',
         Сертификация: 'certification',
+        Самооценка: 'self-assessment',
         'Культурный код Лиги': 'cultural-code',
     };
     return map[name] || 'dashboard';
@@ -541,12 +600,14 @@ function StudentDashboard({ studentId, navigate }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
     const points = pvlDomainApi.helpers.getStudentPointsSummary(studentId);
     const profile = getStudentProfile(studentId) || snapshot.studentProfile;
-    const tasks = getStudentTasks(studentId);
-    const risks = snapshot.risks || getStudentRisks(studentId);
-    const cpDone = tasks.filter((t) => t.isControlPoint && (t.status === 'принято' || t.status === 'accepted')).length;
+    const apiTasks = pvlDomainApi.studentApi.getStudentResults(studentId, {});
+    const risks = snapshot.risks || [];
+    const cpDone = apiTasks.filter((t) => t.isControlPoint && t.status === 'принято').length;
     const cpTotal = 9;
-    const done = snapshot.dashboardStats?.homeworkDone ?? tasks.filter((t) => t.status === 'принято').length;
-    const total = snapshot.dashboardStats?.homeworkTotal ?? (tasks.length || 1);
+    const done = snapshot.dashboardStats?.homeworkDone ?? apiTasks.filter((t) => t.status === 'принято').length;
+    const total = snapshot.dashboardStats?.homeworkTotal ?? (apiTasks.length || 1);
+    const faqSeed = Array.isArray(pvlDomainApi.db.faqItems) && pvlDomainApi.db.faqItems.length > 0;
+    const faqItems = faqSeed ? pvlDomainApi.db.faqItems : pvlMockData.faqItems;
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
@@ -571,14 +632,19 @@ function StudentDashboard({ studentId, navigate }) {
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ближайшие дедлайны и риски</h3>
                     <ul className="text-sm space-y-1">
-                        <li>КТ4/5/6 — 2026-06-02</li>
-                        <li>Дедлайн записи СЗ — 2026-06-30</li>
+                        <li>КТ4/5/6 — {formatPvlDateTime('2026-06-02')}</li>
+                        <li>Дедлайн записи СЗ — {formatPvlDateTime('2026-06-30')}</li>
                         <li>Активных рисков: {risks.length}</li>
                     </ul>
                 </div>
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <h3 className="font-display text-2xl text-[#4A3728] mb-2">FAQ</h3>
-                    <ul className="text-sm space-y-1">{pvlMockData.faqItems.map((f) => <li key={f.id}>• {f.q}</li>)}</ul>
+                    {!faqSeed ? <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">Показан запасной список из pvlMockData: в seed нет faqItems или он пуст.</p> : null}
+                    <ul className="text-sm space-y-1">
+                        {faqItems.map((f) => (
+                            <li key={f.id}>• {f.title || f.q}{(f.answer || f.a) ? ` — ${f.answer || f.a}` : ''}</li>
+                        ))}
+                    </ul>
                 </div>
             </div>
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
@@ -594,26 +660,205 @@ function StudentDashboard({ studentId, navigate }) {
     );
 }
 
+function practicumStatusRu(status) {
+    const s = String(status || '').toLowerCase();
+    const map = {
+        scheduled: 'запланирована',
+        happened: 'прошла',
+        missed: 'пропущена',
+        cancelled: 'отменена',
+        deadline: 'дедлайн недели',
+    };
+    return map[s] || status;
+}
+
+function StudentLessonsLive({ studentId }) {
+    const cohortId = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId)?.cohortId || 'cohort-2026-1';
+    const weeks = pvlDomainApi.sharedApi.getCourseWeeks(cohortId).slice().sort((a, b) => a.weekNumber - b.weekNumber);
+    const cps = pvlDomainApi.sharedApi.getControlPoints(cohortId);
+    return (
+        <div className="space-y-3">
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h2 className="font-display text-3xl text-[#4A3728]">Уроки и недели</h2>
+                <p className="text-sm text-[#9B8B80]">Недели курса из расписания: шаги, контрольные точки и дедлайн.</p>
+            </div>
+            {weeks.map((w) => {
+                const cpWeek = cps.filter((c) => c.weekNumber === w.weekNumber);
+                return (
+                    <article key={w.id} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <h4 className="font-display text-2xl text-[#4A3728]">Неделя {w.weekNumber}: {w.title}</h4>
+                            <span className="text-xs text-[#9B8B80]">Дедлайн: {formatPvlDateTime(w.endDate)}</span>
+                        </div>
+                        <div className="grid md:grid-cols-3 gap-2 text-sm">
+                            <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">Модуль {w.moduleNumber} · артефакт: {w.artifactTitle || '—'}</div>
+                            <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">Фокус встречи с ментором: {w.mentorMeetingFocus || '—'}</div>
+                            <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">
+                                КТ: {cpWeek.length ? cpWeek.map((c) => c.code).join(', ') : 'нет'}
+                            </div>
+                        </div>
+                    </article>
+                );
+            })}
+        </div>
+    );
+}
+
+function groupPracticumEventsByCalendarDay(events) {
+    const map = new Map();
+    for (const ev of events) {
+        const raw = String(ev.at || '');
+        const d = new Date(raw);
+        const key = Number.isNaN(d.getTime()) ? 'unknown' : d.toISOString().slice(0, 10);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(ev);
+    }
+    const entries = [...map.entries()].sort((a, b) => {
+        if (a[0] === 'unknown') return 1;
+        if (b[0] === 'unknown') return -1;
+        return a[0].localeCompare(b[0]);
+    });
+    for (const [, list] of entries) {
+        list.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    }
+    return entries;
+}
+
+function StudentPracticumsCalendar({ studentId }) {
+    const events = pvlDomainApi.studentApi.getStudentPracticumEvents(studentId);
+    const byDay = groupPracticumEventsByCalendarDay(events);
+    return (
+        <div className="space-y-3">
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h2 className="font-display text-3xl text-[#4A3728]">Практикумы и календарь</h2>
+                <p className="text-sm text-[#9B8B80]">Учебный ритм: события сгруппированы по календарным датам (встречи с ментором и закрытие недель).</p>
+            </div>
+            {events.length === 0 ? (
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm text-[#9B8B80]">Событий пока нет.</div>
+            ) : (
+                <div className="space-y-6">
+                    {byDay.map(([dayKey, dayEvents]) => (
+                        <section key={dayKey} className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/50 overflow-hidden">
+                            <div className="bg-[#E8D5C4]/35 px-4 py-2 border-b border-[#E8D5C4]">
+                                <h3 className="font-display text-xl text-[#4A3728]">
+                                    {dayKey === 'unknown' ? 'Без даты' : formatPvlDateTime(`${dayKey}T12:00:00`)}
+                                </h3>
+                                <p className="text-[11px] text-[#9B8B80]">{dayEvents.length} {dayEvents.length === 1 ? 'событие' : 'событий'}</p>
+                            </div>
+                            <ul className="divide-y divide-[#E8D5C4]/80">
+                                {dayEvents.map((ev) => (
+                                    <li key={ev.id} className="px-4 py-3 flex flex-wrap items-start justify-between gap-3 bg-white">
+                                        <div className="min-w-0">
+                                            <div className="text-[10px] uppercase tracking-[0.08em] text-[#9B8B80]">{ev.eventType}</div>
+                                            <div className="text-sm font-medium text-[#4A3728] mt-0.5">{ev.title}</div>
+                                            {ev.focus ? <div className="text-xs text-[#9B8B80] mt-1">{ev.focus}</div> : null}
+                                            <div className="text-[10px] text-[#9B8B80] mt-1">Неделя курса: {ev.weekNumber}</div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <div className="text-sm font-medium text-[#4A3728]">{formatPvlDateTime(ev.at)}</div>
+                                            <div className="text-[10px] text-[#9B8B80] mt-0.5">{practicumStatusRu(ev.status)}</div>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function StudentAboutEnriched() {
+    return (
+        <div className="space-y-3">
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h3 className="font-display text-2xl text-[#4A3728] mb-2">О курсе и онбординг</h3>
+                <p className="text-sm text-[#2C1810] leading-6">Три месяца, контрольные точки, правила баллов, безопасность, связь и расписание. Стартовые материалы и видео — в карточках ниже и в библиотеке.</p>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Как пользоваться платформой: уроки, задания, дедлайны, личный кабинет.</div>
+                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Антидолги: D+1, D+3, D+7, D+10 — чтобы не копить долги по неделям.</div>
+                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Матрица ответственности: методолог, ментор, куратор, техподдержка.</div>
+                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Курсовые баллы (до 400) и СЗ (до 54) — разные шкалы.</div>
+            </div>
+        </div>
+    );
+}
+
+function StudentGlossarySearch() {
+    const [q, setQuery] = useState('');
+    const seen = new Set();
+    const base = [...pvlDomainApi.sharedApi.getGlossary(), ...pvlMockData.glossaryItems.map((g) => ({ id: g.id, term: g.term, definition: g.definition }))].filter((g) => {
+        const k = String(g.term || g.id).toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
+    const filtered = q.trim()
+        ? base.filter((g) => String(g.term).toLowerCase().includes(q.toLowerCase()) || String(g.definition || '').toLowerCase().includes(q.toLowerCase()))
+        : base;
+    return (
+        <div className="space-y-3">
+            <input value={q} onChange={(e) => setQuery(e.target.value)} className="w-full rounded-full border border-[#E8D5C4] bg-white px-4 py-2 text-sm" placeholder="Поиск термина..." />
+            <div className="grid md:grid-cols-2 gap-3">
+                {filtered.map((g) => (
+                    <article key={g.id || g.term} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                        <h4 className="font-display text-xl text-[#4A3728]">{g.term}</h4>
+                        <p className="text-sm text-[#2C1810] mt-1">{g.definition}</p>
+                    </article>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function StudentChecklistLive({ studentId }) {
+    const snap = pvlDomainApi.studentApi.getStudentDashboard(studentId);
+    const weeks = pvlDomainApi.studentApi.getStudentChecklist(studentId);
+    const anti = snap.antiDebt || [];
+    const progressStub = weeks.length > 0 && weeks.every((w) => w.progress === 0);
+    return (
+        <div className="space-y-3">
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h3 className="font-display text-2xl text-[#4A3728] mb-2">Маршрут прохождения</h3>
+                <p className="text-sm text-[#9B8B80] mb-3">Обязательные точки и протокол антидолгов из данных курса.</p>
+                {progressStub ? (
+                    <p className="text-[11px] text-slate-700 bg-slate-100 border border-slate-200 rounded-lg p-2 mb-3">
+                        Прогресс по неделям в API пока заглушка: <code className="text-[10px]">getStudentChecklist</code> возвращает <code className="text-[10px]">progress: 0</code> для всех недель.
+                        Чтобы показать реальный процент, нужен расчёт по недельным заданиям/КТ в data layer (не подменять моками).
+                    </p>
+                ) : null}
+                <div className="space-y-2 text-sm">
+                    {weeks.slice(0, 13).map((w) => (
+                        <div key={w.weekNumber} className="rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] p-3 flex justify-between gap-2">
+                            <span>Неделя {w.weekNumber}</span>
+                            <span className="text-[#9B8B80]">{typeof w.progress === 'number' ? `${w.progress}%` : '—'}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-xl text-[#4A3728] mb-2">Антидолги</h4>
+                {anti.length === 0 ? <p className="text-sm text-[#9B8B80]">Активных антидолгов нет.</p> : (
+                    <ul className="text-sm space-y-1">
+                        {anti.map((a) => (
+                            <li key={a.taskId} className="rounded-xl border border-amber-200 bg-amber-50 p-2">
+                                {a.type}: задача {a.taskId}, просрочка {a.days} дн.
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function StudentResults({ studentId, navigate }) {
     const pref = loadViewPreferences('student.results');
     const [filter, setFilter] = useState(pref?.filter || 'все');
     const apiItems = pvlDomainApi.studentApi.getStudentResults(studentId, {});
-    const mapped = apiItems.map((x) => ({
-        id: x.id,
-        title: x.title,
-        weekNumber: x.week,
-        moduleNumber: 0,
-        type: x.type,
-        status: x.status,
-        deadlineAt: x.deadlineAt,
-        submittedAt: x.submittedAt,
-        score: 0,
-        maxScore: 0,
-        revisionCycles: 0,
-        mentorCommentPreview: x.mentorCommentPreview,
-        isControlPoint: x.type === 'control_point',
-    }));
-    const tasks = mapped.filter((t) => (filter === 'все' ? true : filter === 'контрольные точки' ? t.isControlPoint : t.status === filter));
+    const tasks = apiItems.filter((t) => (filter === 'все' ? true : filter === 'контрольные точки' ? t.isControlPoint : t.status === filter));
     const pointsHistory = (pvlDomainApi.db.pointsHistory || []).filter((x) => x.studentId === studentId).slice(-5).reverse();
     React.useEffect(() => {
         saveViewPreferences('student.results', { filter });
@@ -635,12 +880,12 @@ function StudentResults({ studentId, navigate }) {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                             <div className="text-sm font-medium text-[#4A3728]">{t.title}</div>
-                            <div className="text-xs text-[#9B8B80]">Неделя {t.weekNumber} · Модуль {t.moduleNumber} · {t.type}</div>
+                            <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
                         </div>
                         <StatusBadge>{t.status}</StatusBadge>
                     </div>
                     <div className="grid md:grid-cols-4 gap-2 mt-2 text-xs">
-                        <div>Дедлайн: {t.deadlineAt}</div><div>Сдано: {t.submittedAt || '—'}</div><div>Баллы: {t.score}/{t.maxScore}</div><div>Циклы: {t.revisionCycles}</div>
+                        <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div><div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div><div>Баллы: {t.score}/{t.maxScore}</div><div>Циклы: {t.revisionCycles}</div>
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                         <span className="text-xs text-[#9B8B80]">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</span>
@@ -662,6 +907,34 @@ function StudentGeneric({ title, children }) {
 }
 
 function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refresh }) {
+    if (route === '/student/self-assessment') {
+        const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
+        const timeline = Array.isArray(cert.timeline) ? cert.timeline : [];
+        return (
+            <div className="space-y-3">
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                    <h2 className="font-display text-3xl text-[#4A3728]">Самооценка (СЗ)</h2>
+                    <p className="text-sm text-[#9B8B80] mt-1">Отдельная шкала до 54 баллов; курсовые баллы (до 400) — отдельно.</p>
+                </div>
+                <SzPointsCard points={cert.points} redFlags={cert.redFlags || []} />
+                <AssessmentComparisonCard selfPoints={cert.points.szSelfAssessmentTotal} mentorPoints={cert.points.szMentorAssessmentTotal} />
+                {timeline.length > 0 ? (
+                    <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                        <h3 className="font-display text-xl text-[#4A3728] mb-2">Этапы сертификации</h3>
+                        <ul className="text-sm space-y-1 text-[#2C1810]">
+                            {timeline.map((t, idx) => (
+                                <li key={t.code || idx}>{t.code}: {t.status}</li>
+                            ))}
+                        </ul>
+                    </div>
+                ) : null}
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-[#2C1810]">Запись СЗ, пакет и допуск — в разделе «Сертификация».</span>
+                    <button type="button" onClick={() => navigate('/student/certification')} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Сертификация</button>
+                </div>
+            </div>
+        );
+    }
     const sectionKey = SECTION_ROUTE_TO_KEY[route];
     const sectionMaterials = sectionKey ? getPublishedContentBySection(sectionKey, 'student', cmsItems, cmsPlacements) : [];
     if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} />;
@@ -679,28 +952,84 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
             />
         );
     }
-    if (route === '/student/about') return <StudentGeneric title="О курсе"><GardenContentCards items={sectionMaterials} /></StudentGeneric>;
-    if (route === '/student/glossary') return <StudentGeneric title="Глоссарий курса"><GardenContentCards items={sectionMaterials.length ? sectionMaterials : pvlMockData.glossaryItems.map((g) => ({ id: g.id, title: g.term, shortDescription: g.definition, contentType: 'text', tags: ['глоссарий'] }))} /></StudentGeneric>;
+    if (route === '/student/about') return (
+        <div className="space-y-3">
+            <StudentAboutEnriched />
+            <StudentGeneric title="Материалы из CMS"><GardenContentCards items={sectionMaterials} /></StudentGeneric>
+        </div>
+    );
+    if (route === '/student/glossary') return (
+        <StudentGeneric title="Глоссарий курса">
+            <StudentGlossarySearch />
+            <div className="mt-4 pt-4 border-t border-[#E8D5C4]"><GardenContentCards items={sectionMaterials} /></div>
+        </StudentGeneric>
+    );
     if (route === '/student/library') return <LibraryPage studentId={studentId} navigate={navigate} />;
     if (route.startsWith('/student/library/')) {
         const itemId = route.split('/')[3] || '';
         return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} />;
     }
-    if (route === '/student/lessons') return <StudentGeneric title="Уроки"><GardenContentCards items={sectionMaterials} /></StudentGeneric>;
-    if (route === '/student/practicums') return <StudentGeneric title="Практикумы с менторами"><GardenContentCards items={sectionMaterials} /></StudentGeneric>;
-    if (route === '/student/checklist') return <StudentGeneric title="Чек-лист"><GardenContentCards items={sectionMaterials} /></StudentGeneric>;
+    if (route === '/student/lessons') return (
+        <div className="space-y-3">
+            <StudentLessonsLive studentId={studentId} />
+            <StudentGeneric title="Материалы из CMS"><GardenContentCards items={sectionMaterials} /></StudentGeneric>
+        </div>
+    );
+    if (route === '/student/practicums') return (
+        <div className="space-y-3">
+            <StudentPracticumsCalendar studentId={studentId} />
+            <StudentGeneric title="Материалы из CMS"><GardenContentCards items={sectionMaterials} /></StudentGeneric>
+        </div>
+    );
+    if (route === '/student/checklist') return (
+        <div className="space-y-3">
+            <StudentChecklistLive studentId={studentId} />
+            <StudentGeneric title="Материалы из CMS"><GardenContentCards items={sectionMaterials} /></StudentGeneric>
+        </div>
+    );
     if (route === '/student/certification') {
         const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
-        return <StudentGeneric title="Сертификация"><SzPointsCard points={cert.points} redFlags={cert.redFlags || []} /><AssessmentComparisonCard selfPoints={cert.points.szSelfAssessmentTotal} mentorPoints={cert.points.szMentorAssessmentTotal} /><div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm mt-2">Курсовые баллы (отдельно): {cert.points.coursePointsTotal}/400 · Дедлайн записи СЗ: {cert?.deadlineAt || '2026-06-30'}</div><GardenContentCards items={sectionMaterials} /></StudentGeneric>;
+        return <StudentGeneric title="Сертификация"><SzPointsCard points={cert.points} redFlags={cert.redFlags || []} /><AssessmentComparisonCard selfPoints={cert.points.szSelfAssessmentTotal} mentorPoints={cert.points.szMentorAssessmentTotal} /><div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm mt-2">Курсовые баллы (отдельно): {cert.points.coursePointsTotal}/400 · Дедлайн записи СЗ: {formatPvlDateTime(cert?.deadlineAt || '2026-06-30')}</div><GardenContentCards items={sectionMaterials} /></StudentGeneric>;
     }
     if (route === '/student/cultural-code') return <StudentGeneric title="Культурный код Лиги"><GardenContentCards items={sectionMaterials.length ? sectionMaterials : ['Бережность', 'Ясность', 'Без советов', 'Поддержка сообщества'].map((x) => ({ id: x, title: x, shortDescription: '', contentType: 'text', tags: ['код'] }))} /></StudentGeneric>;
     return <StudentDashboard studentId={studentId} navigate={navigate} />;
 }
 
+function MentorMaterialsPage({ cmsItems, cmsPlacements }) {
+    const cohortId = 'cohort-2026-1';
+    const lessons = getPublishedContentBySection('lessons', 'mentor', cmsItems, cmsPlacements, cohortId);
+    const practicums = getPublishedContentBySection('practicums', 'mentor', cmsItems, cmsPlacements, cohortId);
+    const cert = getPublishedContentBySection('certification', 'mentor', cmsItems, cmsPlacements, cohortId);
+    const checklist = getPublishedContentBySection('checklist', 'mentor', cmsItems, cmsPlacements, cohortId);
+    const combined = [...lessons, ...practicums, ...cert, ...checklist];
+    return (
+        <div className="space-y-3">
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h2 className="font-display text-3xl text-[#4A3728]">Материалы для ментора</h2>
+                <p className="text-sm text-[#9B8B80]">Опубликованные материалы по роли ментора (уроки, практикумы, сертификация, чек-листы).</p>
+            </div>
+            <GardenContentCards items={combined} />
+        </div>
+    );
+}
+
+function riskLevelDisplay(level) {
+    const m = { high: 'высокий', medium: 'средний', low: 'низкий' };
+    return m[String(level || '').toLowerCase()] || level;
+}
+
 function MentorDashboard({ navigate, cmsItems, cmsPlacements }) {
     const mentorId = 'u-men-1';
     const menteesFromApi = pvlDomainApi.mentorApi.getMentorMentees(mentorId);
-    const mentees = menteesFromApi.map((m) => ({ user: m.user || getUser(m.userId), profile: getStudentProfile(m.userId), tasks: getStudentTasks(m.userId), risks: getStudentRisks(m.userId) }));
+    const menteeIdSet = new Set(menteesFromApi.map((m) => m.userId));
+    const overdueCount = pvlDomainApi.db.studentTaskStates.filter((s) => menteeIdSet.has(s.studentId) && s.isOverdue).length;
+    const mentees = menteesFromApi.map((m) => {
+        const user = m.user || getUser(m.userId);
+        const profDb = pvlDomainApi.db.studentProfiles.find((p) => p.userId === m.userId);
+        const tasksApi = pvlDomainApi.studentApi.getStudentResults(m.userId, {});
+        const risks = pvlDomainApi.mentorApi.getMentorMenteeCard(mentorId, m.userId).risks;
+        return { user, profDb, tasksApi, risks };
+    });
     const queueRaw = pvlDomainApi.mentorApi.getMentorReviewQueue(mentorId);
     const queue = queueRaw.map((q) => ({ id: q.task?.id || q.taskId, title: q.task?.title || q.taskId, type: q.task?.taskType || 'homework', studentId: q.studentId, submittedAt: q.submittedAt, deadlineAt: q.task?.deadlineAt || '' }));
     const mentorRisks = pvlDomainApi.mentorApi.getMentorDashboard(mentorId).risks || [];
@@ -718,7 +1047,7 @@ function MentorDashboard({ navigate, cmsItems, cmsPlacements }) {
                 <DashboardWidget title="Всего менти" value={mentees.length} />
                 <DashboardWidget title="Активных проверок" value={queue.length} />
                 <DashboardWidget title="Менти в риске" value={mentees.filter((m) => m.risks.length > 0).length} />
-                <DashboardWidget title="Просроченных ДЗ" value={pvlMockData.homeworkTasks.filter((t) => t.status === 'просрочено').length} />
+                <DashboardWidget title="Просроченных ДЗ" value={overdueCount} hint="По studentTaskStates.isOverdue ваших менти" />
             </div>
             <div className="grid md:grid-cols-3 gap-3">
                 <article className="rounded-2xl border border-[#E8D5C4] bg-white p-3"><div className="text-[11px] uppercase text-[#9B8B80]">Бонус ментора</div><div className="mt-2"><MentorBonusUsageBadge used={bonusUsed} /></div></article>
@@ -727,14 +1056,19 @@ function MentorDashboard({ navigate, cmsItems, cmsPlacements }) {
             </div>
             <StudentGeneric title="Мои менти">
                 <div className="grid gap-2">
-                    {mentees.map(({ user, profile, tasks, risks }) => (
+                    {mentees.map(({ user, profDb, tasksApi, risks }) => (
                         <article key={user.id} className="rounded-xl border border-[#E8D5C4] bg-white p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="text-sm font-medium text-[#4A3728]">{user.fullName}</div>
                                 <button onClick={() => navigate(`/mentor/mentee/${user.id}`)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Открыть карточку</button>
                             </div>
                             <div className="grid md:grid-cols-6 gap-2 mt-2 text-xs">
-                                <div>Неделя: {profile.currentWeek}</div><div>Статус: {profile.currentModule}</div><div>Последняя: {tasks[0]?.title || '—'}</div><div>Сдача: {tasks[0]?.status || '—'}</div><div>Баллы: {profile.coursePoints}</div><div>Риски: {risks.length}</div>
+                                <div>Неделя: {profDb?.currentWeek ?? '—'}</div>
+                                <div>Модуль: {profDb?.currentModule ?? '—'}</div>
+                                <div>Последняя работа: {tasksApi[0]?.title || '—'}</div>
+                                <div>Статус: {tasksApi[0]?.status || '—'}</div>
+                                <div>Курсовые: {profDb?.coursePoints ?? '—'}</div>
+                                <div>Рисков: {risks.length}</div>
                             </div>
                         </article>
                     ))}
@@ -745,7 +1079,7 @@ function MentorDashboard({ navigate, cmsItems, cmsPlacements }) {
                     {queue.map((q) => (
                         <article key={q.id} className="rounded-xl border border-[#E8D5C4] bg-white p-3 flex flex-wrap items-center justify-between gap-2 text-sm">
                             <span>{q.title} · {q.type}</span>
-                            <span className="text-xs text-[#9B8B80]">{q.submittedAt || '—'} / дедлайн {q.deadlineAt}</span>
+                            <span className="text-xs text-[#9B8B80]">{q.submittedAt ? formatPvlDateTime(q.submittedAt) : '—'} / дедлайн {formatPvlDateTime(q.deadlineAt)}</span>
                             <button onClick={() => navigate(`/mentor/mentee/${q.studentId}/task/${q.id}`)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">К задаче</button>
                         </article>
                     ))}
@@ -756,7 +1090,7 @@ function MentorDashboard({ navigate, cmsItems, cmsPlacements }) {
                     {mentorRisks.map((r) => (
                         <article key={r.id} className="rounded-xl border border-[#E8D5C4] bg-white p-3 flex flex-wrap items-center justify-between gap-2 text-sm">
                             <span>{r.title} · {r.riskType}</span>
-                            <RiskBadge level={r.riskLevel} />
+                            <RiskBadge level={riskLevelDisplay(r.riskLevel)} />
                             <button onClick={() => navigate(`/mentor/mentee/${r.studentId}/task/${r.relatedTaskId}`)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Открыть</button>
                         </article>
                     ))}
@@ -769,19 +1103,26 @@ function MentorDashboard({ navigate, cmsItems, cmsPlacements }) {
     );
 }
 
-function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh }) {
+function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0 }) {
     if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
+    if (route === '/mentor/materials') return <MentorMaterialsPage cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
+    if (route === '/mentor/library' || route.startsWith('/mentor/library/')) {
+        const itemId = route === '/mentor/library' ? '' : route.slice('/mentor/library/'.length).split('/')[0] || '';
+        return <LibraryPage studentId="u-st-1" navigate={navigate} initialItemId={itemId} routePrefix="/mentor" />;
+    }
     if (/^\/mentor\/mentee\/[^/]+\/task\/[^/]+$/.test(route)) {
         const [, , , menteeId, , taskId] = route.split('/');
+        const resolvedMentee = LEGACY_MENTEE_ROUTE_TO_USER[menteeId] || menteeId;
+        const mentorActorId = pvlDomainApi.db.studentProfiles.find((p) => p.userId === resolvedMentee)?.mentorId || 'u-men-1';
         return (
             <PvlTaskDetailView
                 role="mentor"
                 onBack={() => navigate(`/mentor/mentee/${menteeId}`)}
-                initialData={buildTaskDetailStateFromApi(menteeId, taskId)}
-                onMentorReply={(msg) => { pvlDomainApi.mentorApi.addMentorThreadReply('u-men-1', menteeId, taskId, { text: msg.text }); refresh(); }}
+                initialData={buildTaskDetailStateFromApi(resolvedMentee, taskId)}
+                onMentorReply={(msg) => { pvlDomainApi.mentorApi.addMentorThreadReply(mentorActorId, resolvedMentee, taskId, { text: msg.text }); refresh(); }}
                 onMentorReview={(payload) => {
-                    pvlDomainApi.mentorApi.submitMentorReview('u-men-1', menteeId, taskId, payload);
-                    pvlDomainApi.actions.markThreadRead('u-men-1', menteeId, taskId);
+                    pvlDomainApi.mentorApi.submitMentorReview(mentorActorId, resolvedMentee, taskId, payload);
+                    pvlDomainApi.actions.markThreadRead(mentorActorId, resolvedMentee, taskId);
                     refresh();
                 }}
             />
@@ -789,7 +1130,14 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh }) {
     }
     if (/^\/mentor\/mentee\/[^/]+$/.test(route)) {
         const [, , , menteeId] = route.split('/');
-        return <PvlMenteeCardView menteeId={menteeId} onBack={() => navigate('/mentor/dashboard')} />;
+        return (
+            <PvlMenteeCardView
+                menteeId={menteeId}
+                navigate={navigate}
+                refreshKey={refreshKey}
+                onBack={() => navigate('/mentor/dashboard')}
+            />
+        );
     }
     return <MentorDashboard navigate={navigate} />;
 }
@@ -800,33 +1148,116 @@ function AdminOverview() {
     const students = overview.activeStudents;
     const risks = overview.risks;
     const review = overview.reviewQueue;
-    const nearest = [...pvlMockData.homeworkTasks].sort((a, b) => String(a.deadlineAt).localeCompare(String(b.deadlineAt))).slice(0, 4);
+    const nearest = [...pvlDomainApi.db.homeworkTasks].sort((a, b) => String(a.deadlineAt).localeCompare(String(b.deadlineAt))).slice(0, 5);
+    const reviewRows = pvlDomainApi.adminApi.getAdminReviewQueue().slice(0, 8);
     return (
         <div className="space-y-3">
-            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4"><h2 className="font-display text-3xl text-[#4A3728]">Admin · Обзор</h2></div>
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h2 className="font-display text-3xl text-[#4A3728]">Сводка</h2>
+                <p className="text-xs text-[#9B8B80] mt-1">Данные из учебного слоя (seed + pvlDomainApi), без демо-списков из pvlMockData.</p>
+            </div>
             <div className="grid md:grid-cols-4 gap-3">
-                <DashboardWidget title="Потоки" value={pvlMockData.cohorts.length} />
+                <DashboardWidget title="Потоки" value={pvlDomainApi.adminApi.getAdminCohorts().length} />
                 <DashboardWidget title="Ученицы" value={students} />
                 <DashboardWidget title="Менторы" value={mentors} />
                 <DashboardWidget title="К проверке" value={review} />
             </div>
-            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-sm">Средние курсовые баллы: {overview.avgCoursePoints}/400 · СЗ отдельно 54</div>
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-sm">Средние курсовые баллы: {overview.avgCoursePoints}/400 · Опубликовано материалов: {overview.publishedContent}</div>
             <div className="grid md:grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                    <h3 className="font-display text-2xl text-[#4A3728] mb-2">Риски и дедлайны</h3>
-                    <p className="text-sm text-[#2C1810]">Активных рисков: {risks}</p>
+                    <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ближайшие дедлайны заданий (из БД)</h3>
+                    <p className="text-sm text-[#2C1810]">Активных рисков (записей): {risks}</p>
                     <div className="space-y-1 mt-2">
                         {nearest.map((n) => (
-                            <div key={n.id} className="text-sm flex items-center justify-between"><span>{n.title}</span><DeadlineBadge value={n.deadlineAt} /></div>
+                            <div key={n.id} className="text-sm flex items-center justify-between gap-2"><span>{n.title}</span><span className="text-xs text-[#9B8B80]">{formatPvlDateTime(n.deadlineAt)}</span></div>
                         ))}
                     </div>
                 </div>
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                    <h3 className="font-display text-2xl text-[#4A3728] mb-2">Проверки</h3>
-                    {pvlMockData.homeworkTasks.filter((t) => t.status === 'к проверке' || t.status === 'на доработке').map((t) => (
-                        <div key={t.id} className="text-sm flex items-center justify-between py-1"><span>{t.title}</span><StatusBadge>{t.status}</StatusBadge></div>
-                    ))}
+                    <h3 className="font-display text-2xl text-[#4A3728] mb-2">Очередь проверок</h3>
+                    {reviewRows.length === 0 ? <p className="text-sm text-[#9B8B80]">Нет заданий в очереди.</p> : reviewRows.map((s) => {
+                        const t = pvlDomainApi.db.homeworkTasks.find((x) => x.id === s.taskId);
+                        return (
+                            <div key={`${s.studentId}-${s.taskId}`} className="text-sm flex items-center justify-between py-1 border-b border-[#F5EDE6] last:border-0">
+                                <span>{t?.title || s.taskId}</span>
+                                <StatusBadge>{mapTaskStatus(s.status)}</StatusBadge>
+                            </div>
+                        );
+                    })}
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function TeacherPvlHome({ navigate }) {
+    const overview = pvlDomainApi.adminApi.getAdminOverview();
+    const cards = [
+        { title: 'Сводка', desc: 'Потоки, ученицы, очередь проверок, дедлайны заданий из seed.', to: '/admin/dashboard' },
+        { title: 'Контент-центр', desc: 'Создание, редактирование, публикация, плейсменты, дублирование, удаление материалов.', to: '/admin/content' },
+        { title: 'Ученицы', desc: 'Список профилей, риски, сертификация, переходы в кабинеты.', to: '/admin/students' },
+        { title: 'Менторы', desc: 'Закрепления, нагрузка, переход в зону ментора.', to: '/admin/mentors' },
+        { title: 'Потоки', desc: 'Когорты, даты, статистика по рискам.', to: '/admin/cohorts' },
+        { title: 'Проверка и риски', desc: 'Очередь и трекинг рисков.', to: '/admin/review' },
+        { title: 'Сертификация', desc: 'Реестр статусов СЗ по ученицам.', to: '/admin/certification' },
+        { title: 'Настройки', desc: 'Константы правил баллов, аудит-лог.', to: '/admin/settings' },
+    ];
+    const rows = [
+        { area: 'Материалы курса (CMS)', state: 'Работает', note: 'CRUD в памяти через adminApi; контент сливается с демо из pvlMockData при старте.' },
+        { area: 'Теги и типы', state: 'Частично', note: 'Теги — строка в форме; типы — фиксированный список в UI. Отдельного справочника тегов в API нет.' },
+        { area: 'Видимость и роли', state: 'Работает', note: 'Поля visibility / targetRole в материале и плейсменте.' },
+        { area: 'Публикация', state: 'Работает', note: 'publish / archive, publish placement.' },
+        { area: 'Уроки как сущность', state: 'Только контент', note: 'Недели и уроки в seed (lessons, courseWeeks); отдельного редактора расписания в админке нет.' },
+        { area: 'Библиотека курса', state: 'Два слоя', note: 'Ученица/ментор — просмотр через studentApi; админ — те же материалы в контент-центре при targetSection library.' },
+        { area: 'Дедлайны материалов', state: 'По полям', note: 'weekNumber в материале и placement; глобальные дедлайны КТ — в seed, не редактируются здесь.' },
+    ];
+    return (
+        <div className="space-y-4">
+            <div className="rounded-2xl border border-[#C8855A]/40 bg-[#FDF9F5] p-4">
+                <h2 className="font-display text-3xl text-[#4A3728]">Учительская ПВЛ</h2>
+                <p className="text-sm text-[#2C1810] mt-2 leading-relaxed">
+                    Единая точка входа для управления курсом в прототипе: те же экраны, что раньше назывались «admin», оформлены как раздел курса, а не служебная ветка отладки.
+                    Сейчас в данных: {overview.publishedContent} опубликованных материалов, {overview.activeStudents} учениц, {overview.reviewQueue} в очереди проверок.
+                </p>
+            </div>
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {cards.map((c) => (
+                    <button
+                        key={c.to}
+                        type="button"
+                        onClick={() => navigate(c.to)}
+                        className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-left hover:border-[#C8855A] hover:bg-[#FAF6F2] transition-colors"
+                    >
+                        <div className="font-display text-lg text-[#4A3728]">{c.title}</div>
+                        <p className="text-xs text-[#9B8B80] mt-2 leading-snug">{c.desc}</p>
+                        <span className="text-[10px] text-[#C8855A] mt-3 inline-block">Открыть →</span>
+                    </button>
+                ))}
+            </div>
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 overflow-x-auto">
+                <h3 className="font-display text-xl text-[#4A3728] mb-3">Честный статус возможностей</h3>
+                <table className="w-full text-sm border-collapse min-w-[520px]">
+                    <thead>
+                        <tr className="border-b border-[#E8D5C4] text-left text-[#9B8B80] text-xs uppercase tracking-wide">
+                            <th className="py-2 pr-2">Область</th>
+                            <th className="py-2 pr-2">Статус</th>
+                            <th className="py-2">Комментарий</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((r) => (
+                            <tr key={r.area} className="border-b border-[#F5EDE6]">
+                                <td className="py-2 pr-2 text-[#2C1810]">{r.area}</td>
+                                <td className="py-2 pr-2"><StatusBadge>{r.state}</StatusBadge></td>
+                                <td className="py-2 text-[#9B8B80] text-xs">{r.note}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700 leading-relaxed">
+                <strong className="text-slate-900">Что потребует бэкенда позже:</strong>
+                {' '}отдельные API для справочника тегов, редактора недель/уроков и календаря потока; персистентность вне in-memory слоя; роли и права независимо от role-switch в прототипе.
             </div>
         </div>
     );
@@ -861,20 +1292,31 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const previewItem = items.find((x) => x.id === previewId) || null;
     const handleCreate = () => {
         if (!draft.title.trim()) return;
+        const { tagsText, ...rest } = draft;
         const record = {
-            ...draft,
-            tags: String(draft.tagsText || '').split(',').map((x) => x.trim()).filter(Boolean),
+            ...rest,
+            tags: String(tagsText || '').split(',').map((x) => x.trim()).filter(Boolean),
             description: draft.fullDescription || draft.shortDescription,
             createdBy: 'u-adm-1',
         };
-        pvlDomainApi.adminApi.createContentItem(record);
-        setItems((prev) => createContentItem(prev, record));
+        const created = pvlDomainApi.adminApi.createContentItem(record);
+        setItems((prev) => [created, ...prev]);
         setDraft((d) => ({ ...d, title: '', shortDescription: '', fullDescription: '', tagsText: '' }));
+    };
+    const handleDeleteItem = (i) => {
+        if (!window.confirm(`Удалить материал «${i.title}»? Связанные placements будут удалены.`)) return;
+        pvlDomainApi.adminApi.deleteContentItem(i.id);
+        setItems((prev) => prev.filter((x) => x.id !== i.id));
+        setPlacements((prev) => prev.filter((p) => (p.contentId || p.contentItemId) !== i.id));
+        setPreviewId((pid) => (pid === i.id ? '' : pid));
     };
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-3xl text-[#4A3728]">Admin · Контент-центр</h2>
+                <div>
+                    <h2 className="font-display text-3xl text-[#4A3728]">Контент-центр учительской ПВЛ</h2>
+                    <p className="text-xs text-[#9B8B80] mt-1">Материалы и плейсменты в in-memory слое; удаление синхронизировано с adminApi.</p>
+                </div>
                 <button onClick={handleCreate} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Создать материал</button>
             </div>
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 grid md:grid-cols-2 gap-2">
@@ -885,6 +1327,11 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 </select>
                 <select value={draft.contentType} onChange={(e) => setDraft((d) => ({ ...d, contentType: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
                     {types.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select value={draft.visibility || 'all'} onChange={(e) => setDraft((d) => ({ ...d, visibility: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-sm" title="Видимость материала">
+                    <option value="all">Видимость: все (по плейсменту)</option>
+                    <option value="students_only">Только ученицы</option>
+                    <option value="mentors_only">Только менторы</option>
                 </select>
                 <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="Теги через запятую" />
                 <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="Длительность (например 20 мин)" />
@@ -929,6 +1376,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 <button onClick={() => { pvlDomainApi.adminApi.updateContentItem(i.id, { title: `${i.title} (upd)` }); setItems((prev) => updateContentItem(prev, i.id, { title: `${i.title} (upd)` })); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Редактировать</button>
                                 <button onClick={() => { pvlDomainApi.adminApi.publishContentItem(i.id); setItems((prev) => publishContentItem(prev, i.id)); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Публиковать</button>
                                 <button onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Архив</button>
+                                <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
                                 <button onClick={() => {
                                     pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: i.weekNumber || 0, moduleNumber: i.moduleNumber || 0, orderIndex: i.orderIndex || 999 });
                                     setPlacements((prev) => assignContentToSection(prev, i.id, i.targetSection, i.targetRole, i.targetCohort || 'cohort-2026-1'));
@@ -1159,6 +1607,7 @@ function AdminSettings() {
 }
 
 function AdminPage({ route, navigate, cmsItems, setCmsItems, cmsPlacements, setCmsPlacements }) {
+    if (route === '/admin/pvl') return <TeacherPvlHome navigate={navigate} />;
     if (route === '/admin/dashboard') return <AdminOverview />;
     if (route === '/admin/content') return <AdminContentCenter cmsItems={cmsItems} setCmsItems={setCmsItems} cmsPlacements={cmsPlacements} setCmsPlacements={setCmsPlacements} />;
     if (route === '/admin/students') return <AdminStudents navigate={navigate} />;
@@ -1167,7 +1616,7 @@ function AdminPage({ route, navigate, cmsItems, setCmsItems, cmsPlacements, setC
     if (route === '/admin/review') return <AdminReview navigate={navigate} />;
     if (route === '/admin/certification') return <AdminCertification />;
     if (route === '/admin/settings') return <AdminSettings />;
-    return <AdminOverview />;
+    return <TeacherPvlHome navigate={navigate} />;
 }
 
 function DebugPanel({ role, setRole, setActingUserId, actingUserId, setNowDate, nowDate, forceRefresh }) {
@@ -1207,10 +1656,15 @@ const QA_ROUTE_LIST = [
     '/student/results',
     '/student/results/:taskId',
     '/student/certification',
+    '/student/self-assessment',
     '/student/cultural-code',
     '/mentor/dashboard',
+    '/mentor/library',
+    '/mentor/library/:itemId',
+    '/mentor/materials',
     '/mentor/mentee/:id',
     '/mentor/mentee/:id/task/:taskId',
+    '/admin/pvl',
     '/admin/dashboard',
     '/admin/content',
     '/admin/students',
@@ -1252,16 +1706,16 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         note: '',
     });
 
-    const studentMenuPass = STUDENT_MENU.length === 9;
+    const studentMenuPass = STUDENT_MENU.length === 10;
     const weeks = pvlDomainApi.db.courseWeeks;
     const cps = pvlDomainApi.db.controlPoints;
     const week6CpCount = cps.filter((c) => c.weekNumber === 6).length;
     const szDeadlineOk = cps.some((c) => c.code === 'KT8' && c.deadlineAt === '2026-06-30');
-    const adminRoleIsSeparate = ADMIN_MENU.length === 8;
+    const adminMenuNine = ADMIN_MENU.length === 9;
     const scoresSeparated = true;
 
     const criticalChecks = [
-        { title: 'Меню участницы: 9 пунктов', ok: studentMenuPass },
+        { title: 'Меню участницы: 10 пунктов', ok: studentMenuPass },
         { title: 'О курсе содержит стартовые материалы', ok: pvlDomainApi.studentApi.getStudentLibrary('u-st-1').length >= 0 },
         { title: 'Библиотека не смешана с Уроками', ok: true },
         { title: 'Результаты содержат домашки/статусы/комментарии', ok: pvlDomainApi.studentApi.getStudentResults('u-st-1').length > 0 },
@@ -1270,7 +1724,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         { title: '9 КТ присутствуют', ok: cps.length === 9 },
         { title: 'Неделя 6: 3 отдельные КТ', ok: week6CpCount === 3 },
         { title: 'Дедлайн записи СЗ: 30.06.2026', ok: szDeadlineOk },
-        { title: 'Admin отдельная роль', ok: adminRoleIsSeparate },
+        { title: 'Меню админа: 9 пунктов (Учительская ПВЛ)', ok: adminMenuNine },
     ];
 
     const runScenario = (id) => {
@@ -1464,9 +1918,13 @@ export default function PvlPrototypeApp() {
     const [nowDate, setNowDate] = useState(session.nowDate || '2026-06-03');
     const [route, setRoute] = useState(session.route || '/student/dashboard');
     const [studentSection, setStudentSection] = useState(session.studentSection || 'О курсе');
-    const [adminSection, setAdminSection] = useState(session.adminSection || 'Обзор');
-    const [cmsItems, setCmsItems] = useState(() => (pvlMockData.contentItems && pvlMockData.contentItems.length ? pvlMockData.contentItems : (pvlMockData.adminContentItems || [])));
-    const [cmsPlacements, setCmsPlacements] = useState(() => pvlMockData.contentPlacements || []);
+    const [adminSection, setAdminSection] = useState(() => {
+        const raw = session.adminSection;
+        if (raw === 'Обзор') return 'Сводка';
+        return raw || 'Учительская ПВЛ';
+    });
+    const [cmsItems, setCmsItems] = useState(() => buildMergedCmsState().items);
+    const [cmsPlacements, setCmsPlacements] = useState(() => buildMergedCmsState().placements);
     const [dataTick, setDataTick] = useState(0);
     const forceRefresh = () => setDataTick((x) => x + 1);
 
@@ -1488,6 +1946,7 @@ export default function PvlPrototypeApp() {
                 checklist: 'Чек-лист',
                 results: 'Результаты',
                 certification: 'Сертификация',
+                'self-assessment': 'Самооценка',
                 'cultural-code': 'Культурный код Лиги',
             };
             if (map[seg]) setStudentSection(map[seg]);
@@ -1495,9 +1954,10 @@ export default function PvlPrototypeApp() {
             setRole('mentor');
         } else if (allowedRoute.startsWith('/admin/')) {
             setRole('admin');
-            const seg = allowedRoute.split('/')[2] || 'dashboard';
+            const seg = allowedRoute.split('/')[2] || 'pvl';
             const map = {
-                dashboard: 'Обзор',
+                pvl: 'Учительская ПВЛ',
+                dashboard: 'Сводка',
                 content: 'Контент-центр',
                 students: 'Ученицы',
                 mentors: 'Менторы',
@@ -1522,7 +1982,7 @@ export default function PvlPrototypeApp() {
             const target = getHomeRouteByRole(role);
             return <ScreenState error={`Нет доступа к ${route}. Redirect -> ${target}`}><div /></ScreenState>;
         }
-        if (role === 'mentor') return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} />;
+        if (role === 'mentor') return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;
         if (role === 'admin') return <AdminPage route={route} navigate={navigate} cmsItems={cmsItems} setCmsItems={setCmsItems} cmsPlacements={cmsPlacements} setCmsPlacements={setCmsPlacements} />;
         return <StudentPage route={route} studentId={studentId} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} />;
     }, [role, route, studentId, cmsItems, cmsPlacements, dataTick]);
@@ -1542,7 +2002,20 @@ export default function PvlPrototypeApp() {
                     <Breadcrumbs path={route} navigate={navigate} />
                     <div className="flex items-center gap-2">
                         <NotificationCenter userId={actingUserId} />
-                        <button onClick={() => { pvlDomainApi.dbLayer.resetDatabase(); clearAppSession(); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">quick reset</button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                pvlDomainApi.dbLayer.resetDatabase();
+                                clearAppSession();
+                                const next = buildMergedCmsState();
+                                setCmsItems(next.items);
+                                setCmsPlacements(next.placements);
+                                forceRefresh();
+                            }}
+                            className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]"
+                        >
+                            quick reset
+                        </button>
                         <button onClick={() => navigate('/qa')} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">QA</button>
                         <RoleSwitcher role={role} setRole={setRole} navigate={navigate} />
                     </div>
@@ -1553,7 +2026,7 @@ export default function PvlPrototypeApp() {
                         setRole(r);
                         if (r === 'student') navigate('/student/dashboard');
                         if (r === 'mentor') navigate('/mentor/dashboard');
-                        if (r === 'admin') navigate('/admin/dashboard');
+                        if (r === 'admin') navigate('/admin/pvl');
                     }}
                     actingUserId={actingUserId}
                     setActingUserId={(id) => {

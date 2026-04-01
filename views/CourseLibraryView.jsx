@@ -634,9 +634,11 @@ const CourseLibraryView = ({
                 </div>
             ) : selectedCourse.title === AI_CAMP_TITLE ? (
                 <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/50">
-                    <div className="flex justify-end mb-4">
-                        <Button variant="secondary" onClick={onBackToGarden}>Вернуться к саду</Button>
-                    </div>
+                    {!aiCampSession && (
+                        <div className="flex justify-end mb-4">
+                            <Button variant="secondary" onClick={onBackToGarden}>Вернуться к саду</Button>
+                        </div>
+                    )}
                     {!aiCampSession ? (
                         <form onSubmit={handleAiCampLogin} className="max-w-xl mx-auto">
                             <div className="text-2xl font-medium text-slate-900 mb-2">Вход в AL Camp</div>

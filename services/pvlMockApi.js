@@ -226,7 +226,7 @@ function calculatePointsSummary(studentId) {
     return rec;
 }
 
-function mapTaskStatus(status) {
+export function mapTaskStatus(status) {
     const map = {
         [TASK_STATUS.NOT_STARTED]: 'не начато',
         [TASK_STATUS.IN_PROGRESS]: 'в работе',
@@ -371,18 +371,57 @@ export const studentApi = {
             .filter((s) => s.studentId === studentId)
             .map((s) => {
                 const task = db.homeworkTasks.find((t) => t.id === s.taskId);
+                if (!task) return null;
+                const weekRow = db.courseWeeks.find((w) => w.id === task.weekId);
+                const typeLabel = task.isControlPoint || task.taskType === 'control_point' ? 'контрольная точка' : 'домашнее задание';
                 return {
                     id: task.id,
                     title: task.title,
-                    week: db.courseWeeks.find((w) => w.id === task.weekId)?.weekNumber,
+                    week: weekRow?.weekNumber,
+                    moduleNumber: weekRow?.moduleNumber ?? 0,
                     type: task.taskType,
+                    typeLabel,
                     status: mapTaskStatus(s.status),
                     deadlineAt: task.deadlineAt,
                     submittedAt: s.submittedAt,
+                    score: s.totalTaskPoints ?? 0,
+                    maxScore: task.scoreMax ?? 0,
+                    revisionCycles: s.revisionCycles ?? 0,
+                    isControlPoint: !!task.isControlPoint,
+                    controlPointId: task.controlPointId || null,
                     mentorCommentPreview: db.threadMessages.find((m) => m.studentId === studentId && m.taskId === task.id && m.authorRole === ROLES.MENTOR)?.text || '',
                 };
             })
+            .filter(Boolean)
             .filter((x) => (filters.status ? x.status === filters.status : true));
+    },
+    getStudentPracticumEvents(studentId) {
+        const profile = db.studentProfiles.find((p) => p.userId === studentId);
+        const cohortId = profile?.cohortId || 'cohort-2026-1';
+        const meetings = db.mentorMeetings
+            .filter((m) => m.studentId === studentId)
+            .map((m) => ({
+                id: `mm-${m.id}`,
+                kind: 'mentor_meeting',
+                title: m.title,
+                at: m.scheduledAt,
+                status: m.status,
+                weekNumber: m.weekNumber,
+                focus: m.focus || '',
+                eventType: 'Встреча с ментором',
+            }));
+        const weeks = db.courseWeeks.filter((w) => w.cohortId === cohortId);
+        const rhythm = weeks.map((w) => ({
+            id: `week-${w.id}`,
+            kind: 'week_closure',
+            title: `${w.title}`,
+            at: `${w.endDate}T23:59:00`,
+            status: 'deadline',
+            weekNumber: w.weekNumber,
+            focus: w.mentorMeetingFocus || '',
+            eventType: 'Дедлайн недели',
+        }));
+        return [...meetings, ...rhythm].sort((a, b) => String(a.at).localeCompare(String(b.at)));
     },
     getStudentTaskDetail(studentId, taskId) {
         return getTaskDetail(studentId, taskId);
@@ -540,6 +579,48 @@ export const mentorApi = {
             },
         };
     },
+    getMentorMenteeThreadPreview(mentorId, studentId, limit = 30) {
+        return db.threadMessages
+            .filter((m) => m.studentId === studentId)
+            .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+            .slice(0, limit)
+            .map((m) => {
+                const u = db.users.find((x) => x.id === m.authorUserId);
+                const authorName = m.authorRole === ROLES.MENTOR ? 'Ментор' : m.isSystem || m.authorRole === 'system' ? 'Система' : (u?.fullName || 'Участница');
+                return {
+                    id: m.id,
+                    relatedTaskId: m.taskId,
+                    type: m.isSystem ? 'status' : 'message',
+                    authorRole: m.authorRole,
+                    authorName,
+                    createdAt: m.createdAt,
+                    text: m.text,
+                    isUnread: !(m.readBy || []).includes(mentorId),
+                };
+            });
+    },
+    getMentorMenteeControlPointsForCard(studentId) {
+        syncDerivedStatesForStudent(studentId);
+        const mapCp = (raw) => {
+            if (raw === 'accepted') return 'принято';
+            if (!raw || raw === 'not_started') return 'не начато';
+            return mapTaskStatus(raw) || String(raw);
+        };
+        return db.controlPoints.map((cp) => {
+            const st = db.controlPointState.find((x) => x.studentId === studentId && x.controlPointId === cp.id);
+            return {
+                id: cp.code,
+                title: cp.title,
+                weekNumber: cp.weekNumber,
+                deadlineAt: cp.deadlineAt,
+                submittedAt: null,
+                status: mapCp(st?.status),
+                affectsPoints: true,
+                affectsAdmission: !!cp.affectsAdmission,
+                specialNote: cp.specialNote || '',
+            };
+        });
+    },
     getMentorReviewQueue(mentorId) {
         return getPendingReviewTasks(db, mentorId);
     },
@@ -661,6 +742,14 @@ export const adminApi = {
         const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.ARCHIVED });
         if (item) addAuditEvent('u-adm-1', ROLES.ADMIN, 'archive_content', 'content_item', contentId, 'Archived content item', {});
         return item;
+    },
+    deleteContentItem(contentId) {
+        const idx = db.contentItems.findIndex((c) => c.id === contentId);
+        if (idx < 0) return false;
+        db.contentItems.splice(idx, 1);
+        db.contentPlacements = db.contentPlacements.filter((p) => (p.contentItemId || p.contentId) !== contentId);
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'delete_content', 'content_item', contentId, 'Deleted content item', {});
+        return true;
     },
     unarchiveContentItem(contentId) {
         return this.updateContentItem(contentId, { status: CONTENT_STATUS.DRAFT });

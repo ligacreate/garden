@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import PvlTaskDetailView from './PvlTaskDetailView';
+import { pvlDomainApi } from '../services/pvlMockApi';
+import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
 export const menteeProfile = {
     id: 'm-101',
@@ -361,8 +362,8 @@ export function CertificationProgressPanel({ progress }) {
     return renderCertificationProgress(progress);
 }
 
-export function MentorQuickActions({ tasks, onOpenTask }) {
-    const nextAction = getNextRequiredAction(tasks, deadlineRisks);
+export function MentorQuickActions({ tasks, risks = deadlineRisks, onOpenTask }) {
+    const nextAction = getNextRequiredAction(tasks, risks);
     const lastPending = tasks.find((t) => t.status === 'к проверке');
     return (
         <aside className="rounded-2xl border border-[#E8D5C4] bg-white p-4 xl:sticky xl:top-6 h-fit">
@@ -413,7 +414,7 @@ export function renderMenteeCard({
                     <MenteeThreadFeed feed={feed} unreadOnly={unreadOnly} setUnreadOnly={setUnreadOnly} taskFilter={taskFilter} setTaskFilter={setTaskFilter} />
                     <CertificationProgressPanel progress={certification} />
                 </div>
-                <MentorQuickActions tasks={tasks} onOpenTask={onOpenTask} />
+                <MentorQuickActions tasks={tasks} risks={risks} onOpenTask={onOpenTask} />
             </div>
             {/* Open questions:
                1) порог допуска к СЗ: 400 или 500
@@ -426,39 +427,192 @@ export function renderMenteeCard({
     );
 }
 
-export default function PvlMenteeCardView({ menteeId = 'm-101', onBack }) {
+const LEGACY_MENTEE_TO_USER = {
+    'm-101': 'u-st-1',
+    'm-102': 'u-st-2',
+    'm-103': 'u-st-3',
+};
+
+function riskLevelRu(level) {
+    const m = { low: 'низкий', medium: 'средний', high: 'высокий' };
+    return m[String(level || '').toLowerCase()] || level;
+}
+
+function meetingStatusRu(s) {
+    const m = { scheduled: 'запланирована', happened: 'прошла', missed: 'пропущена', cancelled: 'отменена' };
+    return m[String(s || '').toLowerCase()] || s;
+}
+
+function reflectionStatusRu(s) {
+    const m = { pending: 'ожидается', done: 'есть', not_started: 'нет' };
+    return m[String(s || '').toLowerCase()] || s;
+}
+
+function certFieldRu(v) {
+    const m = {
+        not_started: 'не начато',
+        in_progress: 'в процессе',
+        done: 'готово',
+        pending: 'ожидается',
+        ready_for_review: 'к проверке',
+        red_flag: 'красный флаг',
+        admitted: 'допуск',
+        not_admitted: 'нет допуска',
+        certified: 'сертифицирована',
+    };
+    return m[String(v || '').toLowerCase()] || v || '—';
+}
+
+export default function PvlMenteeCardView({
+    menteeId = 'u-st-1',
+    onBack,
+    navigate,
+    refreshKey = 0,
+}) {
     const [statusFilter, setStatusFilter] = useState('все');
     const [unreadOnly, setUnreadOnly] = useState(false);
     const [taskFilter, setTaskFilter] = useState('');
-    const [selectedTaskId, setSelectedTaskId] = useState(null);
 
-    const profile = useMemo(() => ({ ...menteeProfile, id: menteeId }), [menteeId]);
+    const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
 
-    if (selectedTaskId) {
-        return (
-            <PvlTaskDetailView
-                role="mentor"
-                onBack={() => setSelectedTaskId(null)}
-            />
-        );
-    }
+    const viewModel = useMemo(() => {
+        const profileRow = pvlDomainApi.db.studentProfiles.find((p) => p.userId === resolvedStudentId);
+        const mentorId = profileRow?.mentorId || 'u-men-1';
+        const card = pvlDomainApi.mentorApi.getMentorMenteeCard(mentorId, resolvedStudentId);
+        const dash = pvlDomainApi.studentApi.getStudentDashboard(resolvedStudentId);
+        const cert = pvlDomainApi.studentApi.getStudentCertification(resolvedStudentId);
+        const thread = pvlDomainApi.mentorApi.getMentorMenteeThreadPreview(mentorId, resolvedStudentId, 35);
+        const cpanel = pvlDomainApi.mentorApi.getMentorMenteeControlPointsForCard(resolvedStudentId);
+        const user = card.student?.user;
+        const prof = card.student?.profile;
+        const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === prof?.cohortId)?.title || '—';
+
+        const profile = {
+            fullName: user?.fullName || resolvedStudentId,
+            cohort: cohortTitle,
+            currentWeek: prof?.currentWeek ?? '—',
+            currentModule: prof?.currentModule != null ? `Модуль ${prof.currentModule}` : '—',
+            courseStatus: prof?.courseStatus || '—',
+            coursePoints: prof?.coursePoints ?? 0,
+            szSelfAssessmentPoints: prof?.szSelfAssessmentPoints ?? 0,
+            lastActivityAt: prof?.lastActivityAt ? formatPvlDateTime(prof.lastActivityAt) : '—',
+            unreadMessagesCount: dash.dashboardStats?.unreadCount ?? 0,
+            overdueHomeworkCount: dash.dashboardStats?.overdueCount ?? 0,
+            activeRiskCount: card.risks?.length ?? 0,
+        };
+
+        const lessonsTotal = Math.max(1, pvlDomainApi.db.lessons.length);
+        const lessonsDone = Math.min(lessonsTotal, (prof?.currentWeek ?? 0) + 1);
+        const tasksRaw = card.tasks || [];
+        const homeworkPendingReview = tasksRaw.filter((t) => t.status === 'к проверке').length;
+        const homeworkRevisionCount = tasksRaw.filter((t) => t.status === 'на доработке').length;
+
+        const stats = {
+            lessonsDone,
+            lessonsTotal,
+            homeworkDone: dash.dashboardStats?.homeworkDone ?? 0,
+            homeworkTotal: (dash.dashboardStats?.homeworkTotal ?? tasksRaw.length) || 1,
+            homeworkPendingReview,
+            homeworkRevisionCount,
+            allHomeworkSubmitted: !!dash.dashboardStats?.allHomeworkSubmitted,
+            daysToCourseEnd: 0,
+            daysToNextDeadline: 1,
+            daysToSzDeadline: cert?.deadlineAt ? 0 : 0,
+        };
+
+        const tasks = tasksRaw.map((t) => ({
+            id: t.id,
+            title: t.title,
+            weekNumber: t.week,
+            moduleNumber: t.moduleNumber ?? 0,
+            type: t.typeLabel || t.type,
+            isControlPoint: t.isControlPoint,
+            controlPointId: t.controlPointId,
+            status: t.status,
+            deadlineAt: formatPvlDateTime(t.deadlineAt),
+            submittedAt: t.submittedAt ? formatPvlDateTime(t.submittedAt) : null,
+            score: t.score,
+            maxScore: t.maxScore,
+            mentorCommentPreview: t.mentorCommentPreview,
+            revisionCycles: t.revisionCycles,
+        }));
+
+        const controlPoints = cpanel.map((cp) => ({
+            ...cp,
+            deadlineAt: formatPvlDateTime(cp.deadlineAt),
+            submittedAt: cp.submittedAt ? formatPvlDateTime(cp.submittedAt) : null,
+        }));
+
+        const risks = (card.risks || []).map((r) => ({
+            id: r.id,
+            riskType: r.riskType,
+            relatedTaskId: r.relatedTaskId,
+            title: r.title,
+            daysOverdue: r.daysOverdue,
+            riskLevel: riskLevelRu(r.riskLevel),
+            recommendedAction: r.recommendedAction,
+            isResolved: r.isResolved,
+        }));
+
+        const meetings = (card.meetings || []).map((m) => ({
+            id: m.id,
+            weekNumber: m.weekNumber,
+            title: m.title,
+            scheduledAt: formatPvlDateTime(m.scheduledAt),
+            happenedAt: m.happenedAt ? formatPvlDateTime(m.happenedAt) : null,
+            status: meetingStatusRu(m.status),
+            reflectionStatus: reflectionStatusRu(m.reflectionStatus),
+            focus: m.focus || '',
+            linkedTaskId: m.linkedTaskId,
+            mentorNotePreview: m.note || '',
+        }));
+
+        const certification = {
+            guestPlanStatus: certFieldRu(cert?.guestPlanStatus),
+            trialBreakfastStatus: certFieldRu(cert?.trialBreakfastStatus),
+            szRecordingStatus: certFieldRu(cert?.szRecordingStatus),
+            szSelfAssessmentStatus: certFieldRu(cert?.szSelfAssessmentStatus),
+            certificationPackageStatus: certFieldRu(cert?.certificationPackageStatus),
+            szMentorAssessmentStatus: certFieldRu(cert?.szMentorAssessmentStatus),
+            admissionStatus: certFieldRu(cert?.admissionStatus),
+            redFlags: cert?.redFlags || [],
+            deadlineAt: formatPvlDateTime(cert?.deadlineAt),
+        };
+
+        return {
+            profile,
+            stats,
+            tasks,
+            controlPoints,
+            risks,
+            meetings,
+            feed: thread,
+            certification,
+        };
+    }, [resolvedStudentId, refreshKey]);
+
+    const onOpenTask = (taskId) => {
+        if (navigate) {
+            navigate(`/mentor/mentee/${menteeId}/task/${taskId}`);
+        }
+    };
 
     return renderMenteeCard({
-        profile,
-        stats: menteeStats,
-        tasks: menteeTasks,
-        controlPoints: controlPointStatuses,
-        risks: deadlineRisks,
-        meetings: mentorMeetings,
-        feed: menteeThreadFeed,
-        certification: certificationProgress,
+        profile: viewModel.profile,
+        stats: viewModel.stats,
+        tasks: viewModel.tasks,
+        controlPoints: viewModel.controlPoints,
+        risks: viewModel.risks,
+        meetings: viewModel.meetings,
+        feed: viewModel.feed,
+        certification: viewModel.certification,
         statusFilter,
         setStatusFilter,
         unreadOnly,
         setUnreadOnly,
         taskFilter,
         setTaskFilter,
-        onOpenTask: (taskId) => openTaskDetail(taskId, setSelectedTaskId),
+        onOpenTask,
         onBack,
     });
 }

@@ -9,13 +9,6 @@ import {
 } from '../data/pvlMockData';
 import { mapTaskStatus, pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
-
-/** Совместимость старых демо-id карточек менти с учётками seed API */
-const LEGACY_MENTEE_ROUTE_TO_USER = {
-    'm-101': 'u-st-1',
-    'm-102': 'u-st-2',
-    'm-103': 'u-st-3',
-};
 import {
     buildSidebarByRole,
     canAccessRoute,
@@ -29,6 +22,13 @@ import {
     validateRoleAccessMap,
     validateRouteMap,
 } from '../services/pvlAppKernel';
+
+/** Совместимость старых демо-id карточек менти с учётками seed API */
+const LEGACY_MENTEE_ROUTE_TO_USER = {
+    'm-101': 'u-st-1',
+    'm-102': 'u-st-2',
+    'm-103': 'u-st-3',
+};
 
 /** Единый источник контента для карточек разделов: seed (API) + демо из pvlMockData, плейсменты с contentItemId. */
 function normalizeContentStatus(s) {

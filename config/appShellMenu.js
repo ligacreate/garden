@@ -40,9 +40,7 @@ export const buildShellMenu = (role, isAdmin) => {
             { key: 'pvl-student', label: 'Личный кабинет', icon: GraduationCap }
         ],
         [APP_SHELL.MENTOR]: [
-            { key: 'mentor-dashboard', label: 'Кабинет ментора', icon: Users },
-            { key: 'meetings', label: 'Встречи', icon: CalendarRange },
-            { key: 'library', label: 'Библиотека', icon: GraduationCap }
+            { key: 'mentor-dashboard', label: 'Кабинет ментора', icon: Users }
         ],
         [APP_SHELL.TEACHERS]: [
             { key: 'communications', label: 'Учительская', icon: MessagesSquare }

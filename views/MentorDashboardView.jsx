@@ -1,6 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import PvlMenteeCardView from './PvlMenteeCardView';
-import { formatDateRu } from '../utils/dateFormat';
 
 export const mentorMentees = [
     {
@@ -151,19 +150,9 @@ const Pill = ({ children, tone }) => (
     </span>
 );
 
-export default function MentorDashboardView({ onNotify }) {
+export default function MentorDashboardView() {
     const [selectedMenteeId, setSelectedMenteeId] = useState(null);
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [searchQuery, setSearchQuery] = useState('');
     const summary = renderMentorDashboard();
-    const filteredQueue = useMemo(
-        () => reviewQueue.filter((q) => {
-            const byStatus = statusFilter === 'all' ? true : (statusFilter === 'overdue' ? q.isOverdue : !q.isOverdue);
-            const bySearch = !searchQuery.trim() || q.menteeName.toLowerCase().includes(searchQuery.toLowerCase()) || q.assignmentTitle.toLowerCase().includes(searchQuery.toLowerCase());
-            return byStatus && bySearch;
-        }),
-        [statusFilter, searchQuery]
-    );
 
     if (selectedMenteeId) {
         return (
@@ -177,7 +166,7 @@ export default function MentorDashboardView({ onNotify }) {
     return (
         <div className="space-y-4">
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white">
-                <h2 className="font-display text-3xl text-[#4A3728] mb-1">Кабинет ментора</h2>
+                <h2 className="font-display text-3xl text-[#4A3728] mb-1">ЛК ментора</h2>
                 <p className="text-sm text-[#9B8B80] mb-4">Сводка по менти, проверкам и рискам. Переходы подготовлены на карточку менти.</p>
                 <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
@@ -246,20 +235,7 @@ export default function MentorDashboardView({ onNotify }) {
             </section>
 
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white overflow-x-auto">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <h3 className="font-display text-2xl text-[#4A3728]">Очередь проверок</h3>
-                    <div className="flex items-center gap-2">
-                        <input
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="rounded-xl border border-[#E8D5C4] px-3 py-1.5 text-xs"
-                            placeholder="Поиск по менти/заданию"
-                        />
-                        <button onClick={() => setStatusFilter('all')} className={`text-xs rounded-full border px-2 py-1 ${statusFilter === 'all' ? 'border-[#C8855A] text-[#C8855A]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>все</button>
-                        <button onClick={() => setStatusFilter('fresh')} className={`text-xs rounded-full border px-2 py-1 ${statusFilter === 'fresh' ? 'border-[#C8855A] text-[#C8855A]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>в срок</button>
-                        <button onClick={() => setStatusFilter('overdue')} className={`text-xs rounded-full border px-2 py-1 ${statusFilter === 'overdue' ? 'border-[#C8855A] text-[#C8855A]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>просрочено</button>
-                    </div>
-                </div>
+                <h3 className="font-display text-2xl text-[#4A3728] mb-3">Очередь проверок</h3>
                 <table className="w-full min-w-[860px] border-separate border-spacing-0">
                     <thead>
                         <tr>
@@ -269,13 +245,13 @@ export default function MentorDashboardView({ onNotify }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredQueue.map((q) => (
+                        {reviewQueue.map((q) => (
                             <tr key={q.id} className="hover:bg-[#FAF6F2]">
                                 <td className="p-2 border-b border-[#F5EDE6] text-sm">{q.menteeName}</td>
                                 <td className="p-2 border-b border-[#F5EDE6] text-sm">{q.assignmentTitle}</td>
                                 <td className="p-2 border-b border-[#F5EDE6] text-sm">{q.assignmentType}</td>
-                                <td className="p-2 border-b border-[#F5EDE6] text-sm">{formatDateRu(q.submittedAt)}</td>
-                                <td className="p-2 border-b border-[#F5EDE6] text-sm">{formatDateRu(q.deadlineAt)}</td>
+                                <td className="p-2 border-b border-[#F5EDE6] text-sm">{q.submittedAt}</td>
+                                <td className="p-2 border-b border-[#F5EDE6] text-sm">{q.deadlineAt}</td>
                                 <td className="p-2 border-b border-[#F5EDE6]">
                                     <Pill tone={q.isOverdue ? 'bg-rose-50 text-rose-700 border-rose-600/30' : 'bg-emerald-50 text-emerald-700 border-emerald-600/30'}>
                                         {q.isOverdue ? 'просрочено' : 'в срок'}
@@ -286,7 +262,6 @@ export default function MentorDashboardView({ onNotify }) {
                                         onClick={() => {
                                             navigateToMenteeCard(q.menteeId, { focus: q.id });
                                             setSelectedMenteeId(q.menteeId);
-                                            onNotify?.(`Открыта карточка ${q.menteeName}`);
                                         }}
                                         className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]"
                                     >

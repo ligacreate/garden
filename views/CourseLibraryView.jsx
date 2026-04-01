@@ -1,12 +1,11 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
 import { hasAccess, ROLES } from '../utils/roles';
 import { api } from '../services/dataService';
 import DOMPurify from 'dompurify';
 import { clearAppSession, getHomeRouteByRole, loadAppSession, saveAppSession } from '../services/pvlAppKernel';
-
-const PvlPrototypeApp = lazy(() => import('./PvlPrototypeApp'));
+import PvlPrototypeApp from './PvlPrototypeApp';
 
 const COURSES = [
     {
@@ -66,19 +65,20 @@ const COURSES = [
     },
     {
         id: 6,
-        title: "AI Camp (система)",
-        description: "Единая система курса ПВЛ: вход ученицы и ментора, дашборды, трекер, материалы и обратная связь.",
-        image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&q=80&w=800",
+        title: "AL Camp",
+        description: "ПВЛ 2026: единый вход — кабинет ученицы и ментора, материалы курса, уроки и проверка работ (после входа по коду).",
+        image: "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
         minRole: ROLES.APPLICANT,
+        pinned: true,
         hideWhenEmpty: false,
         materials: [
             {
                 id: "aicamp-system-1",
-                title: "Вход в систему AI Camp",
+                title: "Вход в AL Camp",
                 type: "Текст",
                 tags: ["Вход", "Роли"],
-                content: `Внутри этого курса доступен вход для двух ролей:
+                content: `Внутри курса AL Camp — вход для двух ролей:
 - ментор;
 - ученик.
 
@@ -112,21 +112,11 @@ const COURSES = [
     }
 ];
 
-const AI_CAMP_TITLE = "AI Camp (система)";
-/** Числовой id курса в COURSES — цель входа из карточки «AL Camp» в библиотеке */
-const AI_CAMP_COURSE_ID = 6;
+/** Один курс в библиотеке — без дублирующей карточки */
+const AI_CAMP_TITLE = "AL Camp";
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
 const AI_CAMP_MENTOR_PIN = "1234";
 const AI_CAMP_STUDENT_PIN = "1111";
-/** Точка входа в ПВЛ: Библиотека → эта карточка → курс «AI Camp (система)» (логин ученик/ментор) */
-const AL_CAMP_LIBRARY_CARD = {
-    id: 'al-camp-library',
-    title: 'AL Camp',
-    description: 'Курс ПВЛ: вход ученицы и ментора, дашборды и материалы. Откройте карточку и выберите роль на экране входа.',
-    image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=800',
-    tag: 'Курсы',
-    minRole: ROLES.APPLICANT
-};
 
 function normalizeStyledHtmlToSemantic(html) {
     const parser = new DOMParser();
@@ -383,15 +373,6 @@ const CourseLibraryView = ({
             });
     }, [availableCourses, selectedFilter]);
 
-    const visibleLibraryCards = useMemo(() => {
-        const cards = [...filteredCourses];
-        const canShowAlCampCard = selectedFilter === 'Все' || selectedFilter === AL_CAMP_LIBRARY_CARD.tag;
-        if (canShowAlCampCard && hasAccess(role, AL_CAMP_LIBRARY_CARD.minRole)) {
-            cards.push(AL_CAMP_LIBRARY_CARD);
-        }
-        return cards;
-    }, [filteredCourses, role, selectedFilter]);
-
     const selectedCourse = availableCourses.find(c => c.id === selectedCourseId) || null;
 
     const courseMaterials = useMemo(() => {
@@ -566,7 +547,7 @@ const CourseLibraryView = ({
                 </div>
                 <div className="text-right hidden md:block">
                     <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
-                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : visibleLibraryCards.length}</div>
+                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : filteredCourses.length}</div>
                 </div>
             </div>
 
@@ -607,17 +588,11 @@ const CourseLibraryView = ({
 
             {!selectedCourse ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {visibleLibraryCards.map(course => (
+                    {filteredCourses.map(course => (
                         <div
                             key={course.id}
                             className="bg-white/80 backdrop-blur-xl p-4 rounded-[2.5rem] shadow-sm hover:shadow-md transition-all border border-white/50 group flex flex-col h-full cursor-pointer"
                             onClick={() => {
-                                if (course.id === AL_CAMP_LIBRARY_CARD.id) {
-                                    setSelectedCourseId(AI_CAMP_COURSE_ID);
-                                    setSelectedMaterial(null);
-                                    setSelectedTag('Все');
-                                    return;
-                                }
                                 setSelectedCourseId(course.id);
                                 setSelectedMaterial(null);
                                 setSelectedTag('Все');
@@ -640,12 +615,6 @@ const CourseLibraryView = ({
                                         className="!py-2 !px-4 text-xs"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            if (course.id === AL_CAMP_LIBRARY_CARD.id) {
-                                                setSelectedCourseId(AI_CAMP_COURSE_ID);
-                                                setSelectedMaterial(null);
-                                                setSelectedTag('Все');
-                                                return;
-                                            }
                                             setSelectedCourseId(course.id);
                                             setSelectedMaterial(null);
                                             setSelectedTag('Все');
@@ -665,7 +634,7 @@ const CourseLibraryView = ({
                     </div>
                     {!aiCampSession ? (
                         <form onSubmit={handleAiCampLogin} className="max-w-xl mx-auto">
-                            <div className="text-2xl font-medium text-slate-900 mb-2">Вход в AI Camp</div>
+                            <div className="text-2xl font-medium text-slate-900 mb-2">Вход в AL Camp</div>
                             <div className="text-sm text-slate-500 mb-5">Выберите роль и введите код доступа.</div>
 
                             <div className="flex gap-2 mb-4">
@@ -726,9 +695,7 @@ const CourseLibraryView = ({
                                 </div>
                             </div>
                             <div className="rounded-[2rem] border border-[#E8D5C4]/40 overflow-hidden bg-white/90 -mx-2 px-2 py-3 md:px-4 max-w-[100vw]">
-                                <Suspense fallback={<div className="p-8 text-center text-slate-500 text-sm">Загрузка курса…</div>}>
-                                    <PvlPrototypeApp key={`al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
-                                </Suspense>
+                                <PvlPrototypeApp key={`al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
                             </div>
                         </div>
                     )}

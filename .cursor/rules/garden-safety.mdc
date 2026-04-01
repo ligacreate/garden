@@ -1,0 +1,25 @@
+---
+description: Не ломать «Сад» — изоляция ПВЛ/AL Camp от оболочки сада
+alwaysApply: true
+---
+
+# Сад (Garden) — защита
+
+Перед завершением задач по ПВЛ/AL Camp **обязательно**:
+
+1. Выполнить `npm run build` (или `npm run verify:garden`).
+2. **Не менять** файлы ядра сада без явной необходимости и без проверки регрессии.
+
+## Ядро «Сада» (не трогать ради ПВЛ)
+
+- `App.jsx`, `main.jsx`, `components/ErrorBoundary.jsx`
+- `views/UserApp.jsx` — только точка входа в библиотеку (`CourseLibraryView`); **без** импортов `Pvl*`, пунктов меню ПВЛ, отдельных view `pvl-*` / `mentor-dashboard` для курса
+- `views/StatsDashboardView.jsx`, `MeetingsView.jsx`, `MapView.jsx`, `BuilderView.jsx`, `PracticesView.jsx`, `CRMView.jsx`, `ProfileView.jsx`, `CommunicationsView.jsx` (если задача не про них)
+- `data/data.js` (кроме согласованных правок не по ПВЛ)
+
+## Где живёт ПВЛ / AL Camp
+
+- `views/CourseLibraryView.jsx` — ветка курса **AL Camp** и вход по PIN
+- `views/PvlPrototypeApp.jsx`, `Pvl*.jsx`, `data/pvl/**`, `services/pvlMockApi.js`, `services/pvlAppKernel.js`
+
+Правки ПВЛ — **сначала** проверка сборки, **потом** коммит.

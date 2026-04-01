@@ -8,6 +8,7 @@
     "build": "vite build",
     "postbuild": "node scripts/postbuild-reset.mjs",
     "lint": "eslint .",
+    "verify:garden": "node scripts/verify-garden.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -17,9 +17,6 @@ import MapView from './MapView';
 import LeaderPageView from './LeaderPageView';
 import ProfileView from './ProfileView';
 import CommunicationsView from './CommunicationsView';
-import MentorDashboardView from './MentorDashboardView';
-import PvlStudentCabinetView from './PvlStudentCabinetView';
-import PvlPrototypeApp from './PvlPrototypeApp';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
@@ -58,7 +55,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [courseSidebar, setCourseSidebar] = useState({ enabled: false, title: 'Курс', items: [], activeKey: null });
-    const [courseNavKey, setCourseNavKey] = useState(null);
     const [leaderUser, setLeaderUser] = useState(null);
     const [birthdayTemplates, setBirthdayTemplates] = useState([]);
     const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', enabled: false, isStandalone: false, loading: false });
@@ -232,10 +228,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             setBuilderInitialTab(nextBuilderTab);
             setBuilderResetToken((v) => v + 1);
             setCourseSidebar({ enabled: false, title: 'Курс', items: [], activeKey: null });
-            setCourseNavKey(null);
         } else {
             setCourseSidebar({ enabled: false, title: 'Курс', items: [], activeKey: null });
-            setCourseNavKey(null);
         }
 
         setMobileMenuOpen(false);
@@ -602,7 +596,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                                 icon={Icon}
                                                 label={item.label}
                                                 active={courseSidebar.activeKey === item.key}
-                                                onClick={() => setCourseNavKey(item.key)}
+                                                onClick={() => {}}
                                             />
                                         );
                                     })}
@@ -622,26 +616,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         active={view === 'dashboard'}
                                         onClick={() => handleViewChange('dashboard')}
                                     />
-                                    <SidebarItem
-                                        icon={GraduationCap}
-                                        label="ЛК участницы ПВЛ"
-                                        active={view === 'pvl-student'}
-                                        onClick={() => handleViewChange('pvl-student')}
-                                    />
-                                    <SidebarItem
-                                        icon={BookOpen}
-                                        label="ПВЛ 2026 Прототип"
-                                        active={view === 'pvl-prototype'}
-                                        onClick={() => handleViewChange('pvl-prototype')}
-                                    />
-                                    {hasAccess(normalizedRole, 'mentor') && (
-                                        <SidebarItem
-                                            icon={Users}
-                                            label="ЛК ментора"
-                                            active={view === 'mentor-dashboard'}
-                                            onClick={() => handleViewChange('mentor-dashboard')}
-                                        />
-                                    )}
                                     <SidebarItem
                                         icon={CalendarRange}
                                         label="Встречи"
@@ -741,11 +715,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         </div>
                         <nav className="space-y-2 flex-1 overflow-y-auto">
                             <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
-                            <SidebarItem icon={GraduationCap} label="ЛК участницы ПВЛ" active={view === 'pvl-student'} onClick={() => handleViewChange('pvl-student')} />
-                            <SidebarItem icon={BookOpen} label="ПВЛ 2026 Прототип" active={view === 'pvl-prototype'} onClick={() => handleViewChange('pvl-prototype')} />
-                            {hasAccess(normalizedRole, 'mentor') && (
-                                <SidebarItem icon={Users} label="ЛК ментора" active={view === 'mentor-dashboard'} onClick={() => handleViewChange('mentor-dashboard')} />
-                            )}
                             <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
                             <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
                             <div className="h-px bg-slate-100 my-4"></div>
@@ -795,9 +764,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             newsItems={dashboardNews}
                         />
                     )}
-                    {view === 'mentor-dashboard' && <MentorDashboardView />}
-                    {view === 'pvl-student' && <PvlStudentCabinetView user={user} />}
-                    {view === 'pvl-prototype' && <PvlPrototypeApp />}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
                     {view === 'library' && (
@@ -809,8 +775,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             onNotify={onNotify}
                             onBackToGarden={() => handleViewChange('dashboard')}
                             onCourseSidebarChange={setCourseSidebar}
-                            onOpenLeagueScenarios={() => handleViewChange('builder', 'league')}
-                            externalCourseNavKey={courseNavKey}
                             resetToken={libraryResetToken}
                         />
                     )}

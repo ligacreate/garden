@@ -127,39 +127,99 @@ export function navigateBackToMentorDashboard(onBack) {
     onBack?.();
 }
 
-export function MenteeHeader({ profile, riskLevel, onBack }) {
+export function MenteeHeader({ profile, onBack, nearestDeadlineLine, riskHint }) {
     return (
-        <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <button onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">← Назад в дашборд ментора</button>
+        <section className="rounded-2xl border border-[#E8D5C4] bg-white p-5">
+            <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">← Назад в дашборд ментора</button>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="font-display text-3xl text-[#4A3728]">{profile.fullName}</h2>
-                    <p className="text-sm text-[#9B8B80] mt-1">{profile.cohort} · Неделя {profile.currentWeek} · {profile.currentModule}</p>
-                </div>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Написать участнице</button>
-            </div>
-            <div className="grid md:grid-cols-5 gap-2 mt-3 text-sm">
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Статус курса: {profile.courseStatus}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Курсовые баллы: {profile.coursePoints}/400</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">СЗ: {profile.szSelfAssessmentPoints}/54</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Просрочки: {profile.overdueHomeworkCount}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2 flex items-center justify-between">
-                    <span>Риски</span>
-                    <Pill tone={statusTone(riskLevel)}>{riskLevel}</Pill>
+                    <p className="text-sm text-[#9B8B80] mt-1">{profile.cohort} · {profile.currentModule} · неделя {profile.currentWeek}</p>
                 </div>
             </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4 text-sm">
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Статус курса: <span className="font-medium text-[#4A3728]">{profile.courseStatus}</span></div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Ближайший дедлайн: <span className="font-medium text-[#4A3728]">{nearestDeadlineLine}</span></div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Курсовые баллы: <span className="font-medium tabular-nums">{profile.coursePoints}/400</span></div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Самооценка СЗ: <span className="font-medium tabular-nums">{profile.szSelfAssessmentPoints}/54</span></div>
+            </div>
+            {riskHint ? <p className="text-[11px] text-slate-400 mt-2">{riskHint}</p> : null}
         </section>
     );
 }
 
-export function MenteeSummaryWidgets({ stats }) {
+export function MenteeCoursePathShort({ stats, lastLessonTitle, courseProgressPercent }) {
+    const pct = typeof courseProgressPercent === 'number' ? courseProgressPercent : (stats.homeworkTotal ? Math.round((stats.homeworkDone / stats.homeworkTotal) * 100) : 0);
     return (
-        <section className="grid md:grid-cols-2 xl:grid-cols-5 gap-3">
-            <article className="rounded-2xl border border-[#E8D5C4] bg-white p-3"><div className="text-[11px] uppercase text-[#9B8B80]">Уроки</div><div className="font-display text-3xl text-[#C8855A]">{stats.lessonsDone}/{stats.lessonsTotal}</div></article>
-            <article className="rounded-2xl border border-[#E8D5C4] bg-white p-3"><div className="text-[11px] uppercase text-[#9B8B80]">Домашки</div><div className="font-display text-3xl text-[#C8855A]">{stats.homeworkDone}/{stats.homeworkTotal}</div></article>
-            <article className="rounded-2xl border border-[#E8D5C4] bg-white p-3"><div className="text-[11px] uppercase text-[#9B8B80]">К проверке</div><div className="font-display text-3xl text-[#C8855A]">{stats.homeworkPendingReview}</div></article>
-            <article className="rounded-2xl border border-[#E8D5C4] bg-white p-3"><div className="text-[11px] uppercase text-[#9B8B80]">На доработке</div><div className="font-display text-3xl text-[#C8855A]">{stats.homeworkRevisionCount}</div></article>
-            <article className="rounded-2xl border border-[#E8D5C4] bg-white p-3"><div className="text-[11px] uppercase text-[#9B8B80]">До дедлайна</div><div className="font-display text-3xl text-[#C8855A]">{stats.daysToNextDeadline} дн</div></article>
+        <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+            <h3 className="font-display text-lg text-[#4A3728] mb-2">Путь по курсу</h3>
+            <p className="text-sm text-[#2C1810]">
+                Уроки в расписании: <span className="font-medium tabular-nums">{stats.lessonsDone}/{stats.lessonsTotal}</span>
+                <span className="text-[#9B8B80]"> (ориентир по текущей неделе потока)</span>
+            </p>
+            <p className="text-sm text-[#9B8B80] mt-1">Последний урок в потоке: <span className="text-[#2C1810]">{lastLessonTitle || '—'}</span></p>
+            <p className="text-sm text-[#2C1810] mt-1">
+                Прогресс по закрытию заданий: <span className="font-medium tabular-nums">{pct}%</span>
+            </p>
+        </section>
+    );
+}
+
+function attentionRank(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'к проверке' || s === 'отправлено') return 0;
+    if (s === 'на доработке') return 1;
+    if (s === 'просрочено') return 2;
+    if (s === 'принято') return 9;
+    return 4;
+}
+
+export function MenteeHomeworkPrioritized({ tasks, onOpenTask }) {
+    const [showAccepted, setShowAccepted] = useState(false);
+    const sorted = [...tasks].sort((a, b) => attentionRank(a.status) - attentionRank(b.status) || (Number(a.weekNumber) - Number(b.weekNumber)));
+    const attention = sorted.filter((t) => t.status !== 'принято');
+    const accepted = sorted.filter((t) => t.status === 'принято');
+    const byWeek = (list) => {
+        const g = list.reduce((acc, t) => {
+            const w = t.weekNumber ?? 0;
+            if (!acc[w]) acc[w] = [];
+            acc[w].push(t);
+            return acc;
+        }, {});
+        return Object.keys(g)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .map((w) => ({ weekNumber: w, tasks: g[w] }));
+    };
+    return (
+        <section className="space-y-3">
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-display text-xl text-[#4A3728]">Домашние работы</h3>
+                    <span className="text-xs text-[#9B8B80]">Сначала то, что нужно проверить или доработать</span>
+                </div>
+                <p className="text-sm text-[#9B8B80] mt-1">Всего в потоке: {tasks.length} · принято: {accepted.length}</p>
+            </div>
+            {byWeek(attention).map(({ weekNumber, tasks: wt }) => (
+                <MenteeTaskGroupByWeek key={`a-${weekNumber}`} weekNumber={weekNumber} tasks={wt} onOpenTask={onOpenTask} />
+            ))}
+            {attention.length === 0 ? <p className="text-sm text-[#9B8B80] px-1">Нет активных работ вне статуса «принято».</p> : null}
+            <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/50 p-3">
+                <button
+                    type="button"
+                    onClick={() => setShowAccepted((v) => !v)}
+                    className="text-sm font-medium text-[#C8855A] hover:text-[#4A3728]"
+                >
+                    {showAccepted ? 'Скрыть принятые' : `Показать принятые (${accepted.length})`}
+                </button>
+                {showAccepted ? (
+                    <div className="mt-3 space-y-3">
+                        {byWeek(accepted).map(({ weekNumber, tasks: wt }) => (
+                            <MenteeTaskGroupByWeek key={`ok-${weekNumber}`} weekNumber={weekNumber} tasks={wt} onOpenTask={onOpenTask} />
+                        ))}
+                    </div>
+                ) : null}
+            </div>
         </section>
     );
 }
@@ -250,7 +310,7 @@ export function renderControlPoints(points) {
 export function ControlPointsPanel({ points }) {
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Контрольные точки</h3>
+            <h3 className="font-display text-lg text-[#4A3728] mb-2">Контрольные точки потока</h3>
             <div className="space-y-2">{renderControlPoints(points)}</div>
         </section>
     );
@@ -300,7 +360,7 @@ export function renderMentorMeetings(items) {
 export function MentorMeetingsPanel({ meetings }) {
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Встречи с ментором</h3>
+            <h3 className="font-display text-lg text-[#4A3728] mb-2">Встречи с ментором</h3>
             <div className="space-y-2">{renderMentorMeetings(meetings)}</div>
         </section>
     );
@@ -344,16 +404,20 @@ export function MenteeThreadFeed({ feed, unreadOnly, setUnreadOnly, taskFilter, 
 export function renderCertificationProgress(progress) {
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Сертификация</h3>
+            <h3 className="font-display text-lg text-[#4A3728] mb-2">Сертификация и финальный этап</h3>
+            <p className="text-sm text-[#2C1810] mb-2">{progress.readinessLine}</p>
+            <p className="text-sm text-[#9B8B80] mb-3">{progress.prerequisitesBeforeSzLine}</p>
             <div className="grid md:grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">План гостей: {progress.guestPlanStatus}</div>
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Пробный завтрак: {progress.trialBreakfastStatus}</div>
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Запись СЗ: {progress.szRecordingStatus}</div>
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Самооценка СЗ: {progress.szSelfAssessmentStatus}</div>
+                <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Оценка ментора по СЗ: {progress.szMentorAssessmentStatus}</div>
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Сертиф. пакет: {progress.certificationPackageStatus}</div>
-                <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Дедлайн записи СЗ: {progress.deadlineAt}</div>
+                <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2 md:col-span-2">Дедлайн записи СЗ: {progress.deadlineAt}</div>
             </div>
-            <p className="text-xs text-[#9B8B80] mt-2">Статус допуска: {progress.admissionStatus}. Красные флаги: {progress.redFlags.length || 0}.</p>
+            <p className="text-xs text-[#9B8B80] mt-2">Допуск: {progress.admissionStatus}{progress.redFlags?.length ? ` · красные флаги: ${progress.redFlags.length}` : ''}</p>
+            {progress.szScoresLine ? <p className="text-xs text-[#2C1810] mt-2 tabular-nums">{progress.szScoresLine}</p> : null}
         </section>
     );
 }
@@ -382,6 +446,13 @@ export function MentorQuickActions({ tasks, risks = deadlineRisks, onOpenTask })
     );
 }
 
+function buildRiskHint(risks) {
+    const active = (risks || []).filter((r) => !r.isResolved);
+    if (!active.length) return null;
+    const high = active.some((r) => String(r.riskLevel).toLowerCase().includes('высок') || String(r.riskLevel).toLowerCase() === 'high');
+    return `Риски (${active.length}${high ? ', есть высокий' : ''}) — детали в заданиях и дедлайнах выше.`;
+}
+
 export function renderMenteeCard({
     profile,
     stats,
@@ -389,40 +460,22 @@ export function renderMenteeCard({
     controlPoints,
     risks,
     meetings,
-    feed,
     certification,
-    statusFilter,
-    setStatusFilter,
-    unreadOnly,
-    setUnreadOnly,
-    taskFilter,
-    setTaskFilter,
+    nearestDeadlineLine,
+    lastLessonTitle,
+    courseProgressPercent,
     onOpenTask,
     onBack,
 }) {
-    const riskLevel = calculateMenteeRiskLevel(risks);
+    const riskHint = buildRiskHint(risks);
     return (
         <div className="space-y-3">
-            <MenteeHeader profile={profile} riskLevel={riskLevel} onBack={onBack} />
-            <MenteeSummaryWidgets stats={stats} />
-            <div className="grid xl:grid-cols-[1fr_300px] gap-3 items-start">
-                <div className="space-y-3">
-                    <MenteeTasksList tasks={tasks} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onOpenTask={onOpenTask} />
-                    <ControlPointsPanel points={controlPoints} />
-                    <DeadlineRiskPanel risks={risks} onOpenTask={onOpenTask} />
-                    <MentorMeetingsPanel meetings={meetings} />
-                    <MenteeThreadFeed feed={feed} unreadOnly={unreadOnly} setUnreadOnly={setUnreadOnly} taskFilter={taskFilter} setTaskFilter={setTaskFilter} />
-                    <CertificationProgressPanel progress={certification} />
-                </div>
-                <MentorQuickActions tasks={tasks} risks={risks} onOpenTask={onOpenTask} />
-            </div>
-            {/* Open questions:
-               1) порог допуска к СЗ: 400 или 500
-               2) можно ли назначать ручной бонус прямо из карточки менти
-               3) нужен ли общий комментарий по менти вне конкретного задания
-               4) граница между риском по дедлайну и риском по качеству
-               5) выделять ли "встреча не проведена" как отдельный тип риска
-            */}
+            <MenteeHeader profile={profile} onBack={onBack} nearestDeadlineLine={nearestDeadlineLine} riskHint={riskHint} />
+            <MenteeCoursePathShort stats={stats} lastLessonTitle={lastLessonTitle} courseProgressPercent={courseProgressPercent} />
+            <MenteeHomeworkPrioritized tasks={tasks} onOpenTask={onOpenTask} />
+            <ControlPointsPanel points={controlPoints} />
+            {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
+            <CertificationProgressPanel progress={certification} />
         </div>
     );
 }
@@ -431,6 +484,7 @@ const LEGACY_MENTEE_TO_USER = {
     'm-101': 'u-st-1',
     'm-102': 'u-st-2',
     'm-103': 'u-st-3',
+    'm-104': 'u-st-4',
 };
 
 function riskLevelRu(level) {
@@ -463,29 +517,41 @@ function certFieldRu(v) {
     return m[String(v || '').toLowerCase()] || v || '—';
 }
 
+const CP_CODES_BEFORE_SZ = ['KT1', 'KT2', 'KT3', 'KT4', 'KT5', 'KT6', 'KT7'];
+
 export default function PvlMenteeCardView({
     menteeId = 'u-st-1',
     onBack,
     navigate,
     refreshKey = 0,
 }) {
-    const [statusFilter, setStatusFilter] = useState('все');
-    const [unreadOnly, setUnreadOnly] = useState(false);
-    const [taskFilter, setTaskFilter] = useState('');
-
     const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
 
     const viewModel = useMemo(() => {
-        const profileRow = pvlDomainApi.db.studentProfiles.find((p) => p.userId === resolvedStudentId);
+        const db = pvlDomainApi.db;
+        const profileRow = db.studentProfiles.find((p) => p.userId === resolvedStudentId);
         const mentorId = profileRow?.mentorId || 'u-men-1';
         const card = pvlDomainApi.mentorApi.getMentorMenteeCard(mentorId, resolvedStudentId);
         const dash = pvlDomainApi.studentApi.getStudentDashboard(resolvedStudentId);
         const cert = pvlDomainApi.studentApi.getStudentCertification(resolvedStudentId);
-        const thread = pvlDomainApi.mentorApi.getMentorMenteeThreadPreview(mentorId, resolvedStudentId, 35);
         const cpanel = pvlDomainApi.mentorApi.getMentorMenteeControlPointsForCard(resolvedStudentId);
         const user = card.student?.user;
         const prof = card.student?.profile;
-        const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === prof?.cohortId)?.title || '—';
+        const cohortTitle = db.cohorts.find((c) => c.id === prof?.cohortId)?.title || '—';
+
+        const nd = dash.nextDeadline;
+        const nearestDeadlineLine = nd ? `${nd.title} · ${formatPvlDateTime(nd.deadlineAt)}` : '—';
+
+        const cohortId = prof?.cohortId;
+        const weeks = db.courseWeeks.filter((w) => w.cohortId === cohortId).sort((a, b) => a.weekNumber - b.weekNumber);
+        const weekRow = prof?.currentWeek != null ? weeks.find((w) => w.weekNumber === prof.currentWeek) : null;
+        const lesson = weekRow ? db.lessons.find((l) => l.weekId === weekRow.id) : null;
+        const lastLessonTitle = lesson?.title || '—';
+
+        const courseProgressPercent = dash.progress?.percent ?? 0;
+
+        const beforeSzCp = cpanel.filter((cp) => CP_CODES_BEFORE_SZ.includes(String(cp.id)));
+        const beforeSzDone = beforeSzCp.filter((cp) => cp.status === 'принято').length;
 
         const profile = {
             fullName: user?.fullName || resolvedStudentId,
@@ -493,8 +559,8 @@ export default function PvlMenteeCardView({
             currentWeek: prof?.currentWeek ?? '—',
             currentModule: prof?.currentModule != null ? `Модуль ${prof.currentModule}` : '—',
             courseStatus: prof?.courseStatus || '—',
-            coursePoints: prof?.coursePoints ?? 0,
-            szSelfAssessmentPoints: prof?.szSelfAssessmentPoints ?? 0,
+            coursePoints: card.points?.coursePointsTotal ?? dash.studentProfile?.coursePoints ?? prof?.coursePoints ?? 0,
+            szSelfAssessmentPoints: card.points?.szSelfAssessmentTotal ?? dash.studentProfile?.szSelfAssessmentPoints ?? prof?.szSelfAssessmentPoints ?? 0,
             lastActivityAt: prof?.lastActivityAt ? formatPvlDateTime(prof.lastActivityAt) : '—',
             unreadMessagesCount: dash.dashboardStats?.unreadCount ?? 0,
             overdueHomeworkCount: dash.dashboardStats?.overdueCount ?? 0,
@@ -515,9 +581,9 @@ export default function PvlMenteeCardView({
             homeworkPendingReview,
             homeworkRevisionCount,
             allHomeworkSubmitted: !!dash.dashboardStats?.allHomeworkSubmitted,
-            daysToCourseEnd: 0,
+            daysToCourseEnd: dash.compulsoryWidgets?.daysToCourseEnd ?? 0,
             daysToNextDeadline: 1,
-            daysToSzDeadline: cert?.deadlineAt ? 0 : 0,
+            daysToSzDeadline: dash.compulsoryWidgets?.daysToSzSubmission ?? 0,
         };
 
         const tasks = tasksRaw.map((t) => ({
@@ -567,7 +633,10 @@ export default function PvlMenteeCardView({
             mentorNotePreview: m.note || '',
         }));
 
+        const szs = cert?.szScores;
         const certification = {
+            readinessLine: `Готовность к сертификации: ${certFieldRu(cert?.admissionStatus)}`,
+            prerequisitesBeforeSzLine: `Обязательный путь до записи СЗ (КТ1–КТ7): ${beforeSzDone}/${beforeSzCp.length} принято`,
             guestPlanStatus: certFieldRu(cert?.guestPlanStatus),
             trialBreakfastStatus: certFieldRu(cert?.trialBreakfastStatus),
             szRecordingStatus: certFieldRu(cert?.szRecordingStatus),
@@ -577,6 +646,9 @@ export default function PvlMenteeCardView({
             admissionStatus: certFieldRu(cert?.admissionStatus),
             redFlags: cert?.redFlags || [],
             deadlineAt: formatPvlDateTime(cert?.deadlineAt),
+            szScoresLine: szs
+                ? `СЗ (отдельно от курса): самооценка ${szs.self_score_total}/54 · ментор ${szs.mentor_score_total}/54 · крит. флаги: ${szs.critical_flags_count} · статус СЗ: ${certFieldRu(szs.certification_status)}`
+                : '',
         };
 
         return {
@@ -586,8 +658,10 @@ export default function PvlMenteeCardView({
             controlPoints,
             risks,
             meetings,
-            feed: thread,
             certification,
+            nearestDeadlineLine,
+            lastLessonTitle,
+            courseProgressPercent,
         };
     }, [resolvedStudentId, refreshKey]);
 
@@ -604,14 +678,10 @@ export default function PvlMenteeCardView({
         controlPoints: viewModel.controlPoints,
         risks: viewModel.risks,
         meetings: viewModel.meetings,
-        feed: viewModel.feed,
         certification: viewModel.certification,
-        statusFilter,
-        setStatusFilter,
-        unreadOnly,
-        setUnreadOnly,
-        taskFilter,
-        setTaskFilter,
+        nearestDeadlineLine: viewModel.nearestDeadlineLine,
+        lastLessonTitle: viewModel.lastLessonTitle,
+        courseProgressPercent: viewModel.courseProgressPercent,
         onOpenTask,
         onBack,
     });

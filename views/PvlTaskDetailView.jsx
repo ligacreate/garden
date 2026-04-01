@@ -1,4 +1,29 @@
 import React, { useMemo, useState } from 'react';
+import { pvlDomainApi } from '../services/pvlMockApi';
+
+function pvlDevToolsEnabled() {
+    try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem('pvl_dev_tools') === '1';
+    } catch {
+        return false;
+    }
+}
+
+function threadEventLabel(messageType) {
+    const m = {
+        status: 'Системное событие',
+        dispute_opened: 'Спор открыт',
+        dispute_comment: 'Спор',
+        mentor_review: 'Оценка ментора',
+        comment: 'Сообщение',
+        version_submitted: 'Отправка работы',
+        bonus: 'Баллы',
+        reminder_lesson: 'Напоминание: урок',
+        reminder_meeting: 'Напоминание: встреча',
+        reminder_live: 'Напоминание: эфир',
+    };
+    return m[messageType] || 'Событие';
+}
 
 export const taskDetail = {
     id: 'task-kt4-scenario-v08',
@@ -185,6 +210,7 @@ export function addThreadMessage(setter, message) {
             {
                 id: `m-${Date.now()}`,
                 type: 'message',
+                messageType: message.messageType || 'comment',
                 authorName: message.authorName,
                 authorRole: message.authorRole,
                 createdAt: new Date().toLocaleString('ru-RU'),
@@ -244,11 +270,11 @@ export function submitForReview(setter) {
     changeTaskStatus(setter, 'к проверке', 'Участница', 'Отправлено на проверку');
 }
 
-export function TaskHeader({ data, onBack }) {
+export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»' }) {
     const isOverdue = data.deadlineAt && new Date(data.deadlineAt) < new Date() && data.status !== 'принято';
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <button onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">← Назад в «Результаты»</button>
+            <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="font-display text-3xl text-[#4A3728]">{data.title}</h2>
@@ -256,13 +282,15 @@ export function TaskHeader({ data, onBack }) {
                 </div>
                 <Pill tone={statusTone(data.status)}>{data.status}</Pill>
             </div>
-            <div className="grid md:grid-cols-4 gap-2 mt-3 text-sm">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3 text-sm">
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {data.deadlineAt}</div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Начало работы: {data.startedAt || '—'}</div>
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Отправка: {data.submittedAt || '—'}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Статус обновлен: {data.lastStatusChangedAt}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Баллы: {data.score}/{data.maxScore}</div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Проверка / принято: {data.acceptedAt || '—'}</div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Статус обновлён: {data.lastStatusChangedAt || '—'}</div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Оценка: {data.score}/{data.maxScore}</div>
             </div>
-            {isOverdue ? <div className="mt-2 text-xs text-rose-700">Есть индикатор просрочки по дедлайну.</div> : null}
+            {isOverdue ? <div className="mt-2 text-xs text-rose-700">Просрочен дедлайн сдачи.</div> : null}
         </div>
     );
 }
@@ -376,8 +404,11 @@ export function StatusTimeline({ history }) {
 export function renderCommentsThread(messages) {
     return messages.map((m) => (
         <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-[#FAF6F2] border-[#E8D5C4]' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-[#E8D5C4]'}`}>
-            <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-[#4A3728]">{m.authorName} <span className="text-xs text-[#9B8B80]">({m.authorRole})</span></p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80]">{threadEventLabel(m.messageType)}</span>
+                    <p className="text-sm font-medium text-[#4A3728]">{m.authorName} <span className="text-xs text-[#9B8B80] font-normal">({m.authorRole})</span></p>
+                </div>
                 <p className="text-xs text-[#9B8B80]">{m.createdAt}</p>
             </div>
             <p className="text-sm text-[#2C1810] mt-1">{m.text}</p>
@@ -387,32 +418,67 @@ export function renderCommentsThread(messages) {
     ));
 }
 
-export function CommentsThread({ messages, onSend, role }) {
+export function CommentsThread({
+    messages,
+    onSend,
+    role,
+    disputeOpen,
+    threadLocked,
+    onOpenDispute,
+}) {
     const [message, setMessage] = useState('');
+    const disputeMode = disputeOpen;
+    const showComposer = !threadLocked || disputeMode;
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Комментарии и тред</h3>
+            <h3 className="font-display text-2xl text-[#4A3728] mb-1">Лента по заданию</h3>
+            <p className="text-xs text-[#9B8B80] mb-3">Сообщения, проверка, системные события и напоминания в одном месте.</p>
             <div className="grid gap-2">{renderCommentsThread(messages)}</div>
-            <div className="mt-3 border-t border-[#F5EDE6] pt-3">
-                <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="Написать комментарий..." />
-                <div className="mt-2">
+            {threadLocked && !disputeMode ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
+                    <p className="mb-2">Работа принята и закрыта. Обычные сообщения по заданию отключены.</p>
                     <button
-                        onClick={() => {
-                            if (!message.trim()) return;
-                            onSend({
-                                authorName: role === 'mentor' ? 'Ментор' : 'Участница',
-                                authorRole: role,
-                                text: message.trim(),
-                                attachments: [],
-                            });
-                            setMessage('');
-                        }}
-                        className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]"
+                        type="button"
+                        onClick={() => onOpenDispute?.()}
+                        className="text-xs rounded-full border border-amber-700/40 bg-white px-4 py-2 text-amber-900 hover:bg-amber-100/80"
                     >
-                        Отправить сообщение
+                        Открыть спор по оценке
                     </button>
                 </div>
-            </div>
+            ) : null}
+            {disputeMode ? (
+                <p className="mt-3 text-xs text-slate-600">Открыт спор — пишите только по сути расхождения с оценкой или проверкой.</p>
+            ) : null}
+            {showComposer ? (
+                <div className="mt-3 border-t border-[#F5EDE6] pt-3">
+                    <textarea
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        rows={3}
+                        className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm"
+                        placeholder={disputeMode ? 'Сообщение в рамках спора…' : 'Написать комментарий…'}
+                    />
+                    <div className="mt-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!message.trim()) return;
+                                onSend({
+                                    authorName: role === 'mentor' ? 'Ментор' : 'Участница',
+                                    authorRole: role,
+                                    text: message.trim(),
+                                    attachments: [],
+                                    disputeOnly: disputeMode,
+                                });
+                                setMessage('');
+                            }}
+                            className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]"
+                        >
+                            {disputeMode ? 'Отправить в споре' : 'Отправить сообщение'}
+                        </button>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -496,10 +562,14 @@ export function renderTaskDetail({
     mentorForm,
     setMentorForm,
     onSaveMentorForm,
+    backLabel,
+    threadLocked,
+    disputeOpen,
+    onOpenDispute,
 }) {
     return (
         <div className="space-y-3">
-            <TaskHeader data={state.taskDetail} onBack={onBack} />
+            <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} />
             <TaskMeta data={state.taskDetail} />
             <TaskDescription data={state.taskDescription} />
             <SubmissionHistory
@@ -512,16 +582,17 @@ export function renderTaskDetail({
                 setDraftText={setDraftText}
             />
             <StatusTimeline history={state.statusHistory} />
-            <CommentsThread messages={state.threadMessages} onSend={onSendThreadMessage} role={role} />
+            <CommentsThread
+                messages={state.threadMessages}
+                onSend={onSendThreadMessage}
+                role={role}
+                threadLocked={threadLocked}
+                disputeOpen={disputeOpen}
+                onOpenDispute={onOpenDispute}
+            />
             <MentorResponseForm role={role} form={mentorForm} setForm={setMentorForm} onSave={onSaveMentorForm} />
             <ControlPointMeta taskData={state.taskDetail} />
             <RelatedLinks />
-            {/* Open questions:
-               1) порог допуска к СЗ: 400 или 500
-               2) ручной бонус ментора: в карточке задания или только в админ-логике
-               3) можно ли участнице редактировать отправленную версию до открытия проверки ментором
-               4) финальный список допустимых типов файлов по артефактам
-            */}
         </div>
     );
 }
@@ -535,6 +606,10 @@ export default function PvlTaskDetailView({
     onStudentReply,
     onMentorReply,
     onMentorReview,
+    taskStudentId,
+    taskId,
+    mentorActorId,
+    onRefresh,
 }) {
     const [state, setState] = useState({
         taskDetail: initialData?.taskDetail || { ...taskDetail },
@@ -551,14 +626,33 @@ export default function PvlTaskDetailView({
         [state.statusHistory]
     );
 
+    const threadLocked = (state.taskDetail.isAcceptedWork || state.taskDetail.status === 'принято') && !state.taskDetail.disputeOpen;
+    const disputeOpen = !!state.taskDetail.disputeOpen;
+
+    const handleOpenDispute = () => {
+        if (role === 'mentor' && mentorActorId && taskStudentId && taskId) {
+            pvlDomainApi.mentorApi.openTaskDispute(mentorActorId, taskStudentId, taskId);
+        } else if (role === 'student' && taskStudentId && taskId) {
+            pvlDomainApi.studentApi.openStudentTaskDispute(taskStudentId, taskId);
+        }
+        onRefresh?.();
+    };
+
     const handleSendThreadMessage = (message) => {
+        const sid = taskStudentId;
+        const tid = taskId || state.taskDetail.id;
+        if (sid && tid && !pvlDomainApi.helpers.canPostTaskThread(sid, tid, { disputeOnly: !!message.disputeOnly })) {
+            return;
+        }
         if (role === 'mentor' && onMentorReply) {
             onMentorReply(message);
+            return;
         }
         if (role === 'student' && onStudentReply) {
             onStudentReply(message);
+            return;
         }
-        addThreadMessage(setState, message);
+        addThreadMessage(setState, { ...message, messageType: message.disputeOnly ? 'dispute_comment' : 'comment' });
     };
 
     const handleUploadVersion = (payload) => {
@@ -579,28 +673,59 @@ export default function PvlTaskDetailView({
                     .filter(Boolean),
                 generalComment: mentorForm.generalComment,
             });
+            setMentorForm((prev) => ({ ...prev, warningTooManyRevisions }));
+            return;
         }
         changeTaskStatus(setState, decision, 'Ментор', mentorForm.generalComment);
         addThreadMessage(setState, {
             authorName: 'Ментор',
             authorRole: 'mentor',
+            messageType: 'mentor_review',
             text: `${mentorForm.strengths}\n\n${mentorForm.blockers}\n\n${mentorForm.nextActions}`,
             attachments: [],
         });
         setMentorForm((prev) => ({ ...prev, warningTooManyRevisions }));
     };
 
+    const backLabel = role === 'mentor' ? '← К карточке менти' : '← Назад в «Результаты»';
+
+    const showReviewAck =
+        role === 'student'
+        && taskStudentId
+        && taskId
+        && String(state.taskDetail.status || '').toLowerCase().includes('проверено')
+        && String(state.taskDetail.status || '').toLowerCase().includes('оценку');
+
     return (
         <div className="space-y-3">
-            {role === 'mentor' ? (
+            {role === 'mentor' && pvlDevToolsEnabled() ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-xs text-[#9B8B80]">
-                    Циклов доработки: {revisionCycles}
+                    Циклов доработки (dev): {revisionCycles}
+                </div>
+            ) : null}
+            {showReviewAck ? (
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 text-sm text-indigo-950 shadow-sm">
+                    <p className="font-medium">Работа проверена — посмотрите оценку и комментарии ментора в ленте ниже.</p>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            pvlDomainApi.studentApi.acknowledgeStudentTaskReview(taskStudentId, taskId);
+                            onRefresh?.();
+                        }}
+                        className="mt-3 text-xs rounded-full bg-indigo-700 text-white px-4 py-2 hover:bg-indigo-800"
+                    >
+                        Ознакомилась с оценкой
+                    </button>
                 </div>
             ) : null}
             {renderTaskDetail({
                 role,
                 state,
                 onBack,
+                backLabel,
+                threadLocked,
+                disputeOpen,
+                onOpenDispute: handleOpenDispute,
                 onChangeStatus: (status, comment) => changeTaskStatus(setState, status, role === 'mentor' ? 'Ментор' : 'Участница', comment),
                 onSendThreadMessage: handleSendThreadMessage,
                 onUploadVersion: handleUploadVersion,

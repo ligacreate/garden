@@ -1,5 +1,8 @@
 import { seed } from '../data/pvl/seed';
+import { capSzMentor, capSzSelf, computeCourseBreakdown } from './pvlScoringEngine';
+import { CANONICAL_SCHEDULE_2026 } from '../data/pvl/constants';
 import { CONTENT_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
+import { PVL_PLATFORM_MODULES } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import {
     buildAdminRisks,
@@ -15,12 +18,21 @@ import {
     getCertificationReadiness,
     getCertificationRedFlags,
     getCertificationTimeline,
+    getDaysToSzDeadline,
     getNextControlPoint,
     getNextDeadline,
     getPendingNotifications,
     getPendingReviewTasks,
     getUnreadThreadCount,
 } from '../selectors/pvlCalculators';
+
+/** Согласовано с калькуляторами дедлайнов в прототипе */
+const DASHBOARD_TODAY = '2026-06-03';
+
+function diffCourseDays(firstYmd, secondYmd) {
+    const toDate = (x) => new Date(`${String(x).slice(0, 10)}T00:00:00.000Z`);
+    return Math.floor((toDate(firstYmd) - toDate(secondYmd)) / 86400000);
+}
 
 function cloneSeedData(src) {
     try {
@@ -36,6 +48,55 @@ const eventLog = [];
 let auditLog = [];
 let notifications = [];
 if (!Array.isArray(db.studentLibraryProgress)) db.studentLibraryProgress = [];
+if (!Array.isArray(db.taskDisputes)) db.taskDisputes = [];
+
+function isTaskDisputeOpen(studentId, taskId) {
+    return (db.taskDisputes || []).some((d) => d.studentId === studentId && d.taskId === taskId && d.status === 'open');
+}
+
+/** Обычные сообщения: запрещены, если работа принята и спор не открыт. Сообщения спора — только при открытом споре. */
+export function canPostTaskThread(studentId, taskId, opts = {}) {
+    const disputeOnly = !!opts.disputeOnly;
+    const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
+    const open = isTaskDisputeOpen(studentId, taskId);
+    if (disputeOnly) {
+        return state?.status === TASK_STATUS.ACCEPTED && open;
+    }
+    if (!state || state.status !== TASK_STATUS.ACCEPTED) return true;
+    return false;
+}
+
+function openTaskDisputeCore(actorUserId, studentId, taskId, openedByRole) {
+    const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
+    if (!state || state.status !== TASK_STATUS.ACCEPTED) return { ok: false, reason: 'not_accepted' };
+    if (isTaskDisputeOpen(studentId, taskId)) return { ok: false, reason: 'already_open' };
+    db.taskDisputes.push({
+        id: uid('td'),
+        studentId,
+        taskId,
+        status: 'open',
+        openedBy: openedByRole,
+        openedAt: nowIso(),
+    });
+    const label = openedByRole === 'mentor' ? 'Ментор' : 'Участница';
+    db.threadMessages.push({
+        id: uid('tm'),
+        studentId,
+        taskId,
+        authorUserId: 'system',
+        authorRole: 'system',
+        messageType: 'dispute_opened',
+        text: `${label} открыл(а) спор по оценке. Дальнейшие сообщения — только в рамках спора.`,
+        attachments: [],
+        linkedVersionId: null,
+        linkedStatusHistoryId: null,
+        isSystem: true,
+        createdAt: nowIso(),
+        readBy: [],
+    });
+    addAuditEvent(actorUserId, openedByRole === 'mentor' ? ROLES.MENTOR : ROLES.STUDENT, 'dispute_opened', 'task', taskId, 'Task dispute opened', { studentId });
+    return { ok: true };
+}
 
 const uid = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 const nowIso = () => new Date().toISOString();
@@ -163,11 +224,14 @@ function syncDerivedStatesForStudent(studentId) {
         byWeek[weekNumber].push({ task, st });
         if (task.isControlPoint) {
             const accepted = st?.status === TASK_STATUS.ACCEPTED;
+            const existingCp = db.controlPointState.find((x) => x.studentId === studentId && x.controlPointId === task.controlPointId);
+            const keepAccepted = existingCp?.status === 'accepted';
+            const effectiveAccepted = accepted || keepAccepted;
             upsertControlPointState(studentId, task.controlPointId, {
-                status: accepted ? 'accepted' : (st?.status || 'not_started'),
-                pointsAwarded: accepted ? SCORING_RULES.CONTROL_POINT_POINTS : 0,
-                awardedAt: accepted ? nowIso() : null,
-                acceptedByUserId: accepted ? 'system' : null,
+                status: effectiveAccepted ? 'accepted' : (st?.status || 'not_started'),
+                pointsAwarded: effectiveAccepted ? SCORING_RULES.CONTROL_POINT_POINTS : 0,
+                awardedAt: effectiveAccepted ? nowIso() : null,
+                acceptedByUserId: effectiveAccepted ? 'system' : null,
             });
         }
     });
@@ -178,35 +242,51 @@ function syncDerivedStatesForStudent(studentId) {
         const studiedCompleted = items.every((x) => x.st && x.st.status !== TASK_STATUS.NOT_STARTED);
         const taskCompleted = items.every((x) => x.st && [TASK_STATUS.SUBMITTED, TASK_STATUS.PENDING_REVIEW, TASK_STATUS.ACCEPTED, TASK_STATUS.REVISION_REQUESTED].includes(x.st.status));
         const submittedCompleted = items.every((x) => x.st && [TASK_STATUS.PENDING_REVIEW, TASK_STATUS.ACCEPTED, TASK_STATUS.REVISION_REQUESTED].includes(x.st.status));
-        const weekClosed = items.every((x) => x.st && x.st.status === TASK_STATUS.ACCEPTED);
-        upsertWeekCompletion(studentId, weekNumber, { studiedCompleted, taskCompleted, submittedCompleted, weekClosed, autoPointsAwarded: weekClosed ? SCORING_RULES.WEEK_CLOSURE_POINTS : 0, awardedAt: weekClosed ? nowIso() : null });
+        const derivedWeekClosed = items.every((x) => x.st && x.st.status === TASK_STATUS.ACCEPTED);
+        const existingWk = db.weekCompletionState.find((x) => x.studentId === studentId && x.weekNumber === weekNumber);
+        const weekClosed = !!existingWk?.weekClosed || derivedWeekClosed;
+        upsertWeekCompletion(studentId, weekNumber, {
+            studiedCompleted: studiedCompleted || !!existingWk?.studiedCompleted,
+            taskCompleted: taskCompleted || !!existingWk?.taskCompleted,
+            submittedCompleted: submittedCompleted || !!existingWk?.submittedCompleted,
+            weekClosed,
+            autoPointsAwarded: weekClosed ? SCORING_RULES.WEEK_CLOSURE_POINTS : 0,
+            awardedAt: weekClosed ? nowIso() : null,
+        });
     });
 
-    // Week 0 auto logic: onboarding/profile done
+    // Week 0: seed может зафиксировать закрытие; иначе — по currentWeek > 0
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
+    const existing0 = db.weekCompletionState.find((x) => x.studentId === studentId && x.weekNumber === 0);
+    const derived0Closed = (profile?.currentWeek || 0) > 0;
+    const week0Closed = !!existing0?.weekClosed || derived0Closed;
     upsertWeekCompletion(studentId, 0, {
         studiedCompleted: true,
         taskCompleted: true,
         submittedCompleted: true,
-        weekClosed: (profile?.currentWeek || 0) > 0,
-        autoPointsAwarded: (profile?.currentWeek || 0) > 0 ? SCORING_RULES.WEEK0_POINTS : 0,
-        awardedAt: (profile?.currentWeek || 0) > 0 ? nowIso() : null,
+        weekClosed: week0Closed,
+        autoPointsAwarded: week0Closed ? SCORING_RULES.WEEK0_POINTS : 0,
+        awardedAt: week0Closed ? nowIso() : null,
     });
 }
 
 function calculatePointsSummary(studentId) {
     syncDerivedStatesForStudent(studentId);
     const week0 = db.weekCompletionState.find((w) => w.studentId === studentId && w.weekNumber === 0);
-    const week0Points = week0?.weekClosed ? SCORING_RULES.WEEK0_POINTS : 0;
+    const week0Closed = !!week0?.weekClosed;
     const closedWeeks = db.weekCompletionState.filter((w) => w.studentId === studentId && w.weekNumber >= 1 && w.weekNumber <= 12 && w.weekClosed).length;
-    const weeksPoints = Math.min(closedWeeks * SCORING_RULES.WEEK_CLOSURE_POINTS, 240);
     const acceptedCp = db.controlPointState.filter((c) => c.studentId === studentId && c.status === 'accepted').length;
-    const controlPointsTotal = Math.min(acceptedCp * SCORING_RULES.CONTROL_POINT_POINTS, 90);
-    const mentorBonusTotal = Math.min(db.mentorBonusEvents.filter((e) => e.studentId === studentId).reduce((acc, e) => acc + (e.points || 0), 0), SCORING_RULES.MENTOR_BONUS_POOL_MAX);
+    const mentorBonusRaw = db.mentorBonusEvents.filter((e) => e.studentId === studentId).reduce((acc, e) => acc + (e.points || 0), 0);
+    const courseBlock = computeCourseBreakdown({
+        week0Closed,
+        closedWeeks1to12: closedWeeks,
+        acceptedControlPoints: acceptedCp,
+        mentorBonusSum: mentorBonusRaw,
+    });
+    const { week0Points, weeksPoints, controlPointsTotal, mentorBonusTotal, coursePointsTotal } = courseBlock;
     const sz = db.szAssessmentState.find((x) => x.studentId === studentId);
-    const szSelfAssessmentTotal = Math.min(sz?.selfAssessmentPoints || 0, SCORING_RULES.SZ_POINTS_MAX);
-    const szMentorAssessmentTotal = Math.min(sz?.mentorAssessmentPoints || 0, SCORING_RULES.SZ_POINTS_MAX);
-    const coursePointsTotal = Math.min(week0Points + weeksPoints + controlPointsTotal + mentorBonusTotal, SCORING_RULES.COURSE_POINTS_MAX);
+    const szSelfAssessmentTotal = capSzSelf(sz?.selfAssessmentPoints || 0);
+    const szMentorAssessmentTotal = capSzMentor(sz?.mentorAssessmentPoints || 0);
 
     // history append-once events
     if (week0Points > 0) addPointsHistory(studentId, 'week0', 'week0', SCORING_RULES.WEEK0_POINTS, 'Завершена неделя 0', '');
@@ -227,6 +307,15 @@ function calculatePointsSummary(studentId) {
     return rec;
 }
 
+function mapRuDecisionToTaskStatus(ru) {
+    const r = String(ru || '').toLowerCase().trim();
+    if (r === 'принято') return TASK_STATUS.ACCEPTED;
+    if (r === 'на доработке') return TASK_STATUS.REVISION_REQUESTED;
+    if (r === 'не принято') return TASK_STATUS.REJECTED;
+    if (Object.values(TASK_STATUS).includes(ru)) return ru;
+    return TASK_STATUS.REVISION_REQUESTED;
+}
+
 export function mapTaskStatus(status) {
     const map = {
         [TASK_STATUS.NOT_STARTED]: 'не начато',
@@ -242,6 +331,149 @@ export function mapTaskStatus(status) {
     return map[status] || status;
 }
 
+/** Плашки для менти (отличаются от служебного mapTaskStatus: «на проверке», «проверено, посмотрите оценку»). */
+export function mapStudentHomeworkDisplayStatus(state) {
+    if (!state) return 'не начато';
+    const s = state.status;
+    if (state.isOverdue && s !== TASK_STATUS.ACCEPTED) return 'просрочено';
+    if (s === TASK_STATUS.ACCEPTED) {
+        if (state.acceptedAt && !state.reviewSeenByStudentAt) return 'проверено, посмотрите оценку';
+        return 'принято';
+    }
+    if (s === TASK_STATUS.NOT_STARTED) return 'не начато';
+    if (s === TASK_STATUS.IN_PROGRESS) return 'в работе';
+    if (s === TASK_STATUS.DRAFT) return 'черновик';
+    if (s === TASK_STATUS.SUBMITTED) return 'отправлено';
+    if (s === TASK_STATUS.PENDING_REVIEW) return 'на проверке';
+    if (s === TASK_STATUS.REVISION_REQUESTED) return 'на доработке';
+    if (s === TASK_STATUS.REJECTED) return 'не принято';
+    if (s === TASK_STATUS.OVERDUE) return 'просрочено';
+    return mapTaskStatus(s);
+}
+
+export function mapStudentControlPointDisplayStatus(cpState, deadlineAt, today = DASHBOARD_TODAY) {
+    const raw = cpState?.status || 'not_started';
+    if (raw === 'accepted') return 'принято';
+    const overdue = deadlineAt && diffCourseDays(today, deadlineAt) > 0 && raw !== 'accepted';
+    if (overdue) return 'просрочено';
+    if (raw === 'pending_review' || raw === TASK_STATUS.PENDING_REVIEW) return 'на проверке';
+    if (raw === 'not_started' || raw === undefined) return 'не начато';
+    return 'выполнено';
+}
+
+function computeStudentDashboardWidgets(studentId) {
+    const profile = db.studentProfiles.find((p) => p.userId === studentId);
+    const cohort = db.cohorts.find((c) => c.id === profile?.cohortId);
+    const today = DASHBOARD_TODAY;
+    const mod = profile?.currentModule ?? 0;
+    const modWeeks = CANONICAL_SCHEDULE_2026.weeks.filter((w) => w.moduleNumber === mod);
+    const moduleEndDate = modWeeks.length
+        ? modWeeks.reduce((a, w) => (String(w.endDate) > String(a) ? w.endDate : a), modWeeks[0].endDate)
+        : cohort?.endDate;
+    const daysToModuleEnd = moduleEndDate ? Math.max(0, diffCourseDays(moduleEndDate, today)) : 0;
+    const daysToCourseEnd = cohort?.endDate ? Math.max(0, diffCourseDays(cohort.endDate, today)) : 0;
+    const daysToSzSubmission = Math.max(0, getDaysToSzDeadline(today));
+
+    const lessons = db.lessons.filter((l) => {
+        const w = db.courseWeeks.find((cw) => cw.id === l.weekId);
+        return w?.cohortId === profile?.cohortId;
+    });
+    const lessonsTotal = Math.max(1, lessons.length);
+    const cw = profile?.currentWeek ?? 0;
+    const lessonsDone = lessons.filter((l) => {
+        const w = db.courseWeeks.find((x) => x.id === l.weekId);
+        return w && w.weekNumber <= cw;
+    }).length;
+    const lessonsRemaining = Math.max(0, lessonsTotal - lessonsDone);
+
+    const taskStates = db.studentTaskStates.filter((s) => s.studentId === studentId);
+    const homeworkTotal = Math.max(1, taskStates.length);
+    const homeworkDone = taskStates.filter((s) => s.status === TASK_STATUS.ACCEPTED).length;
+    const homeworkRemaining = Math.max(0, taskStates.length - homeworkDone);
+
+    const modTitle = PVL_PLATFORM_MODULES.find((m) => Number(m.id) === Number(mod))?.title || `Модуль ${mod}`;
+
+    const pts = calculatePointsSummary(studentId);
+
+    return {
+        currentModuleTitle: modTitle,
+        currentModuleNumber: mod,
+        daysToModuleEnd,
+        lessonsDone,
+        lessonsRemaining,
+        lessonsTotal,
+        homeworkDone,
+        homeworkRemaining,
+        homeworkTotal: taskStates.length,
+        daysToCourseEnd,
+        daysToSzSubmission,
+        coursePoints: pts.coursePointsTotal,
+        szSelfAssessmentPoints: pts.szSelfAssessmentTotal,
+    };
+}
+
+function buildStudentActivityFeed(studentId, limit = 10) {
+    const items = [];
+    const msgs = db.threadMessages
+        .filter((m) => m.studentId === studentId)
+        .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+        .slice(0, 40);
+    for (const m of msgs) {
+        const task = m.taskId ? db.homeworkTasks.find((t) => t.id === m.taskId) : null;
+        const taskHint = task?.title || m.taskId || '';
+        if (m.messageType === 'dispute_opened' || (m.isSystem && String(m.text).includes('спор'))) {
+            items.push({ id: m.id, kind: 'dispute', text: 'Открыт спор по оценке', detail: taskHint, at: m.createdAt, taskId: m.taskId });
+            continue;
+        }
+        if (m.authorRole === ROLES.MENTOR && !m.isSystem && m.messageType !== 'mentor_review') {
+            items.push({ id: m.id, kind: 'mentor_comment', text: 'Ментор оставил комментарий', detail: taskHint, at: m.createdAt, taskId: m.taskId });
+            continue;
+        }
+        if (m.messageType === 'mentor_review') {
+            items.push({ id: m.id, kind: 'review', text: 'Домашка проверена, посмотрите оценку', detail: taskHint, at: m.createdAt, taskId: m.taskId });
+            continue;
+        }
+        if (m.isSystem && String(m.text).toLowerCase().includes('принят')) {
+            items.push({ id: m.id, kind: 'accepted', text: 'Работа принята', detail: taskHint, at: m.createdAt, taskId: m.taskId });
+        }
+    }
+    const meeting = db.mentorMeetings
+        .filter((mm) => mm.studentId === studentId && mm.status === 'scheduled')
+        .sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)))[0];
+    if (meeting) {
+        items.push({
+            id: `meet-${meeting.id}`,
+            kind: 'meeting',
+            text: 'Ближайшая встреча с ментором',
+            detail: meeting.title || `Неделя ${meeting.weekNumber}`,
+            at: meeting.scheduledAt,
+            taskId: null,
+        });
+    }
+    const szDays = getDaysToSzDeadline(DASHBOARD_TODAY);
+    if (szDays <= 14 && szDays >= 0) {
+        items.push({
+            id: 'feed-sz',
+            kind: 'cert',
+            text: 'Скоро дедлайн записи самооценки СЗ',
+            detail: `Осталось примерно ${szDays} дн.`,
+            at: DASHBOARD_TODAY,
+            taskId: null,
+        });
+    }
+    items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const seen = new Set();
+    const out = [];
+    for (const it of items) {
+        const k = `${it.kind}-${it.taskId || ''}-${it.text}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(it);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
 function getStudentSnapshot(studentId) {
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
     const user = db.users.find((u) => u.id === studentId);
@@ -255,7 +487,15 @@ function getTaskDetail(studentId, taskId) {
     const versions = db.submissionVersions.filter((v) => v.submissionId === submission?.id).sort((a, b) => a.versionNumber - b.versionNumber);
     const history = db.statusHistory.filter((h) => h.studentId === studentId && h.taskId === taskId);
     const thread = db.threadMessages.filter((m) => m.studentId === studentId && m.taskId === taskId);
-    return { task, state, submission, versions, history, thread };
+    return {
+        task,
+        state,
+        submission,
+        versions,
+        history,
+        thread,
+        disputeOpen: isTaskDisputeOpen(studentId, taskId),
+    };
 }
 
 function getPublishedContentFor(role, section, cohortId) {
@@ -338,6 +578,7 @@ export const studentApi = {
         const pts = calculatePointsSummary(studentId);
         const { user, profile } = getStudentSnapshot(studentId);
         const tasks = db.studentTaskStates.filter((s) => s.studentId === studentId);
+        const widgets = computeStudentDashboardWidgets(studentId);
         return {
             studentProfile: {
                 id: studentId,
@@ -347,8 +588,10 @@ export const studentApi = {
                 currentModule: profile?.currentModule,
                 coursePoints: pts.coursePointsTotal,
                 szSelfAssessmentPoints: pts.szSelfAssessmentTotal,
-                daysToSzDeadline: 27,
+                daysToSzDeadline: widgets.daysToSzSubmission,
             },
+            compulsoryWidgets: widgets,
+            activityFeed: buildStudentActivityFeed(studentId, 10),
             dashboardStats: {
                 homeworkDone: tasks.filter((t) => t.status === TASK_STATUS.ACCEPTED).length,
                 homeworkTotal: tasks.length,
@@ -383,6 +626,7 @@ export const studentApi = {
                     type: task.taskType,
                     typeLabel,
                     status: mapTaskStatus(s.status),
+                    displayStatus: mapStudentHomeworkDisplayStatus(s),
                     deadlineAt: task.deadlineAt,
                     submittedAt: s.submittedAt,
                     score: s.totalTaskPoints ?? 0,
@@ -480,16 +724,50 @@ export const studentApi = {
         return version;
     },
     addStudentThreadReply(studentId, taskId, payload) {
-        const msg = { id: uid('tm'), studentId, taskId, authorUserId: studentId, authorRole: ROLES.STUDENT, messageType: 'comment', text: payload?.text || '', attachments: payload?.attachments || [], linkedVersionId: payload?.linkedVersionId || null, linkedStatusHistoryId: null, isSystem: false, createdAt: nowIso(), readBy: [studentId] };
+        const isDispute = !!payload?.disputeOnly;
+        if (!canPostTaskThread(studentId, taskId, { disputeOnly: isDispute })) return null;
+        const msg = {
+            id: uid('tm'),
+            studentId,
+            taskId,
+            authorUserId: studentId,
+            authorRole: ROLES.STUDENT,
+            messageType: isDispute ? 'dispute_comment' : 'comment',
+            text: payload?.text || '',
+            attachments: payload?.attachments || [],
+            linkedVersionId: payload?.linkedVersionId || null,
+            linkedStatusHistoryId: null,
+            isSystem: false,
+            createdAt: nowIso(),
+            readBy: [studentId],
+        };
         db.threadMessages.push(msg);
         pushEvent('student_replied', { studentId, taskId, messageId: msg.id });
         addAuditEvent(studentId, ROLES.STUDENT, 'student_reply', 'thread_message', msg.id, 'Student replied in thread', { taskId });
         return msg;
     },
+    openStudentTaskDispute(studentId, taskId) {
+        return openTaskDisputeCore(studentId, studentId, taskId, 'student');
+    },
     getStudentCertification(studentId) {
         const pts = calculatePointsSummary(studentId);
         const c = db.certificationProgress.find((x) => x.studentId === studentId);
-        return { ...c, readiness: getCertificationReadiness(db, studentId), redFlags: getCertificationRedFlags(db, studentId), timeline: getCertificationTimeline(db, studentId), points: pts, methodQuestion: SCORING_METHOD_QUESTION };
+        const sz = db.szAssessmentState.find((x) => x.studentId === studentId);
+        const redFlags = getCertificationRedFlags(db, studentId);
+        return {
+            ...c,
+            readiness: getCertificationReadiness(db, studentId),
+            redFlags,
+            timeline: getCertificationTimeline(db, studentId),
+            points: pts,
+            methodQuestion: SCORING_METHOD_QUESTION,
+            szScores: {
+                self_score_total: capSzSelf(sz?.selfAssessmentPoints || 0),
+                mentor_score_total: capSzMentor(sz?.mentorAssessmentPoints || 0),
+                critical_flags_count: redFlags.length,
+                certification_status: sz?.finalStatus || 'not_started',
+            },
+        };
     },
     getStudentChecklist(studentId) {
         return db.courseWeeks.map((w) => ({ weekNumber: w.weekNumber, progress: 0, studentId }));
@@ -548,6 +826,32 @@ export const studentApi = {
         pr.lastOpenedAt = nowIso();
         if (pr.completed) pr.completedAt = nowIso();
         return pr;
+    },
+    acknowledgeStudentTaskReview(studentId, taskId) {
+        const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
+        if (!state || state.status !== TASK_STATUS.ACCEPTED) return null;
+        state.reviewSeenByStudentAt = nowIso();
+        state.updatedAt = nowIso();
+        return state;
+    },
+    getStudentControlPointsProgress(studentId) {
+        syncDerivedStatesForStudent(studentId);
+        const profile = db.studentProfiles.find((p) => p.userId === studentId);
+        return db.controlPoints
+            .filter((cp) => cp.cohortId === profile?.cohortId)
+            .map((cp) => {
+                const st = db.controlPointState.find((x) => x.studentId === studentId && x.controlPointId === cp.id);
+                return {
+                    id: cp.code,
+                    title: cp.title,
+                    weekNumber: cp.weekNumber,
+                    deadlineAt: cp.deadlineAt,
+                    statusRaw: st?.status || 'not_started',
+                    statusLabel: mapStudentControlPointDisplayStatus(st, cp.deadlineAt),
+                    affectsAdmission: !!cp.affectsAdmission,
+                };
+            })
+            .sort((a, b) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0));
     },
     getPublishedLibraryContentForStudent,
     getLibraryCategoriesWithCounts,
@@ -625,6 +929,42 @@ export const mentorApi = {
     getMentorReviewQueue(mentorId) {
         return getPendingReviewTasks(db, mentorId);
     },
+    /** Доска проверок: не проверено / на доработке / проверено (все задания менти ментора) */
+    getMentorReviewBoard(mentorId) {
+        const menteeIds = db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+        const enrich = (s) => {
+            const task = db.homeworkTasks.find((t) => t.id === s.taskId);
+            const user = db.users.find((u) => u.id === s.studentId);
+            const weekRow = task?.weekId ? db.courseWeeks.find((w) => w.id === task.weekId) : null;
+            const lessonHint = (task?.linkedLessonIds || []).length
+                ? `Урок: ${(task.linkedLessonIds || []).join(', ')}`
+                : weekRow
+                  ? `Неделя ${weekRow.weekNumber}`
+                  : '—';
+            return {
+                studentId: s.studentId,
+                taskId: s.taskId,
+                status: mapTaskStatus(s.status),
+                rawStatus: s.status,
+                studentName: user?.fullName || s.studentId,
+                taskTitle: task?.title || s.taskId,
+                weekNumber: weekRow?.weekNumber,
+                moduleNumber: weekRow?.moduleNumber,
+                lessonHint,
+                submittedAt: s.submittedAt,
+                deadlineAt: task?.deadlineAt,
+            };
+        };
+        const all = db.studentTaskStates.filter((st) => menteeIds.includes(st.studentId));
+        const unchecked = all.filter((st) => [TASK_STATUS.PENDING_REVIEW, TASK_STATUS.SUBMITTED].includes(st.status)).map(enrich);
+        const revision = all.filter((st) => st.status === TASK_STATUS.REVISION_REQUESTED).map(enrich);
+        const done = all.filter((st) => st.status === TASK_STATUS.ACCEPTED).map(enrich);
+        return { unchecked, revision, done };
+    },
+    openTaskDispute(actorUserId, studentId, taskId, openedByRole = 'mentor') {
+        return openTaskDisputeCore(actorUserId, studentId, taskId, openedByRole);
+    },
+    canPostTaskThread,
     getMentorTaskDetail(_, studentId, taskId) {
         return getTaskDetail(studentId, taskId);
     },
@@ -633,13 +973,17 @@ export const mentorApi = {
         if (!state) return null;
         const tooMany = detectTooManyRevisions(payload);
         const fromStatus = state.status;
-        state.status = payload?.statusDecision || TASK_STATUS.REVISION_REQUESTED;
+        state.status = mapRuDecisionToTaskStatus(payload?.statusDecision) || TASK_STATUS.REVISION_REQUESTED;
         state.lastStatusChangedAt = nowIso().slice(0, 10);
+        if (state.status === TASK_STATUS.ACCEPTED) {
+            state.acceptedAt = nowIso().slice(0, 10);
+            state.reviewSeenByStudentAt = null;
+        }
         state.revisionCycles = (state.revisionCycles || 0) + (state.status === TASK_STATUS.REVISION_REQUESTED ? 1 : 0);
         const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus: state.status, changedByUserId: mentorId, comment: payload?.generalComment || '', createdAt: nowIso() };
         db.statusHistory.push(history);
         db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: mentorId, authorRole: ROLES.MENTOR, messageType: 'mentor_review', text: payload?.generalComment || '', attachments: [], linkedVersionId: state.currentVersionId, linkedStatusHistoryId: history.id, isSystem: false, createdAt: nowIso(), readBy: [mentorId] });
-        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${state.status}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
+        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${mapTaskStatus(state.status)}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
         pushEvent('mentor_commented', { mentorId, studentId, taskId });
         pushEvent('task_status_changed', { studentId, taskId, toStatus: state.status });
         addAuditEvent(mentorId, ROLES.MENTOR, 'mentor_review', 'task', taskId, 'Mentor reviewed task', { status: state.status });
@@ -651,7 +995,23 @@ export const mentorApi = {
         return this.submitMentorReview(mentorId, studentId, taskId, { statusDecision: status, generalComment: comment, nextActions: [] });
     },
     addMentorThreadReply(mentorId, studentId, taskId, payload) {
-        const msg = { id: uid('tm'), studentId, taskId, authorUserId: mentorId, authorRole: ROLES.MENTOR, messageType: 'comment', text: payload?.text || '', attachments: payload?.attachments || [], linkedVersionId: payload?.linkedVersionId || null, linkedStatusHistoryId: null, isSystem: false, createdAt: nowIso(), readBy: [mentorId] };
+        const isDispute = !!payload?.disputeOnly;
+        if (!canPostTaskThread(studentId, taskId, { disputeOnly: isDispute })) return null;
+        const msg = {
+            id: uid('tm'),
+            studentId,
+            taskId,
+            authorUserId: mentorId,
+            authorRole: ROLES.MENTOR,
+            messageType: isDispute ? 'dispute_comment' : 'comment',
+            text: payload?.text || '',
+            attachments: payload?.attachments || [],
+            linkedVersionId: payload?.linkedVersionId || null,
+            linkedStatusHistoryId: null,
+            isSystem: false,
+            createdAt: nowIso(),
+            readBy: [mentorId],
+        };
         db.threadMessages.push(msg);
         pushEvent('mentor_commented', { mentorId, studentId, taskId, messageId: msg.id });
         addAuditEvent(mentorId, ROLES.MENTOR, 'mentor_comment', 'thread_message', msg.id, 'Mentor commented in thread', { taskId });
@@ -854,6 +1214,10 @@ function setTaskStatus(studentId, taskId, toStatus, changedByUserId, comment = '
     const fromStatus = state.status;
     state.status = toStatus;
     state.lastStatusChangedAt = nowIso().slice(0, 10);
+    if (toStatus === TASK_STATUS.ACCEPTED) {
+        state.acceptedAt = state.acceptedAt || nowIso().slice(0, 10);
+        state.reviewSeenByStudentAt = null;
+    }
     const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus, changedByUserId, comment, createdAt: nowIso() };
     db.statusHistory.push(history);
     db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${toStatus}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
@@ -873,6 +1237,7 @@ export const pvlDomainApi = {
         calculateRiskLevel: (studentId) => calculateRiskLevel(db, studentId),
         getUnreadThreadCount: (userId) => getUnreadThreadCount(db, userId),
         getStudentPointsSummary: (studentId) => calculatePointsSummary(studentId),
+        canPostTaskThread,
     },
     selectors: {
         getVisibleContentItems,

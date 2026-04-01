@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
 import { hasAccess, ROLES } from '../utils/roles';
 import { api } from '../services/dataService';
 import DOMPurify from 'dompurify';
-import PvlPrototypeApp from './PvlPrototypeApp';
 import { clearAppSession, getHomeRouteByRole, loadAppSession, saveAppSession } from '../services/pvlAppKernel';
+
+const PvlPrototypeApp = lazy(() => import('./PvlPrototypeApp'));
 
 const COURSES = [
     {
@@ -126,6 +127,59 @@ const AL_CAMP_LIBRARY_CARD = {
     tag: 'Курсы',
     minRole: ROLES.APPLICANT
 };
+
+function normalizeStyledHtmlToSemantic(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
+    const root = doc.getElementById('root');
+    if (!root) return html;
+
+    const toArray = Array.from(root.querySelectorAll('*'));
+    toArray.forEach((node) => {
+        const style = String(node.getAttribute('style') || '').toLowerCase();
+        const className = String(node.getAttribute('class') || '').toLowerCase();
+        if (!style && !className) return;
+
+        const fontSizeMatch = style.match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/);
+        const rawSize = fontSizeMatch ? parseFloat(fontSizeMatch[1]) : NaN;
+        const sizePx = Number.isFinite(rawSize)
+            ? (fontSizeMatch[2] === 'pt' ? rawSize * 1.333 : rawSize)
+            : null;
+        const isBold = /font-weight\s*:\s*(bold|[6-9]00)/.test(style);
+        const isItalic = /font-style\s*:\s*italic/.test(style);
+        const classLooksHeading = /(heading|title|subtitle|msoheading|ql-size-huge|ql-size-large)/.test(className);
+
+        const replaceWithTag = (nextTag) => {
+            if (node.tagName === nextTag.toUpperCase()) return node;
+            const replacement = doc.createElement(nextTag);
+            while (node.firstChild) replacement.appendChild(node.firstChild);
+            node.replaceWith(replacement);
+            return replacement;
+        };
+
+        if (['DIV', 'P', 'SPAN'].includes(node.tagName) && (sizePx != null || classLooksHeading)) {
+            if (sizePx >= 24) replaceWithTag('h2');
+            else if (sizePx >= 19) replaceWithTag('h3');
+            else if (sizePx >= 16 && isBold) replaceWithTag('h4');
+            else if (classLooksHeading && isBold) replaceWithTag('h3');
+        } else if (node.tagName === 'SPAN' && isBold) {
+            replaceWithTag('strong');
+        } else if (node.tagName === 'SPAN' && isItalic) {
+            replaceWithTag('em');
+        }
+    });
+
+    Array.from(root.querySelectorAll('div')).forEach((div) => {
+        const hasOnlyInlineChildren = Array.from(div.children).every((c) => ['SPAN', 'A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR'].includes(c.tagName));
+        if (hasOnlyInlineChildren && div.parentElement && !['LI', 'TD', 'TH'].includes(div.parentElement.tagName)) {
+            const p = doc.createElement('p');
+            while (div.firstChild) p.appendChild(div.firstChild);
+            div.replaceWith(p);
+        }
+    });
+
+    return root.innerHTML;
+}
 
 const CourseLibraryView = ({
     user,
@@ -278,72 +332,19 @@ const CourseLibraryView = ({
         return root.innerHTML;
     };
 
-const normalizeStyledHtmlToSemantic = (html) => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
-    const root = doc.getElementById('root');
-    if (!root) return html;
-
-    const toArray = Array.from(root.querySelectorAll('*'));
-    toArray.forEach((node) => {
-        const style = String(node.getAttribute('style') || '').toLowerCase();
-        const className = String(node.getAttribute('class') || '').toLowerCase();
-        if (!style && !className) return;
-
-        const fontSizeMatch = style.match(/font-size\s*:\s*([\d.]+)\s*(px|pt)/);
-        const rawSize = fontSizeMatch ? parseFloat(fontSizeMatch[1]) : NaN;
-        const sizePx = Number.isFinite(rawSize)
-            ? (fontSizeMatch[2] === 'pt' ? rawSize * 1.333 : rawSize)
-            : null;
-        const isBold = /font-weight\s*:\s*(bold|[6-9]00)/.test(style);
-        const isItalic = /font-style\s*:\s*italic/.test(style);
-        const classLooksHeading = /(heading|title|subtitle|msoheading|ql-size-huge|ql-size-large)/.test(className);
-
-        const replaceWithTag = (nextTag) => {
-            if (node.tagName === nextTag.toUpperCase()) return node;
-            const replacement = doc.createElement(nextTag);
-            while (node.firstChild) replacement.appendChild(node.firstChild);
-            node.replaceWith(replacement);
-            return replacement;
-        };
-
-        if (['DIV', 'P', 'SPAN'].includes(node.tagName) && (sizePx != null || classLooksHeading)) {
-            if (sizePx >= 24) replaceWithTag('h2');
-            else if (sizePx >= 19) replaceWithTag('h3');
-            else if (sizePx >= 16 && isBold) replaceWithTag('h4');
-            else if (classLooksHeading && isBold) replaceWithTag('h3');
-        } else if (node.tagName === 'SPAN' && isBold) {
-            replaceWithTag('strong');
-        } else if (node.tagName === 'SPAN' && isItalic) {
-            replaceWithTag('em');
-        }
-    });
-
-    Array.from(root.querySelectorAll('div')).forEach((div) => {
-        const hasOnlyInlineChildren = Array.from(div.children).every((c) => ['SPAN', 'A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR'].includes(c.tagName));
-        if (hasOnlyInlineChildren && div.parentElement && !['LI', 'TD', 'TH'].includes(div.parentElement.tagName)) {
-            const p = doc.createElement('p');
-            while (div.firstChild) p.appendChild(div.firstChild);
-            div.replaceWith(p);
-        }
-    });
-
-    return root.innerHTML;
-};
-
     const formatMaterialContent = (content) => {
         const raw = String(content || '').trim();
         if (!raw) return '<p>Материал в процессе подготовки.</p>';
 
         const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(raw);
-    const baseHtml = hasHtmlTags ? normalizeStyledHtmlToSemantic(raw) : plainTextToHtml(raw);
+        const baseHtml = hasHtmlTags ? normalizeStyledHtmlToSemantic(raw) : plainTextToHtml(raw);
         const sanitized = DOMPurify.sanitize(baseHtml);
         const withLinks = enhanceLinksInHtml(sanitized);
 
         return DOMPurify.sanitize(withLinks, {
             ADD_ATTR: ['target', 'rel'],
-        FORBID_TAGS: ['style', 'script'],
-        FORBID_ATTR: ['style', 'class', 'id']
+            FORBID_TAGS: ['style', 'script'],
+            FORBID_ATTR: ['style', 'class', 'id']
         });
     };
 
@@ -546,10 +547,10 @@ const normalizeStyledHtmlToSemantic = (html) => {
         clearAppSession();
     };
 
-    /** Курс ПВЛ внутри PvlPrototypeApp — боковое меню сада не дублируем */
+    /** Курс ПВЛ внутри PvlPrototypeApp — боковое меню сада не дублируем (один раз при входе в библиотеку) */
     useEffect(() => {
         onCourseSidebarChange?.({ enabled: false, title: 'Курс', items: [], activeKey: null });
-    }, [selectedCourse?.title, aiCampSession, onCourseSidebarChange]);
+    }, [onCourseSidebarChange]);
 
     useEffect(() => {
         if (selectedCourse?.title !== AI_CAMP_TITLE || !aiCampSession) return;
@@ -725,7 +726,9 @@ const normalizeStyledHtmlToSemantic = (html) => {
                                 </div>
                             </div>
                             <div className="rounded-[2rem] border border-[#E8D5C4]/40 overflow-hidden bg-white/90 -mx-2 px-2 py-3 md:px-4 max-w-[100vw]">
-                                <PvlPrototypeApp key={`al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
+                                <Suspense fallback={<div className="p-8 text-center text-slate-500 text-sm">Загрузка курса…</div>}>
+                                    <PvlPrototypeApp key={`al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
+                                </Suspense>
                             </div>
                         </div>
                     )}

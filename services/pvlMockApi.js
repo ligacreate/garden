@@ -22,7 +22,16 @@ import {
     getUnreadThreadCount,
 } from '../selectors/pvlCalculators';
 
-const db = structuredClone(seed);
+function cloneSeedData(src) {
+    try {
+        if (typeof structuredClone === 'function') return structuredClone(src);
+    } catch {
+        /* fall through */
+    }
+    return JSON.parse(JSON.stringify(src));
+}
+
+const db = cloneSeedData(seed);
 const eventLog = [];
 let auditLog = [];
 let notifications = [];

@@ -1,6 +1,12 @@
 const SESSION_KEY = 'pvl_app_session_v1';
 const PREFS_KEY = 'pvl_view_prefs_v1';
 
+/**
+ * Режим приёмки ПВЛ (AL Camp): маршруты ученицы / ментора / учительской доступны независимо от текущей роли в сессии.
+ * Отключить позже: заменить на false и вернуть строгую проверку.
+ */
+export const PVL_REVIEW_NAV_UNLOCK = true;
+
 export const ROUTE_ACCESS_MAP = Object.freeze({
     student: ['/student/'],
     mentor: ['/mentor/'],
@@ -14,14 +20,21 @@ export function getHomeRouteByRole(role) {
     return '/student/dashboard';
 }
 
+function isPvlCabinetRoute(route) {
+    return route.startsWith('/student/') || route.startsWith('/mentor/') || route.startsWith('/admin/');
+}
+
 export function canAccessRoute(role, route) {
     if (!route) return false;
+    if (PVL_REVIEW_NAV_UNLOCK && isPvlCabinetRoute(route)) return true;
     if (route === '/qa' || route === '/debug/qa') return true;
     const allowed = ROUTE_ACCESS_MAP[role] || [];
     return allowed.some((prefix) => route.startsWith(prefix));
 }
 
 export function redirectToAllowedRoute(role, attemptedRoute) {
+    if (!attemptedRoute) return getHomeRouteByRole(role);
+    if (PVL_REVIEW_NAV_UNLOCK && isPvlCabinetRoute(attemptedRoute)) return attemptedRoute;
     if (canAccessRoute(role, attemptedRoute)) return attemptedRoute;
     return getHomeRouteByRole(role);
 }

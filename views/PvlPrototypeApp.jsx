@@ -11,17 +11,24 @@ import { mapTaskStatus, pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
     buildSidebarByRole,
-    canAccessRoute,
     clearAppSession,
-    getHomeRouteByRole,
     loadAppSession,
     loadViewPreferences,
+    PVL_REVIEW_NAV_UNLOCK,
     redirectToAllowedRoute,
     saveAppSession,
     saveViewPreferences,
     validateRoleAccessMap,
     validateRouteMap,
 } from '../services/pvlAppKernel';
+
+function pvlDevToolsEnabled() {
+    try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem('pvl_dev_tools') === '1';
+    } catch {
+        return false;
+    }
+}
 
 /** Совместимость старых демо-id карточек менти с учётками seed API */
 const LEGACY_MENTEE_ROUTE_TO_USER = {
@@ -173,7 +180,7 @@ const PointsHistoryList = ({ items = [] }) => (
     </div>
 );
 
-const MentorBonusUsageBadge = ({ used }) => <StatusBadge>{`bonus ${used}/50`}</StatusBadge>;
+const MentorBonusUsageBadge = ({ used }) => <StatusBadge>{`Бонус ${used}/50`}</StatusBadge>;
 const ControlPointsSummary = ({ accepted }) => <StatusBadge>{`КТ ${accepted}/9`}</StatusBadge>;
 const AssessmentComparisonCard = ({ selfPoints, mentorPoints }) => (
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
@@ -217,6 +224,7 @@ const SidebarMenu = ({ role, studentSection, setStudentSection, adminSection, se
                     {buildSidebarByRole('admin').map((item) => (
                         <button
                             key={item}
+                            type="button"
                             onClick={() => {
                                 setAdminSection(item);
                                 navigate(ADMIN_NAV_MAP[item] || '/admin/pvl');
@@ -226,41 +234,106 @@ const SidebarMenu = ({ role, studentSection, setStudentSection, adminSection, se
                             {item}
                         </button>
                     ))}
+                    <div className="mt-4 pt-3 border-t border-[#E8D5C4]">
+                        <p className="text-[10px] uppercase tracking-wide text-[#9B8B80] mb-2">Зона ментора</p>
+                        <button type="button" onClick={() => navigate('/mentor/dashboard')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Дашборд ментора</button>
+                        <button type="button" onClick={() => navigate('/mentor/library')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Библиотека курса</button>
+                        <button type="button" onClick={() => navigate('/mentor/materials')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Материалы для ментора</button>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-[#E8D5C4]">
+                        <p className="text-[10px] uppercase tracking-wide text-[#9B8B80] mb-2">Кабинет участницы</p>
+                        <button type="button" onClick={() => navigate('/student/dashboard')} className="w-full text-left rounded-xl px-3 py-2 text-sm text-[#9B8B80] hover:bg-[#FAF6F2]">Дашборд участницы</button>
+                    </div>
                 </nav>
             )
         )}
     </aside>
 );
 
-const Breadcrumbs = ({ path, navigate }) => {
+const BREADCRUMB_LABELS = {
+    student: 'Участница',
+    mentor: 'Ментор',
+    admin: 'Учительская',
+    dashboard: 'Главная',
+    about: 'О курсе',
+    glossary: 'Глоссарий',
+    library: 'Библиотека',
+    lessons: 'Уроки',
+    practicums: 'Практикумы',
+    checklist: 'Чек-лист',
+    results: 'Результаты',
+    certification: 'Сертификация',
+    'self-assessment': 'Самооценка',
+    'cultural-code': 'Культурный код',
+    materials: 'Материалы',
+    mentee: 'Ученица',
+    task: 'Задание',
+    content: 'Контент-центр',
+    students: 'Ученицы',
+    mentors: 'Менторы',
+    cohorts: 'Потоки',
+    review: 'Проверки и риски',
+    settings: 'Настройки',
+    pvl: 'Начало',
+    qa: 'Служебная приёмка',
+};
+
+function breadcrumbSegmentLabel(seg) {
+    if (BREADCRUMB_LABELS[seg]) return BREADCRUMB_LABELS[seg];
+    if (/^u-st-|^u-men-|^u-adm-|^m-\d|^task-|^cnt-|^lib-/.test(seg)) return '…';
+    return seg;
+}
+
+const RussianBreadcrumbs = ({ path, navigate }) => {
     const parts = path.split('/').filter(Boolean);
+    if (parts.length === 0) return null;
     const crumbs = [];
     for (let i = 0; i < parts.length; i += 1) {
-        crumbs.push({ label: parts[i], path: `/${parts.slice(0, i + 1).join('/')}` });
+        crumbs.push({ label: breadcrumbSegmentLabel(parts[i]), path: `/${parts.slice(0, i + 1).join('/')}` });
     }
     return (
-        <div className="text-xs text-[#9B8B80] mb-2 flex flex-wrap gap-1">
+        <nav className="text-xs text-[#6B5A4E] flex flex-wrap items-center gap-1" aria-label="Навигация по разделу">
             {crumbs.map((c, idx) => (
-                <span key={c.path}>
-                    <button onClick={() => navigate(c.path)} className="hover:text-[#4A3728]">{c.label}</button>
-                    {idx < crumbs.length - 1 ? ' / ' : ''}
+                <span key={c.path} className="inline-flex items-center gap-1">
+                    {idx > 0 ? <span className="text-[#C4B5A8]">/</span> : null}
+                    <button type="button" onClick={() => navigate(c.path)} className="hover:text-[#4A3728] underline-offset-2 hover:underline">
+                        {c.label}
+                    </button>
                 </span>
             ))}
+        </nav>
+    );
+};
+
+/** Переключение кабинета для приёмки (русские подписи, без технических ролей) */
+const CabinetSwitcher = ({ role, setRole, navigate }) => {
+    const tab = (r, label, home) => (
+        <button
+            type="button"
+            key={r}
+            onClick={() => {
+                setRole(r);
+                navigate(home);
+            }}
+            className={`rounded-full px-3 py-1.5 text-sm transition-colors ${role === r ? 'bg-[#C8855A] text-white shadow-sm' : 'bg-[#FAF6F2] text-[#4A3728] border border-[#E8D5C4] hover:border-[#C8855A]/50'}`}
+        >
+            {label}
+        </button>
+    );
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-[#6B5A4E] hidden sm:inline">Кабинет:</span>
+            <div className="flex flex-wrap gap-1.5">
+                {tab('student', 'Участница', '/student/dashboard')}
+                {tab('mentor', 'Ментор', '/mentor/dashboard')}
+                {tab('admin', 'Учительская ПВЛ', '/admin/pvl')}
+            </div>
         </div>
     );
 };
 
-const RoleSwitcher = ({ role, setRole, navigate }) => (
-    <div className="flex items-center gap-2">
-        <span className="text-xs text-[#9B8B80]">Role switch:</span>
-        <button onClick={() => { setRole('student'); navigate('/student/dashboard'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'student' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>student</button>
-        <button onClick={() => { setRole('mentor'); navigate('/mentor/dashboard'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'mentor' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>mentor</button>
-        <button onClick={() => { setRole('admin'); navigate('/admin/pvl'); }} className={`text-xs rounded-full border px-3 py-1 ${role === 'admin' ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>admin</button>
-    </div>
-);
-
 const ScreenState = ({ loading, error, empty, children, emptyText = 'Нет данных.' }) => {
-    if (loading) return <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm text-[#9B8B80]">Loading...</div>;
+    if (loading) return <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm text-[#9B8B80]">Загрузка…</div>;
     if (error) return <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>;
     if (empty) return <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 text-sm text-[#9B8B80]">{emptyText}</div>;
     return children;
@@ -1206,7 +1279,7 @@ function TeacherPvlHome({ navigate }) {
         { area: 'Материалы курса (CMS)', state: 'Работает', note: 'CRUD в памяти через adminApi; контент сливается с демо из pvlMockData при старте.' },
         { area: 'Теги и типы', state: 'Частично', note: 'Теги — строка в форме; типы — фиксированный список в UI. Отдельного справочника тегов в API нет.' },
         { area: 'Видимость и роли', state: 'Работает', note: 'Поля visibility / targetRole в материале и плейсменте.' },
-        { area: 'Публикация', state: 'Работает', note: 'publish / archive, publish placement.' },
+        { area: 'Публикация', state: 'Работает', note: 'Публикация и архив материалов, публикация размещений.' },
         { area: 'Уроки как сущность', state: 'Только контент', note: 'Недели и уроки в seed (lessons, courseWeeks); отдельного редактора расписания в админке нет.' },
         { area: 'Библиотека курса', state: 'Два слоя', note: 'Ученица/ментор — просмотр через studentApi; админ — те же материалы в контент-центре при targetSection library.' },
         { area: 'Дедлайны материалов', state: 'По полям', note: 'weekNumber в материале и placement; глобальные дедлайны КТ — в seed, не редактируются здесь.' },
@@ -1343,9 +1416,9 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 </select>
                 <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
                     <option value="all">Все статусы</option>
-                    <option value="draft">draft</option>
-                    <option value="published">published</option>
-                    <option value="archived">archived</option>
+                    <option value="draft">Черновик</option>
+                    <option value="published">Опубликован</option>
+                    <option value="archived">В архиве</option>
                 </select>
                 <select value={filters.role} onChange={(e) => setFilters((f) => ({ ...f, role: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
                     <option value="all">Все роли</option>
@@ -1402,8 +1475,8 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     <article key={p.id} className="rounded-lg border border-[#E8D5C4] bg-white p-2 flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-xs text-[#2C1810]">{p.targetSection} · {p.targetRole} · {p.targetCohort || p.cohortId || 'all'} · order {p.orderIndex || '—'}</span>
                                         <div className="flex gap-1">
-                                            <button onClick={() => pvlDomainApi.adminApi.publishPlacement(p.id)} className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]">publish</button>
-                                            <button onClick={() => pvlDomainApi.adminApi.unpublishPlacement(p.id)} className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]">unpublish</button>
+                                            <button type="button" onClick={() => pvlDomainApi.adminApi.publishPlacement(p.id)} className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]">Опубликовать</button>
+                                            <button type="button" onClick={() => pvlDomainApi.adminApi.unpublishPlacement(p.id)} className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]">Снять</button>
                                             <button onClick={() => { pvlDomainApi.adminApi.deletePlacement(p.id); setPlacements((prev) => prev.filter((x) => x.id !== p.id)); }} className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]">delete</button>
                                         </div>
                                     </article>
@@ -1621,24 +1694,24 @@ function AdminPage({ route, navigate, cmsItems, setCmsItems, cmsPlacements, setC
 
 function DebugPanel({ role, setRole, setActingUserId, actingUserId, setNowDate, nowDate, forceRefresh }) {
     return (
-        <section className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-            <div className="text-xs uppercase tracking-[0.08em] text-[#9B8B80] mb-2">Debug mode</div>
+        <section className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/40 p-3">
+            <div className="text-xs font-medium text-amber-900 mb-2">Служебная панель (localStorage pvl_dev_tools=1)</div>
             <div className="grid md:grid-cols-4 gap-2">
-                <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs">
-                    <option value="student">student</option><option value="mentor">mentor</option><option value="admin">admin</option>
+                <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white">
+                    <option value="student">Участница</option><option value="mentor">Ментор</option><option value="admin">Учительская</option>
                 </select>
-                <select value={actingUserId} onChange={(e) => setActingUserId(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs">
-                    <option value="u-st-1">u-st-1</option><option value="u-st-2">u-st-2</option><option value="u-st-3">u-st-3</option><option value="u-men-1">u-men-1</option><option value="u-adm-1">u-adm-1</option>
+                <select value={actingUserId} onChange={(e) => setActingUserId(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white">
+                    <option value="u-st-1">Ученица 1</option><option value="u-st-2">Ученица 2</option><option value="u-st-3">Ученица 3</option><option value="u-men-1">Ментор</option><option value="u-adm-1">Администратор</option>
                 </select>
-                <input value={nowDate} onChange={(e) => setNowDate(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="YYYY-MM-DD" />
-                <button onClick={forceRefresh} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">recompute</button>
+                <input value={nowDate} onChange={(e) => setNowDate(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white" placeholder="ГГГГ-ММ-ДД" />
+                <button type="button" onClick={forceRefresh} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Обновить данные</button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-                <button onClick={() => window.location.hash = '#/qa'} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">open QA</button>
-                <button onClick={() => { pvlDomainApi.actions.setTaskStatus('u-st-1', 'task-1', 'revision_requested', 'u-men-1', 'debug status'); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">scenario: revision</button>
-                <button onClick={() => { pvlDomainApi.actions.setTaskStatus('u-st-1', 'task-1', 'accepted', 'u-men-1', 'debug accept'); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">scenario: accepted</button>
-                <button onClick={() => { pvlDomainApi.actions.setTaskOverdue('u-st-1', 'task-1', 3); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">simulate overdue</button>
-                <button onClick={() => { pvlDomainApi.actions.simulateCertificationRedFlag('u-st-3', 'debug red flag'); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">simulate cert red flag</button>
+                <button type="button" onClick={() => { window.location.hash = '#/qa'; }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Экран QA</button>
+                <button type="button" onClick={() => { pvlDomainApi.actions.setTaskStatus('u-st-1', 'task-1', 'revision_requested', 'u-men-1', 'debug'); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Сценарий: доработка</button>
+                <button type="button" onClick={() => { pvlDomainApi.actions.setTaskStatus('u-st-1', 'task-1', 'accepted', 'u-men-1', 'debug'); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Сценарий: принято</button>
+                <button type="button" onClick={() => { pvlDomainApi.actions.setTaskOverdue('u-st-1', 'task-1', 3); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Просрочка (тест)</button>
+                <button type="button" onClick={() => { pvlDomainApi.actions.simulateCertificationRedFlag('u-st-3', 'debug'); forceRefresh(); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Красный флаг СЗ</button>
             </div>
         </section>
     );
@@ -1930,12 +2003,11 @@ export default function PvlPrototypeApp() {
 
     const navigate = (nextRoute) => {
         const allowedRoute = redirectToAllowedRoute(role, nextRoute);
-        if (allowedRoute !== nextRoute) {
+        if (!PVL_REVIEW_NAV_UNLOCK && allowedRoute !== nextRoute) {
             pvlDomainApi.audit.addAuditEvent(actingUserId, role, 'role_route_redirect', 'route', nextRoute, 'Redirected to allowed route', { allowedRoute });
         }
         setRoute(allowedRoute);
         if (allowedRoute.startsWith('/student/')) {
-            setRole('student');
             const seg = allowedRoute.split('/')[2] || 'dashboard';
             const map = {
                 about: 'О курсе',
@@ -1950,10 +2022,7 @@ export default function PvlPrototypeApp() {
                 'cultural-code': 'Культурный код Лиги',
             };
             if (map[seg]) setStudentSection(map[seg]);
-        } else if (allowedRoute.startsWith('/mentor/')) {
-            setRole('mentor');
         } else if (allowedRoute.startsWith('/admin/')) {
-            setRole('admin');
             const seg = allowedRoute.split('/')[2] || 'pvl';
             const map = {
                 pvl: 'Учительская ПВЛ',
@@ -1978,13 +2047,16 @@ export default function PvlPrototypeApp() {
         if (route === '/qa' || route === '/debug/qa') {
             return <QaScreen navigate={navigate} role={role} setRole={setRole} setActingUserId={setActingUserId} forceRefresh={forceRefresh} />;
         }
-        if (!canAccessRoute(role, route)) {
-            const target = getHomeRouteByRole(role);
-            return <ScreenState error={`Нет доступа к ${route}. Redirect -> ${target}`}><div /></ScreenState>;
+        if (route.startsWith('/admin/')) {
+            return <AdminPage route={route} navigate={navigate} cmsItems={cmsItems} setCmsItems={setCmsItems} cmsPlacements={cmsPlacements} setCmsPlacements={setCmsPlacements} />;
         }
-        if (role === 'mentor') return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;
-        if (role === 'admin') return <AdminPage route={route} navigate={navigate} cmsItems={cmsItems} setCmsItems={setCmsItems} cmsPlacements={cmsPlacements} setCmsPlacements={setCmsPlacements} />;
-        return <StudentPage route={route} studentId={studentId} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} />;
+        if (route.startsWith('/mentor/')) {
+            return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;
+        }
+        if (route.startsWith('/student/')) {
+            return <StudentPage route={route} studentId={studentId} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} />;
+        }
+        return <ScreenState error={`Неизвестный маршрут. Перейдите в раздел через меню или переключатель кабинета.`}><div /></ScreenState>;
     }, [role, route, studentId, cmsItems, cmsPlacements, dataTick]);
 
     return (
@@ -1998,52 +2070,60 @@ export default function PvlPrototypeApp() {
                 navigate={navigate}
             />
             <main className="space-y-3">
-                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 flex flex-wrap items-center justify-between gap-2">
-                    <Breadcrumbs path={route} navigate={navigate} />
-                    <div className="flex items-center gap-2">
-                        <NotificationCenter userId={actingUserId} />
-                        <button
-                            type="button"
-                            onClick={() => {
-                                pvlDomainApi.dbLayer.resetDatabase();
-                                clearAppSession();
-                                const next = buildMergedCmsState();
-                                setCmsItems(next.items);
-                                setCmsPlacements(next.placements);
-                                forceRefresh();
-                            }}
-                            className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]"
-                        >
-                            quick reset
-                        </button>
-                        <button onClick={() => navigate('/qa')} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">QA</button>
-                        <RoleSwitcher role={role} setRole={setRole} navigate={navigate} />
-                    </div>
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 flex flex-wrap items-center justify-between gap-3">
+                    <RussianBreadcrumbs path={route} navigate={navigate} />
+                    <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} />
+                    {pvlDevToolsEnabled() ? (
+                        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-end border-t xl:border-t-0 border-[#F0E6DC] pt-2 xl:pt-0">
+                            <NotificationCenter userId={actingUserId} />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    pvlDomainApi.dbLayer.resetDatabase();
+                                    clearAppSession();
+                                    const next = buildMergedCmsState();
+                                    setCmsItems(next.items);
+                                    setCmsPlacements(next.placements);
+                                    forceRefresh();
+                                }}
+                                className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]"
+                            >
+                                Сброс данных
+                            </button>
+                            <button type="button" onClick={() => navigate('/qa')} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Приёмка QA</button>
+                        </div>
+                    ) : null}
                 </div>
-                <DebugPanel
-                    role={role}
-                    setRole={(r) => {
-                        setRole(r);
-                        if (r === 'student') navigate('/student/dashboard');
-                        if (r === 'mentor') navigate('/mentor/dashboard');
-                        if (r === 'admin') navigate('/admin/pvl');
-                    }}
-                    actingUserId={actingUserId}
-                    setActingUserId={(id) => {
-                        setActingUserId(id);
-                        if (id.startsWith('u-st-')) setStudentId(id);
-                    }}
-                    nowDate={nowDate}
-                    setNowDate={setNowDate}
-                    forceRefresh={forceRefresh}
-                />
+                {pvlDevToolsEnabled() ? (
+                    <DebugPanel
+                        role={role}
+                        setRole={(r) => {
+                            setRole(r);
+                            if (r === 'student') navigate('/student/dashboard');
+                            if (r === 'mentor') navigate('/mentor/dashboard');
+                            if (r === 'admin') navigate('/admin/pvl');
+                        }}
+                        actingUserId={actingUserId}
+                        setActingUserId={(id) => {
+                            setActingUserId(id);
+                            if (id.startsWith('u-st-')) setStudentId(id);
+                        }}
+                        nowDate={nowDate}
+                        setNowDate={setNowDate}
+                        forceRefresh={forceRefresh}
+                    />
+                ) : null}
                 {content}
-                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-                    Open question: в материалах есть расхождение по порогу допуска к СЗ (400 vs 500). Зафиксировано как методологический вопрос, без самостоятельного решения в прототипе.
-                </div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
-                    route integrity: {validateRouteMap().length} routes · role access matrix rows: {validateRoleAccessMap().length}
-                </div>
+                {pvlDevToolsEnabled() ? (
+                    <>
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
+                            Методологический вопрос (для разработки): порог допуска к СЗ — 400 или 500 баллов; в прототипе не решено.
+                        </div>
+                        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
+                            Маршрутов в реестре: {validateRouteMap().length} · строк матрицы доступа: {validateRoleAccessMap().length}
+                        </div>
+                    </>
+                ) : null}
             </main>
         </div>
     );

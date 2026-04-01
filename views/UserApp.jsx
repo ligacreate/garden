@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    LogOut, X, BookOpen, Sparkles, Users,
+    Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap, MessagesSquare
 } from 'lucide-react';
@@ -19,11 +19,11 @@ import ProfileView from './ProfileView';
 import CommunicationsView from './CommunicationsView';
 import MentorDashboardView from './MentorDashboardView';
 import PvlStudentCabinetView from './PvlStudentCabinetView';
+import PvlPrototypeApp from './PvlPrototypeApp';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
 import { api } from '../services/dataService';
-import { APP_SHELL, buildShellMenu, resolveShellByView } from '../config/appShellMenu';
 
 // Sidebar Item Component
 const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
@@ -48,11 +48,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
 );
 
 const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onSendRay, onMarkAsRead }) => {
-    const normalizedRole = (user?.role || '').toLowerCase();
-    const isAdmin = normalizedRole === ROLES.ADMIN;
-    const initialView = hasAccess(normalizedRole, ROLES.MENTOR) ? 'mentor-dashboard' : 'pvl-student';
-    const [view, setView] = useState(initialView);
-    const [appShell, setAppShell] = useState(resolveShellByView(initialView));
+    const [view, setView] = useState('dashboard');
     const [practices, setPractices] = useState([]);
     const [meetings, setMeetings] = useState([]);
     const [timeline, setTimeline] = useState([]);
@@ -70,7 +66,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         () => users.map(u => (u.id === user.id ? { ...u, ...user } : u)),
         [users, user]
     );
-    const shellMenu = useMemo(() => buildShellMenu(normalizedRole, isAdmin), [normalizedRole, isAdmin]);
+    const normalizedRole = (user?.role || '').toLowerCase();
+    const isAdmin = normalizedRole === ROLES.ADMIN;
     const skillOptions = useMemo(() => {
         const skillMap = new Map();
         users.forEach((u) => {
@@ -89,10 +86,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             .then(setBirthdayTemplates)
             .catch(() => setBirthdayTemplates([]));
     }, []);
-
-    useEffect(() => {
-        setAppShell(resolveShellByView(view));
-    }, [view]);
 
     useEffect(() => {
         let mounted = true;
@@ -226,10 +219,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         if (newView === 'mastery') {
             setView('meetings');
             setInitialTab('mastery');
-            setAppShell(APP_SHELL.GARDEN);
         } else {
             setView(newView);
-            setAppShell(resolveShellByView(newView));
             // Default to 'meetings' tab unless specified otherwise
             setInitialTab(tab || 'meetings');
         }
@@ -625,26 +616,90 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 </>
                             ) : (
                                 <>
-                                    {shellMenu[appShell].map((item) => (
+                                    <SidebarItem
+                                        icon={LayoutGrid}
+                                        label="Дашборд"
+                                        active={view === 'dashboard'}
+                                        onClick={() => handleViewChange('dashboard')}
+                                    />
+                                    <SidebarItem
+                                        icon={GraduationCap}
+                                        label="ЛК участницы ПВЛ"
+                                        active={view === 'pvl-student'}
+                                        onClick={() => handleViewChange('pvl-student')}
+                                    />
+                                    <SidebarItem
+                                        icon={BookOpen}
+                                        label="ПВЛ 2026 Прототип"
+                                        active={view === 'pvl-prototype'}
+                                        onClick={() => handleViewChange('pvl-prototype')}
+                                    />
+                                    {hasAccess(normalizedRole, 'mentor') && (
                                         <SidebarItem
-                                            key={item.key}
-                                            icon={item.icon}
-                                            label={item.label}
-                                            active={view === item.key}
-                                            onClick={() => handleViewChange(item.key)}
+                                            icon={Users}
+                                            label="ЛК ментора"
+                                            active={view === 'mentor-dashboard'}
+                                            onClick={() => handleViewChange('mentor-dashboard')}
                                         />
-                                    ))}
+                                    )}
+                                    <SidebarItem
+                                        icon={CalendarRange}
+                                        label="Встречи"
+                                        active={view === 'meetings'}
+                                        onClick={() => handleViewChange('meetings')}
+                                    />
+                                    <SidebarItem
+                                        icon={MapIcon}
+                                        label="Сад ведущих"
+                                        active={view === 'map'}
+                                        onClick={() => handleViewChange('map')}
+                                    />
+                                    <SidebarItem
+                                        icon={BookOpen}
+                                        label="Практики"
+                                        active={view === 'practices'}
+                                        onClick={() => handleViewChange('practices')}
+                                    />
+                                    <SidebarItem
+                                        icon={Sparkles}
+                                        label="Сценарии"
+                                        active={view === 'builder'}
+                                        onClick={() => handleViewChange('builder')}
+                                    />
+                                    <SidebarItem
+                                        icon={GraduationCap}
+                                        label="Библиотека"
+                                        active={view === 'library'}
+                                        onClick={() => handleViewChange('library')}
+                                    />
+                                    {isAdmin && (
+                                        <SidebarItem
+                                            icon={MessagesSquare}
+                                            label="Коммуникации"
+                                            active={view === 'communications'}
+                                            onClick={() => handleViewChange('communications')}
+                                        />
+                                    )}
+                                    {hasAccess(normalizedRole, 'intern') && (
+                                        <>
+                                            <SidebarItem
+                                                icon={Users}
+                                                label="Люди CRM"
+                                                active={view === 'crm'}
+                                                onClick={() => handleViewChange('crm')}
+                                            />
+                                        </>
+                                    )}
+                                    {isAdmin && (
+                                        <SidebarItem
+                                            icon={Shield}
+                                            label="Админка"
+                                            onClick={onSwitchToAdmin}
+                                        />
+                                    )}
                                 </>
                             )}
                             <div className="h-px bg-slate-100/60 my-3"></div>
-                            {appShell !== APP_SHELL.GARDEN && (
-                                <SidebarItem
-                                    icon={Leaf}
-                                    label="Вернуться в сад"
-                                    active={false}
-                                    onClick={() => handleViewChange('dashboard')}
-                                />
-                            )}
                             <SidebarItem
                                 icon={Settings}
                                 label="Настройки"
@@ -685,11 +740,30 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             </button>
                         </div>
                         <nav className="space-y-2 flex-1 overflow-y-auto">
-                            {shellMenu[appShell].map((item) => (
-                                <SidebarItem key={item.key} icon={item.icon} label={item.label} active={view === item.key} onClick={() => handleViewChange(item.key)} />
-                            ))}
+                            <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
+                            <SidebarItem icon={GraduationCap} label="ЛК участницы ПВЛ" active={view === 'pvl-student'} onClick={() => handleViewChange('pvl-student')} />
+                            <SidebarItem icon={BookOpen} label="ПВЛ 2026 Прототип" active={view === 'pvl-prototype'} onClick={() => handleViewChange('pvl-prototype')} />
+                            {hasAccess(normalizedRole, 'mentor') && (
+                                <SidebarItem icon={Users} label="ЛК ментора" active={view === 'mentor-dashboard'} onClick={() => handleViewChange('mentor-dashboard')} />
+                            )}
+                            <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
+                            <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
                             <div className="h-px bg-slate-100 my-4"></div>
-                            {appShell !== APP_SHELL.GARDEN && <SidebarItem icon={Leaf} label="Вернуться в сад" onClick={() => handleViewChange('dashboard')} />}
+                            <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
+                            <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
+                            <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
+                            {isAdmin && (
+                                <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
+                            )}
+                            {hasAccess(normalizedRole, 'intern') && (
+                                <>
+                                    <SidebarItem icon={Users} label="Люди CRM" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
+                                </>
+                            )}
+                            <div className="h-px bg-slate-100 my-4"></div>
+                            {isAdmin && (
+                                <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
+                            )}
                             <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />
                             <div onClick={onLogout} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 active:bg-slate-50">
                                 <LogOut size={22} className="stroke-[1.5px]" />
@@ -721,8 +795,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             newsItems={dashboardNews}
                         />
                     )}
-                    {view === 'mentor-dashboard' && <MentorDashboardView user={user} onNotify={onNotify} />}
+                    {view === 'mentor-dashboard' && <MentorDashboardView />}
                     {view === 'pvl-student' && <PvlStudentCabinetView user={user} />}
+                    {view === 'pvl-prototype' && <PvlPrototypeApp />}
                     {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
                     {view === 'library' && (

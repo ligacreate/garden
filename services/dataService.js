@@ -679,37 +679,6 @@ class LocalStorageService {
         return all.filter((item) => String(item.stream_id) === String(streamId));
     }
 
-    async getSubmissionThread(submissionId) {
-        const threads = JSON.parse(localStorage.getItem('submission_threads') || '[]');
-        const messages = JSON.parse(localStorage.getItem('submission_messages') || '[]');
-        const thread = threads.find((t) => String(t.submission_id) === String(submissionId)) || null;
-        if (!thread) return { thread: null, messages: [] };
-        return { thread, messages: messages.filter((m) => String(m.thread_id) === String(thread.id)) };
-    }
-
-    async addSubmissionMessage({ submissionId, authorUserId, authorRole, textBody, attachments = [] }) {
-        const threads = JSON.parse(localStorage.getItem('submission_threads') || '[]');
-        const messages = JSON.parse(localStorage.getItem('submission_messages') || '[]');
-        let thread = threads.find((t) => String(t.submission_id) === String(submissionId));
-        if (!thread) {
-            thread = { id: Date.now(), submission_id: submissionId, created_at: new Date().toISOString() };
-            threads.push(thread);
-            localStorage.setItem('submission_threads', JSON.stringify(threads));
-        }
-        const msg = {
-            id: Date.now() + 1,
-            thread_id: thread.id,
-            author_user_id: authorUserId,
-            author_role: authorRole,
-            text_body: textBody,
-            attachments,
-            created_at: new Date().toISOString()
-        };
-        messages.push(msg);
-        localStorage.setItem('submission_messages', JSON.stringify(messages));
-        return msg;
-    }
-
     // Meetings (Mocked for local storage as they were in UserApp state)
     async getMeetings(userId) {
         const allMeetings = JSON.parse(localStorage.getItem('garden_meetings')) || [];
@@ -1690,49 +1659,6 @@ class RemoteApiService {
         if (dateFrom) params.starts_at = `gte.${toIsoDateOnly(dateFrom)}`;
         const { data } = await postgrestFetch('calendar_events', params);
         return data || [];
-    }
-
-    async getSubmissionThread(submissionId) {
-        const { data: threads } = await postgrestFetch('submission_threads', {
-            select: 'id,submission_id,created_at',
-            submission_id: `eq.${submissionId}`,
-            limit: '1'
-        });
-        const thread = Array.isArray(threads) ? threads[0] : null;
-        if (!thread) return { thread: null, messages: [] };
-        const { data: messages } = await postgrestFetch('submission_messages', {
-            select: '*',
-            thread_id: `eq.${thread.id}`,
-            order: 'created_at.asc'
-        });
-        return { thread, messages: messages || [] };
-    }
-
-    async addSubmissionMessage({ submissionId, authorUserId, authorRole, textBody, attachments = [] }) {
-        let thread = null;
-        const existing = await this.getSubmissionThread(submissionId);
-        if (existing.thread) {
-            thread = existing.thread;
-        } else {
-            const { data } = await postgrestFetch('submission_threads', {}, {
-                method: 'POST',
-                body: [{ submission_id: submissionId }],
-                returnRepresentation: true
-            });
-            thread = Array.isArray(data) ? data[0] : data;
-        }
-        const { data: inserted } = await postgrestFetch('submission_messages', {}, {
-            method: 'POST',
-            body: [{
-                thread_id: thread.id,
-                author_user_id: authorUserId,
-                author_role: authorRole,
-                text_body: textBody,
-                attachments
-            }],
-            returnRepresentation: true
-        });
-        return Array.isArray(inserted) ? inserted[0] : inserted;
     }
 
     async getMeetings(userId) {

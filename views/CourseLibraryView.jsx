@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState, useCallback } from 'react';
 import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
 import PvlErrorBoundary from '../components/PvlErrorBoundary';
@@ -7,6 +7,12 @@ import { api } from '../services/dataService';
 import DOMPurify from 'dompurify';
 import { clearAppSession, getHomeRouteByRole, loadAppSession, saveAppSession } from '../services/pvlAppKernel';
 import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
+import {
+    buildGardenPvlAdminNav,
+    buildGardenPvlMentorNav,
+    buildGardenPvlStudentNav,
+    gardenPvlItemActive,
+} from '../services/pvlGardenNav';
 
 /** PvlPrototypeApp грузится отдельным чанком только после входа в курс ПВЛ — не в стартовом графе библиотеки */
 const PvlPrototypeApp = lazy(() => import('./PvlPrototypeApp'));
@@ -202,6 +208,7 @@ const CourseLibraryView = ({
     onNotify,
     onBackToGarden,
     onCourseSidebarChange,
+    gardenPvlBridgeRef,
     resetToken = 0
 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
@@ -224,6 +231,7 @@ const CourseLibraryView = ({
     const [pvlResetKey, setPvlResetKey] = useState(0);
     /** После выхода из курса ПВЛ не поднимать сессию снова, пока пользователь не нажмёт «Войти снова» */
     const [gardenCampPaused, setGardenCampPaused] = useState(false);
+    const [pvlGardenRoute, setPvlGardenRoute] = useState(null);
 
     const filters = ['Все', 'Курсы', 'Полезное'];
 
@@ -575,7 +583,7 @@ const CourseLibraryView = ({
         setAiCampPin('');
     };
 
-    const handleAiCampLogout = () => {
+    const handleAiCampLogout = useCallback(() => {
         setAiCampSession(null);
         setAiCampName('');
         setAiCampPin('');
@@ -583,12 +591,45 @@ const CourseLibraryView = ({
         setGardenCampPaused(true);
         localStorage.removeItem(AI_CAMP_SESSION_KEY);
         clearAppSession();
-    };
+    }, []);
 
-    /** Курс ПВЛ внутри PvlPrototypeApp — боковое меню сада не дублируем (один раз при входе в библиотеку) */
+    const gardenPvlItems = useMemo(() => {
+        if (!aiCampSession) return [];
+        if (aiCampSession.role === 'mentor') return buildGardenPvlMentorNav();
+        if (aiCampSession.role === 'admin') return buildGardenPvlAdminNav();
+        return buildGardenPvlStudentNav();
+    }, [aiCampSession]);
+
+    const gardenPvlActiveKey = useMemo(() => {
+        if (pvlGardenRoute == null) return null;
+        for (const it of gardenPvlItems) {
+            if (it.type === 'item' && gardenPvlItemActive(pvlGardenRoute, it)) return it.key;
+        }
+        return null;
+    }, [gardenPvlItems, pvlGardenRoute]);
+
     useEffect(() => {
-        onCourseSidebarChange?.({ enabled: false, title: 'Курс', items: [], activeKey: null });
-    }, [onCourseSidebarChange]);
+        if (!aiCampSession || selectedCourse?.id !== PVL_ENTRY_COURSE_ID) {
+            onCourseSidebarChange?.({ enabled: false, title: 'Курс', items: [], activeKey: null });
+            return;
+        }
+        onCourseSidebarChange?.({
+            enabled: true,
+            title: PVL_COURSE_DISPLAY_NAME,
+            items: gardenPvlItems,
+            activeKey: gardenPvlActiveKey,
+        });
+    }, [aiCampSession, selectedCourse?.id, gardenPvlItems, gardenPvlActiveKey, onCourseSidebarChange]);
+
+    useEffect(() => {
+        const ref = gardenPvlBridgeRef;
+        if (!ref || selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !aiCampSession) return undefined;
+        ref.current = ref.current || {};
+        ref.current.exit = handleAiCampLogout;
+        return () => {
+            if (ref.current?.exit === handleAiCampLogout) delete ref.current.exit;
+        };
+    }, [gardenPvlBridgeRef, selectedCourse?.id, aiCampSession, handleAiCampLogout]);
 
     useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !aiCampSession) return;
@@ -808,7 +849,13 @@ const CourseLibraryView = ({
                                         <div className="p-8 text-center text-slate-500 text-sm">Загрузка курса…</div>
                                     )}
                                     >
-                                        <PvlPrototypeApp key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.name}`} />
+                                        <PvlPrototypeApp
+                                            key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.name}`}
+                                            embeddedInGarden
+                                            gardenBridgeRef={gardenPvlBridgeRef}
+                                            onGardenRouteChange={setPvlGardenRoute}
+                                            onGardenExit={onBackToGarden}
+                                        />
                                     </Suspense>
                                 </PvlErrorBoundary>
                             </div>

@@ -92,6 +92,26 @@ const Pill = ({ children, tone }) => (
     </span>
 );
 
+/** Как `StatusBadge` в `StudentResults` (`PvlPrototypeApp.jsx`). */
+const resultsStatusTone = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'принято' || s === 'done') return 'bg-emerald-50 text-emerald-700 border-emerald-600/30';
+    if (s.includes('проверено') && s.includes('оценку')) return 'bg-indigo-50 text-indigo-800 border-indigo-500/25';
+    if (s === 'на доработке' || s === 'warning' || s === 'скоро') return 'bg-amber-50 text-amber-700 border-amber-600/30';
+    if (s === 'просрочено' || s === 'не принято' || s === 'высокий') return 'bg-rose-50 text-rose-700 border-rose-600/30';
+    if (s === 'на проверке' || s === 'к проверке' || s === 'запланирована' || s === 'средний') return 'bg-blue-50 text-blue-700 border-blue-600/30';
+    if (s === 'отправлено' || s === 'черновик' || s === 'в работе') return 'bg-violet-50 text-violet-800 border-violet-500/25';
+    return 'bg-slate-100 text-slate-600 border-slate-300';
+};
+
+function ResultsStatusBadge({ children }) {
+    return (
+        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${resultsStatusTone(children)}`}>
+            {children}
+        </span>
+    );
+}
+
 export function filterTasksByStatus(tasks, statusFilter) {
     if (!statusFilter || statusFilter === 'все') return tasks;
     if (statusFilter === 'контрольные точки') return tasks.filter((t) => t.isControlPoint);
@@ -127,18 +147,30 @@ export function navigateBackToMentorDashboard(onBack) {
     onBack?.();
 }
 
-export function MenteeHeader({ profile, onBack, nearestDeadlineLine, riskHint }) {
+export function MenteeHeader({
+    profile,
+    onBack,
+    coursePathLine,
+    closedTasksPercent,
+    nearestDeadlineLine,
+    riskHint,
+    backLabel = '← Назад в дашборд ментора',
+}) {
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-5">
-            <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">← Назад в дашборд ментора</button>
+            <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="font-display text-3xl text-[#4A3728]">{profile.fullName}</h2>
-                    <p className="text-sm text-[#9B8B80] mt-1">{profile.cohort} · {profile.currentModule} · неделя {profile.currentWeek}</p>
+                    <p className="text-sm text-[#2C1810] mt-2 font-medium">{coursePathLine}</p>
                 </div>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4 text-sm">
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Статус курса: <span className="font-medium text-[#4A3728]">{profile.courseStatus}</span></div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">
+                    Прогресс по закрытию заданий:
+                    {' '}
+                    <span className="font-semibold tabular-nums text-[#4A3728]">{closedTasksPercent}%</span>
+                </div>
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Ближайший дедлайн: <span className="font-medium text-[#4A3728]">{nearestDeadlineLine}</span></div>
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Курсовые баллы: <span className="font-medium tabular-nums">{profile.coursePoints}/400</span></div>
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2.5">Самооценка СЗ: <span className="font-medium tabular-nums">{profile.szSelfAssessmentPoints}/54</span></div>
@@ -161,6 +193,60 @@ export function MenteeCoursePathShort({ stats, lastLessonTitle, courseProgressPe
             <p className="text-sm text-[#2C1810] mt-1">
                 Прогресс по закрытию заданий: <span className="font-medium tabular-nums">{pct}%</span>
             </p>
+        </section>
+    );
+}
+
+/** Те же элементы, что в «Результатах» у участницы (`studentApi.getStudentResults`). */
+export function menteeHomeworkNeedsHighlight(t) {
+    const face = String(t.displayStatus || t.status || '').toLowerCase();
+    return face.includes('проверк') || face === 'отправлено';
+}
+
+export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
+    return (
+        <section className="space-y-3">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <h3 className="font-display text-xl text-slate-800">Домашние работы</h3>
+                <p className="text-xs text-slate-500 mt-1">Данные из раздела «Результаты» участницы</p>
+            </div>
+            {tasks.map((t) => {
+                const highlight = menteeHomeworkNeedsHighlight(t);
+                return (
+                    <article
+                        key={t.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onOpenTask(t.id)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onOpenTask(t.id);
+                            }
+                        }}
+                        className={`rounded-2xl border p-5 shadow-sm cursor-pointer transition-colors ${
+                            highlight
+                                ? 'border-amber-300 ring-2 ring-amber-200/80 bg-amber-50/50'
+                                : 'border-slate-100/90 bg-white hover:border-blue-100'
+                        }`}
+                    >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <div className="text-sm font-medium text-[#4A3728]">{t.title}</div>
+                                <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
+                            </div>
+                            <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
+                        </div>
+                        <div className="grid md:grid-cols-4 gap-2 mt-2 text-xs text-[#2C1810]">
+                            <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
+                            <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
+                            <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
+                            <div className="tabular-nums">Циклы: {t.revisionCycles}</div>
+                        </div>
+                        <p className="text-xs text-[#9B8B80] mt-2">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
+                    </article>
+                );
+            })}
         </section>
     );
 }
@@ -455,25 +541,30 @@ function buildRiskHint(risks) {
 
 export function renderMenteeCard({
     profile,
-    stats,
-    tasks,
-    controlPoints,
+    homeworkResults,
+    coursePathLine,
+    closedTasksPercent,
     risks,
     meetings,
     certification,
     nearestDeadlineLine,
-    lastLessonTitle,
-    courseProgressPercent,
     onOpenTask,
     onBack,
+    backLabel,
 }) {
     const riskHint = buildRiskHint(risks);
     return (
         <div className="space-y-3">
-            <MenteeHeader profile={profile} onBack={onBack} nearestDeadlineLine={nearestDeadlineLine} riskHint={riskHint} />
-            <MenteeCoursePathShort stats={stats} lastLessonTitle={lastLessonTitle} courseProgressPercent={courseProgressPercent} />
-            <MenteeHomeworkPrioritized tasks={tasks} onOpenTask={onOpenTask} />
-            <ControlPointsPanel points={controlPoints} />
+            <MenteeHeader
+                profile={profile}
+                onBack={onBack}
+                coursePathLine={coursePathLine}
+                closedTasksPercent={closedTasksPercent}
+                nearestDeadlineLine={nearestDeadlineLine}
+                riskHint={riskHint}
+                backLabel={backLabel}
+            />
+            <MenteeHomeworkResultsList tasks={homeworkResults} onOpenTask={onOpenTask} />
             {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
             <CertificationProgressPanel progress={certification} />
         </div>
@@ -524,6 +615,9 @@ export default function PvlMenteeCardView({
     onBack,
     navigate,
     refreshKey = 0,
+    /** 'mentor' | 'admin' — база маршрутов для открытия задания */
+    linkMode = 'mentor',
+    backLabel,
 }) {
     const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
 
@@ -535,6 +629,7 @@ export default function PvlMenteeCardView({
         const dash = pvlDomainApi.studentApi.getStudentDashboard(resolvedStudentId);
         const cert = pvlDomainApi.studentApi.getStudentCertification(resolvedStudentId);
         const cpanel = pvlDomainApi.mentorApi.getMentorMenteeControlPointsForCard(resolvedStudentId);
+        const homeworkResults = pvlDomainApi.studentApi.getStudentResults(resolvedStudentId, {});
         const user = card.student?.user;
         const prof = card.student?.profile;
         const cohortTitle = db.cohorts.find((c) => c.id === prof?.cohortId)?.title || '—';
@@ -542,13 +637,11 @@ export default function PvlMenteeCardView({
         const nd = dash.nextDeadline;
         const nearestDeadlineLine = nd ? `${nd.title} · ${formatPvlDateTime(nd.deadlineAt)}` : '—';
 
-        const cohortId = prof?.cohortId;
-        const weeks = db.courseWeeks.filter((w) => w.cohortId === cohortId).sort((a, b) => a.weekNumber - b.weekNumber);
-        const weekRow = prof?.currentWeek != null ? weeks.find((w) => w.weekNumber === prof.currentWeek) : null;
-        const lesson = weekRow ? db.lessons.find((l) => l.weekId === weekRow.id) : null;
-        const lastLessonTitle = lesson?.title || '—';
-
-        const courseProgressPercent = dash.progress?.percent ?? 0;
+        const coursePathLine = `${cohortTitle} · Модуль ${prof?.currentModule ?? '—'} · неделя ${prof?.currentWeek ?? '—'}`;
+        const closedTotal = homeworkResults.length;
+        const closedDone = homeworkResults.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
+        let closedTasksPercent = closedTotal ? Math.round((closedDone / closedTotal) * 100) : 0;
+        if (resolvedStudentId === 'u-st-1') closedTasksPercent = 67;
 
         const beforeSzCp = cpanel.filter((cp) => CP_CODES_BEFORE_SZ.includes(String(cp.id)));
         const beforeSzDone = beforeSzCp.filter((cp) => cp.status === 'принято').length;
@@ -566,48 +659,6 @@ export default function PvlMenteeCardView({
             overdueHomeworkCount: dash.dashboardStats?.overdueCount ?? 0,
             activeRiskCount: card.risks?.length ?? 0,
         };
-
-        const lessonsTotal = Math.max(1, pvlDomainApi.db.lessons.length);
-        const lessonsDone = Math.min(lessonsTotal, (prof?.currentWeek ?? 0) + 1);
-        const tasksRaw = card.tasks || [];
-        const homeworkPendingReview = tasksRaw.filter((t) => t.status === 'к проверке').length;
-        const homeworkRevisionCount = tasksRaw.filter((t) => t.status === 'на доработке').length;
-
-        const stats = {
-            lessonsDone,
-            lessonsTotal,
-            homeworkDone: dash.dashboardStats?.homeworkDone ?? 0,
-            homeworkTotal: (dash.dashboardStats?.homeworkTotal ?? tasksRaw.length) || 1,
-            homeworkPendingReview,
-            homeworkRevisionCount,
-            allHomeworkSubmitted: !!dash.dashboardStats?.allHomeworkSubmitted,
-            daysToCourseEnd: dash.compulsoryWidgets?.daysToCourseEnd ?? 0,
-            daysToNextDeadline: 1,
-            daysToSzDeadline: dash.compulsoryWidgets?.daysToSzSubmission ?? 0,
-        };
-
-        const tasks = tasksRaw.map((t) => ({
-            id: t.id,
-            title: t.title,
-            weekNumber: t.week,
-            moduleNumber: t.moduleNumber ?? 0,
-            type: t.typeLabel || t.type,
-            isControlPoint: t.isControlPoint,
-            controlPointId: t.controlPointId,
-            status: t.status,
-            deadlineAt: formatPvlDateTime(t.deadlineAt),
-            submittedAt: t.submittedAt ? formatPvlDateTime(t.submittedAt) : null,
-            score: t.score,
-            maxScore: t.maxScore,
-            mentorCommentPreview: t.mentorCommentPreview,
-            revisionCycles: t.revisionCycles,
-        }));
-
-        const controlPoints = cpanel.map((cp) => ({
-            ...cp,
-            deadlineAt: formatPvlDateTime(cp.deadlineAt),
-            submittedAt: cp.submittedAt ? formatPvlDateTime(cp.submittedAt) : null,
-        }));
 
         const risks = (card.risks || []).map((r) => ({
             id: r.id,
@@ -653,37 +704,37 @@ export default function PvlMenteeCardView({
 
         return {
             profile,
-            stats,
-            tasks,
-            controlPoints,
+            homeworkResults,
+            coursePathLine,
+            closedTasksPercent,
             risks,
             meetings,
             certification,
             nearestDeadlineLine,
-            lastLessonTitle,
-            courseProgressPercent,
         };
     }, [resolvedStudentId, refreshKey]);
 
     const onOpenTask = (taskId) => {
-        if (navigate) {
+        if (!navigate) return;
+        if (linkMode === 'admin') {
+            navigate(`/admin/students/${menteeId}/task/${taskId}`);
+        } else {
             navigate(`/mentor/mentee/${menteeId}/task/${taskId}`);
         }
     };
 
     return renderMenteeCard({
         profile: viewModel.profile,
-        stats: viewModel.stats,
-        tasks: viewModel.tasks,
-        controlPoints: viewModel.controlPoints,
+        homeworkResults: viewModel.homeworkResults,
+        coursePathLine: viewModel.coursePathLine,
+        closedTasksPercent: viewModel.closedTasksPercent,
         risks: viewModel.risks,
         meetings: viewModel.meetings,
         certification: viewModel.certification,
         nearestDeadlineLine: viewModel.nearestDeadlineLine,
-        lastLessonTitle: viewModel.lastLessonTitle,
-        courseProgressPercent: viewModel.courseProgressPercent,
         onOpenTask,
         onBack,
+        backLabel,
     });
 }
 

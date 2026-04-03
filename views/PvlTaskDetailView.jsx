@@ -295,6 +295,30 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
     );
 }
 
+/** Компактная шапка задания для ментора: только название, дедлайн, статус, оценка */
+export function MentorTaskHeaderCompact({ data, onBack, backLabel }) {
+    return (
+        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+            <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            <h2 className="font-display text-2xl md:text-3xl text-[#4A3728]">{data.title}</h2>
+            <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-[#2C1810]">
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] px-3 py-2">
+                    <span className="text-[#9B8B80] text-xs block">Дедлайн</span>
+                    <span className="font-medium">{data.deadlineAt || '—'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-[#9B8B80] text-xs">Статус</span>
+                    <Pill tone={statusTone(data.status)}>{data.status}</Pill>
+                </div>
+                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] px-3 py-2 tabular-nums">
+                    <span className="text-[#9B8B80] text-xs block">Оценка</span>
+                    <span className="font-medium">{data.score}/{data.maxScore}</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function TaskMeta({ data }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
@@ -307,10 +331,10 @@ export function TaskMeta({ data }) {
     );
 }
 
-export function TaskDescription({ data }) {
+export function TaskDescription({ data, showControlPointNote = false }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Описание задания</h3>
+            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Задание</h3>
             <p className="text-sm text-[#2C1810]">{data.summary}</p>
             <p className="text-sm mt-2"><strong>Ожидаемый артефакт:</strong> {data.artifact}</p>
             <p className="text-sm mt-2"><strong>Что загружать:</strong> {data.uploadTypes.join(', ')}</p>
@@ -326,7 +350,7 @@ export function TaskDescription({ data }) {
                     {data.hints.map((h) => <li key={h}>{h}</li>)}
                 </ul>
             </div>
-            {taskDetail.isControlPoint ? (
+            {showControlPointNote ? (
                 <div className="mt-2 text-xs text-[#9B8B80]">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
             ) : null}
         </div>
@@ -548,6 +572,143 @@ export function RelatedLinks() {
     );
 }
 
+export function MentorStudentAnswerCompact({ versions = [] }) {
+    const current = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
+    if (!current) {
+        return (
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h3 className="font-display text-xl text-[#4A3728] mb-2">Ответ участницы</h3>
+                <p className="text-sm text-[#9B8B80]">Пока нет отправленной версии.</p>
+            </div>
+        );
+    }
+    return (
+        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+            <h3 className="font-display text-xl text-[#4A3728] mb-2">Ответ участницы</h3>
+            <SubmissionVersionCard version={current} />
+        </div>
+    );
+}
+
+function MentorTaskSlim({
+    state,
+    onBack,
+    backLabel,
+    navigate,
+    onMentorReview,
+    onRefresh,
+}) {
+    const td = state.taskDetail;
+    const [reply, setReply] = useState('');
+    const [scoreInput, setScoreInput] = useState(() => String(td.maxScore != null ? td.maxScore : ''));
+    const [formError, setFormError] = useState('');
+    const accepted = String(td.status || '').toLowerCase() === 'принято';
+
+    const sendRevision = () => {
+        setFormError('');
+        if (!reply.trim()) {
+            setFormError('Напишите ответ участнице для доработки.');
+            return;
+        }
+        onMentorReview?.({
+            statusDecision: 'на доработке',
+            generalComment: reply.trim(),
+            nextActions: [reply.trim()],
+            strengths: '',
+            blockers: '',
+        });
+        onRefresh?.();
+    };
+
+    const sendAccept = () => {
+        setFormError('');
+        const sc = Number(String(scoreInput).replace(',', '.'));
+        if (!Number.isFinite(sc) || sc < 0) {
+            setFormError('При принятии работы укажите оценку в баллах.');
+            return;
+        }
+        if (td.maxScore != null && sc > td.maxScore) {
+            setFormError(`Оценка не может быть больше ${td.maxScore}.`);
+            return;
+        }
+        onMentorReview?.({
+            statusDecision: 'принято',
+            generalComment: reply.trim() || 'Принято.',
+            nextActions: [],
+            strengths: '',
+            blockers: '',
+            scoreAwarded: sc,
+        });
+        onRefresh?.();
+    };
+
+    const openLesson = () => {
+        if (typeof navigate === 'function') {
+            navigate('/mentor/tracker');
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} />
+            <TaskDescription data={state.taskDescription} showControlPointNote={false} />
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    onClick={openLesson}
+                    className="text-sm rounded-full border border-[#E8D5C4] bg-[#FAF6F2] px-4 py-2 text-[#4A3728] hover:bg-[#F5EDE6]"
+                >
+                    {td.linkedLessonTitle ? `Открыть урок: ${td.linkedLessonTitle}` : 'Открыть трекер курса (уроки и контекст)'}
+                </button>
+                <p className="text-xs text-[#9B8B80] max-w-xl">Переход к трекеру, чтобы увидеть материалы недели и формулировку урока.</p>
+            </div>
+            <MentorStudentAnswerCompact versions={state.submissionVersions} />
+            {!accepted ? (
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
+                    <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
+                    <textarea
+                        value={reply}
+                        onChange={(e) => setReply(e.target.value)}
+                        rows={4}
+                        className="w-full rounded-xl border border-[#E8D5C4] p-3 text-sm"
+                        placeholder="Комментарий для участницы…"
+                    />
+                    <div>
+                        <label className="text-xs text-[#9B8B80] block mb-1">Оценка при принятии (макс. {td.maxScore ?? '—'})</label>
+                        <input
+                            type="number"
+                            min={0}
+                            max={td.maxScore ?? undefined}
+                            value={scoreInput}
+                            onChange={(e) => setScoreInput(e.target.value)}
+                            className="w-full max-w-[200px] rounded-xl border border-[#E8D5C4] p-2 text-sm tabular-nums"
+                        />
+                    </div>
+                    {formError ? <p className="text-sm text-rose-600">{formError}</p> : null}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                            type="button"
+                            onClick={sendRevision}
+                            className="text-sm rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-amber-950 hover:bg-amber-100"
+                        >
+                            Отправить на доработку
+                        </button>
+                        <button
+                            type="button"
+                            onClick={sendAccept}
+                            className="text-sm rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-900 hover:bg-emerald-100"
+                        >
+                            Принять
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <p className="text-sm text-[#9B8B80]">Работа принята.</p>
+            )}
+        </div>
+    );
+}
+
 export function renderTaskDetail({
     role = 'student',
     state,
@@ -571,7 +732,7 @@ export function renderTaskDetail({
         <div className="space-y-3">
             <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} />
             <TaskMeta data={state.taskDetail} />
-            <TaskDescription data={state.taskDescription} />
+            <TaskDescription data={state.taskDescription} showControlPointNote={!!state.taskDetail.isControlPoint} />
             <SubmissionHistory
                 versions={state.submissionVersions}
                 role={role}
@@ -610,6 +771,7 @@ export default function PvlTaskDetailView({
     taskId,
     mentorActorId,
     onRefresh,
+    navigate,
 }) {
     const [state, setState] = useState({
         taskDetail: initialData?.taskDetail || { ...taskDetail },
@@ -696,13 +858,28 @@ export default function PvlTaskDetailView({
         && String(state.taskDetail.status || '').toLowerCase().includes('проверено')
         && String(state.taskDetail.status || '').toLowerCase().includes('оценку');
 
+    if (role === 'mentor') {
+        return (
+            <div className="space-y-3">
+                {pvlDevToolsEnabled() ? (
+                    <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-xs text-[#9B8B80]">
+                        Циклов доработки (dev): {revisionCycles}
+                    </div>
+                ) : null}
+                <MentorTaskSlim
+                    state={state}
+                    onBack={onBack}
+                    backLabel={backLabel}
+                    navigate={navigate}
+                    onMentorReview={onMentorReview}
+                    onRefresh={onRefresh}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-3">
-            {role === 'mentor' && pvlDevToolsEnabled() ? (
-                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-xs text-[#9B8B80]">
-                    Циклов доработки (dev): {revisionCycles}
-                </div>
-            ) : null}
             {showReviewAck ? (
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 text-sm text-indigo-950 shadow-sm">
                     <p className="font-medium">Работа проверена — посмотрите оценку и комментарии ментора в ленте ниже.</p>

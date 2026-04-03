@@ -1,8 +1,8 @@
-import React, { Suspense, lazy, useState, useEffect, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'react';
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
-    GraduationCap, MessagesSquare
+    GraduationCap, MessagesSquare, Bell
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -56,6 +56,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [notificationModal, setNotificationModal] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [courseSidebar, setCourseSidebar] = useState({ enabled: false, title: 'Курс', items: [], activeKey: null });
+    const gardenPvlBridgeRef = useRef(null);
     const [leaderUser, setLeaderUser] = useState(null);
     const [birthdayTemplates, setBirthdayTemplates] = useState([]);
     const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', enabled: false, isStandalone: false, loading: false });
@@ -240,10 +241,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         users: Users,
         calendar: CalendarRange,
         graduation: GraduationCap,
+        book: BookOpen,
         dashboard: LayoutGrid,
         tracker: BookOpen,
         mentor: Users,
-        notifications: Sparkles
+        notifications: Sparkles,
+        bell: Bell,
     };
     const isCourseSidebarMode = view === 'library' && courseSidebar.enabled;
 
@@ -590,24 +593,57 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{courseSidebar.title}</div>
                                     </div>
                                     {courseSidebar.items.map((item) => {
+                                        if (item.type === 'divider') {
+                                            return <div key={item.key} className="h-px bg-slate-100/60 my-2 mx-2" />;
+                                        }
                                         const Icon = courseIconMap[item.iconKey] || GraduationCap;
+                                        if (item.action === 'settings') {
+                                            return (
+                                                <SidebarItem
+                                                    key={item.key}
+                                                    icon={Settings}
+                                                    label={item.label}
+                                                    active={view === 'profile'}
+                                                    onClick={() => handleViewChange('profile')}
+                                                />
+                                            );
+                                        }
+                                        if (item.action === 'exit_pvl') {
+                                            return (
+                                                <button
+                                                    key={item.key}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        try {
+                                                            gardenPvlBridgeRef.current?.exit?.();
+                                                        } catch {
+                                                            /* ignore */
+                                                        }
+                                                        handleViewChange('dashboard');
+                                                    }}
+                                                    className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all duration-300 text-slate-600 hover:bg-white/80 hover:text-slate-900 active:scale-[0.98] select-none"
+                                                >
+                                                    <LayoutGrid size={22} className="stroke-[1.6px]" width={24} />
+                                                    <span className="font-medium tracking-wide text-[15px]">{item.label}</span>
+                                                </button>
+                                            );
+                                        }
                                         return (
                                             <SidebarItem
                                                 key={item.key}
                                                 icon={Icon}
                                                 label={item.label}
                                                 active={courseSidebar.activeKey === item.key}
-                                                onClick={() => {}}
+                                                onClick={() => {
+                                                    try {
+                                                        gardenPvlBridgeRef.current?.navigate?.(item.route);
+                                                    } catch {
+                                                        /* ignore */
+                                                    }
+                                                }}
                                             />
                                         );
                                     })}
-                                    <div className="h-px bg-slate-100/60 my-3"></div>
-                                    <SidebarItem
-                                        icon={LayoutGrid}
-                                        label="Вернуться в сад"
-                                        active={false}
-                                        onClick={() => handleViewChange('dashboard')}
-                                    />
                                 </>
                             ) : (
                                 <>
@@ -674,13 +710,17 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                     )}
                                 </>
                             )}
-                            <div className="h-px bg-slate-100/60 my-3"></div>
-                            <SidebarItem
-                                icon={Settings}
-                                label="Настройки"
-                                active={view === 'profile'}
-                                onClick={() => handleViewChange('profile')}
-                            />
+                            {!isCourseSidebarMode ? <div className="h-px bg-slate-100/60 my-3"></div> : null}
+                            {!isCourseSidebarMode ? (
+                                <SidebarItem
+                                    icon={Settings}
+                                    label="Настройки"
+                                    active={view === 'profile'}
+                                    onClick={() => handleViewChange('profile')}
+                                />
+                            ) : (
+                                <div className="h-px bg-slate-100/60 my-3" />
+                            )}
                             <button
                                 onClick={onLogout}
                                 className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 hover:text-rose-600 hover:bg-rose-50/60 transition-all duration-300 group select-none"
@@ -750,7 +790,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                 {/* Ambient Background - Global */}
                 <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(63,139,107,0.18),_transparent_55%),radial-gradient(circle_at_20%_20%,_rgba(143,127,106,0.15),_transparent_40%),linear-gradient(180deg,_#fbf9f3_0%,_#f7f3ea_100%)] -z-50" />
 
-                <div className="p-6 max-w-6xl mx-auto min-h-full animate-in fade-in duration-500">
+                <div className={`p-6 min-h-full animate-in fade-in duration-500 ${isCourseSidebarMode ? 'max-w-none mx-0 w-full' : 'max-w-6xl mx-auto'}`}>
                     {view === 'dashboard' && (
                         <StatsDashboardView
                             user={user}
@@ -783,6 +823,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 onNotify={onNotify}
                                 onBackToGarden={() => handleViewChange('dashboard')}
                                 onCourseSidebarChange={setCourseSidebar}
+                                gardenPvlBridgeRef={gardenPvlBridgeRef}
                                 resetToken={libraryResetToken}
                             />
                         </Suspense>

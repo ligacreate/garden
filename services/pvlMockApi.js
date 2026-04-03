@@ -49,6 +49,7 @@ let auditLog = [];
 let notifications = [];
 if (!Array.isArray(db.studentLibraryProgress)) db.studentLibraryProgress = [];
 if (!Array.isArray(db.taskDisputes)) db.taskDisputes = [];
+if (!Array.isArray(db.calendarEvents)) db.calendarEvents = [];
 
 function isTaskDisputeOpen(studentId, taskId) {
     return (db.taskDisputes || []).some((d) => d.studentId === studentId && d.taskId === taskId && d.status === 'open');
@@ -1038,6 +1039,15 @@ export const mentorApi = {
             state.reviewSeenByStudentAt = null;
         }
         state.revisionCycles = (state.revisionCycles || 0) + (state.status === TASK_STATUS.REVISION_REQUESTED ? 1 : 0);
+        if (state.status === TASK_STATUS.ACCEPTED) {
+            const taskDef = db.homeworkTasks.find((t) => t.id === taskId);
+            const maxScore = taskDef?.scoreMax ?? 20;
+            const sc = Number(payload?.scoreAwarded);
+            if (Number.isFinite(sc)) {
+                state.autoPoints = Math.max(0, Math.min(maxScore, Math.round(sc)));
+                state.totalTaskPoints = (state.autoPoints || 0) + (state.mentorBonusPoints || 0);
+            }
+        }
         const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus: state.status, changedByUserId: mentorId, comment: payload?.generalComment || '', createdAt: nowIso() };
         db.statusHistory.push(history);
         db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: mentorId, authorRole: ROLES.MENTOR, messageType: 'mentor_review', text: payload?.generalComment || '', attachments: [], linkedVersionId: state.currentVersionId, linkedStatusHistoryId: history.id, isSystem: false, createdAt: nowIso(), readBy: [mentorId] });
@@ -1098,6 +1108,26 @@ export const mentorApi = {
     },
     getMentorBonusHistory(studentId) {
         return db.mentorBonusEvents.filter((e) => e.studentId === studentId).slice().reverse();
+    },
+};
+
+function calendarVisibleToViewer(event, viewerRole) {
+    const v = event.visibilityRole || 'all';
+    if (v === 'all') return true;
+    if (viewerRole === 'admin') return true;
+    return v === viewerRole;
+}
+
+export const calendarApi = {
+    listForViewer(viewerRole, cohortId) {
+        return (db.calendarEvents || [])
+            .filter((e) => !cohortId || e.cohortId === cohortId)
+            .filter((e) => calendarVisibleToViewer(e, viewerRole))
+            .slice()
+            .sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
+    },
+    getById(id) {
+        return (db.calendarEvents || []).find((e) => e.id === id) || null;
     },
 };
 
@@ -1232,6 +1262,44 @@ export const adminApi = {
             methodQuestions: [SCORING_METHOD_QUESTION],
         };
     },
+    createCalendarEvent(payload = {}) {
+        const et = payload.eventType || 'mentor_meeting';
+        const row = {
+            id: uid('pvl-cal'),
+            title: 'Новое событие',
+            description: '',
+            eventType: et,
+            startAt: nowIso(),
+            endAt: nowIso(),
+            date: nowIso().slice(0, 10),
+            linkedLessonId: null,
+            linkedPracticumId: null,
+            visibilityRole: 'all',
+            cohortId: 'cohort-2026-1',
+            colorToken: et,
+            createdBy: 'u-adm-1',
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+            ...payload,
+        };
+        db.calendarEvents.push(row);
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_calendar_event', 'calendar_event', row.id, row.title, {});
+        return row;
+    },
+    updateCalendarEvent(eventId, payload) {
+        const e = db.calendarEvents.find((x) => x.id === eventId);
+        if (!e) return null;
+        Object.assign(e, payload, { updatedAt: nowIso() });
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_calendar_event', 'calendar_event', eventId, e.title, payload);
+        return e;
+    },
+    deleteCalendarEvent(eventId) {
+        const idx = db.calendarEvents.findIndex((x) => x.id === eventId);
+        if (idx < 0) return false;
+        db.calendarEvents.splice(idx, 1);
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'delete_calendar_event', 'calendar_event', eventId, 'deleted', {});
+        return true;
+    },
 };
 
 export const sharedApi = {
@@ -1289,6 +1357,7 @@ export const pvlDomainApi = {
     studentApi,
     mentorApi,
     adminApi,
+    calendarApi,
     sharedApi,
     helpers: {
         calculateLibraryProgress: () => calculateLibraryProgress(),

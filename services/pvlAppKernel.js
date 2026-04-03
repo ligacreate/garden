@@ -40,21 +40,17 @@ export function redirectToAllowedRoute(role, attemptedRoute) {
 }
 
 /**
- * Учительская ПВЛ: тот же учебный контур, что у ментора (ученицы, проверки, риски, потоки, СЗ),
- * плюс слой наполнения курса («Материалы курса»). Ментор в прототипе видит только своих менти;
- * учительская — общую картину и всех менторов.
+ * Учительская ПВЛ: дашборд, ученицы, менторы, материалы курса (уроки/библиотека/глоссарий), календарь, настройки.
+ * Ментор видит своих менти; учительская — всех и управление событиями потока.
  */
 export function buildSidebarByRole(role) {
     if (role === 'admin') {
         return [
-            'Учительская ПВЛ',
-            'Сводка',
+            'Дашборд',
             'Ученицы',
-            'Проверки и риски',
             'Менторы',
-            'Потоки',
-            'Сертификация',
             'Материалы курса',
+            'Календарь',
             'Настройки',
         ];
     }
@@ -112,6 +108,7 @@ export function getAllRoutes() {
     return [
         '/student/dashboard',
         '/student/about',
+        '/student/onboarding',
         '/student/glossary',
         '/student/library',
         '/student/library/:itemId',
@@ -123,21 +120,35 @@ export function getAllRoutes() {
         '/student/results/:taskId',
         '/student/certification',
         '/student/self-assessment',
+        '/student/qa',
         '/student/cultural-code',
         '/mentor/dashboard',
+        '/mentor/mentees',
+        '/mentor/review-queue',
+        '/mentor/about',
+        '/mentor/onboarding',
+        '/mentor/glossary',
         '/mentor/library',
         '/mentor/library/:itemId',
+        '/mentor/tracker',
+        '/mentor/lessons',
+        '/mentor/practicums',
+        '/mentor/checklist',
+        '/mentor/results',
+        '/mentor/certification',
+        '/mentor/self-assessment',
+        '/mentor/qa',
+        '/mentor/cultural-code',
         '/mentor/materials',
         '/mentor/mentee/:id',
         '/mentor/mentee/:id/task/:taskId',
         '/admin/pvl',
-        '/admin/dashboard',
         '/admin/content',
         '/admin/students',
+        '/admin/students/:id',
+        '/admin/students/:id/task/:taskId',
         '/admin/mentors',
-        '/admin/cohorts',
-        '/admin/review',
-        '/admin/certification',
+        '/admin/calendar',
         '/admin/settings',
         '/qa',
         '/debug/qa',

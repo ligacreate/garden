@@ -797,8 +797,6 @@ export default function PvlTaskDetailView({
     const [draftText, setDraftText] = useState(localStorage.getItem('pvl_task_draft_v1') || '');
     const [mentorForm, setMentorForm] = useState({ ...mentorReview });
 
-    const revisionCycles = state.taskDetail.revisionCycles ?? 0;
-
     const threadLocked = (state.taskDetail.isAcceptedWork || state.taskDetail.status === 'принято') && !state.taskDetail.disputeOpen;
     const disputeOpen = !!state.taskDetail.disputeOpen;
 

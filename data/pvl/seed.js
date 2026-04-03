@@ -229,10 +229,10 @@ export const seed = {
         { id: 'mbe-3b', studentId: 'u-st-3', mentorId: 'u-men-2', relatedTaskId: 'task-3', points: 25, reason: 'Доп. бонус', createdAt: now },
     ],
     szAssessmentState: [
-        { id: 'sz-1', studentId: 'u-st-1', selfAssessmentPoints: 0, mentorAssessmentPoints: 0, redFlags: [], comparedAt: null, finalStatus: 'not_started' },
-        { id: 'sz-2', studentId: 'u-st-2', selfAssessmentPoints: 12, mentorAssessmentPoints: 0, redFlags: [], comparedAt: null, finalStatus: 'in_progress' },
-        { id: 'sz-3', studentId: 'u-st-3', selfAssessmentPoints: 41, mentorAssessmentPoints: 28, redFlags: ['Нет сертификационного пакета'], comparedAt: '2026-06-28', finalStatus: 'red_flag' },
-        { id: 'sz-4', studentId: 'u-st-4', selfAssessmentPoints: 0, mentorAssessmentPoints: 0, redFlags: [], comparedAt: null, finalStatus: 'not_started' },
+        { id: 'sz-1', studentId: 'u-st-1', selfAssessmentPoints: 0, mentorAssessmentPoints: 0, selfAssessmentCriticalCount: 0, redFlags: [], comparedAt: null, finalStatus: 'not_started', selfAssessmentSubmittedAt: null },
+        { id: 'sz-2', studentId: 'u-st-2', selfAssessmentPoints: 12, mentorAssessmentPoints: 0, selfAssessmentCriticalCount: 0, redFlags: [], comparedAt: null, finalStatus: 'in_progress', selfAssessmentSubmittedAt: null },
+        { id: 'sz-3', studentId: 'u-st-3', selfAssessmentPoints: 41, mentorAssessmentPoints: 28, selfAssessmentCriticalCount: 1, redFlags: ['Нет сертификационного пакета'], comparedAt: '2026-06-28', finalStatus: 'red_flag', selfAssessmentSubmittedAt: '2026-06-27' },
+        { id: 'sz-4', studentId: 'u-st-4', selfAssessmentPoints: 0, mentorAssessmentPoints: 0, selfAssessmentCriticalCount: 0, redFlags: [], comparedAt: null, finalStatus: 'not_started', selfAssessmentSubmittedAt: null },
     ],
     pointsHistory: [],
 };

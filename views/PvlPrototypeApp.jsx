@@ -2,15 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import PvlSzAssessmentFlow from './PvlSzAssessmentFlow';
-import { StudentCourseTracker, StudentWeeklyChecklistStub } from './PvlStudentTrackerView';
+import { PlatformCourseModulesGrid, StudentCourseTracker, StudentWeeklyChecklistStub, usePlatformStepChecklist } from './PvlStudentTrackerView';
 import {
     PVL_CERT_CONDITIONS,
     PVL_CERT_CRITERIA_GROUPS,
     PVL_CERT_PROCESS_STEPS,
     PVL_CERT_RED_FLAGS,
     PVL_GLOSSARY_FILTERS,
+    PVL_TRACKER_FAQ,
     PVL_TRACKER_GLOSSARY,
+    PVL_TRACKER_RULES,
 } from '../data/pvlReferenceContent';
+import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
 import {
     pvlMockData,
     getStudentProfile,
@@ -119,6 +122,19 @@ const ADMIN_NAV_MAP = {
     'Материалы курса': '/admin/content',
     Настройки: '/admin/settings',
 };
+
+function szPipelineStatusRu(v) {
+    const m = {
+        not_started: 'не начато',
+        in_progress: 'в процессе',
+        ready_for_review: 'на проверке у ментора',
+        red_flag: 'есть критические отметки',
+        admitted: 'допуск',
+        not_admitted: 'нет допуска',
+        certified: 'сертифицирована',
+    };
+    return m[String(v || '').toLowerCase()] || v || '—';
+}
 
 const STATUS_TONE = (status) => {
     const s = String(status || '').toLowerCase();
@@ -230,7 +246,7 @@ function pvlSidebarNavClass(active) {
 const SidebarMenu = ({ role, route: currentRoute, studentSection, setStudentSection, adminSection, setAdminSection, mentorSection, setMentorSection, navigate }) => (
     <aside className="h-fit xl:sticky xl:top-6 rounded-3xl border border-slate-100/90 bg-white/85 backdrop-blur-sm p-3 shadow-sm shadow-slate-200/50">
         <div className="px-2 pt-1 pb-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">AL Camp</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{PVL_COURSE_DISPLAY_NAME}</div>
             <h3 className="font-display text-lg text-slate-800 mt-0.5 leading-tight">
                 {role === 'student' ? 'Участница' : role === 'mentor' ? 'Ментор' : 'Учительская'}
             </h3>
@@ -496,15 +512,14 @@ function GardenContentCards({ items }) {
     return (
         <div className="grid md:grid-cols-2 gap-4">
             {items.map((i) => (
-                <article key={i.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm shadow-slate-200/40">
-                    {i.targetSection ? <div className="text-[11px] text-slate-400">{labelTargetSection(i.targetSection)}</div> : null}
-                    <h4 className="text-sm font-medium text-slate-800 mt-0.5">{i.title}</h4>
+                <article key={i.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm shadow-slate-200/30">
+                    <h4 className="text-sm font-medium text-slate-800">{i.title}</h4>
                     <p className="text-xs text-slate-500 mt-1.5 leading-relaxed whitespace-pre-line">{i.shortDescription || i.description || 'Описание появится позже.'}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</span>
-                        {i.estimatedDuration ? <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{i.estimatedDuration}</span> : null}
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-100">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</span>
+                        {i.estimatedDuration ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100">{i.estimatedDuration}</span> : null}
                         {(i.tags || []).slice(0, 3).map((tag) => (
-                            <span key={`${i.id}-${tag}`} className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{tag}</span>
+                            <span key={`${i.id}-${tag}`} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100">{tag}</span>
                         ))}
                     </div>
                 </article>
@@ -574,44 +589,44 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                         <option value="all">Все типы</option>
                         {Object.entries(CONTENT_TYPE_LABEL).map(([k, lab]) => <option key={k} value={k}>{lab}</option>)}
                     </select>
-                    <select value={completion} onChange={(e) => setCompletion(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
+                    <select value={completion} onChange={(e) => setCompletion(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
                         <option value="all">Все</option><option value="completed">Просмотренные</option><option value="pending">Непройденные</option>
                     </select>
-                    <select value={flag} onChange={(e) => setFlag(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
+                    <select value={flag} onChange={(e) => setFlag(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
                         <option value="all">Все метки</option><option value="new">Новые</option><option value="recommended">Рекомендованные</option>
                     </select>
-                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
                         <option value="order">По порядку</option><option value="title">По названию</option><option value="duration">По длительности</option>
                     </select>
                 </div>
 
-                <div className="grid xl:grid-cols-[260px_1fr] gap-3 items-start">
-                    <aside className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-                        <h3 className="font-display text-2xl text-[#4A3728] mb-2">Категории</h3>
-                        <div className="grid gap-2">
-                            <button onClick={() => setSelectedCategoryId('')} className={`text-left rounded-xl border px-3 py-2 text-sm ${!selectedCategoryId ? 'border-[#C8855A] bg-[#F5EDE6] text-[#4A3728]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>Все</button>
+                <div className="grid xl:grid-cols-[240px_1fr] gap-3 items-start">
+                    <aside className="rounded-2xl border border-slate-100/90 bg-white p-3 shadow-sm">
+                        <h3 className="text-sm font-medium text-slate-700 mb-2">Категории</h3>
+                        <div className="grid gap-1.5">
+                            <button type="button" onClick={() => setSelectedCategoryId('')} className={`text-left rounded-xl border px-3 py-2 text-sm transition-colors ${!selectedCategoryId ? 'border-slate-200 bg-slate-50 text-slate-800' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}>Все</button>
                             {categories.map((c) => (
-                                <button key={c.id} onClick={() => setSelectedCategoryId(c.id)} className={`text-left rounded-xl border px-3 py-2 ${selectedCategoryId === c.id ? 'border-[#C8855A] bg-[#F5EDE6] text-[#4A3728]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>
+                                <button type="button" key={c.id} onClick={() => setSelectedCategoryId(c.id)} className={`text-left rounded-xl border px-3 py-2 transition-colors ${selectedCategoryId === c.id ? 'border-slate-200 bg-slate-50 text-slate-800' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}>
                                     <div className="text-sm">{c.title}</div>
-                                    <div className="text-[11px]">{c.count} материалов · {c.progressPercent}%</div>
+                                    <div className="text-[11px] text-slate-400">{c.count} · {c.progressPercent}%</div>
                                 </button>
                             ))}
                         </div>
                     </aside>
 
-                    <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                        <h3 className="font-display text-2xl text-[#4A3728] mb-2">Материалы</h3>
+                    <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                        <h3 className="font-display text-lg text-slate-800 mb-2">Материалы</h3>
                         {filteredItems.length === 0 ? (
-                            <div className="rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm text-[#9B8B80]">
+                            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-500">
                                 Нет материалов по выбранным фильтрам или категории.
                             </div>
                         ) : (
                             <div className="grid md:grid-cols-2 gap-2">
                                 {filteredItems.map((i) => (
-                                    <article key={i.id} className="rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
-                                        <div className="text-xs text-[#9B8B80]">{i.categoryTitle}</div>
-                                        <div className="text-sm font-medium text-[#4A3728] mt-1">{i.title}</div>
-                                        <p className="text-xs text-[#9B8B80] mt-1">{i.shortDescription}</p>
+                                    <article key={i.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:border-slate-200 transition-colors">
+                                        <div className="text-xs text-slate-400">{i.categoryTitle}</div>
+                                        <div className="text-sm font-medium text-slate-800 mt-1">{i.title}</div>
+                                        <p className="text-xs text-slate-500 mt-1 line-clamp-3">{i.shortDescription}</p>
                                         <div className="mt-2 flex flex-wrap gap-1">
                                             <StatusBadge>{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</StatusBadge>
                                             {i.isNew ? <StatusBadge>новое</StatusBadge> : null}
@@ -620,12 +635,12 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                             {i.completed ? <StatusBadge>просмотрено</StatusBadge> : null}
                                         </div>
                                         <div className="mt-2 flex items-center justify-between">
-                                            <span className="text-[11px] text-[#9B8B80]">{i.estimatedDuration || '—'}</span>
-                                            <button onClick={() => {
+                                            <span className="text-[11px] text-slate-400">{i.estimatedDuration || '—'}</span>
+                                            <button type="button" onClick={() => {
                                                 setSelectedItemId(i.id);
                                                 pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
                                                 if (navigate) navigate(`${routePrefix}/library/${i.id}`);
-                                            }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Открыть</button>
+                                            }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Открыть</button>
                                         </div>
                                     </article>
                                 ))}
@@ -635,18 +650,18 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                 </div>
 
                 {selectedItem ? (
-                    <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                    <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
                         <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-display text-2xl text-[#4A3728]">{selectedItem.title}</h3>
+                            <h3 className="font-display text-xl text-slate-800">{selectedItem.title}</h3>
                             <div className="flex items-center gap-2">
-                                <button onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Отметить как просмотрено</button>
-                                <button onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Закрыть</button>
+                                <button type="button" onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Отметить как просмотрено</button>
+                                <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Закрыть</button>
                             </div>
                         </div>
-                        <p className="text-sm text-[#2C1810] mt-2">{selectedItem.fullDescription || selectedItem.shortDescription}</p>
-                        <div className="mt-2 text-xs text-slate-500">Тип: {CONTENT_TYPE_LABEL[selectedItem.contentType] || selectedItem.contentType} · Длительность: {selectedItem.estimatedDuration || '—'}</div>
-                        {(selectedItem.externalLinks || []).length ? <p className="text-xs text-[#9B8B80] mt-1">Ссылки: {(selectedItem.externalLinks || []).join(', ')}</p> : null}
-                        {(selectedItem.attachments || []).length ? <p className="text-xs text-[#9B8B80] mt-1">Вложения: {(selectedItem.attachments || []).join(', ')}</p> : null}
+                        <p className="text-sm text-slate-600 mt-2">{selectedItem.fullDescription || selectedItem.shortDescription}</p>
+                        <div className="mt-2 text-xs text-slate-500">{CONTENT_TYPE_LABEL[selectedItem.contentType] || selectedItem.contentType} · {selectedItem.estimatedDuration || '—'}</div>
+                        {(selectedItem.externalLinks || []).length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {(selectedItem.externalLinks || []).join(', ')}</p> : null}
+                        {(selectedItem.attachments || []).length ? <p className="text-xs text-slate-500 mt-1">Вложения: {(selectedItem.attachments || []).join(', ')}</p> : null}
                     </section>
                 ) : null}
             </div>
@@ -868,34 +883,24 @@ function practicumStatusRu(status) {
     return map[s] || status;
 }
 
-function StudentLessonsLive({ studentId }) {
-    const cohortId = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId)?.cohortId || 'cohort-2026-1';
-    const weeks = pvlDomainApi.sharedApi.getCourseWeeks(cohortId).slice().sort((a, b) => a.weekNumber - b.weekNumber);
-    const cps = pvlDomainApi.sharedApi.getControlPoints(cohortId);
+function StudentLessonsLive({ studentId, navigate }) {
+    const { stats } = usePlatformStepChecklist(studentId);
+    const { doneSteps, totalSteps, pct, anchorsDone, anchorsTotal } = stats;
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
-                <h2 className="font-display text-2xl text-slate-800">Уроки по неделям</h2>
-                <p className="text-sm text-slate-500 mt-1">Расписание, артефакты и контрольные точки.</p>
+                <h2 className="font-display text-2xl text-slate-800">Уроки и шаги курса</h2>
+                <p className="text-sm text-slate-500 mt-1">Методический путь по модулям — как в трекере. Отметки здесь и в «Трекере курса» общие.</p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 text-sm text-slate-600">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Шаги: <span className="font-medium tabular-nums text-slate-800">{doneSteps}/{totalSteps}</span></div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Прогресс: <span className="font-medium tabular-nums text-slate-800">{pct}%</span></div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Якоря: <span className="font-medium tabular-nums text-slate-800">{anchorsDone}/{anchorsTotal}</span></div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 flex items-center">
+                        <button type="button" onClick={() => navigate('/student/tracker')} className="text-sm text-slate-700 font-medium hover:underline">Полный трекер с заданиями</button>
+                    </div>
+                </div>
             </div>
-            {weeks.map((w) => {
-                const cpWeek = cps.filter((c) => c.weekNumber === w.weekNumber);
-                return (
-                    <article key={w.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                            <h4 className="font-display text-lg text-slate-800">Неделя {w.weekNumber}: {w.title}</h4>
-                            <span className="text-xs text-slate-400">До {formatPvlDateTime(w.endDate)}</span>
-                        </div>
-                        <div className="grid md:grid-cols-3 gap-3 text-sm text-slate-600">
-                            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Модуль {w.moduleNumber}{w.artifactTitle ? ` · ${w.artifactTitle}` : ''}</div>
-                            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Встреча с ментором: {w.mentorMeetingFocus || '—'}</div>
-                            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-                                Контрольные точки: {cpWeek.length ? cpWeek.map((c) => c.code).join(', ') : '—'}
-                            </div>
-                        </div>
-                    </article>
-                );
-            })}
+            <PlatformCourseModulesGrid studentId={studentId} variant="lessons" />
         </div>
     );
 }
@@ -968,15 +973,34 @@ function StudentPracticumsCalendar({ studentId }) {
 function StudentAboutEnriched() {
     return (
         <div className="space-y-3">
-            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728] mb-2">О курсе и онбординг</h3>
-                <p className="text-sm text-[#2C1810] leading-6">Три месяца, контрольные точки, правила баллов, безопасность, связь и расписание. Стартовые материалы и видео — в карточках ниже и в библиотеке.</p>
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <h3 className="font-display text-2xl text-slate-800 mb-2">О курсе и онбординг</h3>
+                <p className="text-sm text-slate-600 leading-6">Курс «{PVL_COURSE_DISPLAY_NAME}»: три месяца, контрольные точки, правила баллов, безопасность и расписание. Стартовые материалы — в карточках ниже и в библиотеке.</p>
             </div>
             <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Как пользоваться платформой: уроки, задания, дедлайны, личный кабинет.</div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Антидолги: D+1, D+3, D+7, D+10 — чтобы не копить долги по неделям.</div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Матрица ответственности: методолог, ментор, куратор, техподдержка.</div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Курсовые баллы (до 400) и СЗ (до 54) — разные шкалы.</div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Уроки, задания, дедлайны и личный кабинет — в боковом меню.</div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Антидолги: напоминания на 1, 3, 7 и 10-й день — чтобы не копить долги по неделям.</div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">С вами рядом методолог, ментор, куратор и техподдержка — у каждого своя зона ответственности.</div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Курсовые баллы (до 400) и оценка сертификационного завтрака (до 54) считаются отдельно.</div>
+            </div>
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <h4 className="font-display text-lg text-slate-800 mb-3">Правила траектории</h4>
+                <ul className="space-y-2 text-sm text-slate-600 list-disc pl-5">
+                    {PVL_TRACKER_RULES.map((line) => (
+                        <li key={line.slice(0, 40)}>{line}</li>
+                    ))}
+                </ul>
+            </div>
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <h4 className="font-display text-lg text-slate-800 mb-3">Вопросы и ответы</h4>
+                <div className="space-y-3">
+                    {PVL_TRACKER_FAQ.map((row) => (
+                        <div key={row.q} className="border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                            <div className="text-sm font-medium text-slate-800">{row.q}</div>
+                            <p className="text-sm text-slate-600 mt-1 leading-relaxed">{row.a}</p>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -1213,7 +1237,15 @@ function StudentGeneric({ title, children }) {
 function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0 }) {
     if (route === '/student/self-assessment') {
         const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
-        return <PvlSzAssessmentFlow key={studentId} studentId={studentId} navigate={navigate} certPoints={cert.points} />;
+        return (
+            <PvlSzAssessmentFlow
+                key={studentId}
+                studentId={studentId}
+                navigate={navigate}
+                certPoints={cert.points}
+                onCommitted={refresh}
+            />
+        );
     }
     const sectionKey = SECTION_ROUTE_TO_KEY[route];
     const sectionMaterials = sectionKey ? getPublishedContentBySection(sectionKey, 'student', cmsItems, cmsPlacements) : [];
@@ -1259,7 +1291,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     }
     if (route === '/student/lessons') return (
         <div className="space-y-4">
-            <StudentLessonsLive studentId={studentId} />
+            <StudentLessonsLive studentId={studentId} navigate={navigate} />
             <StudentGeneric title="Материалы к разделу"><GardenContentCards items={sectionMaterials} /></StudentGeneric>
         </div>
     );
@@ -1290,11 +1322,14 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 <AssessmentComparisonCard selfPoints={cert.points.szSelfAssessmentTotal} mentorPoints={cert.points.szMentorAssessmentTotal} />
                 {cert.szScores ? (
                     <div className="rounded-2xl border border-slate-100/90 bg-white p-5 text-sm text-slate-600 shadow-sm tabular-nums">
-                        <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Сертификационный завтрак (счётчики)</div>
+                        <div className="text-xs font-medium text-slate-500 mb-2">Данные из бланка самооценки и контура сертификации</div>
                         <div>Самооценка (всего): <span className="font-medium text-slate-800">{cert.szScores.self_score_total}/54</span></div>
                         <div>Оценка ментора (всего): <span className="font-medium text-slate-800">{cert.szScores.mentor_score_total}/54</span></div>
-                        <div>Критические флаги: <span className="font-medium text-slate-800">{cert.szScores.critical_flags_count}</span></div>
-                        <div>Статус СЗ: <span className="font-medium text-slate-800">{cert.szScores.certification_status}</span></div>
+                        <div>Критические отметки в бланке: <span className="font-medium text-slate-800">{cert.szScores.critical_flags_count}</span></div>
+                        {cert.szScores.package_red_flags_count > 0 ? (
+                            <div className="text-xs text-rose-700 mt-2">Регламентные предупреждения: {(cert.redFlags || []).join('; ') || 'есть'}</div>
+                        ) : null}
+                        <div className="mt-2">Статус контура СЗ: <span className="font-medium text-slate-800">{szPipelineStatusRu(cert.szScores.certification_status)}</span></div>
                     </div>
                 ) : null}
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-5 text-sm text-slate-600 shadow-sm">
@@ -1568,9 +1603,10 @@ function TeacherPvlHome({ navigate }) {
     return (
         <div className="space-y-6">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-6 md:p-8 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-1">{PVL_COURSE_DISPLAY_NAME}</p>
                 <h2 className="font-display text-2xl md:text-3xl text-slate-800">Учительская ПВЛ</h2>
                 <p className="text-sm text-slate-500 mt-2 max-w-2xl leading-relaxed">
-                    Здесь сходятся зона ментора и управление наполнением курса: люди, проверки, материалы и потоки.
+                    Общий контур курса: все ученицы, все менторы, наполнение и статусы. Здесь же — дашборд, проверки, риски, сертификация и библиотека материалов.
                     Сейчас опубликовано материалов: {overview.publishedContent}, учениц в учёте: {overview.activeStudents}, в очереди проверок: {overview.reviewQueue}.
                 </p>
             </div>
@@ -1941,12 +1977,13 @@ function AdminCertification() {
                             <div className="grid md:grid-cols-4 gap-2 mt-3 text-xs text-slate-600">
                                 <div>Запись: {c.szRecordingStatus}</div><div>Самооценка: {c.szSelfAssessmentStatus}</div><div>Оценка ментора: {c.szMentorAssessmentStatus}</div><div>Дедлайн: {c.deadlineAt}</div>
                             </div>
-                            <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs text-slate-600">
+                            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-2 mt-2 text-xs text-slate-600">
                                 <div>Курс: {pts.coursePointsTotal}/400</div>
                                 <div>Самооценка (баллы): {szs ? `${szs.self_score_total}/54` : `${pts.szSelfAssessmentTotal}/54`}</div>
                                 <div>Оценка ментора (СЗ): {szs ? `${szs.mentor_score_total}/54` : pts.szMentorAssessmentTotal}</div>
+                                <div>Крит. отметки в бланке: {szs?.critical_flags_count ?? '—'}</div>
                             </div>
-                            {c.redFlags.length > 0 ? <p className="text-xs text-rose-700 mt-2">Внимание: {c.redFlags.join(', ')}</p> : null}
+                            {c.redFlags.length > 0 ? <p className="text-xs text-rose-700 mt-2">Регламент: {c.redFlags.join(', ')}</p> : null}
                         </article>
                     );
                 })}

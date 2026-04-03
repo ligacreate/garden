@@ -647,7 +647,7 @@ export default function PvlMenteeCardView({
             redFlags: cert?.redFlags || [],
             deadlineAt: formatPvlDateTime(cert?.deadlineAt),
             szScoresLine: szs
-                ? `СЗ (отдельно от курса): самооценка ${szs.self_score_total}/54 · ментор ${szs.mentor_score_total}/54 · крит. флаги: ${szs.critical_flags_count} · статус СЗ: ${certFieldRu(szs.certification_status)}`
+                ? `СЗ: самооценка ${szs.self_score_total}/54 · ментор ${szs.mentor_score_total}/54 · крит. отметки в бланке: ${szs.critical_flags_count} · статус: ${certFieldRu(szs.certification_status)}`
                 : '',
         };
 

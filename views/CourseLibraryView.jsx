@@ -6,8 +6,9 @@ import { hasAccess, ROLES } from '../utils/roles';
 import { api } from '../services/dataService';
 import DOMPurify from 'dompurify';
 import { clearAppSession, getHomeRouteByRole, loadAppSession, saveAppSession } from '../services/pvlAppKernel';
+import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
 
-/** Грузится отдельным чанком только после входа в AL Camp — не в стартовом графе библиотеки */
+/** PvlPrototypeApp грузится отдельным чанком только после входа в курс ПВЛ — не в стартовом графе библиотеки */
 const PvlPrototypeApp = lazy(() => import('./PvlPrototypeApp'));
 
 const COURSES = [
@@ -68,8 +69,8 @@ const COURSES = [
     },
     {
         id: 6,
-        title: "AL Camp",
-        description: "ПВЛ 2026: вход ученицы, ментора или администратора курса (учительская ПВЛ) — по коду; материалы, уроки и проверка работ.",
+        title: PVL_COURSE_DISPLAY_NAME,
+        description: "Курс для ведущих встреч с письменными практиками: кабинет ученицы, ментора и учительской — по коду доступа; материалы, уроки и проверка работ.",
         image: "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
         minRole: ROLES.APPLICANT,
@@ -78,13 +79,13 @@ const COURSES = [
         materials: [
             {
                 id: "aicamp-system-1",
-                title: "Вход в AL Camp",
+                title: "Вход в курс",
                 type: "Текст",
                 tags: ["Вход", "Роли"],
-                content: `Внутри курса AL Camp — вход для трёх ролей:
-- ученик;
+                content: `Внутри курса «${PVL_COURSE_DISPLAY_NAME}» — вход для трёх ролей:
+- ученица;
 - ментор;
-- администратор курса (учительская ПВЛ, контент и потоки — отдельный код).
+- администратор курса (учительская, контент и потоки — отдельный код).
 
 Это не то же самое, что пункт «Админка» в меню всего сада.`,
                 role: "all"
@@ -94,7 +95,7 @@ const COURSES = [
                 title: "Администратор курса и учительская ПВЛ",
                 type: "Текст",
                 tags: ["Админ курса", "ПВЛ"],
-                content: `Выберите роль «Администратор курса» на экране входа и введите код для этой роли. Откроется интерфейс ПВЛ с разделом «Учительская ПВЛ» (контент-центр, потоки, проверки). Садовская «Админка» в левом меню сада — другой раздел.`,
+                content: `Выберите роль «Администратор курса» на экране входа и введите код для этой роли. Откроется учительская ПВЛ: контент, потоки, проверки. Садовская «Админка» в левом меню сада — другой раздел.`,
                 role: "all"
             },
             {
@@ -124,8 +125,8 @@ const COURSES = [
     }
 ];
 
-/** Один курс в библиотеке — без дублирующей карточки */
-const AI_CAMP_TITLE = "AL Camp";
+/** id карточки входа в ПВЛ в списке курсов библиотеки */
+const PVL_ENTRY_COURSE_ID = 6;
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
 const AI_CAMP_MENTOR_PIN = "1234";
 const AI_CAMP_STUDENT_PIN = "1111";
@@ -221,7 +222,7 @@ const CourseLibraryView = ({
     });
     /** Сброс дочернего lazy Pvl после ошибки в PvlErrorBoundary */
     const [pvlResetKey, setPvlResetKey] = useState(0);
-    /** После «Выйти из AL Camp» не поднимать сессию снова, пока пользователь не нажмёт «Войти снова» */
+    /** После выхода из курса ПВЛ не поднимать сессию снова, пока пользователь не нажмёт «Войти снова» */
     const [gardenCampPaused, setGardenCampPaused] = useState(false);
 
     const filters = ['Все', 'Курсы', 'Полезное'];
@@ -590,19 +591,19 @@ const CourseLibraryView = ({
     }, [onCourseSidebarChange]);
 
     useEffect(() => {
-        if (selectedCourse?.title !== AI_CAMP_TITLE || !aiCampSession) return;
+        if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !aiCampSession) return;
         syncPvlSessionFromAlCamp(aiCampSession);
-    }, [selectedCourse?.title, aiCampSession]);
+    }, [selectedCourse?.id, aiCampSession]);
 
     useEffect(() => {
-        if (selectedCourse?.title !== AI_CAMP_TITLE) {
+        if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) {
             setGardenCampPaused(false);
         }
-    }, [selectedCourse?.title]);
+    }, [selectedCourse?.id]);
 
-    /** Вход в AL Camp по роли из профиля сада (БД): без PIN для залогиненных пользователей */
+    /** Вход в курс ПВЛ по роли из профиля сада (БД): без PIN для залогиненных пользователей */
     useEffect(() => {
-        if (selectedCourse?.title !== AI_CAMP_TITLE || !user?.id || gardenCampPaused) return;
+        if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !user?.id || gardenCampPaused) return;
         const next = buildGardenAlCampSession(user);
         setAiCampSession((prev) => {
             if (prev?.authSource === 'garden' && prev.linkedUserId === user.id && prev.role === next.role) {
@@ -615,7 +616,7 @@ const CourseLibraryView = ({
             }
             return next;
         });
-    }, [selectedCourse?.title, user?.id, user?.role, user?.name, user?.email, gardenCampPaused]);
+    }, [selectedCourse?.id, user?.id, user?.role, user?.name, user?.email, gardenCampPaused]);
 
     return (
         <div className="h-full flex flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
@@ -706,7 +707,7 @@ const CourseLibraryView = ({
                         </div>
                     ))}
                 </div>
-            ) : selectedCourse.title === AI_CAMP_TITLE ? (
+            ) : selectedCourse.id === PVL_ENTRY_COURSE_ID ? (
                 <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/50">
                     {!aiCampSession && (
                         <div className="flex justify-end mb-4">
@@ -716,12 +717,12 @@ const CourseLibraryView = ({
                     {!aiCampSession ? (
                         gardenCampPaused && user ? (
                             <div className="max-w-xl mx-auto text-center space-y-4 py-6">
-                                <p className="text-slate-600">Вы вышли из курса AL Camp.</p>
+                                <p className="text-slate-600">Вы вышли из курса «{PVL_COURSE_DISPLAY_NAME}».</p>
                                 <Button variant="primary" type="button" onClick={handleGardenCampResume}>Войти снова по роли в саду</Button>
                             </div>
                         ) : !user ? (
                             <form onSubmit={handleAiCampLogin} className="max-w-xl mx-auto">
-                                <div className="text-2xl font-medium text-slate-900 mb-2">Вход в AL Camp</div>
+                                <div className="text-2xl font-medium text-slate-900 mb-2">Вход в курс «{PVL_COURSE_DISPLAY_NAME}»</div>
                                 <div className="text-sm text-slate-500 mb-5">Выберите роль и введите код доступа (если нет входа в сад).</div>
 
                                 <div className="flex flex-wrap gap-2 mb-4">
@@ -791,7 +792,7 @@ const CourseLibraryView = ({
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     <Button variant="secondary" onClick={handleAiCampLogout}>
-                                        Выйти из AL Camp
+                                        Выйти из курса
                                     </Button>
                                     <Button variant="secondary" onClick={onBackToGarden}>
                                         Вернуться к саду

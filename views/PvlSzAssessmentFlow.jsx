@@ -4,6 +4,7 @@ import {
     SZ_ASSESSMENT_SECTIONS,
     SZ_REFLECTION_PROMPTS,
 } from '../data/pvlReferenceContent';
+import { pvlDomainApi } from '../services/pvlMockApi';
 
 const STORAGE_PREFIX = 'pvl_sz_flow_v1_';
 
@@ -55,7 +56,7 @@ function levelLabel(total) {
 }
 
 /** Пошаговая самооценка СЗ по референсу pvl_assessment.html */
-export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints }) {
+export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, onCommitted }) {
     const draft = useMemo(() => loadDraft(studentId), [studentId]);
     const [step, setStep] = useState(draft?.step ?? 0);
     const [reflections, setReflections] = useState(draft?.reflections ?? emptyReflections());
@@ -290,9 +291,19 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints })
                         <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => { setStep(2); persist({ step: 2 }); }}>Назад</button>
                         <button
                             type="button"
-                            disabled={anyCritical && !criticalOk}
+                            disabled={(anyCritical && !criticalOk) || !scoresOk}
                             className="rounded-xl bg-slate-800 text-white px-5 py-2 text-sm font-medium disabled:opacity-40"
-                            onClick={() => { setStep(4); persist({ step: 4 }); }}
+                            onClick={() => {
+                                const critN = critical.filter(Boolean).length;
+                                pvlDomainApi.studentApi.commitSzSelfAssessment(studentId, {
+                                    selfScoreTotal: totalScores(scores),
+                                    criticalFlagsCount: critN,
+                                    mentorScores,
+                                });
+                                onCommitted?.();
+                                setStep(4);
+                                persist({ step: 4 });
+                            }}
                         >
                             Завершить и посмотреть итог
                         </button>
@@ -337,9 +348,9 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints })
 
                     {certPoints != null ? (
                         <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-600">
-                            В кабинете уже учтено: самооценка <span className="font-medium tabular-nums">{certPoints.szSelfAssessmentTotal}/54</span>
+                            В разделе «Сертификация» сейчас: самооценка <span className="font-medium tabular-nums">{certPoints.szSelfAssessmentTotal}/54</span>
                             {' · '}ментор <span className="font-medium tabular-nums">{certPoints.szMentorAssessmentTotal}/54</span>
-                            {' '}(данные демо/API; черновик бланка хранится локально в браузере).
+                            . После нажатия «Завершить» на шаге 3 эти значения обновляются из бланка; черновик шагов по-прежнему хранится в браузере до завершения.
                         </div>
                     ) : null}
 

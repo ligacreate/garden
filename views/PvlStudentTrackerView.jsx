@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { PVL_PLATFORM_MODULES } from '../data/pvlReferenceContent';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL } from '../data/pvlReferenceContent';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import { pvlDomainApi } from '../services/pvlMockApi';
+
+export function platformStepsStorageKey(studentId) {
+    return `pvl_checked_${studentId}`;
+}
 
 /** Как в pvl_platform.html */
 const CHECKLIST_TAG_LABEL = {
@@ -60,42 +64,7 @@ function TrackerStatusBadge({ children }) {
     );
 }
 
-/**
- * Полный путь курса (pvl_platform.html): модули, шаги, прогресс + задания потока и КТ со статусами.
- * Не дублирует дашборд — только траектория и статусы шагов.
- */
-export function StudentCourseTracker({ studentId, navigate }) {
-    const storageKey = `pvl_checked_${studentId}`;
-    const [checked, setChecked] = useState(() => {
-        try {
-            return JSON.parse(typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) || '{}' : '{}');
-        } catch {
-            return {};
-        }
-    });
-    useEffect(() => {
-        try {
-            setChecked(JSON.parse(localStorage.getItem(storageKey) || '{}'));
-        } catch {
-            setChecked({});
-        }
-    }, [storageKey]);
-
-    const toggleItem = (key) => {
-        setChecked((prev) => {
-            const next = { ...prev, [key]: !prev[key] };
-            try {
-                localStorage.setItem(storageKey, JSON.stringify(next));
-            } catch {
-                /* ignore */
-            }
-            return next;
-        });
-    };
-
-    const homework = useMemo(() => pvlDomainApi.studentApi.getStudentResults(studentId, {}), [studentId]);
-    const controlPoints = useMemo(() => pvlDomainApi.studentApi.getStudentControlPointsProgress(studentId), [studentId]);
-
+function computePlatformStepStats(checked) {
     let totalSteps = 0;
     let doneSteps = 0;
     let anchorsTotal = 0;
@@ -112,89 +81,154 @@ export function StudentCourseTracker({ studentId, navigate }) {
         });
     });
     const pct = totalSteps ? Math.round((doneSteps / totalSteps) * 100) : 0;
+    return { totalSteps, doneSteps, anchorsTotal, anchorsDone, pct };
+}
+
+export function usePlatformStepChecklist(studentId) {
+    const storageKey = platformStepsStorageKey(studentId);
+    const [checked, setChecked] = useState(() => {
+        try {
+            return JSON.parse(typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) || '{}' : '{}');
+        } catch {
+            return {};
+        }
+    });
+    useEffect(() => {
+        try {
+            setChecked(JSON.parse(localStorage.getItem(storageKey) || '{}'));
+        } catch {
+            setChecked({});
+        }
+    }, [storageKey]);
+
+    const toggleItem = useCallback((key) => {
+        setChecked((prev) => {
+            const next = { ...prev, [key]: !prev[key] };
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(next));
+            } catch {
+                /* ignore */
+            }
+            return next;
+        });
+    }, [storageKey]);
+
+    const stats = useMemo(() => computePlatformStepStats(checked), [checked]);
+    return { checked, toggleItem, stats };
+}
+
+/**
+ * Та же карта модулей и шагов, что в трекере (общее localStorage). variant: tracker — как в трекере; lessons — спокойнее для раздела «Уроки».
+ */
+export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
+    const { checked, toggleItem } = usePlatformStepChecklist(studentId);
+    const tagLabelFor = (tag) => {
+        const t = tag || 'task';
+        return variant === 'lessons' ? (PVL_TRACKER_TAG_LABEL[t] || t) : (CHECKLIST_TAG_LABEL[t] || t);
+    };
+    const articleClass = variant === 'lessons'
+        ? 'rounded-2xl border border-slate-100/90 bg-white/90 shadow-sm shadow-slate-200/20 overflow-hidden'
+        : 'rounded-2xl border border-slate-100/90 bg-white shadow-sm shadow-slate-200/30 overflow-hidden';
+
+    return (
+        <div className="grid gap-6 md:grid-cols-2">
+            {PVL_PLATFORM_MODULES.map((mod) => {
+                const modTotal = mod.items.length;
+                const modDone = mod.items.filter((_, i) => checked[`${mod.id}-${i}`]).length;
+                const modPct = modTotal ? Math.round((modDone / modTotal) * 100) : 0;
+                const numCls = variant === 'lessons' ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-display font-semibold bg-slate-100 text-slate-700 border border-slate-200/80' : `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-display font-semibold ${moduleNumClass(mod.cls)}`;
+                return (
+                    <article key={mod.id} className={articleClass}>
+                        <div className={`flex gap-4 p-4 md:p-5 border-b ${variant === 'lessons' ? 'border-slate-100' : 'border-slate-100'}`}>
+                            <div className={numCls}>
+                                {mod.label}
+                            </div>
+                            <div>
+                                <h4 className={`font-display leading-snug ${variant === 'lessons' ? 'text-base text-slate-800' : 'text-lg text-slate-900'}`}>{mod.title}</h4>
+                                <p className="text-xs text-slate-500 mt-0.5">{mod.sub}</p>
+                            </div>
+                        </div>
+                        <div className="p-4 md:p-5">
+                            <div className="flex justify-between text-xs text-slate-500 mb-2">
+                                <span>{modDone} из {modTotal}</span>
+                                <span className="tabular-nums">{modPct}%</span>
+                            </div>
+                            <div className="h-1 rounded-full bg-slate-100 overflow-hidden mb-4">
+                                <div className="h-full rounded-full bg-gradient-to-r from-emerald-600/50 to-[#C8855A]/70" style={{ width: `${modPct}%` }} />
+                            </div>
+                            <ul className="space-y-0 divide-y divide-slate-50">
+                                {mod.items.map((item, i) => {
+                                    const key = `${mod.id}-${i}`;
+                                    const isDone = !!checked[key];
+                                    const tag = item.tag || 'task';
+                                    const stLabel = stepLessonStatus(isDone, tag);
+                                    return (
+                                        <li key={key}>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleItem(key)}
+                                                className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-1 rounded-lg text-left hover:bg-slate-50/80 transition-colors"
+                                            >
+                                                <span
+                                                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
+                                                >
+                                                    {isDone ? '✓' : ''}
+                                                </span>
+                                                <span className={`text-sm flex-1 min-w-0 leading-snug ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
+                                                <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
+                                                    {tagLabelFor(tag)}
+                                                </span>
+                                                <TrackerStatusBadge>{stLabel}</TrackerStatusBadge>
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                    </article>
+                );
+            })}
+        </div>
+    );
+}
+
+/**
+ * Полный путь курса (pvl_platform.html): модули, шаги, прогресс + задания потока и КТ со статусами.
+ * Не дублирует дашборд — только траектория и статусы шагов.
+ */
+export function StudentCourseTracker({ studentId, navigate }) {
+    const { stats } = usePlatformStepChecklist(studentId);
+    const { doneSteps, totalSteps, anchorsDone, anchorsTotal, pct } = stats;
+
+    const homework = useMemo(() => pvlDomainApi.studentApi.getStudentResults(studentId, {}), [studentId]);
+    const controlPoints = useMemo(() => pvlDomainApi.studentApi.getStudentControlPointsProgress(studentId), [studentId]);
 
     return (
         <div className="space-y-4">
-            <div className="rounded-2xl border border-[#4A3728]/15 bg-gradient-to-br from-[#4A3728] to-[#3D2E22] p-6 text-[#F5EDE6] shadow-sm">
+            <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-700/90 to-slate-800/95 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
-                <p className="text-sm text-[#F5EDE6]/75 mt-1">Полный путь по модулям — как в методическом маршруте. Отмечайте шаги по мере прохождения.</p>
+                <p className="text-sm text-white/75 mt-1">Полный путь по модулям — как в методическом маршруте. Отмечайте шаги по мере прохождения (те же отметки, что в «Уроках»).</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-4 border-t border-white/10">
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{doneSteps}</div>
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-[#F5EDE6]/55 mt-1">Шагов отмечено</div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Шагов отмечено</div>
                     </div>
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{totalSteps}</div>
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-[#F5EDE6]/55 mt-1">Всего шагов</div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Всего шагов</div>
                     </div>
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{pct}%</div>
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-[#F5EDE6]/55 mt-1">Прогресс</div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Прогресс</div>
                     </div>
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{anchorsDone}/{anchorsTotal}</div>
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-[#F5EDE6]/55 mt-1">Якоря</div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Якоря</div>
                     </div>
                 </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-                {PVL_PLATFORM_MODULES.map((mod) => {
-                    const modTotal = mod.items.length;
-                    const modDone = mod.items.filter((_, i) => checked[`${mod.id}-${i}`]).length;
-                    const modPct = modTotal ? Math.round((modDone / modTotal) * 100) : 0;
-                    return (
-                        <article key={mod.id} className="rounded-2xl border border-slate-100/90 bg-white shadow-sm shadow-slate-200/30 overflow-hidden">
-                            <div className="flex gap-4 p-5 border-b border-slate-100">
-                                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-display font-semibold ${moduleNumClass(mod.cls)}`}>
-                                    {mod.label}
-                                </div>
-                                <div>
-                                    <h4 className="font-display text-lg text-slate-900 leading-snug">{mod.title}</h4>
-                                    <p className="text-xs text-slate-500 mt-0.5">{mod.sub}</p>
-                                </div>
-                            </div>
-                            <div className="p-5">
-                                <div className="flex justify-between text-xs text-slate-500 mb-2">
-                                    <span>{modDone} из {modTotal}</span>
-                                    <span className="tabular-nums">{modPct}%</span>
-                                </div>
-                                <div className="h-1 rounded-full bg-slate-100 overflow-hidden mb-4">
-                                    <div className="h-full rounded-full bg-gradient-to-r from-[#C8855A] to-[#e8a070]" style={{ width: `${modPct}%` }} />
-                                </div>
-                                <ul className="space-y-0 divide-y divide-slate-50">
-                                    {mod.items.map((item, i) => {
-                                        const key = `${mod.id}-${i}`;
-                                        const isDone = !!checked[key];
-                                        const tag = item.tag || 'task';
-                                        const stLabel = stepLessonStatus(isDone, tag);
-                                        return (
-                                            <li key={key}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => toggleItem(key)}
-                                                    className="w-full flex items-start gap-3 py-2.5 px-1 rounded-lg text-left hover:bg-slate-50/80 transition-colors"
-                                                >
-                                                    <span
-                                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
-                                                    >
-                                                        {isDone ? '✓' : ''}
-                                                    </span>
-                                                    <span className={`text-sm flex-1 leading-snug ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
-                                                    <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
-                                                        {CHECKLIST_TAG_LABEL[tag] || tag}
-                                                    </span>
-                                                    <TrackerStatusBadge>{stLabel}</TrackerStatusBadge>
-                                                </button>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </div>
-                        </article>
-                    );
-                })}
-            </div>
+            <PlatformCourseModulesGrid studentId={studentId} variant="tracker" />
 
             <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
                 <h4 className="font-display text-lg text-slate-800 mb-1">Задания вашего потока</h4>
@@ -243,7 +277,7 @@ export function StudentCourseTracker({ studentId, navigate }) {
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                    После прохождения модулей — сертификационный завтрак, запись, самооценка по бланку и оценка ментора. Разделы «Сертификация» и «Самооценка» в меню содержат полный сценарий (как в pvl_platform_v4 и pvl_assessment).
+                    После прохождения модулей — сертификационный завтрак, запись, самооценка по бланку и оценка ментора. Разделы «Сертификация» и «Самооценка» в меню ведут через весь сценарий.
                 </p>
             </section>
         </div>

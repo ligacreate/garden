@@ -1,7 +1,7 @@
 import { seed } from '../data/pvl/seed';
 import { capSzMentor, capSzSelf, computeCourseBreakdown } from './pvlScoringEngine';
 import { CANONICAL_SCHEDULE_2026 } from '../data/pvl/constants';
-import { CONTENT_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
+import { CERTIFICATION_STATUS, CONTENT_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
 import { PVL_PLATFORM_MODULES } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import {
@@ -754,6 +754,7 @@ export const studentApi = {
         const c = db.certificationProgress.find((x) => x.studentId === studentId);
         const sz = db.szAssessmentState.find((x) => x.studentId === studentId);
         const redFlags = getCertificationRedFlags(db, studentId);
+        const criticalFromSelf = Number(sz?.selfAssessmentCriticalCount) || 0;
         return {
             ...c,
             readiness: getCertificationReadiness(db, studentId),
@@ -764,10 +765,67 @@ export const studentApi = {
             szScores: {
                 self_score_total: capSzSelf(sz?.selfAssessmentPoints || 0),
                 mentor_score_total: capSzMentor(sz?.mentorAssessmentPoints || 0),
-                critical_flags_count: redFlags.length,
+                critical_flags_count: criticalFromSelf,
                 certification_status: sz?.finalStatus || 'not_started',
+                package_red_flags_count: redFlags.length,
             },
         };
+    },
+    /**
+     * Фиксирует заполненный бланк самооценки в слое данных (баллы СЗ, критические отметки, статусы сертификации).
+     */
+    commitSzSelfAssessment(studentId, payload) {
+        const selfTotal = capSzSelf(Number(payload?.selfScoreTotal) || 0);
+        const criticalCount = Math.max(0, Math.min(10, Number(payload?.criticalFlagsCount) || 0));
+        const mentorScores = Array.isArray(payload?.mentorScores) ? payload.mentorScores : [];
+        const mentorFilled = mentorScores.length === 18 && mentorScores.every((v) => v === 1 || v === 2 || v === 3);
+        const mentorTotal = mentorFilled
+            ? capSzMentor(mentorScores.reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0))
+            : null;
+
+        let sz = db.szAssessmentState.find((x) => x.studentId === studentId);
+        if (!sz) {
+            sz = { id: uid('sz'), studentId, selfAssessmentPoints: 0, mentorAssessmentPoints: 0, selfAssessmentCriticalCount: 0, redFlags: [], comparedAt: null, finalStatus: 'not_started', selfAssessmentSubmittedAt: null };
+            db.szAssessmentState.push(sz);
+        }
+        sz.selfAssessmentPoints = selfTotal;
+        sz.selfAssessmentCriticalCount = criticalCount;
+        sz.selfAssessmentSubmittedAt = nowIso();
+        if (mentorTotal != null) {
+            sz.mentorAssessmentPoints = mentorTotal;
+            sz.comparedAt = nowIso().slice(0, 10);
+        }
+        if (criticalCount > 0) {
+            sz.finalStatus = 'red_flag';
+        } else if (mentorFilled) {
+            sz.finalStatus = 'ready_for_review';
+        } else {
+            sz.finalStatus = 'in_progress';
+        }
+
+        const cert = db.certificationProgress.find((x) => x.studentId === studentId);
+        if (cert) {
+            cert.szSelfAssessmentStatus = 'done';
+            cert.updatedAt = nowIso();
+            if (criticalCount > 0) {
+                cert.admissionStatus = CERTIFICATION_STATUS.RED_FLAG;
+            } else if (cert.admissionStatus === CERTIFICATION_STATUS.NOT_STARTED || cert.admissionStatus === CERTIFICATION_STATUS.IN_PROGRESS) {
+                cert.admissionStatus = CERTIFICATION_STATUS.READY_FOR_REVIEW;
+            }
+            if (mentorFilled) {
+                cert.szMentorAssessmentStatus = 'done';
+            } else if (cert.szMentorAssessmentStatus === 'not_started') {
+                cert.szMentorAssessmentStatus = 'pending';
+            }
+        }
+
+        calculatePointsSummary(studentId);
+        addAuditEvent(studentId, ROLES.STUDENT, 'sz_self_assessment_commit', 'certification', studentId, 'Self-assessment committed to data layer', {
+            selfTotal,
+            criticalCount,
+            mentorFilled,
+        });
+        return this.getStudentCertification(studentId);
     },
     getStudentChecklist(studentId) {
         return db.courseWeeks.map((w) => ({ weekNumber: w.weekNumber, progress: 0, studentId }));

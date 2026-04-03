@@ -84,6 +84,55 @@ function computePlatformStepStats(checked) {
     return { totalSteps, doneSteps, anchorsTotal, anchorsDone, pct };
 }
 
+const TRACKER_LESSON_TAGS = new Set(['video', 'pdf', 'live']);
+const TRACKER_HOMEWORK_TAGS = new Set(['task', 'quiz']);
+
+/**
+ * Показатели дашборда из тех же отметок, что «Трекер курса» (localStorage + PVL_PLATFORM_MODULES).
+ */
+export function computePvlTrackerDashboardStats(checked) {
+    let lessonsDone = 0;
+    let lessonsTotal = 0;
+    let homeworkDone = 0;
+    let homeworkTotal = 0;
+    let currentModule = null;
+
+    PVL_PLATFORM_MODULES.forEach((mod) => {
+        let moduleHasIncomplete = false;
+        mod.items.forEach((item, i) => {
+            const key = `${mod.id}-${i}`;
+            const done = !!checked[key];
+            const tag = item.tag || 'task';
+            if (TRACKER_LESSON_TAGS.has(tag)) {
+                lessonsTotal += 1;
+                if (done) lessonsDone += 1;
+            }
+            if (TRACKER_HOMEWORK_TAGS.has(tag)) {
+                homeworkTotal += 1;
+                if (done) homeworkDone += 1;
+            }
+            if (!done) moduleHasIncomplete = true;
+        });
+        if (moduleHasIncomplete && currentModule === null) currentModule = mod;
+    });
+
+    if (!currentModule) {
+        currentModule = PVL_PLATFORM_MODULES[PVL_PLATFORM_MODULES.length - 1] || null;
+    }
+
+    const base = computePlatformStepStats(checked);
+    return {
+        ...base,
+        currentModuleTitle: currentModule?.title || '—',
+        lessonsDone,
+        lessonsTotal,
+        lessonsRemaining: Math.max(0, lessonsTotal - lessonsDone),
+        homeworkDone,
+        homeworkTotal,
+        homeworkRemaining: Math.max(0, homeworkTotal - homeworkDone),
+    };
+}
+
 export function usePlatformStepChecklist(studentId) {
     const storageKey = platformStepsStorageKey(studentId);
     const [checked, setChecked] = useState(() => {

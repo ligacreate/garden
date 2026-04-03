@@ -76,6 +76,8 @@ export function PvlDashboardCalendarBlock({
     fullCalendarLabel = 'Открыть календарь',
 }) {
     const [currentDate, setCurrentDate] = useState(() => new Date(`${PVL_TODAY}T12:00:00`));
+    /** YYYY-MM-DD в видимом месяце или null — тогда справа «ближайшие» */
+    const [selectedDayKey, setSelectedDayKey] = useState(null);
     const events = useMemo(() => pvlDomainApi.calendarApi.listForViewer(viewerRole, cohortId), [viewerRole, cohortId]);
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -88,10 +90,26 @@ export function PvlDashboardCalendarBlock({
     const upcoming = useMemo(() => {
         return events
             .filter((e) => String(eventDayKey(e)) >= PVL_TODAY)
-            .slice(0, 6);
+            .sort((a, b) => String(eventDayKey(a)).localeCompare(String(eventDayKey(b))) || String(a.startAt || '').localeCompare(String(b.startAt || '')))
+            .slice(0, 8);
     }, [events]);
 
     const monthLabel = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+
+    const listEvents = useMemo(() => {
+        if (!selectedDayKey) return upcoming;
+        const dayList = (byDay.get(selectedDayKey) || []).slice().sort((a, b) => String(a.startAt || '').localeCompare(String(b.startAt || '')));
+        return dayList;
+    }, [selectedDayKey, byDay, upcoming]);
+
+    const listTitle = selectedDayKey
+        ? `События · ${new Date(`${selectedDayKey}T12:00:00`).toLocaleString('ru-RU', { day: 'numeric', month: 'long' })}`
+        : 'Ближайшие события';
+
+    const handleMonthNav = (delta) => {
+        setSelectedDayKey(null);
+        setCurrentDate(new Date(year, month + delta, 1));
+    };
 
     return (
         <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/40">
@@ -103,7 +121,7 @@ export function PvlDashboardCalendarBlock({
                 <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
+                        onClick={() => handleMonthNav(-1)}
                         className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
                     >
                         ←
@@ -111,7 +129,7 @@ export function PvlDashboardCalendarBlock({
                     <span className="text-sm font-medium text-slate-700 capitalize min-w-[10rem] text-center">{monthLabel}</span>
                     <button
                         type="button"
-                        onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
+                        onClick={() => handleMonthNav(1)}
                         className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
                     >
                         →
@@ -134,64 +152,95 @@ export function PvlDashboardCalendarBlock({
                 <span className="inline-flex items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${calendarEventDotClass('lesson_release')}`} /> Уроки</span>
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] p-3 md:p-4 select-none">
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
-                    {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => <div key={d}>{d}</div>)}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                    {Array.from({ length: startOffset }).map((_, i) => (
-                        <div key={`empty-${i}`} className="aspect-square rounded-xl bg-transparent" />
-                    ))}
-                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-                        const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        const dayEvts = byDay.get(key) || [];
-                        const isToday = key === PVL_TODAY;
-                        return (
-                            <div
-                                key={key}
-                                className={`aspect-square rounded-xl border flex flex-col items-center justify-start pt-1 text-xs transition-colors ${
-                                    isToday ? 'border-teal-200 bg-teal-50/50' : 'border-slate-100/80 bg-white'
-                                }`}
-                            >
-                                <span className={`tabular-nums ${isToday ? 'font-semibold text-teal-800' : 'text-slate-600'}`}>{day}</span>
-                                <div className="flex flex-wrap gap-0.5 justify-center mt-0.5 px-0.5">
-                                    {Array.from(new Set(dayEvts.map((e) => e.eventType))).slice(0, 3).map((t) => (
-                                        <span key={t} className={`w-1.5 h-1.5 rounded-full ${calendarEventDotClass(t)}`} title={PVL_CAL_EVENT_LABELS[t] || t} />
-                                    ))}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <div className="mt-5">
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">Ближайшие события</h4>
-                {upcoming.length === 0 ? (
-                    <p className="text-sm text-slate-400">Нет предстоящих событий в выбранном потоке.</p>
-                ) : (
-                    <ul className="space-y-2">
-                        {upcoming.map((ev) => (
-                            <li key={ev.id}>
+            <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 items-stretch">
+                <div className="w-full lg:w-[min(100%,280px)] shrink-0 rounded-2xl border border-slate-100 bg-[#fafaf8] p-3 md:p-4 select-none">
+                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => <div key={d}>{d}</div>)}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                        {Array.from({ length: startOffset }).map((_, i) => (
+                            <div key={`empty-${i}`} className="aspect-square rounded-xl bg-transparent" />
+                        ))}
+                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+                            const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            const dayEvts = byDay.get(key) || [];
+                            const isToday = key === PVL_TODAY;
+                            const isSelected = selectedDayKey === key;
+                            return (
                                 <button
+                                    key={key}
                                     type="button"
-                                    onClick={() => openEventNavigation(ev, navigate, routePrefix)}
-                                    className="w-full text-left rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 hover:border-blue-100 hover:bg-blue-50/30 transition-colors"
+                                    onClick={() => setSelectedDayKey((prev) => (prev === key ? null : key))}
+                                    className={`aspect-square rounded-xl border flex flex-col items-center justify-start pt-1 text-xs transition-colors cursor-pointer ${
+                                        isSelected
+                                            ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200/80'
+                                            : isToday
+                                              ? 'border-teal-200 bg-teal-50/50'
+                                              : 'border-slate-100/80 bg-white hover:border-slate-200'
+                                    }`}
                                 >
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${calendarEventDotClass(ev.eventType)}`} />
-                                        <span className="text-sm font-medium text-slate-800">{ev.title}</span>
-                                    </div>
-                                    <div className="text-[11px] text-slate-500 mt-1">
-                                        {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                                        {' · '}
-                                        {formatPvlDateTime(ev.startAt)}
+                                    <span
+                                        className={`tabular-nums ${isSelected || isToday ? 'font-semibold text-teal-900' : 'text-slate-600'}`}
+                                    >
+                                        {day}
+                                    </span>
+                                    <div className="flex flex-wrap gap-0.5 justify-center mt-0.5 px-0.5 min-h-[10px]">
+                                        {Array.from(new Set(dayEvts.map((e) => e.eventType))).slice(0, 3).map((t) => (
+                                            <span key={t} className={`w-1.5 h-1.5 rounded-full ${calendarEventDotClass(t)}`} title={PVL_CAL_EVENT_LABELS[t] || t} />
+                                        ))}
                                     </div>
                                 </button>
-                            </li>
-                        ))}
-                    </ul>
-                )}
+                            );
+                        })}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-3 leading-snug">Нажмите на дату — справа список событий. Повторный клик снимает выбор.</p>
+                </div>
+
+                <div className="flex-1 min-w-0 flex flex-col rounded-2xl border border-slate-100/90 bg-slate-50/40 p-4 md:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <h4 className="text-sm font-semibold text-slate-800">{listTitle}</h4>
+                        {selectedDayKey ? (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDayKey(null)}
+                                className="text-[11px] text-[#C8855A] hover:underline"
+                            >
+                                Показать ближайшие
+                            </button>
+                        ) : null}
+                    </div>
+                    <div className="flex-1 min-h-[200px] max-h-[320px] overflow-y-auto pr-1 -mr-1">
+                        {listEvents.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center">
+                                <p className="text-sm text-slate-500">
+                                    {selectedDayKey ? 'В этот день событий нет.' : 'Нет предстоящих событий в выбранном потоке.'}
+                                </p>
+                            </div>
+                        ) : (
+                            <ul className="space-y-2">
+                                {listEvents.map((ev) => (
+                                    <li key={ev.id}>
+                                        <button
+                                            type="button"
+                                            onClick={() => openEventNavigation(ev, navigate, routePrefix)}
+                                            className="w-full text-left rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm shadow-slate-200/30 hover:border-emerald-100 hover:bg-emerald-50/20 transition-colors"
+                                        >
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${calendarEventDotClass(ev.eventType)}`} />
+                                                <span className="text-sm font-medium text-slate-800">{ev.title}</span>
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 mt-1">
+                                                {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                                {' · '}
+                                                {formatPvlDateTime(ev.startAt)}
+                                            </div>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </div>
             </div>
         </section>
     );

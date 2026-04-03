@@ -689,10 +689,12 @@ const CourseLibraryView = ({
                     <h1 className="text-4xl font-light text-slate-800 tracking-tight">{selectedCourse ? selectedCourse.title : 'Библиотека'}</h1>
                     <p className="text-slate-400 mt-1 font-light">{selectedCourse ? 'Материалы курса' : 'Обучающие материалы и курсы'}</p>
                 </div>
-                <div className="text-right hidden md:block">
-                    <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
-                    <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : filteredCourses.length}</div>
-                </div>
+                {selectedCourse?.id !== PVL_ENTRY_COURSE_ID ? (
+                    <div className="text-right hidden md:block">
+                        <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
+                        <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : filteredCourses.length}</div>
+                    </div>
+                ) : null}
             </div>
 
             {selectedCourse && selectedCourse.id !== PVL_ENTRY_COURSE_ID && (
@@ -838,19 +840,11 @@ const CourseLibraryView = ({
                         )
                     ) : (
                         <div className="space-y-4">
-                            <div className="flex flex-wrap gap-2 justify-between items-center">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
                                 <div className="text-sm text-slate-500">
                                     {aiCampSession.name}
                                     <span className="text-slate-400"> · </span>
                                     {aiCampSession.role === 'mentor' ? 'Ментор' : aiCampSession.role === 'admin' ? 'Администратор курса' : 'Ученик'}
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <Button variant="secondary" onClick={handleAiCampLogout}>
-                                        Выйти из курса
-                                    </Button>
-                                    <Button variant="secondary" onClick={onBackToGarden}>
-                                        Вернуться к саду
-                                    </Button>
                                 </div>
                             </div>
                             <div className="rounded-[2rem] border border-[#E8D5C4]/40 overflow-hidden bg-white/90 -mx-2 px-2 py-3 md:px-4 max-w-[100vw]">

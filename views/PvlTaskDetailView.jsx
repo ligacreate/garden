@@ -612,10 +612,6 @@ function MentorTaskSlim({
     mentorRoutePrefix = '/mentor',
 }) {
     const td = state.taskDetail;
-    const revisionCyclesFromHistory = useMemo(
-        () => state.statusHistory.filter((h) => h.toStatus === 'на доработке').length,
-        [state.statusHistory],
-    );
     const [reply, setReply] = useState('');
     const [scoreInput, setScoreInput] = useState(() => String(td.maxScore != null ? td.maxScore : ''));
     const [formError, setFormError] = useState('');
@@ -668,7 +664,7 @@ function MentorTaskSlim({
     return (
         <div className="space-y-4">
             <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} />
-            <TaskRevisionSummary revisionCyclesFromHistory={revisionCyclesFromHistory} storedRevisionCycles={td.revisionCycles} />
+            <TaskRevisionSummary revisionCyclesFromHistory={td.revisionCycles ?? 0} storedRevisionCycles={td.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center gap-3">
                 <button
@@ -746,13 +742,12 @@ export function renderTaskDetail({
     threadLocked,
     disputeOpen,
     onOpenDispute,
-    revisionCyclesFromHistory = 0,
 }) {
     return (
         <div className="space-y-3">
             <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} />
             <TaskMeta data={state.taskDetail} />
-            <TaskRevisionSummary revisionCyclesFromHistory={revisionCyclesFromHistory} storedRevisionCycles={state.taskDetail.revisionCycles} />
+            <TaskRevisionSummary revisionCyclesFromHistory={state.taskDetail.revisionCycles ?? 0} storedRevisionCycles={state.taskDetail.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <SubmissionHistory
                 versions={state.submissionVersions}
@@ -763,7 +758,6 @@ export function renderTaskDetail({
                 draftText={draftText}
                 setDraftText={setDraftText}
             />
-            <StatusTimeline history={state.statusHistory} />
             <CommentsThread
                 messages={state.threadMessages}
                 onSend={onSendThreadMessage}
@@ -803,10 +797,7 @@ export default function PvlTaskDetailView({
     const [draftText, setDraftText] = useState(localStorage.getItem('pvl_task_draft_v1') || '');
     const [mentorForm, setMentorForm] = useState({ ...mentorReview });
 
-    const revisionCycles = useMemo(
-        () => state.statusHistory.filter((h) => h.toStatus === 'на доработке').length,
-        [state.statusHistory]
-    );
+    const revisionCycles = state.taskDetail.revisionCycles ?? 0;
 
     const threadLocked = (state.taskDetail.isAcceptedWork || state.taskDetail.status === 'принято') && !state.taskDetail.disputeOpen;
     const disputeOpen = !!state.taskDetail.disputeOpen;
@@ -935,7 +926,6 @@ export default function PvlTaskDetailView({
                 mentorForm,
                 setMentorForm,
                 onSaveMentorForm: handleSaveMentorForm,
-                revisionCyclesFromHistory: revisionCycles,
             })}
         </div>
     );

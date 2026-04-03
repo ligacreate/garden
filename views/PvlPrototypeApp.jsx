@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
 import PvlSzAssessmentFlow from './PvlSzAssessmentFlow';
-import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist } from './PvlStudentTrackerView';
+import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
 import {
     PVL_CERT_CONDITIONS,
     PVL_CERT_CRITERIA_GROUPS,
@@ -95,16 +95,21 @@ function toRoute(name) {
     const map = {
         'О курсе': 'about',
         Онбординг: 'onboarding',
+        Глоссарий: 'glossary',
         'Глоссарий курса': 'glossary',
+        Библиотека: 'library',
         'Библиотека курса': 'library',
         Уроки: 'lessons',
+        Трекер: 'tracker',
         'Трекер курса': 'tracker',
+        Практикумы: 'practicums',
         'Практикумы с менторами': 'practicums',
         'Чек-лист': 'checklist',
         Результаты: 'results',
         Сертификация: 'certification',
         'Сертификация и самооценка': 'certification',
         Самооценка: 'self-assessment',
+        Вопросы: 'qa',
         'Вопросы и ответы': 'qa',
         'Культурный код Лиги': 'cultural-code',
     };
@@ -114,13 +119,13 @@ function toRoute(name) {
 /** Единый курсный блок меню для участницы, ментора и учительской (без отдельного онбординга). */
 const COURSE_MENU_LABELS = [
     'О курсе',
-    'Глоссарий курса',
-    'Библиотека курса',
-    'Трекер курса',
-    'Практикумы с менторами',
+    'Глоссарий',
+    'Библиотека',
+    'Трекер',
+    'Практикумы',
     'Результаты',
-    'Сертификация и самооценка',
-    'Вопросы и ответы',
+    'Сертификация',
+    'Вопросы',
 ];
 
 const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
@@ -128,7 +133,7 @@ const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
 const MENTOR_TOP_NAV = [
     { label: 'Дашборд', path: '/mentor/dashboard' },
     { label: 'Мои менти', path: '/mentor/mentees' },
-    { label: 'Очередь проверок', path: '/mentor/review-queue' },
+    { label: 'Очередь', path: '/mentor/review-queue' },
 ];
 
 const ADMIN_SIDEBAR_CONFIG = [
@@ -141,7 +146,7 @@ const ADMIN_SIDEBAR_CONFIG = [
     ...COURSE_MENU_LABELS.map((label) => ({
         type: 'item',
         label,
-        path: label === 'Вопросы и ответы' ? '/admin/questions' : `/admin/${toRoute(label)}`,
+        path: label === 'Вопросы' ? '/admin/questions' : `/admin/${toRoute(label)}`,
     })),
     { type: 'divider' },
     { type: 'item', label: 'Настройки', path: '/admin/settings' },
@@ -152,8 +157,8 @@ const ADMIN_COURSE_ROUTE_RE = /^\/admin\/(about|glossary|library|tracker|practic
 function courseSidebarItemActive(currentRoute, prefix, label) {
     const base = `${prefix}/${toRoute(label)}`;
     if (currentRoute === base) return true;
-    if (label === 'Вопросы и ответы' && prefix === '/admin' && (currentRoute === '/admin/questions' || currentRoute === '/admin/qa')) return true;
-    if (label === 'Библиотека курса' && (currentRoute || '').startsWith(`${prefix}/library/`)) return true;
+    if (label === 'Вопросы' && prefix === '/admin' && (currentRoute === '/admin/questions' || currentRoute === '/admin/qa')) return true;
+    if (label === 'Библиотека' && (currentRoute || '').startsWith(`${prefix}/library/`)) return true;
     if (label === 'Результаты' && (currentRoute || '').startsWith(`${prefix}/results/`)) return true;
     return false;
 }
@@ -179,7 +184,7 @@ function adminSectionForRoute(allowedRoute) {
     if (allowedRoute === '/admin/content') return 'Материалы курса';
     if (allowedRoute === '/admin/calendar') return 'Календарь';
     if (allowedRoute === '/admin/settings') return 'Настройки';
-    if (allowedRoute === '/admin/qa' || allowedRoute === '/admin/questions') return 'Вопросы и ответы';
+    if (allowedRoute === '/admin/qa' || allowedRoute === '/admin/questions') return 'Вопросы';
     for (const label of COURSE_MENU_LABELS) {
         if (courseSidebarItemActive(allowedRoute, '/admin', label)) return label;
     }
@@ -239,8 +244,8 @@ const ProgressWidget = ({ title, done, total }) => {
     return (
         <article className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm shadow-slate-200/40">
             <div className="text-xs font-medium text-slate-500">{title}</div>
-            <div className="font-display text-2xl md:text-3xl text-blue-700/90 mt-1 tabular-nums">{done}/{total}</div>
-            <div className="mt-3 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-blue-500/70" style={{ width: `${pct}%` }} /></div>
+            <div className="font-display text-2xl md:text-3xl text-emerald-800/95 mt-1 tabular-nums">{done}/{total}</div>
+            <div className="mt-3 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-emerald-500/80" style={{ width: `${pct}%` }} /></div>
         </article>
     );
 };
@@ -347,7 +352,6 @@ const SidebarMenu = ({
                 >
                     Дашборд
                 </button>
-                <div className={pvlSidebarDividerClass} />
                 {COURSE_MENU_LABELS.map((item) => {
                     const base = `/student/${toRoute(item)}`;
                     const subActive = courseSidebarItemActive(currentRoute, '/student', item);
@@ -951,91 +955,162 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
     const points = pvlDomainApi.helpers.getStudentPointsSummary(studentId);
     const w = snapshot.compulsoryWidgets;
+    const { checked } = usePlatformStepChecklist(studentId);
+    const tr = useMemo(() => computePvlTrackerDashboardStats(checked), [checked]);
     const apiTasks = pvlDomainApi.studentApi.getStudentResults(studentId, {});
     const activeHomework = apiTasks.filter((t) => ACTIVE_HOMEWORK_LABELS.has(t.displayStatus || t.status));
+    const homeworkShortlist = useMemo(() => {
+        return [...activeHomework]
+            .sort((a, b) => String(a.deadlineAt || '').localeCompare(String(b.deadlineAt || '')))
+            .slice(0, 8);
+    }, [activeHomework]);
     const feed = snapshot.activityFeed || [];
-    const nextMeet = pvlDomainApi.db.mentorMeetings
-        .filter((m) => m.studentId === studentId && String(m.status).toLowerCase() === 'scheduled')
-        .sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)))[0];
+    const user = getUser(studentId);
+    const cohortId = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId)?.cohortId || 'cohort-2026-1';
+
+    const fmtDeadline = (ymd) => (ymd ? formatPvlDateTime(`${String(ymd).slice(0, 10)}T12:00:00`) : '—');
 
     return (
         <div className="space-y-6">
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-6 md:p-8 shadow-sm shadow-slate-200/40">
-                <h2 className="font-display text-2xl md:text-3xl text-slate-800">Дашборд</h2>
-                <p className="text-sm text-slate-500 mt-1 max-w-xl">Где вы сейчас и что сделать дальше. Полный путь курса — в разделе «Трекер курса».</p>
-                <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-6">
-                    <DashboardWidget title="Текущий модуль" value={w?.currentModuleTitle || '—'} />
-                    <DashboardWidget title="Дней до конца модуля" value={`${w?.daysToModuleEnd ?? '—'}`} />
-                    <DashboardWidget title="Уроки: просмотрено / осталось" value={`${w?.lessonsDone ?? 0} / ${w?.lessonsRemaining ?? 0}`} hint={`Всего в потоке: ${w?.lessonsTotal ?? '—'}`} />
-                    <DashboardWidget title="Домашки: сделано / осталось" value={`${w?.homeworkDone ?? 0} / ${w?.homeworkRemaining ?? 0}`} hint={`Всего: ${w?.homeworkTotal ?? '—'}`} />
-                    <DashboardWidget title="До конца курса" value={`${w?.daysToCourseEnd ?? '—'} дн.`} />
-                    <DashboardWidget title="До сдачи записи СЗ" value={`${w?.daysToSzSubmission ?? '—'} дн.`} hint="Самооценка и сертификация" />
-                    <DashboardWidget title="Курсовые баллы" value={`${points.coursePointsTotal}/400`} />
-                    <DashboardWidget title="Самооценка СЗ (баллы)" value={`${points.szSelfAssessmentTotal}/54`} />
+            <div className="grid lg:grid-cols-[1fr_min(100%,320px)] gap-4 lg:gap-5 items-stretch">
+                <section className="rounded-[1.35rem] bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 text-white p-6 md:p-8 shadow-lg shadow-emerald-900/15 flex flex-col justify-between min-h-[220px]">
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/65">{PVL_COURSE_DISPLAY_NAME}</p>
+                        <h2 className="font-display text-2xl md:text-3xl mt-2 tracking-tight">{user?.fullName || 'Участница'}</h2>
+                        <p className="text-sm text-white/88 mt-2 max-w-lg leading-relaxed">
+                            Прогресс по шагам трекера: <span className="font-semibold tabular-nums">{tr.pct}%</span>
+                            . Отметки здесь и в разделе «Трекер» совпадают.
+                        </p>
+                    </div>
+                    <div className="mt-6 flex flex-wrap items-end gap-5">
+                        <div>
+                            <div className="font-display text-4xl md:text-5xl tabular-nums leading-none">{tr.doneSteps}<span className="text-white/50 text-2xl md:text-3xl">/{tr.totalSteps}</span></div>
+                            <div className="text-xs text-white/70 mt-1.5">шагов платформы</div>
+                        </div>
+                        {navigate ? (
+                            <button
+                                type="button"
+                                onClick={() => navigate(`${routePrefix}/tracker`)}
+                                className="rounded-full bg-white/15 hover:bg-white/25 px-5 py-2.5 text-sm font-medium border border-white/25 transition-colors"
+                            >
+                                Открыть трекер
+                            </button>
+                        ) : null}
+                    </div>
+                </section>
+                <aside className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30 flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Текущий фокус</h3>
+                        <p className="text-sm text-slate-800 mt-2 font-medium leading-snug line-clamp-4">{tr.currentModuleTitle}</p>
+                    </div>
+                    <dl className="mt-5 space-y-2.5 text-sm border-t border-slate-100 pt-5 text-slate-600">
+                        <div className="flex justify-between gap-2"><dt className="text-slate-500">До конца модуля</dt><dd className="tabular-nums font-medium text-slate-800">{w?.daysToModuleEnd ?? '—'} дн.</dd></div>
+                        <div className="flex justify-between gap-2"><dt className="text-slate-500">До конца курса</dt><dd className="tabular-nums font-medium text-slate-800">{w?.daysToCourseEnd ?? '—'} дн.</dd></div>
+                        <div className="flex justify-between gap-2"><dt className="text-slate-500">До записи СЗ</dt><dd className="tabular-nums font-medium text-slate-800">{w?.daysToSzSubmission ?? '—'} дн.</dd></div>
+                        <div className="flex justify-between gap-2"><dt className="text-slate-500">Курсовые баллы</dt><dd className="tabular-nums font-medium text-slate-800">{points.coursePointsTotal}/400</dd></div>
+                        <div className="flex justify-between gap-2"><dt className="text-slate-500">СЗ (самооценка)</dt><dd className="tabular-nums font-medium text-slate-800">{points.szSelfAssessmentTotal}/54</dd></div>
+                    </dl>
+                </aside>
+            </div>
+
+            <section className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+                <article className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm shadow-slate-200/30">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Модуль · трекер</div>
+                    <p className="text-sm font-medium text-slate-800 mt-2 leading-snug line-clamp-3">{tr.currentModuleTitle}</p>
+                </article>
+                <ProgressWidget title="Уроки · трекер" done={tr.lessonsDone} total={tr.lessonsTotal} />
+                <ProgressWidget title="Домашки · трекер" done={tr.homeworkDone} total={tr.homeworkTotal} />
+                <DashboardWidget title="Дней до модуля" value={`${w?.daysToModuleEnd ?? '—'}`} />
+                <DashboardWidget title="Курсовые баллы" value={`${points.coursePointsTotal}/400`} />
+                <DashboardWidget title="СЗ (баллы)" value={`${points.szSelfAssessmentTotal}/54`} />
+            </section>
+
+            <section className="space-y-3">
+                <h3 className="font-display text-lg text-slate-800">Быстрые переходы</h3>
+                <div className="grid sm:grid-cols-3 gap-3">
+                    {[
+                        { label: `Результаты (${apiTasks.length})`, to: `${routePrefix}/results` },
+                        { label: 'Практикумы', to: `${routePrefix}/practicums` },
+                        { label: 'Библиотека', to: `${routePrefix}/library` },
+                    ].map((x) => (
+                        <button
+                            key={x.to}
+                            type="button"
+                            onClick={() => navigate(x.to)}
+                            className="text-left rounded-2xl border border-slate-100/90 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 shadow-sm hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors"
+                        >
+                            {x.label}
+                        </button>
+                    ))}
                 </div>
             </section>
 
-            <section className="space-y-4">
+            <section className="space-y-3">
                 <div>
-                    <h3 className="font-display text-xl text-slate-800">Связь и расписание</h3>
-                    <p className="text-sm text-slate-500 mt-1">Календарь курса и ближайшая встреча с ментором.</p>
+                    <h3 className="font-display text-lg text-slate-800">Календарь курса</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Те же события, что в общем календаре потока.</p>
                 </div>
                 <PvlDashboardCalendarBlock
                     viewerRole="student"
-                    cohortId={pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId)?.cohortId || 'cohort-2026-1'}
+                    cohortId={cohortId}
                     navigate={navigate}
                     routePrefix={routePrefix}
                 />
-                <section className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
-                    <h4 className="font-display text-lg text-slate-800">Ближайшая встреча с ментором</h4>
-                    {nextMeet ? (
-                        <div className="mt-3 text-sm text-slate-600 space-y-1">
-                            <p className="font-medium text-slate-800">{nextMeet.title}</p>
-                            <p>{formatPvlDateTime(nextMeet.scheduledAt)} · неделя {nextMeet.weekNumber}</p>
-                            {nextMeet.focus ? <p className="text-xs text-slate-500">{nextMeet.focus}</p> : null}
-                        </div>
-                    ) : (
-                        <p className="text-sm text-slate-500 mt-3">Запланированных встреч не найдено — смотрите раздел «Практикумы».</p>
-                    )}
-                </section>
             </section>
 
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
-                <h3 className="font-display text-xl text-slate-800">Активные домашние работы</h3>
-                <p className="text-xs text-slate-500 mt-1">То, что нужно сдать, доработать или просмотреть после проверки.</p>
-                {activeHomework.length === 0 ? (
-                    <p className="text-sm text-slate-500 mt-3">Сейчас нет заданий в фокусе — загляните в «Результаты» для полного списка.</p>
+            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                        <h3 className="font-display text-xl text-slate-800">Домашние работы</h3>
+                        <p className="text-xs text-slate-500 mt-1">Срез из «Результаты» — только актуальные статусы.</p>
+                    </div>
+                    {navigate ? (
+                        <button
+                            type="button"
+                            onClick={() => navigate(`${routePrefix}/results`)}
+                            className="text-xs font-medium text-[#C8855A] hover:underline"
+                        >
+                            Все результаты →
+                        </button>
+                    ) : null}
+                </div>
+                {homeworkShortlist.length === 0 ? (
+                    <p className="text-sm text-slate-500 mt-4">Нет заданий в фокусе — откройте «Результаты».</p>
                 ) : (
-                    <ul className="mt-3 space-y-2">
-                        {activeHomework.map((t) => (
-                            <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">
-                                <div className="text-sm text-slate-800 font-medium">{t.title}</div>
-                                <div className="flex items-center gap-2">
+                    <div className="mt-4 flex gap-3 overflow-x-auto pb-1 scrollbar-thin">
+                        {homeworkShortlist.map((t) => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
+                                className="min-w-[220px] max-w-[260px] shrink-0 text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-4 hover:border-emerald-200 hover:bg-emerald-50/20 transition-colors shadow-sm"
+                            >
+                                <div className="text-sm font-semibold text-slate-800 line-clamp-2">{t.title}</div>
+                                <div className="text-[11px] text-slate-500 mt-2">Дедлайн: {fmtDeadline(t.deadlineAt)}</div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
                                     <StatusBadge>{t.displayStatus || t.status}</StatusBadge>
-                                    {navigate ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                            className="text-xs rounded-full border border-slate-200 px-3 py-1 text-[#C8855A] hover:bg-white"
-                                        >
-                                            Открыть
-                                        </button>
+                                    {t.maxScore > 0 && String(t.displayStatus || t.status).toLowerCase().includes('принят') ? (
+                                        <span className="text-[10px] tabular-nums text-slate-500">{t.score}/{t.maxScore}</span>
+                                    ) : null}
+                                    {(t.revisionCycles || 0) > 0 ? (
+                                        <span className="text-[10px] rounded-full bg-amber-50 text-amber-900 border border-amber-100 px-2 py-0.5">Доработок: {t.revisionCycles}</span>
                                     ) : null}
                                 </div>
-                            </li>
+                            </button>
                         ))}
-                    </ul>
+                    </div>
                 )}
             </section>
 
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
-                <h3 className="font-display text-xl text-slate-800">События и уведомления</h3>
-                <p className="text-xs text-slate-500 mt-1">Короткая лента по курсу — не заменяет диалог в карточке задания.</p>
-                <ul className="mt-3 space-y-2 text-sm text-slate-600">
+            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm">
+                <h3 className="font-display text-xl text-slate-800">Новости</h3>
+                <p className="text-xs text-slate-500 mt-1">Короткая лента по курсу.</p>
+                <ul className="mt-4 space-y-2 text-sm text-slate-600">
                     {feed.length === 0 ? <li className="text-slate-400">Пока нет событий.</li> : null}
                     {feed.map((item) => (
                         <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-50 pb-2 last:border-0">
-                            <div>
+                            <div className="min-w-0">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 align-middle mr-2 shrink-0" aria-hidden />
                                 <span className="font-medium text-slate-800">{item.text}</span>
                                 {item.detail ? <span className="text-slate-500"> — {item.detail}</span> : null}
                             </div>
@@ -1151,49 +1226,146 @@ function StudentPracticumsCalendar({ studentId }) {
     );
 }
 
+const ABOUT_COURSE_MATERIALS = [
+    {
+        id: 'intro',
+        tag: 'Обзор',
+        kind: 'документ',
+        title: `Курс «${PVL_COURSE_DISPLAY_NAME}»`,
+        summary: 'Три месяца интенсивной траектории, дедлайны по неделям, сопровождение ментором и учительской.',
+    },
+    {
+        id: 'structure',
+        tag: 'Курс',
+        kind: 'документ',
+        title: 'Как устроен курс',
+        summary: 'Модули по неделям, шаги в трекере, домашние задания со статусами и обратной связью ментора. Сертификационный завтрак и самооценка — в конце пути.',
+    },
+    {
+        id: 'platform',
+        tag: 'Платформа',
+        kind: 'документ',
+        title: 'Как пользоваться платформой',
+        summary: 'Разделы слева ведут в материалы, трекер, практикумы и результаты. Сообщения по заданию — в карточке работы.',
+    },
+    {
+        id: 'onboarding',
+        tag: 'Старт',
+        kind: 'документ',
+        title: 'Онбординг',
+        summary: 'Пошаговое знакомство с курсом без отдельного пункта меню. Далее — неделя 0 в трекере.',
+    },
+    {
+        id: 'safety',
+        tag: 'Безопасность',
+        kind: 'документ',
+        title: 'Правила безопасности',
+        summary: 'Конфиденциальность практик группы, бережная обратная связь, уважение границ. Подробности — в материалах потока и у куратора.',
+    },
+    {
+        id: 'points',
+        tag: 'Баллы',
+        kind: 'документ',
+        title: 'Курсовые баллы и призы',
+        summary: 'До 400 курсовых баллов за траекторию и КТ, до 50 — бонус ментора. Призы и номинации объявляет учительская.',
+    },
+    {
+        id: 'matrix',
+        tag: 'Команда',
+        kind: 'документ',
+        title: 'Матрица ответственности',
+        summary: 'Учительская — поток и правила. Ментор — проверка и встречи. Участница — шаги и сдача в срок. Куратор и техподдержка — организация и доступы.',
+    },
+    {
+        id: 'week0',
+        tag: 'Трекер',
+        kind: 'действие',
+        title: 'Старт, неделя 0',
+        summary: 'Первый модуль в трекере — «Неделя 0: Вход и настройка». Отметьте шаги старта перед модулем 1.',
+    },
+];
+
 function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
+    const [activeId, setActiveId] = useState(ABOUT_COURSE_MATERIALS[0]?.id || 'intro');
+    const active = ABOUT_COURSE_MATERIALS.find((m) => m.id === activeId) || ABOUT_COURSE_MATERIALS[0];
+    const tags = ['Все', 'Старт', 'Курс', 'Платформа', 'Безопасность', 'Баллы', 'Команда', 'Трекер'];
+    const [tagFilter, setTagFilter] = useState('Все');
+    const filtered = ABOUT_COURSE_MATERIALS.filter((m) => tagFilter === 'Все' || m.tag === tagFilter);
     const goTracker = () => navigate(`${routePrefix}/tracker`);
+
     return (
-        <div className="space-y-3">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h3 className="font-display text-2xl text-slate-800 mb-2">О курсе</h3>
-                <p className="text-sm text-slate-600 leading-6">Курс «{PVL_COURSE_DISPLAY_NAME}»: три месяца интенсивной траектории, дедлайны по неделям, сопровождение ментором и учительской.</p>
+        <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы курса</p>
+                <h2 className="font-display text-2xl md:text-3xl text-slate-800 mt-1">О курсе</h2>
+                <p className="text-sm text-slate-500 mt-2 max-w-2xl">Те же карточки, что в библиотеке: слева выбранный материал, справа список разделов.</p>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Как устроен курс</h4>
-                <p className="text-sm text-slate-600 leading-relaxed">Модули по неделям, шаги в трекере, домашние задания со статусами и обратной связью ментора. Сертификационный завтрак и самооценка — в конце пути, отдельным контуром в меню.</p>
+
+            <div className="grid lg:grid-cols-[1fr_1.05fr] gap-4 lg:gap-6 items-start">
+                <div className="rounded-2xl border border-slate-100/90 bg-white shadow-sm overflow-hidden flex flex-col min-h-[280px]">
+                    <div className="h-36 md:h-44 bg-gradient-to-br from-[#FAF6F2] via-emerald-50/80 to-teal-100/60 border-b border-slate-100" aria-hidden />
+                    <div className="p-5 md:p-6 flex-1 flex flex-col">
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 border border-slate-200 rounded-full px-2.5 py-1">{active?.tag}</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/80 border border-emerald-100 bg-emerald-50/50 rounded-full px-2.5 py-1">{active?.kind}</span>
+                        </div>
+                        <h3 className="font-display text-xl text-slate-800">{active?.title}</h3>
+                        <p className="text-sm text-slate-600 mt-3 leading-relaxed flex-1">{active?.summary}</p>
+                        {active?.id === 'week0' ? (
+                            <button
+                                type="button"
+                                onClick={goTracker}
+                                className="mt-5 self-start rounded-full bg-[#4A3728] text-white px-5 py-2.5 text-sm font-medium hover:bg-[#3d2f22]"
+                            >
+                                Перейти в трекер
+                            </button>
+                        ) : null}
+                        <div className="mt-6 pt-4 border-t border-slate-100">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Теги</p>
+                            <div className="flex flex-wrap gap-2">
+                                {tags.slice(1).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setTagFilter(t)}
+                                        className={`text-xs rounded-full border px-3 py-1.5 font-medium transition-colors ${
+                                            tagFilter === t ? 'border-[#C8855A] bg-[#FAF6F2] text-[#4A3728]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-xs text-slate-400 mt-3">Материалов в разделе: {filtered.length}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-100/90 bg-white shadow-sm flex flex-col max-h-[min(70vh,640px)]">
+                    <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+                        <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы</h3>
+                    </div>
+                    <ul className="divide-y divide-slate-100 overflow-y-auto flex-1">
+                        {ABOUT_COURSE_MATERIALS.map((m) => (
+                            <li key={m.id}>
+                                <button
+                                    type="button"
+                                    onClick={() => { setActiveId(m.id); setTagFilter('Все'); }}
+                                    className={`w-full text-left px-5 py-4 flex gap-3 transition-colors ${activeId === m.id ? 'bg-emerald-50/40 border-l-4 border-l-emerald-500 pl-4' : 'hover:bg-slate-50/80 border-l-4 border-l-transparent pl-4'}`}
+                                >
+                                    <span className="text-lg shrink-0" aria-hidden>{m.kind === 'действие' ? '→' : '📄'}</span>
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-slate-800">{m.title}</div>
+                                        <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{m.tag} · {m.kind}</div>
+                                        <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">{m.summary}</p>
+                                    </div>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Как пользоваться платформой</h4>
-                <p className="text-sm text-slate-600 leading-relaxed">Разделы слева ведут в материалы, трекер, практикумы и результаты. Сообщения по заданию — в карточке работы. Демо-переключатель роли сверху помогает проверить кабинеты; в продукте роль задаётся входом.</p>
-            </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Онбординг</h4>
-                <p className="text-sm text-slate-500 leading-relaxed">Пошаговое знакомство с курсом собрано здесь, без отдельного пункта меню. Пройдите блоки ниже и перейдите к неделе 0 в трекере.</p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Уроки, задания, дедлайны и личный кабинет — в боковом меню.</div>
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Антидолги: напоминания на 1, 3, 7 и 10-й день — чтобы не копить долги по неделям.</div>
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">С вами рядом методолог, ментор, куратор и техподдержка — у каждого своя зона ответственности.</div>
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Курсовые баллы (до 400) и оценка сертификационного завтрака (до 54) считаются отдельно.</div>
-            </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Правила безопасности</h4>
-                <p className="text-sm text-slate-600 leading-relaxed">Конфиденциальность практик группы, бережная обратная связь, уважение границ. Подробности договора и регламента — в материалах потока и у куратора.</p>
-            </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Курсовые баллы и призы</h4>
-                <p className="text-sm text-slate-600 leading-relaxed">До 400 курсовых баллов за траекторию и КТ, до 50 — бонус ментора по прозрачным правилам. Призы и номинации потока объявляются учительской отдельно.</p>
-            </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Матрица ответственности</h4>
-                <ul className="text-sm text-slate-600 space-y-2 list-disc pl-5">
-                    <li><span className="font-medium text-slate-800">Учительская</span> — поток, материалы, календарь, правила.</li>
-                    <li><span className="font-medium text-slate-800">Ментор</span> — проверка работ, встречи, сопровождение.</li>
-                    <li><span className="font-medium text-slate-800">Участница</span> — прохождение шагов, сдача работ в срок.</li>
-                    <li><span className="font-medium text-slate-800">Куратор / техподдержка</span> — организационные вопросы и доступы.</li>
-                </ul>
-            </div>
+
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
                 <h4 className="font-display text-lg text-slate-800 mb-3">Правила траектории</h4>
                 <ul className="space-y-2 text-sm text-slate-600 list-disc pl-5">
@@ -1201,17 +1373,6 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                         <li key={line.slice(0, 40)}>{line}</li>
                     ))}
                 </ul>
-            </div>
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-2">Старт, неделя 0</h4>
-                <p className="text-sm text-slate-600 mb-4">Первый модуль в трекере — «Неделя 0: Вход и настройка». Откройте трекер и отметьте шаги старта перед модулем 1.</p>
-                <button
-                    type="button"
-                    onClick={goTracker}
-                    className="rounded-full bg-[#4A3728] text-white px-5 py-2.5 text-sm font-medium hover:bg-[#3d2f22]"
-                >
-                    Перейти в трекер курса
-                </button>
             </div>
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
                 <h4 className="font-display text-lg text-slate-800 mb-3">Вопросы и ответы</h4>
@@ -1659,7 +1820,14 @@ function buildMentorMenteeRows(mentorId) {
     const menteesFromApi = pvlDomainApi.mentorApi.getMentorMentees(mentorId);
     return menteesFromApi.map((m) => {
         const user = m.user || getUser(m.userId);
+        const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === m.userId);
+        const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === profile?.cohortId)?.title || 'Поток';
         const tasks = pvlDomainApi.studentApi.getStudentResults(m.userId, {});
+        const total = Math.max(1, tasks.length);
+        const closed = tasks.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
+        const closedPct = Math.round((closed / total) * 100);
+        const pendingReview = tasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('проверк')).length;
+        const inRevision = tasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('доработ')).length;
         const accepted = tasks.filter((t) => t.status === 'принято');
         const lastDone = accepted.length
             ? accepted.reduce((best, t) => (String(t.submittedAt || '') > String(best.submittedAt || '') ? t : best), accepted[0])
@@ -1667,8 +1835,207 @@ function buildMentorMenteeRows(mentorId) {
         const overdueN = pvlDomainApi.db.studentTaskStates.filter((s) => s.studentId === m.userId && s.isOverdue).length;
         const pts = pvlDomainApi.helpers.getStudentPointsSummary(m.userId);
         const risks = pvlDomainApi.mentorApi.getMentorMenteeCard(mentorId, m.userId).risks || [];
-        return { user, lastDone, overdueN, coursePoints: pts.coursePointsTotal ?? 0, riskCount: risks.length };
+        let stateLine = 'в ритме';
+        if (overdueN > 0) stateLine = 'есть долги';
+        else if (pendingReview > 0) stateLine = 'нужна проверка';
+        else if (inRevision > 0) stateLine = 'есть доработки';
+        const courseLine = `${cohortTitle} · Модуль ${profile?.currentModule ?? '—'} · неделя ${profile?.currentWeek ?? '—'}`;
+        const lastAct = profile?.lastActivityAt ? formatPvlDateTime(profile.lastActivityAt) : '—';
+        const city = profile?.city || '';
+        return {
+            user,
+            userId: m.userId,
+            courseLine,
+            city,
+            closedPct,
+            pendingReview,
+            inRevision,
+            lastDone,
+            lastAct,
+            stateLine,
+            overdueN,
+            coursePoints: pts.coursePointsTotal ?? 0,
+            riskCount: risks.length,
+            roleLabel: 'Участница ПВЛ',
+        };
     });
+}
+
+function mentorMenteeInitials(fullName) {
+    const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+    const a = parts[0]?.[0] || '';
+    const b = parts[1]?.[0] || '';
+    return (a + b).toUpperCase() || '?';
+}
+
+function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
+    return (
+        <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30">
+            {heading ? <h3 className="font-display text-xl text-slate-800 mb-4">{heading}</h3> : null}
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {menteeRows.map((row) => (
+                    <div
+                        key={row.userId}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/mentor/mentee/${row.userId}`)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                navigate(`/mentor/mentee/${row.userId}`);
+                            }
+                        }}
+                        className="rounded-2xl border border-slate-100/90 bg-slate-50/40 p-4 text-left shadow-sm hover:border-emerald-200 hover:bg-white transition-colors cursor-pointer flex flex-col gap-3"
+                    >
+                        <div className="flex gap-3">
+                            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 border border-emerald-100 flex items-center justify-center text-sm font-semibold text-emerald-900 shrink-0">
+                                {mentorMenteeInitials(row.user?.fullName)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <button
+                                    type="button"
+                                    className="font-display text-base font-semibold text-slate-800 hover:text-emerald-800 text-left"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/mentor/mentee/${row.userId}`);
+                                    }}
+                                >
+                                    {row.user?.fullName || row.userId}
+                                </button>
+                                <p className="text-[11px] text-slate-500 mt-0.5">{row.roleLabel}</p>
+                                {row.city ? <p className="text-[11px] text-slate-400 mt-0.5">{row.city}</p> : null}
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-snug line-clamp-2">{row.courseLine}</p>
+                        <div className="flex flex-wrap gap-2">
+                            <span className="text-[10px] rounded-full bg-white border border-slate-200 px-2.5 py-1 text-slate-700 tabular-nums">Прогресс {row.closedPct}%</span>
+                            <span className="text-[10px] rounded-full bg-white border border-slate-200 px-2.5 py-1 text-slate-700 tabular-nums">{row.coursePoints}/400</span>
+                            {row.inRevision > 0 ? (
+                                <span className="text-[10px] rounded-full bg-amber-50 border border-amber-100 px-2.5 py-1 text-amber-950">Доработки: {row.inRevision}</span>
+                            ) : null}
+                            {row.overdueN > 0 ? (
+                                <span className="text-[10px] rounded-full bg-rose-50 border border-rose-100 px-2.5 py-1 text-rose-900">Просрочки: {row.overdueN}</span>
+                            ) : null}
+                        </div>
+                        <div className="text-[11px] text-slate-500 border-t border-slate-100/80 pt-2 mt-auto">
+                            <span className="font-medium text-emerald-800/90">{row.stateLine}</span>
+                            {' · '}
+                            активность: {row.lastAct}
+                        </div>
+                        {row.riskCount > 0 ? <p className="text-[10px] text-amber-800">Рисков в карточке: {row.riskCount}</p> : null}
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
+}
+
+function kanbanColumnToStatus(col) {
+    if (col === 'unchecked') return TASK_STATUS.PENDING_REVIEW;
+    if (col === 'revision') return TASK_STATUS.REVISION_REQUESTED;
+    if (col === 'done') return TASK_STATUS.ACCEPTED;
+    return TASK_STATUS.PENDING_REVIEW;
+}
+
+function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) {
+    const lastDragEndRef = useRef(0);
+    const board = useMemo(() => {
+        void refreshKey;
+        return pvlDomainApi.mentorApi.getMentorReviewBoard(mentorId);
+    }, [mentorId, refreshKey]);
+
+    const handleDrop = (col, e) => {
+        e.preventDefault();
+        try {
+            const raw = e.dataTransfer.getData('application/json');
+            const { studentId, taskId } = JSON.parse(raw || '{}');
+            if (!studentId || !taskId) return;
+            const next = kanbanColumnToStatus(col);
+            pvlDomainApi.actions.setTaskStatus(studentId, taskId, next, mentorId, 'kanban');
+            onStatusChanged?.();
+        } catch {
+            /* ignore */
+        }
+    };
+
+    const renderCard = (q, col) => {
+        const dl = q.deadlineAt ? formatPvlDateTime(`${String(q.deadlineAt).slice(0, 10)}T12:00:00`) : '—';
+        const hasScore = (q.maxScore ?? 0) > 0 && q.rawStatus === TASK_STATUS.ACCEPTED;
+        return (
+            <div
+                key={`${q.studentId}-${q.taskId}-${col}`}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({ studentId: q.studentId, taskId: q.taskId }));
+                    e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => {
+                    lastDragEndRef.current = Date.now();
+                }}
+                onClick={() => {
+                    if (Date.now() - lastDragEndRef.current < 280) return;
+                    navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}`);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}`);
+                    }
+                }}
+                className="w-full text-left rounded-xl border border-white bg-white p-3 shadow-sm text-sm transition-colors hover:border-emerald-100 hover:bg-emerald-50/20 cursor-grab active:cursor-grabbing"
+            >
+                <div className="font-medium text-slate-800 line-clamp-2">{q.taskTitle}</div>
+                <button
+                    type="button"
+                    className="mt-1.5 text-sm text-emerald-800 hover:underline font-medium"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/mentor/mentee/${q.studentId}`);
+                    }}
+                >
+                    {q.studentName}
+                </button>
+                <div className="text-[11px] text-slate-500 mt-1">Дедлайн: {dl}</div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                    {hasScore ? (
+                        <span className="text-[10px] tabular-nums rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
+                            {q.scoreAwarded ?? 0}/{q.maxScore ?? 0}
+                        </span>
+                    ) : null}
+                    {(q.revisionCycles ?? 0) > 0 ? (
+                        <span className="text-[10px] rounded-full bg-amber-50 text-amber-950 border border-amber-100 px-2 py-0.5">Доработок: {q.revisionCycles}</span>
+                    ) : null}
+                </div>
+            </div>
+        );
+    };
+
+    const col = (key, title, hint, items, emptyText) => (
+        <div
+            key={key}
+            className="rounded-2xl border border-dashed border-slate-200/90 bg-slate-50/40 p-4 min-h-[220px] flex flex-col"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleDrop(key, e)}
+        >
+            <div className="mb-3">
+                <h4 className="font-display text-base text-slate-800">{title}</h4>
+                {hint ? <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p> : null}
+            </div>
+            <div className="space-y-2 flex-1">
+                {items.length === 0 ? <p className="text-sm text-slate-400">{emptyText}</p> : items.map((q) => renderCard(q, key))}
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="grid lg:grid-cols-3 gap-4">
+            {col('unchecked', 'Не проверено', 'Отправлено, ждёт проверки', board.unchecked, 'Нет работ в очереди.')}
+            {col('revision', 'На доработке', 'Нужен ответ или новая версия', board.revision, 'Нет работ на доработке.')}
+            {col('done', 'Проверено', 'Принято, закрыто', board.done, 'Пока нет закрытых в этом срезе.')}
+        </div>
+    );
 }
 
 function MentorKanbanCol({ title, hint, items, emptyText, navigate }) {
@@ -1713,58 +2080,17 @@ function MentorKanbanCol({ title, hint, items, emptyText, navigate }) {
     );
 }
 
-function MentorMenteesTable({ navigate, menteeRows, heading }) {
-    return (
-        <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-            {heading ? <h3 className="font-display text-lg text-slate-800 mb-4">{heading}</h3> : null}
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left min-w-[480px]">
-                    <thead>
-                        <tr className="text-xs text-slate-500 border-b border-slate-100">
-                            <th className="pb-2 pr-3 font-medium">Имя</th>
-                            <th className="pb-2 pr-3 font-medium">Последняя закрытая работа</th>
-                            <th className="pb-2 pr-3 font-medium tabular-nums">Баллы курса</th>
-                            <th className="pb-2 pr-3 font-medium tabular-nums">Просрочки</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {menteeRows.map((row) => (
-                            <tr key={row.user.id} className="border-b border-slate-50 last:border-0">
-                                <td className="py-3 pr-3 align-top">
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate(`/mentor/mentee/${row.user.id}`)}
-                                        className="text-left font-medium text-blue-700 hover:underline"
-                                    >
-                                        {row.user.fullName}
-                                    </button>
-                                    {row.riskCount > 0 ? <span className="block text-[10px] text-slate-400">рисков: {row.riskCount}</span> : null}
-                                </td>
-                                <td className="py-3 pr-3 align-top text-slate-600">{row.lastDone ? row.lastDone.title : '—'}</td>
-                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.coursePoints}/400</td>
-                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.overdueN}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    );
-}
-
-function MentorMenteesPanel({ navigate }) {
-    const mentorId = 'u-men-1';
+function MentorMenteesPanel({ navigate, mentorId }) {
     const menteeRows = buildMentorMenteeRows(mentorId);
     return (
         <div className="space-y-4">
             <h2 className="font-display text-2xl text-slate-800">Мои менти</h2>
-            <MentorMenteesTable navigate={navigate} menteeRows={menteeRows} heading={null} />
+            <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading={null} />
         </div>
     );
 }
 
-function MentorReviewQueuePanel({ navigate }) {
-    const mentorId = 'u-men-1';
+function MentorReviewQueuePanel({ navigate, mentorId }) {
     const board = pvlDomainApi.mentorApi.getMentorReviewBoard(mentorId);
     return (
         <div className="space-y-4">
@@ -1780,22 +2106,18 @@ function MentorReviewQueuePanel({ navigate }) {
     );
 }
 
-function MentorDashboard({ navigate }) {
-    const mentorId = 'u-men-1';
-    const menteeRows = buildMentorMenteeRows(mentorId);
-    const board = pvlDomainApi.mentorApi.getMentorReviewBoard(mentorId);
+function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
+    const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     const mentorCohortId = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId)?.cohortIds?.[0] || 'cohort-2026-1';
     return (
         <div className="space-y-8">
             <div>
                 <h2 className="font-display text-2xl text-slate-800">Дашборд ментора</h2>
-                <p className="text-sm text-slate-500 mt-1">Кого открыть и что проверить сейчас.</p>
+                <p className="text-sm text-slate-500 mt-1">Менти, календарь потока и канбан проверок — данные из результатов и общего календаря.</p>
             </div>
-            <section className="space-y-4">
-                <div>
-                    <h3 className="font-display text-xl text-slate-800">Связь и расписание</h3>
-                    <p className="text-sm text-slate-500 mt-1">События курса и встречи по потоку — полный календарь в разделе «Календарь» учительской.</p>
-                </div>
+            <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading="Мои менти" />
+            <section className="space-y-3">
+                <h3 className="font-display text-lg text-slate-800">Календарь курса</h3>
                 <PvlDashboardCalendarBlock
                     viewerRole="mentor"
                     cohortId={mentorCohortId}
@@ -1803,27 +2125,23 @@ function MentorDashboard({ navigate }) {
                     routePrefix="/mentor"
                 />
             </section>
-            <MentorMenteesTable navigate={navigate} menteeRows={menteeRows} heading="Менти" />
-            <section>
-                <h3 className="font-display text-lg text-slate-800 mb-3">К проверке</h3>
-                <div className="grid lg:grid-cols-3 gap-4">
-                    <MentorKanbanCol title="Не проверено" hint="Отправлено, ждёт проверки" items={board.unchecked} emptyText="Нет работ в очереди." navigate={navigate} />
-                    <MentorKanbanCol title="На доработке" hint="Нужен ответ или новая версия" items={board.revision} emptyText="Нет работ на доработке." navigate={navigate} />
-                    <MentorKanbanCol title="Проверено" hint="Принято, закрыто" items={board.done} emptyText="Пока нет закрытых в этом срезе." navigate={navigate} />
-                </div>
+            <section className="space-y-3">
+                <h3 className="font-display text-lg text-slate-800">Канбан проверок</h3>
+                <p className="text-xs text-slate-500">Перетащите карточку в другую колонку — статус сохранится в данных курса.</p>
+                <MentorKanbanBoard mentorId={mentorId} navigate={navigate} refreshKey={refreshKey} onStatusChanged={refresh} />
             </section>
         </div>
     );
 }
 
-function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0 }) {
+function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0, mentorId = 'u-men-1' }) {
     if (route === '/mentor/onboarding') {
         return <PvlMergeOnboardingRedirect navigate={navigate} to="/mentor/about" />;
     }
     if (route === '/mentor/settings') return <PvlCabinetSettingsStub />;
-    if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} />;
-    if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} />;
-    if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} />;
+    if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
+    if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} mentorId={mentorId} />;
+    if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} mentorId={mentorId} />;
     if (route === '/mentor/tracker') {
         return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} routePrefix="/mentor" />;
     }
@@ -2902,16 +3220,16 @@ export default function PvlPrototypeApp({
                 dashboard: 'Дашборд',
                 about: 'О курсе',
                 onboarding: 'О курсе',
-                glossary: 'Глоссарий курса',
-                library: 'Библиотека курса',
-                lessons: 'Трекер курса',
-                practicums: 'Практикумы с менторами',
-                checklist: 'Трекер курса',
-                tracker: 'Трекер курса',
+                glossary: 'Глоссарий',
+                library: 'Библиотека',
+                lessons: 'Трекер',
+                practicums: 'Практикумы',
+                checklist: 'Трекер',
+                tracker: 'Трекер',
                 results: 'Результаты',
-                certification: 'Сертификация и самооценка',
-                'self-assessment': 'Сертификация и самооценка',
-                qa: 'Вопросы и ответы',
+                certification: 'Сертификация',
+                'self-assessment': 'Сертификация',
+                qa: 'Вопросы',
                 settings: 'Настройки',
                 'cultural-code': 'Культурный код Лиги',
             };
@@ -2964,13 +3282,13 @@ export default function PvlPrototypeApp({
             );
         }
         if (route.startsWith('/mentor/')) {
-            return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;
+            return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} mentorId={actingUserId} />;
         }
         if (route.startsWith('/student/')) {
             return <StudentPage route={route} studentId={studentId} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;
         }
         return <ScreenState error={`Неизвестный маршрут. Перейдите в раздел через меню или переключатель кабинета.`}><div /></ScreenState>;
-    }, [role, route, studentId, cmsItems, cmsPlacements, dataTick, navigate]);
+    }, [role, route, studentId, actingUserId, cmsItems, cmsPlacements, dataTick, navigate]);
 
     const devToolsBar = pvlDevToolsEnabled() ? (
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-end border-t xl:border-t-0 border-[#F0E6DC] pt-2 xl:pt-0">

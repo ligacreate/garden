@@ -1000,6 +1000,7 @@ export const mentorApi = {
                 : weekRow
                   ? `Неделя ${weekRow.weekNumber}`
                   : '—';
+            const maxScore = task?.scoreMax ?? 0;
             return {
                 studentId: s.studentId,
                 taskId: s.taskId,
@@ -1012,6 +1013,9 @@ export const mentorApi = {
                 lessonHint,
                 submittedAt: s.submittedAt,
                 deadlineAt: task?.deadlineAt,
+                revisionCycles: s.revisionCycles ?? 0,
+                scoreAwarded: s.totalTaskPoints ?? 0,
+                maxScore,
             };
         };
         const all = db.studentTaskStates.filter((st) => menteeIds.includes(st.studentId));

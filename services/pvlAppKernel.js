@@ -43,6 +43,18 @@ export function redirectToAllowedRoute(role, attemptedRoute) {
  * Учительская ПВЛ: дашборд, ученицы, менторы, материалы курса (уроки/библиотека/глоссарий), календарь, настройки.
  * Ментор видит своих менти; учительская — всех и управление событиями потока.
  */
+/** Синхронизировать с COURSE_MENU_LABELS в PvlPrototypeApp.jsx */
+const PVL_COURSE_SIDEBAR_LABELS = [
+    'О курсе',
+    'Глоссарий курса',
+    'Библиотека курса',
+    'Трекер курса',
+    'Практикумы с менторами',
+    'Результаты',
+    'Сертификация и самооценка',
+    'Вопросы и ответы',
+];
+
 export function buildSidebarByRole(role) {
     if (role === 'admin') {
         return [
@@ -51,11 +63,20 @@ export function buildSidebarByRole(role) {
             'Менторы',
             'Материалы курса',
             'Календарь',
+            ...PVL_COURSE_SIDEBAR_LABELS,
             'Настройки',
         ];
     }
-    if (role === 'mentor') return ['Дашборд ментора'];
-    return ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
+    if (role === 'mentor') {
+        return [
+            'Дашборд',
+            'Мои менти',
+            'Очередь проверок',
+            ...PVL_COURSE_SIDEBAR_LABELS,
+            'Настройки',
+        ];
+    }
+    return ['Дашборд', ...PVL_COURSE_SIDEBAR_LABELS, 'Настройки'];
 }
 
 export function saveAppSession(payload) {
@@ -121,6 +142,7 @@ export function getAllRoutes() {
         '/student/certification',
         '/student/self-assessment',
         '/student/qa',
+        '/student/settings',
         '/student/cultural-code',
         '/mentor/dashboard',
         '/mentor/mentees',
@@ -140,6 +162,7 @@ export function getAllRoutes() {
         '/mentor/qa',
         '/mentor/cultural-code',
         '/mentor/materials',
+        '/mentor/settings',
         '/mentor/mentee/:id',
         '/mentor/mentee/:id/task/:taskId',
         '/admin/pvl',
@@ -149,6 +172,17 @@ export function getAllRoutes() {
         '/admin/students/:id/task/:taskId',
         '/admin/mentors',
         '/admin/calendar',
+        '/admin/about',
+        '/admin/glossary',
+        '/admin/library',
+        '/admin/library/:itemId',
+        '/admin/tracker',
+        '/admin/practicums',
+        '/admin/results',
+        '/admin/results/:taskId',
+        '/admin/certification',
+        '/admin/self-assessment',
+        '/admin/qa',
         '/admin/settings',
         '/qa',
         '/debug/qa',

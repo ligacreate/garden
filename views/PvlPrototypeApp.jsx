@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
@@ -90,9 +91,29 @@ function buildMergedCmsState() {
     return { items, placements };
 }
 
-const STUDENT_MENU = [
+function toRoute(name) {
+    const map = {
+        'О курсе': 'about',
+        Онбординг: 'onboarding',
+        'Глоссарий курса': 'glossary',
+        'Библиотека курса': 'library',
+        Уроки: 'lessons',
+        'Трекер курса': 'tracker',
+        'Практикумы с менторами': 'practicums',
+        'Чек-лист': 'checklist',
+        Результаты: 'results',
+        Сертификация: 'certification',
+        'Сертификация и самооценка': 'certification',
+        Самооценка: 'self-assessment',
+        'Вопросы и ответы': 'qa',
+        'Культурный код Лиги': 'cultural-code',
+    };
+    return map[name] || 'dashboard';
+}
+
+/** Единый курсный блок меню для участницы, ментора и учительской (без отдельного онбординга). */
+const COURSE_MENU_LABELS = [
     'О курсе',
-    'Онбординг',
     'Глоссарий курса',
     'Библиотека курса',
     'Трекер курса',
@@ -102,34 +123,65 @@ const STUDENT_MENU = [
     'Вопросы и ответы',
 ];
 
-/** Тот же учебный контур, что у участницы, плюс материалы для ментора */
-const MENTOR_NAV_ITEMS = [
-    { label: 'Главная', path: '/mentor/dashboard' },
+const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
+
+const MENTOR_TOP_NAV = [
+    { label: 'Дашборд', path: '/mentor/dashboard' },
     { label: 'Мои менти', path: '/mentor/mentees' },
     { label: 'Очередь проверок', path: '/mentor/review-queue' },
-    { label: 'О курсе', path: '/mentor/about' },
-    { label: 'Онбординг', path: '/mentor/onboarding' },
-    { label: 'Глоссарий курса', path: '/mentor/glossary' },
-    { label: 'Библиотека курса', path: '/mentor/library' },
-    { label: 'Трекер курса', path: '/mentor/tracker' },
-    { label: 'Практикумы с менторами', path: '/mentor/practicums' },
-    { label: 'Результаты', path: '/mentor/results' },
-    { label: 'Сертификация и самооценка', path: '/mentor/certification' },
-    { label: 'Вопросы и ответы', path: '/mentor/qa' },
-    { label: 'Материалы для ментора', path: '/mentor/materials' },
 ];
 
-const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
 const ADMIN_SIDEBAR_CONFIG = [
     { type: 'item', label: 'Дашборд', path: '/admin/pvl' },
-    { type: 'divider' },
     { type: 'item', label: 'Ученицы', path: '/admin/students' },
     { type: 'item', label: 'Менторы', path: '/admin/mentors' },
     { type: 'item', label: 'Материалы курса', path: '/admin/content' },
     { type: 'item', label: 'Календарь', path: '/admin/calendar' },
     { type: 'divider' },
+    ...COURSE_MENU_LABELS.map((label) => ({ type: 'item', label, path: `/admin/${toRoute(label)}` })),
+    { type: 'divider' },
     { type: 'item', label: 'Настройки', path: '/admin/settings' },
 ];
+
+const ADMIN_COURSE_ROUTE_RE = /^\/admin\/(about|glossary|library|tracker|practicums|results|certification|self-assessment|qa)(\/|$)/;
+
+function courseSidebarItemActive(currentRoute, prefix, label) {
+    const base = `${prefix}/${toRoute(label)}`;
+    if (currentRoute === base) return true;
+    if (label === 'Библиотека курса' && (currentRoute || '').startsWith(`${prefix}/library/`)) return true;
+    if (label === 'Результаты' && (currentRoute || '').startsWith(`${prefix}/results/`)) return true;
+    return false;
+}
+
+function mentorSectionForRoute(allowedRoute) {
+    for (const { label, path } of MENTOR_TOP_NAV) {
+        if (allowedRoute === path || (path === '/mentor/mentees' && /^\/mentor\/mentee\//.test(allowedRoute))) {
+            return label;
+        }
+    }
+    if (allowedRoute === '/mentor/settings') return 'Настройки';
+    for (const label of COURSE_MENU_LABELS) {
+        if (courseSidebarItemActive(allowedRoute, '/mentor', label)) return label;
+    }
+    return null;
+}
+
+function adminSectionForRoute(allowedRoute) {
+    if (/^\/admin\/students(\/|$)/.test(allowedRoute)) return 'Ученицы';
+    if (allowedRoute.startsWith('/admin/mentors')) return 'Менторы';
+    for (const label of COURSE_MENU_LABELS) {
+        if (courseSidebarItemActive(allowedRoute, '/admin', label)) return label;
+    }
+    const seg = allowedRoute.split('/')[2] || 'pvl';
+    const map = {
+        pvl: 'Дашборд',
+        content: 'Материалы курса',
+        mentors: 'Менторы',
+        calendar: 'Календарь',
+        settings: 'Настройки',
+    };
+    return map[seg] || null;
+}
 
 function szPipelineStatusRu(v) {
     const m = {
@@ -251,6 +303,8 @@ function pvlSidebarNavClass(active) {
         : 'text-slate-600 border border-transparent hover:bg-white/90 hover:text-slate-900'}`;
 }
 
+const pvlSidebarDividerClass = 'h-px bg-slate-100/80 my-3 mx-1';
+
 const SidebarMenu = ({
     role,
     route: currentRoute,
@@ -272,32 +326,63 @@ const SidebarMenu = ({
         </div>
         {role === 'student' ? (
             <nav className="space-y-1 px-0.5 pb-2">
-                <button type="button" onClick={() => navigate('/student/dashboard')} className={pvlSidebarNavClass(currentRoute === '/student/dashboard')}>Главная</button>
-                {STUDENT_MENU.map((item) => {
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStudentSection('Дашборд');
+                        navigate('/student/dashboard');
+                    }}
+                    className={pvlSidebarNavClass(currentRoute === '/student/dashboard')}
+                >
+                    Дашборд
+                </button>
+                <div className={pvlSidebarDividerClass} />
+                {COURSE_MENU_LABELS.map((item) => {
                     const base = `/student/${toRoute(item)}`;
-                    const subActive = currentRoute === base || (currentRoute || '').startsWith(`${base}/`);
+                    const subActive = courseSidebarItemActive(currentRoute, '/student', item);
                     return (
-                    <button
-                        type="button"
-                        key={item}
-                        onClick={() => {
-                            setStudentSection(item);
-                            navigate(base);
-                        }}
-                        className={pvlSidebarNavClass(subActive)}
-                    >
-                        {item}
-                    </button>
+                        <button
+                            type="button"
+                            key={item}
+                            onClick={() => {
+                                setStudentSection(item);
+                                navigate(base);
+                            }}
+                            className={pvlSidebarNavClass(subActive)}
+                        >
+                            {item}
+                        </button>
                     );
                 })}
+                <div className={pvlSidebarDividerClass} />
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStudentSection('Настройки');
+                        navigate('/student/settings');
+                    }}
+                    className={pvlSidebarNavClass(currentRoute === '/student/settings')}
+                >
+                    Настройки
+                </button>
+                {onGardenExit ? (
+                    <>
+                        <div className={pvlSidebarDividerClass} />
+                        <button
+                            type="button"
+                            onClick={onGardenExit}
+                            className="w-full text-left rounded-2xl px-4 py-3 text-[15px] text-slate-500 border border-transparent hover:bg-white/90 hover:text-slate-900"
+                        >
+                            Вернуться в сад
+                        </button>
+                    </>
+                ) : null}
             </nav>
         ) : role === 'mentor' ? (
             <nav className="space-y-1 px-0.5 pb-2">
-                {MENTOR_NAV_ITEMS.map(({ label, path }) => {
+                {MENTOR_TOP_NAV.map(({ label, path }) => {
                     const subActive = currentRoute === path
-                        || (path === '/mentor/library' && (currentRoute || '').startsWith('/mentor/library/'))
-                        || (path === '/mentor/results' && (currentRoute || '').startsWith('/mentor/results/'))
-                        || (path === '/mentor/mentees' && (currentRoute || '').startsWith('/mentor/mentee/'));
+                        || (path === '/mentor/mentees' && /^\/mentor\/mentee\//.test(currentRoute || ''));
                     return (
                         <button
                             type="button"
@@ -312,16 +397,59 @@ const SidebarMenu = ({
                         </button>
                     );
                 })}
+                <div className={pvlSidebarDividerClass} />
+                {COURSE_MENU_LABELS.map((item) => {
+                    const base = `/mentor/${toRoute(item)}`;
+                    const subActive = courseSidebarItemActive(currentRoute, '/mentor', item);
+                    return (
+                        <button
+                            type="button"
+                            key={item}
+                            onClick={() => {
+                                setMentorSection(item);
+                                navigate(base);
+                            }}
+                            className={pvlSidebarNavClass(subActive)}
+                        >
+                            {item}
+                        </button>
+                    );
+                })}
+                <div className={pvlSidebarDividerClass} />
+                <button
+                    type="button"
+                    onClick={() => {
+                        setMentorSection('Настройки');
+                        navigate('/mentor/settings');
+                    }}
+                    className={pvlSidebarNavClass(currentRoute === '/mentor/settings')}
+                >
+                    Настройки
+                </button>
+                {onGardenExit ? (
+                    <>
+                        <div className={pvlSidebarDividerClass} />
+                        <button
+                            type="button"
+                            onClick={onGardenExit}
+                            className="w-full text-left rounded-2xl px-4 py-3 text-[15px] text-slate-500 border border-transparent hover:bg-white/90 hover:text-slate-900"
+                        >
+                            Вернуться в сад
+                        </button>
+                    </>
+                ) : null}
             </nav>
         ) : (
             <nav className="space-y-1 px-0.5 pb-2">
                 {ADMIN_SIDEBAR_CONFIG.map((entry, idx) => {
                     if (entry.type === 'divider') {
-                        return <div key={`div-${idx}`} className="h-px bg-slate-100/80 my-3 mx-1" />;
+                        return <div key={`div-${idx}`} className={pvlSidebarDividerClass} />;
                     }
-                    const subActive = currentRoute === entry.path
-                        || (entry.path === '/admin/students' && /^\/admin\/students\//.test(currentRoute || ''))
-                        || (entry.path === '/admin/content' && currentRoute === '/admin/content');
+                    const subActive = COURSE_MENU_LABELS.includes(entry.label)
+                        ? courseSidebarItemActive(currentRoute, '/admin', entry.label)
+                        : currentRoute === entry.path
+                            || (entry.path === '/admin/students' && /^\/admin\/students\//.test(currentRoute || ''))
+                            || (entry.path === '/admin/content' && currentRoute === '/admin/content');
                     return (
                         <button
                             key={entry.path}
@@ -338,7 +466,7 @@ const SidebarMenu = ({
                 })}
                 {onGardenExit ? (
                     <>
-                        <div className="h-px bg-slate-100/80 my-3 mx-1" />
+                        <div className={pvlSidebarDividerClass} />
                         <button
                             type="button"
                             onClick={onGardenExit}
@@ -357,7 +485,7 @@ const BREADCRUMB_LABELS = {
     student: 'Участница',
     mentor: 'Ментор',
     admin: 'Учительская',
-    dashboard: 'Главная',
+    dashboard: 'Дашборд',
     about: 'О курсе',
     glossary: 'Глоссарий',
     library: 'Библиотека',
@@ -400,26 +528,31 @@ const SubtleTrail = ({ path }) => {
     return <p className="text-xs text-slate-400 truncate">{cabinet} · {tail}</p>;
 };
 
-/** Вторичный переключатель кабинета (режим приёмки) */
+/** Переключатель роли: всегда на виду при сборке; при смене — домашний маршрут и актуальное меню. */
 const CabinetSwitcher = ({ role, setRole, navigate }) => {
     const tab = (r, label, home) => (
         <button
             type="button"
             key={r}
             onClick={() => {
-                setRole(r);
+                flushSync(() => {
+                    setRole(r);
+                });
                 navigate(home);
             }}
-            className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${role === r ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${role === r ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
             {label}
         </button>
     );
     return (
-        <div className="inline-flex items-center rounded-xl bg-slate-100/90 p-0.5 gap-0.5 shrink-0" role="group" aria-label="Кабинет">
-            {tab('student', 'Участница', '/student/dashboard')}
-            {tab('mentor', 'Ментор', '/mentor/dashboard')}
-            {tab('admin', 'Учительская', '/admin/pvl')}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Роль</span>
+            <div className="inline-flex items-center rounded-xl bg-slate-100/90 p-0.5 gap-0.5" role="group" aria-label="Роль в ПВЛ">
+                {tab('student', 'Ученица', '/student/dashboard')}
+                {tab('mentor', 'Ментор', '/mentor/dashboard')}
+                {tab('admin', 'Учительская', '/admin/pvl')}
+            </div>
         </div>
     );
 };
@@ -796,29 +929,9 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     };
 }
 
-function toRoute(name) {
-    const map = {
-        'О курсе': 'about',
-        Онбординг: 'onboarding',
-        'Глоссарий курса': 'glossary',
-        'Библиотека курса': 'library',
-        Уроки: 'lessons',
-        'Трекер курса': 'tracker',
-        'Практикумы с менторами': 'practicums',
-        'Чек-лист': 'checklist',
-        Результаты: 'results',
-        Сертификация: 'certification',
-        'Сертификация и самооценка': 'certification',
-        Самооценка: 'self-assessment',
-        'Вопросы и ответы': 'qa',
-        'Культурный код Лиги': 'cultural-code',
-    };
-    return map[name] || 'dashboard';
-}
-
 const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'на доработке', 'проверено, посмотрите оценку', 'в работе']);
 
-function StudentDashboard({ studentId, navigate }) {
+function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
     const points = pvlDomainApi.helpers.getStudentPointsSummary(studentId);
     const w = snapshot.compulsoryWidgets;
@@ -832,7 +945,7 @@ function StudentDashboard({ studentId, navigate }) {
     return (
         <div className="space-y-6">
             <section className="rounded-2xl border border-slate-100/90 bg-white p-6 md:p-8 shadow-sm shadow-slate-200/40">
-                <h2 className="font-display text-2xl md:text-3xl text-slate-800">Главная</h2>
+                <h2 className="font-display text-2xl md:text-3xl text-slate-800">Дашборд</h2>
                 <p className="text-sm text-slate-500 mt-1 max-w-xl">Где вы сейчас и что сделать дальше. Полный путь курса — в разделе «Трекер курса».</p>
                 <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-6">
                     <DashboardWidget title="Текущий модуль" value={w?.currentModuleTitle || '—'} />
@@ -850,7 +963,7 @@ function StudentDashboard({ studentId, navigate }) {
                 viewerRole="student"
                 cohortId={pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId)?.cohortId || 'cohort-2026-1'}
                 navigate={navigate}
-                routePrefix="/student"
+                routePrefix={routePrefix}
             />
 
             <section className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
@@ -868,7 +981,7 @@ function StudentDashboard({ studentId, navigate }) {
                                     {navigate ? (
                                         <button
                                             type="button"
-                                            onClick={() => navigate(`/student/results/${t.id}`)}
+                                            onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
                                             className="text-xs rounded-full border border-slate-200 px-3 py-1 text-[#C8855A] hover:bg-white"
                                         >
                                             Открыть
@@ -895,7 +1008,7 @@ function StudentDashboard({ studentId, navigate }) {
                             <div className="flex items-center gap-2 shrink-0">
                                 <span className="text-[11px] text-slate-400 tabular-nums">{formatPvlDateTime(item.at)}</span>
                                 {item.taskId && navigate ? (
-                                    <button type="button" onClick={() => navigate(`/student/results/${item.taskId}`)} className="text-[11px] text-[#C8855A] hover:underline">К заданию</button>
+                                    <button type="button" onClick={() => navigate(`${routePrefix}/results/${item.taskId}`)} className="text-[11px] text-[#C8855A] hover:underline">К заданию</button>
                                 ) : null}
                             </div>
                         </li>
@@ -933,16 +1046,15 @@ function practicumStatusRu(status) {
 
 function StudentLessonsLive({ studentId, navigate }) {
     const { stats } = usePlatformStepChecklist(studentId);
-    const { doneSteps, totalSteps, pct, anchorsDone, anchorsTotal } = stats;
+    const { doneSteps, totalSteps, pct } = stats;
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
                 <h2 className="font-display text-2xl text-slate-800">Уроки и шаги курса</h2>
                 <p className="text-sm text-slate-500 mt-1">Методический путь по модулям — как в трекере. Отметки здесь и в «Трекере курса» общие.</p>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 text-sm text-slate-600">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 text-sm text-slate-600">
                     <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Шаги: <span className="font-medium tabular-nums text-slate-800">{doneSteps}/{totalSteps}</span></div>
                     <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Прогресс: <span className="font-medium tabular-nums text-slate-800">{pct}%</span></div>
-                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Якоря: <span className="font-medium tabular-nums text-slate-800">{anchorsDone}/{anchorsTotal}</span></div>
                     <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 flex items-center">
                         <button type="button" onClick={() => navigate('/student/tracker')} className="text-sm text-slate-700 font-medium hover:underline">Полный трекер с заданиями</button>
                     </div>
@@ -1022,8 +1134,12 @@ function StudentAboutEnriched() {
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h3 className="font-display text-2xl text-slate-800 mb-2">О курсе и онбординг</h3>
+                <h3 className="font-display text-2xl text-slate-800 mb-2">О курсе</h3>
                 <p className="text-sm text-slate-600 leading-6">Курс «{PVL_COURSE_DISPLAY_NAME}»: три месяца, контрольные точки, правила баллов, безопасность и расписание. Стартовые материалы — в карточках ниже и в библиотеке.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <h4 className="font-display text-lg text-slate-800 mb-2">Онбординг</h4>
+                <p className="text-sm text-slate-500 leading-relaxed">Пошаговое знакомство с курсом появится здесь. Сейчас блок встроен в «О курсе», отдельного пункта меню нет.</p>
             </div>
             <div className="grid md:grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">Уроки, задания, дедлайны и личный кабинет — в боковом меню.</div>
@@ -1291,16 +1407,32 @@ function PvlContentStub({ title, hint }) {
     );
 }
 
-function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0 }) {
-    if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} />;
+function PvlCabinetSettingsStub() {
+    return (
+        <div className="rounded-2xl border border-slate-100/90 bg-white p-6 md:p-8 shadow-sm">
+            <h2 className="font-display text-2xl text-slate-800">Настройки</h2>
+            <p className="text-sm text-slate-500 mt-2">Уведомления и отображение кабинета настраиваются здесь по мере готовности продукта.</p>
+        </div>
+    );
+}
+
+function PvlMergeOnboardingRedirect({ navigate, to }) {
+    useEffect(() => {
+        navigate(to);
+    }, [navigate, to]);
+    return (
+        <div className="rounded-2xl border border-slate-100/90 bg-white p-6 text-sm text-slate-500 shadow-sm">
+            Открываем «О курсе»…
+        </div>
+    );
+}
+
+function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0, routePrefix = '/student' }) {
     if (route === '/student/onboarding') {
-        return (
-            <PvlContentStub
-                title="Онбординг"
-                hint="Пошаговое знакомство с курсом появится здесь. Сейчас это заглушка."
-            />
-        );
+        return <PvlMergeOnboardingRedirect navigate={navigate} to="/student/about" />;
     }
+    if (route === '/student/settings') return <PvlCabinetSettingsStub />;
+    if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route === '/student/qa') {
         return (
             <PvlContentStub
@@ -1341,10 +1473,10 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
             <StudentGlossarySearch />
         </div>
     );
-    if (route === '/student/library') return <LibraryPage studentId={studentId} navigate={navigate} />;
+    if (route === '/student/library') return <LibraryPage studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/library/')) {
         const itemId = route.split('/')[3] || '';
-        return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} />;
+        return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} routePrefix={routePrefix} />;
     }
     if (route === '/student/lessons' || route === '/student/checklist') {
         return <StudentCourseTracker studentId={studentId} navigate={navigate} />;
@@ -1405,7 +1537,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         const sectionMaterials = sectionKey ? getPublishedContentBySection(sectionKey, 'student', cmsItems, cmsPlacements) : [];
         return <StudentGeneric title="Культурный код Лиги"><GardenContentCards items={sectionMaterials.length ? sectionMaterials : ['Бережность', 'Ясность', 'Без советов', 'Поддержка сообщества'].map((x) => ({ id: x, title: x, shortDescription: '', contentType: 'text', tags: ['код'] }))} /></StudentGeneric>;
     }
-    return <StudentDashboard studentId={studentId} navigate={navigate} />;
+    return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
 }
 
 function MentorMaterialsPage({ cmsItems, cmsPlacements }) {
@@ -1616,12 +1748,13 @@ function MentorDashboard({ navigate }) {
 }
 
 function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0 }) {
+    if (route === '/mentor/onboarding') {
+        return <PvlMergeOnboardingRedirect navigate={navigate} to="/mentor/about" />;
+    }
+    if (route === '/mentor/settings') return <PvlCabinetSettingsStub />;
     if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} />;
     if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} />;
     if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} />;
-    if (route === '/mentor/onboarding') {
-        return <PvlContentStub title="Онбординг" hint="Зеркальный раздел для ментора. Контент готовится." />;
-    }
     if (route === '/mentor/tracker') {
         return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} />;
     }
@@ -1689,6 +1822,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
             cmsPlacements={cmsPlacements}
             refresh={refresh}
             refreshKey={refreshKey}
+            routePrefix="/mentor"
         />
     );
 }
@@ -2241,6 +2375,40 @@ function AdminPage({
         );
     }
     if (route === '/admin/calendar') return <PvlAdminCalendarScreen navigate={navigate} refresh={forceRefresh} />;
+    if (ADMIN_COURSE_ROUTE_RE.test(route)) {
+        const studentRoute = route.replace(/^\/admin/, '/student');
+        const wrapNav = (next) => {
+            if (typeof next !== 'string') {
+                navigate(next);
+                return;
+            }
+            if (next.startsWith('/student/')) {
+                if (next === '/student/dashboard') {
+                    navigate('/admin/pvl');
+                    return;
+                }
+                if (next === '/student/settings') {
+                    navigate('/admin/settings');
+                    return;
+                }
+                navigate(next.replace(/^\/student/, '/admin'));
+                return;
+            }
+            navigate(next);
+        };
+        return (
+            <StudentPage
+                route={studentRoute}
+                studentId={MENTOR_COURSE_MIRROR_STUDENT_ID}
+                navigate={wrapNav}
+                cmsItems={cmsItems}
+                cmsPlacements={cmsPlacements}
+                refresh={forceRefresh}
+                refreshKey={refreshKey}
+                routePrefix="/admin"
+            />
+        );
+    }
     if (route === '/admin/students') return <AdminStudents navigate={navigate} />;
     if (route === '/admin/mentors') return <AdminMentors />;
     if (route === '/admin/settings') return <AdminSettings />;
@@ -2292,12 +2460,21 @@ function AdminPage({
     return <TeacherPvlHome navigate={navigate} />;
 }
 
-function DebugPanel({ role, setRole, setActingUserId, actingUserId, setNowDate, nowDate, forceRefresh }) {
+function DebugPanel({ role, setRole, setActingUserId, actingUserId, setNowDate, nowDate, forceRefresh, navigate }) {
+    const goHomeForRole = (r) => {
+        if (r === 'student') navigate('/student/dashboard');
+        else if (r === 'mentor') navigate('/mentor/dashboard');
+        else if (r === 'admin') navigate('/admin/pvl');
+    };
     return (
         <section className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/40 p-3">
             <div className="text-xs font-medium text-amber-900 mb-2">Служебная панель (localStorage pvl_dev_tools=1)</div>
             <div className="grid md:grid-cols-4 gap-2">
-                <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white">
+                <select value={role} onChange={(e) => {
+                    const r = e.target.value;
+                    flushSync(() => setRole(r));
+                    goHomeForRole(r);
+                }} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white">
                     <option value="student">Участница</option><option value="mentor">Ментор</option><option value="admin">Учительская</option>
                 </select>
                 <select value={actingUserId} onChange={(e) => setActingUserId(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white">
@@ -2333,6 +2510,8 @@ const QA_ROUTE_LIST = [
     '/student/self-assessment',
     '/student/cultural-code',
     '/mentor/dashboard',
+    '/mentor/mentees',
+    '/mentor/review-queue',
     '/mentor/library',
     '/mentor/library/:itemId',
     '/mentor/materials',
@@ -2345,7 +2524,20 @@ const QA_ROUTE_LIST = [
     '/admin/students/:id/task/:taskId',
     '/admin/mentors',
     '/admin/calendar',
+    '/admin/about',
+    '/admin/glossary',
+    '/admin/library',
+    '/admin/library/:itemId',
+    '/admin/tracker',
+    '/admin/practicums',
+    '/admin/results',
+    '/admin/results/:taskId',
+    '/admin/certification',
+    '/admin/self-assessment',
+    '/admin/qa',
     '/admin/settings',
+    '/student/settings',
+    '/mentor/settings',
 ];
 
 const QA_SCENARIOS = [
@@ -2379,17 +2571,17 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         note: '',
     });
 
-    const studentMenuPass = STUDENT_MENU.length === 9;
+    const studentMenuPass = COURSE_MENU_LABELS.length === 8;
     const weeks = pvlDomainApi.db.courseWeeks;
     const cps = pvlDomainApi.db.controlPoints;
     const week6CpCount = cps.filter((c) => c.weekNumber === 6).length;
     const szDeadlineOk = cps.some((c) => c.code === 'KT8' && c.deadlineAt === '2026-06-30');
-    const adminMenuOk = ADMIN_SIDEBAR_CONFIG.filter((x) => x.type === 'item').length === 6;
+    const adminMenuOk = ADMIN_SIDEBAR_CONFIG.filter((x) => x.type === 'item').length === 14;
     const pvlCalendarOk = pvlDomainApi.calendarApi.listForViewer('admin', null).length >= 1;
     const scoresSeparated = true;
 
     const criticalChecks = [
-        { title: 'Меню участницы: 9 пунктов (плюс главная в сайдбаре)', ok: studentMenuPass },
+        { title: 'Меню участницы: 8 пунктов курса в сайдбаре (плюс Дашборд, Настройки, сад)', ok: studentMenuPass },
         { title: 'О курсе содержит стартовые материалы', ok: pvlDomainApi.studentApi.getStudentLibrary('u-st-1').length >= 0 },
         { title: 'Библиотека не смешана с Уроками', ok: true },
         { title: 'Результаты содержат домашки/статусы/комментарии', ok: pvlDomainApi.studentApi.getStudentResults('u-st-1').length > 0 },
@@ -2398,7 +2590,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         { title: '9 КТ присутствуют', ok: cps.length === 9 },
         { title: 'Неделя 6: 3 отдельные КТ', ok: week6CpCount === 3 },
         { title: 'Дедлайн записи СЗ: 30.06.2026', ok: szDeadlineOk },
-        { title: 'Учительская: 6 пунктов меню (Дашборд … Настройки)', ok: adminMenuOk },
+        { title: 'Учительская: 14 пунктов меню (управление + курс + Настройки)', ok: adminMenuOk },
         { title: 'Календарь ПВЛ: есть события в seed', ok: pvlCalendarOk },
     ];
 
@@ -2598,7 +2790,11 @@ export default function PvlPrototypeApp({
     const [actingUserId, setActingUserId] = useState(session.actingUserId || 'u-st-1');
     const [nowDate, setNowDate] = useState(session.nowDate || '2026-06-03');
     const [route, setRoute] = useState(session.route || '/student/dashboard');
-    const [studentSection, setStudentSection] = useState(session.studentSection || 'О курсе');
+    const [studentSection, setStudentSection] = useState(() => {
+        const raw = session.studentSection;
+        if (raw === 'Главная') return 'Дашборд';
+        return raw || 'О курсе';
+    });
     const [adminSection, setAdminSection] = useState(() => {
         const raw = session.adminSection;
         if (raw === 'Обзор' || raw === 'Сводка' || raw === 'Учительская ПВЛ') return 'Дашборд';
@@ -2606,7 +2802,11 @@ export default function PvlPrototypeApp({
         if (raw === 'Проверка и риски') return 'Ученицы';
         return raw || 'Дашборд';
     });
-    const [mentorSection, setMentorSection] = useState(session.mentorSection || 'Главная');
+    const [mentorSection, setMentorSection] = useState(() => {
+        const raw = session.mentorSection;
+        if (raw === 'Главная') return 'Дашборд';
+        return raw || 'Дашборд';
+    });
     const [cmsItems, setCmsItems] = useState(() => buildMergedCmsState().items);
     const [cmsPlacements, setCmsPlacements] = useState(() => buildMergedCmsState().placements);
     const [dataTick, setDataTick] = useState(0);
@@ -2621,9 +2821,9 @@ export default function PvlPrototypeApp({
         if (allowedRoute.startsWith('/student/')) {
             const seg = allowedRoute.split('/')[2] || 'dashboard';
             const map = {
-                dashboard: 'Главная',
+                dashboard: 'Дашборд',
                 about: 'О курсе',
-                onboarding: 'Онбординг',
+                onboarding: 'О курсе',
                 glossary: 'Глоссарий курса',
                 library: 'Библиотека курса',
                 lessons: 'Трекер курса',
@@ -2634,29 +2834,16 @@ export default function PvlPrototypeApp({
                 certification: 'Сертификация и самооценка',
                 'self-assessment': 'Сертификация и самооценка',
                 qa: 'Вопросы и ответы',
+                settings: 'Настройки',
                 'cultural-code': 'Культурный код Лиги',
             };
             if (map[seg]) setStudentSection(map[seg]);
         } else if (allowedRoute.startsWith('/mentor/')) {
-            const hit = MENTOR_NAV_ITEMS.find(({ path: p }) => allowedRoute === p
-                || (p === '/mentor/library' && allowedRoute.startsWith(`${p}/`))
-                || (p === '/mentor/results' && allowedRoute.startsWith(`${p}/`))
-                || (p === '/mentor/mentees' && allowedRoute.startsWith('/mentor/mentee/')));
-            if (hit) setMentorSection(hit.label);
+            const m = mentorSectionForRoute(allowedRoute);
+            if (m) setMentorSection(m);
         } else if (allowedRoute.startsWith('/admin/')) {
-            const seg = allowedRoute.split('/')[2] || 'pvl';
-            if (seg === 'students') {
-                setAdminSection('Ученицы');
-            } else {
-                const map = {
-                    pvl: 'Дашборд',
-                    content: 'Материалы курса',
-                    mentors: 'Менторы',
-                    calendar: 'Календарь',
-                    settings: 'Настройки',
-                };
-                if (map[seg]) setAdminSection(map[seg]);
-            }
+            const a = adminSectionForRoute(allowedRoute);
+            if (a) setAdminSection(a);
         }
     }, [role, actingUserId]);
 
@@ -2760,21 +2947,16 @@ export default function PvlPrototypeApp({
                             {devToolsBar}
                         </div>
                     ) : (
-                        devToolsBar ? (
-                            <div className="rounded-2xl border border-slate-100/90 bg-white/90 backdrop-blur-sm px-4 py-3 flex flex-wrap items-center justify-end gap-3 shadow-sm shadow-slate-200/30">
-                                {devToolsBar}
-                            </div>
-                        ) : null
+                        <div className="rounded-2xl border border-slate-100/90 bg-white/90 backdrop-blur-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shadow-slate-200/30">
+                            <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} />
+                            {devToolsBar}
+                        </div>
                     )}
                     {pvlDevToolsEnabled() ? (
                         <DebugPanel
                             role={role}
-                            setRole={(r) => {
-                                setRole(r);
-                                if (r === 'student') navigate('/student/dashboard');
-                                if (r === 'mentor') navigate('/mentor/dashboard');
-                                if (r === 'admin') navigate('/admin/pvl');
-                            }}
+                            setRole={setRole}
+                            navigate={navigate}
                             actingUserId={actingUserId}
                             setActingUserId={(id) => {
                                 setActingUserId(id);

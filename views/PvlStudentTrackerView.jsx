@@ -133,9 +133,6 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
     return (
         <div className="grid gap-6 md:grid-cols-2">
             {PVL_PLATFORM_MODULES.map((mod) => {
-                const modTotal = mod.items.length;
-                const modDone = mod.items.filter((_, i) => checked[`${mod.id}-${i}`]).length;
-                const modPct = modTotal ? Math.round((modDone / modTotal) * 100) : 0;
                 const numCls = variant === 'lessons' ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-display font-semibold bg-slate-100 text-slate-700 border border-slate-200/80' : `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-display font-semibold ${moduleNumClass(mod.cls)}`;
                 return (
                     <article key={mod.id} className={articleClass}>
@@ -149,13 +146,6 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
                             </div>
                         </div>
                         <div className="p-4 md:p-5">
-                            <div className="flex justify-between text-xs text-slate-500 mb-2">
-                                <span>{modDone} из {modTotal}</span>
-                                <span className="tabular-nums">{modPct}%</span>
-                            </div>
-                            <div className="h-1 rounded-full bg-slate-100 overflow-hidden mb-4">
-                                <div className="h-full rounded-full bg-gradient-to-r from-emerald-600/50 to-[#C8855A]/70" style={{ width: `${modPct}%` }} />
-                            </div>
                             <ul className="space-y-0 divide-y divide-slate-50">
                                 {mod.items.map((item, i) => {
                                     const key = `${mod.id}-${i}`;
@@ -198,7 +188,7 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
  */
 export function StudentCourseTracker({ studentId, navigate }) {
     const { stats } = usePlatformStepChecklist(studentId);
-    const { doneSteps, totalSteps, anchorsDone, anchorsTotal, pct } = stats;
+    const { doneSteps, totalSteps, pct } = stats;
 
     const homework = useMemo(() => pvlDomainApi.studentApi.getStudentResults(studentId, {}), [studentId]);
     const controlPoints = useMemo(() => pvlDomainApi.studentApi.getStudentControlPointsProgress(studentId), [studentId]);
@@ -208,7 +198,7 @@ export function StudentCourseTracker({ studentId, navigate }) {
             <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-700/90 to-slate-800/95 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
                 <p className="text-sm text-white/75 mt-1">Полный путь по модулям — как в методическом маршруте. Отмечайте шаги по мере прохождения (те же отметки, что в «Уроках»).</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-4 border-t border-white/10">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{doneSteps}</div>
                         <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Шагов отмечено</div>
@@ -220,10 +210,6 @@ export function StudentCourseTracker({ studentId, navigate }) {
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{pct}%</div>
                         <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Прогресс</div>
-                    </div>
-                    <div className="text-center">
-                        <div className="font-display text-3xl tabular-nums">{anchorsDone}/{anchorsTotal}</div>
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-white/55 mt-1">Якоря</div>
                     </div>
                 </div>
             </div>

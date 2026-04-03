@@ -167,6 +167,7 @@ export function getAllRoutes() {
         '/mentor/mentee/:id/task/:taskId',
         '/admin/pvl',
         '/admin/content',
+        '/admin/content/:contentId',
         '/admin/students',
         '/admin/students/:id',
         '/admin/students/:id/task/:taskId',

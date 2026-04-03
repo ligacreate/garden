@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import Button from '../components/Button';
+import RichEditor from '../components/RichEditor';
 import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
@@ -16,6 +18,7 @@ import {
     PVL_TRACKER_RULES,
 } from '../data/pvlReferenceContent';
 import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
+import { SCORING_RULES } from '../data/pvl/scoringRules';
 import {
     pvlMockData,
     getStudentProfile,
@@ -178,17 +181,18 @@ function mentorSectionForRoute(allowedRoute) {
 
 function adminSectionForRoute(allowedRoute) {
     if (!allowedRoute || !allowedRoute.startsWith('/admin/')) return null;
-    if (allowedRoute === '/admin/pvl') return 'Дашборд';
-    if (/^\/admin\/students(\/|$)/.test(allowedRoute)) return 'Ученицы';
-    if (/^\/admin\/mentors(\/|$)/.test(allowedRoute)) return 'Менторы';
-    if (allowedRoute === '/admin/content') return 'Материалы курса';
-    if (allowedRoute === '/admin/calendar') return 'Календарь';
-    if (allowedRoute === '/admin/settings') return 'Настройки';
-    if (allowedRoute === '/admin/qa' || allowedRoute === '/admin/questions') return 'Вопросы';
+    const ap = allowedRoute.split('?')[0];
+    if (ap === '/admin/pvl') return 'Дашборд';
+    if (/^\/admin\/students(\/|$)/.test(ap)) return 'Ученицы';
+    if (/^\/admin\/mentors(\/|$)/.test(ap)) return 'Менторы';
+    if (ap === '/admin/content' || /^\/admin\/content\//.test(ap)) return 'Материалы курса';
+    if (ap === '/admin/calendar') return 'Календарь';
+    if (ap === '/admin/settings') return 'Настройки';
+    if (ap === '/admin/qa' || ap === '/admin/questions') return 'Вопросы';
     for (const label of COURSE_MENU_LABELS) {
         if (courseSidebarItemActive(allowedRoute, '/admin', label)) return label;
     }
-    const seg = allowedRoute.split('/')[2] || 'pvl';
+    const seg = ap.split('/')[2] || 'pvl';
     const map = {
         pvl: 'Дашборд',
         content: 'Материалы курса',
@@ -465,8 +469,8 @@ const SidebarMenu = ({
                         : currentRoute === entry.path
                             || (entry.path === '/admin/students' && /^\/admin\/students(\/|$)/.test(currentRoute || ''))
                             || (entry.path === '/admin/mentors' && /^\/admin\/mentors(\/|$)/.test(currentRoute || ''))
-                            || (entry.path === '/admin/content' && currentRoute === '/admin/content')
-                            || (entry.path === '/admin/calendar' && currentRoute === '/admin/calendar')
+                            || (entry.path === '/admin/content' && (adminRoutePath(currentRoute || '') === '/admin/content' || /^\/admin\/content\/.+/.test(adminRoutePath(currentRoute || ''))))
+                            || (entry.path === '/admin/calendar' && adminRoutePath(currentRoute || '') === '/admin/calendar')
                             || (entry.path === '/admin/pvl' && currentRoute === '/admin/pvl');
                     return (
                         <button
@@ -536,6 +540,132 @@ function breadcrumbSegmentLabel(seg) {
     return seg;
 }
 
+/**
+ * Drill-down в учительской: единая видимая «назад» + мягкие крошки (как в саду).
+ * Не показываем на корневых экранах (/admin/pvl, /admin/students, …).
+ */
+function adminRoutePath(route) {
+    return String(route || '').split('?')[0];
+}
+
+function resolveAdminDrilldownNav(route) {
+    const path = adminRoutePath(route);
+    const calQuery = String(route || '').includes('?') ? String(route).split('?')[1] : '';
+    let calEventParam = '';
+    try {
+        calEventParam = calQuery ? new URLSearchParams(calQuery).get('event') || '' : '';
+    } catch {
+        calEventParam = '';
+    }
+    if (path === '/admin/calendar' && calEventParam) {
+        return {
+            backTo: '/admin/calendar',
+            backLabel: 'Назад к календарю',
+            crumbs: [
+                { label: 'Календарь курса', to: '/admin/calendar' },
+                { label: 'Событие', to: null },
+            ],
+        };
+    }
+    const contentDetail = path.match(/^\/admin\/content\/([^/]+)$/);
+    if (contentDetail) {
+        return {
+            backTo: '/admin/content',
+            backLabel: 'К списку материалов',
+            crumbs: [
+                { label: 'Материалы курса', to: '/admin/content' },
+                { label: 'Материал', to: null },
+            ],
+        };
+    }
+    const taskMatch = path.match(/^\/admin\/students\/([^/]+)\/task\/([^/]+)$/);
+    if (taskMatch) {
+        const [, menteeSeg] = taskMatch;
+        return {
+            backTo: `/admin/students/${menteeSeg}`,
+            backLabel: 'К карточке ученицы',
+            crumbs: [
+                { label: 'Ученицы', to: '/admin/students' },
+                { label: 'Карточка', to: `/admin/students/${menteeSeg}` },
+                { label: 'Задание', to: null },
+            ],
+        };
+    }
+    const cardMatch = path.match(/^\/admin\/students\/([^/]+)$/);
+    if (cardMatch && cardMatch[1] !== 'task') {
+        return {
+            backTo: '/admin/students',
+            backLabel: 'К списку учениц',
+            crumbs: [
+                { label: 'Ученицы', to: '/admin/students' },
+                { label: 'Карточка ученицы', to: null },
+            ],
+        };
+    }
+    if (/^\/admin\/library\/.+/.test(path)) {
+        return {
+            backTo: '/admin/library',
+            backLabel: 'К библиотеке курса',
+            crumbs: [
+                { label: 'Библиотека', to: '/admin/library' },
+                { label: 'Материал', to: null },
+            ],
+        };
+    }
+    if (/^\/admin\/results\/.+/.test(path) && path !== '/admin/results') {
+        return {
+            backTo: '/admin/results',
+            backLabel: 'К результатам',
+            crumbs: [
+                { label: 'Результаты', to: '/admin/results' },
+                { label: 'Работа', to: null },
+            ],
+        };
+    }
+    return null;
+}
+
+function AdminDrilldownNavBar({ route, navigate }) {
+    const ctx = useMemo(() => resolveAdminDrilldownNav(route), [route]);
+    if (!ctx) return null;
+    return (
+        <nav
+            aria-label="Навигация внутри учительской"
+            className="rounded-2xl border border-slate-100/90 bg-white/95 px-4 py-3 shadow-sm shadow-slate-200/30 flex flex-wrap items-center gap-x-3 gap-y-2"
+        >
+            <button
+                type="button"
+                onClick={() => navigate(ctx.backTo)}
+                className="text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline shrink-0"
+            >
+                ←
+                {' '}
+                {ctx.backLabel}
+            </button>
+            {ctx.crumbs?.length ? (
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 min-w-0">
+                    {ctx.crumbs.map((c, i) => (
+                        <span key={`${c.label}-${i}`} className="inline-flex items-center gap-1.5 min-w-0">
+                            {i > 0 ? <span className="text-slate-300 shrink-0" aria-hidden>·</span> : null}
+                            {c.to ? (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(c.to)}
+                                    className="text-slate-500 hover:text-slate-800 hover:underline truncate max-w-[12rem] sm:max-w-none"
+                                >
+                                    {c.label}
+                                </button>
+                            ) : (
+                                <span className="text-slate-700 font-medium truncate max-w-[14rem] sm:max-w-none">{c.label}</span>
+                            )}
+                        </span>
+                    ))}
+                </div>
+            ) : null}
+        </nav>
+    );
+}
+
 /** Тихая строка контекста: без цепочки кликабельных крошек */
 const SubtleTrail = ({ path }) => {
     const parts = path.split('/').filter(Boolean);
@@ -597,6 +727,19 @@ function publishContentItem(items, id) {
 
 function archiveContentItem(items, id) {
     return updateContentItem(items, id, { status: 'archived' });
+}
+
+function unpublishToDraftItems(items, id) {
+    return updateContentItem(items, id, { status: 'draft' });
+}
+
+async function pvlRichEditorUploadImage(file) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(new Error('Не удалось прочитать файл'));
+        r.readAsDataURL(file);
+    });
 }
 
 function assignContentToSection(placements, contentId, targetSection, targetRole, targetCohort) {
@@ -1668,6 +1811,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     if (route === '/student/results') return <StudentResults studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];
+        const adminChrome = routePrefix === '/admin';
         return (
             <PvlTaskDetailView
                 key={`${studentId}-${taskId}-${refreshKey}`}
@@ -1675,6 +1819,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 taskStudentId={studentId}
                 taskId={taskId}
                 onRefresh={refresh}
+                showHeaderBack={!adminChrome}
                 onBack={() => navigate('/student/results')}
                 initialData={buildTaskDetailStateFromApi(studentId, taskId)}
                 onStudentSaveDraft={(text) => pvlDomainApi.studentApi.saveStudentDraft(studentId, taskId, { textContent: text })}
@@ -1835,6 +1980,7 @@ function buildMentorMenteeRows(mentorId) {
         const overdueN = pvlDomainApi.db.studentTaskStates.filter((s) => s.studentId === m.userId && s.isOverdue).length;
         const pts = pvlDomainApi.helpers.getStudentPointsSummary(m.userId);
         const risks = pvlDomainApi.mentorApi.getMentorMenteeCard(mentorId, m.userId).risks || [];
+        const revisionCyclesTotal = tasks.reduce((acc, t) => acc + (Number(t.revisionCycles) || 0), 0);
         let stateLine = 'в ритме';
         if (overdueN > 0) stateLine = 'есть долги';
         else if (pendingReview > 0) stateLine = 'нужна проверка';
@@ -1845,16 +1991,21 @@ function buildMentorMenteeRows(mentorId) {
         return {
             user,
             userId: m.userId,
+            courseBrandLine: PVL_COURSE_DISPLAY_NAME,
             courseLine,
             city,
             closedPct,
+            closedCount: closed,
+            totalTasks: total,
             pendingReview,
             inRevision,
             lastDone,
             lastAct,
             stateLine,
             overdueN,
+            revisionCyclesTotal,
             coursePoints: pts.coursePointsTotal ?? 0,
+            coursePointsMax: SCORING_RULES.COURSE_POINTS_MAX,
             riskCount: risks.length,
             roleLabel: 'Участница ПВЛ',
         };
@@ -1868,7 +2019,15 @@ function mentorMenteeInitials(fullName) {
     return (a + b).toUpperCase() || '?';
 }
 
+function menteeStatusSurface(stateLine) {
+    if (stateLine === 'есть долги') return 'bg-rose-50/90 text-rose-900 border-rose-100';
+    if (stateLine === 'нужна проверка') return 'bg-amber-50/90 text-amber-950 border-amber-100';
+    if (stateLine === 'есть доработки') return 'bg-orange-50/90 text-orange-950 border-orange-100';
+    return 'bg-emerald-50/90 text-emerald-900 border-emerald-100';
+}
+
 function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
+    const ptsMax = SCORING_RULES.COURSE_POINTS_MAX;
     return (
         <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30">
             {heading ? <h3 className="font-display text-xl text-slate-800 mb-4">{heading}</h3> : null}
@@ -1885,10 +2044,10 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                                 navigate(`/mentor/mentee/${row.userId}`);
                             }
                         }}
-                        className="rounded-2xl border border-slate-100/90 bg-slate-50/40 p-4 text-left shadow-sm hover:border-emerald-200 hover:bg-white transition-colors cursor-pointer flex flex-col gap-3"
+                        className="rounded-2xl border border-emerald-100/50 bg-gradient-to-b from-white to-slate-50/70 p-4 md:p-5 text-left shadow-sm shadow-slate-200/20 hover:border-emerald-200/80 hover:shadow-md transition-all cursor-pointer flex flex-col gap-3"
                     >
                         <div className="flex gap-3">
-                            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 border border-emerald-100 flex items-center justify-center text-sm font-semibold text-emerald-900 shrink-0">
+                            <div className="h-14 w-14 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 border border-emerald-100/80 flex items-center justify-center text-sm font-semibold text-emerald-900 shrink-0 ring-2 ring-white">
                                 {mentorMenteeInitials(row.user?.fullName)}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -1906,21 +2065,58 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                                 {row.city ? <p className="text-[11px] text-slate-400 mt-0.5">{row.city}</p> : null}
                             </div>
                         </div>
-                        <p className="text-xs text-slate-600 leading-snug line-clamp-2">{row.courseLine}</p>
+                        {row.courseBrandLine ? (
+                            <p className="text-[10px] uppercase tracking-wide text-slate-400">{row.courseBrandLine}</p>
+                        ) : null}
+                        <p className="text-xs text-slate-600 leading-snug">{row.courseLine}</p>
+                        <div>
+                            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 mb-1.5">
+                                <span>
+                                    Задания:{' '}
+                                    <span className="tabular-nums font-medium text-slate-800">
+                                        {row.closedCount ?? 0}/{row.totalTasks ?? 0}
+                                    </span>{' '}
+                                    закрыто
+                                </span>
+                                <span className="tabular-nums text-slate-500">{row.closedPct}%</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-100 overflow-hidden border border-slate-100/80">
+                                <div
+                                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-[width]"
+                                    style={{ width: `${Math.min(100, Math.max(0, row.closedPct))}%` }}
+                                />
+                            </div>
+                        </div>
                         <div className="flex flex-wrap gap-2">
-                            <span className="text-[10px] rounded-full bg-white border border-slate-200 px-2.5 py-1 text-slate-700 tabular-nums">Прогресс {row.closedPct}%</span>
-                            <span className="text-[10px] rounded-full bg-white border border-slate-200 px-2.5 py-1 text-slate-700 tabular-nums">{row.coursePoints}/400</span>
+                            <span className="text-[10px] rounded-full bg-white/90 border border-slate-200/90 px-2.5 py-1 text-slate-700 tabular-nums shadow-sm">
+                                Баллы {row.coursePoints}/{row.coursePointsMax ?? ptsMax}
+                            </span>
+                            {(row.revisionCyclesTotal ?? 0) > 0 ? (
+                                <span className="text-[10px] rounded-full bg-white/90 border border-amber-100 px-2.5 py-1 text-amber-950 tabular-nums">
+                                    Циклы доработок: {row.revisionCyclesTotal}
+                                </span>
+                            ) : null}
                             {row.inRevision > 0 ? (
-                                <span className="text-[10px] rounded-full bg-amber-50 border border-amber-100 px-2.5 py-1 text-amber-950">Доработки: {row.inRevision}</span>
+                                <span className="text-[10px] rounded-full bg-amber-50 border border-amber-100 px-2.5 py-1 text-amber-950">
+                                    На доработке: {row.inRevision}
+                                </span>
                             ) : null}
                             {row.overdueN > 0 ? (
-                                <span className="text-[10px] rounded-full bg-rose-50 border border-rose-100 px-2.5 py-1 text-rose-900">Просрочки: {row.overdueN}</span>
+                                <span className="text-[10px] rounded-full bg-rose-50 border border-rose-100 px-2.5 py-1 text-rose-900">
+                                    Просрочки: {row.overdueN}
+                                </span>
                             ) : null}
                         </div>
-                        <div className="text-[11px] text-slate-500 border-t border-slate-100/80 pt-2 mt-auto">
-                            <span className="font-medium text-emerald-800/90">{row.stateLine}</span>
-                            {' · '}
-                            активность: {row.lastAct}
+                        <div className="text-[11px] text-slate-500 border-t border-slate-100/80 pt-3 mt-auto flex flex-wrap items-center gap-2">
+                            <span
+                                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${menteeStatusSurface(row.stateLine)}`}
+                            >
+                                {row.stateLine}
+                            </span>
+                            <span className="text-slate-400">·</span>
+                            <span>
+                                последнее действие: <span className="text-slate-600">{row.lastAct}</span>
+                            </span>
                         </div>
                         {row.riskCount > 0 ? <p className="text-[10px] text-amber-800">Рисков в карточке: {row.riskCount}</p> : null}
                     </div>
@@ -1960,7 +2156,9 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
 
     const renderCard = (q, col) => {
         const dl = q.deadlineAt ? formatPvlDateTime(`${String(q.deadlineAt).slice(0, 10)}T12:00:00`) : '—';
-        const hasScore = (q.maxScore ?? 0) > 0 && q.rawStatus === TASK_STATUS.ACCEPTED;
+        const maxSc = Number(q.maxScore) || 0;
+        const awarded = Number(q.scoreAwarded) || 0;
+        const hasScore = maxSc > 0 && (awarded > 0 || q.rawStatus === TASK_STATUS.ACCEPTED);
         return (
             <div
                 key={`${q.studentId}-${q.taskId}-${col}`}
@@ -2001,7 +2199,7 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                 <div className="flex flex-wrap gap-2 mt-2">
                     {hasScore ? (
                         <span className="text-[10px] tabular-nums rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            {q.scoreAwarded ?? 0}/{q.maxScore ?? 0}
+                            {awarded}/{maxSc}
                         </span>
                     ) : null}
                     {(q.revisionCycles ?? 0) > 0 ? (
@@ -2012,7 +2210,14 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
         );
     };
 
-    const col = (key, title, hint, items, emptyText) => (
+    const emptyColumn = (title, body) => (
+        <div className="rounded-xl border border-dashed border-slate-200/90 bg-white/70 px-3 py-8 text-center flex flex-col justify-center min-h-[140px]">
+            <p className="text-sm font-medium text-slate-600">{title}</p>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-[16rem] mx-auto">{body}</p>
+        </div>
+    );
+
+    const col = (key, title, hint, items, emptyTitle, emptyBody) => (
         <div
             key={key}
             className="rounded-2xl border border-dashed border-slate-200/90 bg-slate-50/40 p-4 min-h-[220px] flex flex-col"
@@ -2024,84 +2229,60 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                 {hint ? <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p> : null}
             </div>
             <div className="space-y-2 flex-1">
-                {items.length === 0 ? <p className="text-sm text-slate-400">{emptyText}</p> : items.map((q) => renderCard(q, key))}
+                {items.length === 0 ? emptyColumn(emptyTitle, emptyBody) : items.map((q) => renderCard(q, key))}
             </div>
         </div>
     );
 
     return (
         <div className="grid lg:grid-cols-3 gap-4">
-            {col('unchecked', 'Не проверено', 'Отправлено, ждёт проверки', board.unchecked, 'Нет работ в очереди.')}
-            {col('revision', 'На доработке', 'Нужен ответ или новая версия', board.revision, 'Нет работ на доработке.')}
-            {col('done', 'Проверено', 'Принято, закрыто', board.done, 'Пока нет закрытых в этом срезе.')}
+            {col(
+                'unchecked',
+                'Не проверено',
+                'Отправлено, ждёт проверки',
+                board.unchecked,
+                'Пока тихо',
+                'Когда ученица отправит работу на проверку, карточка появится здесь автоматически.',
+            )}
+            {col(
+                'revision',
+                'На доработке',
+                'Нужен ответ или новая версия',
+                board.revision,
+                'Нет активных доработок',
+                'Задания с запросом правок от ментора отображаются в этой колонке. Перетащите сюда карточку, если вернули работу на доработку.',
+            )}
+            {col(
+                'done',
+                'Проверено',
+                'Принято, закрыто',
+                board.done,
+                'Пока пусто в этом списке',
+                'Принятые работы окажутся здесь. Можно перетащить карточку из «Не проверено», чтобы отметить задание закрытым.',
+            )}
         </div>
     );
 }
 
-function MentorKanbanCol({ title, hint, items, emptyText, navigate }) {
-    return (
-        <div className="rounded-2xl border border-slate-100/90 bg-slate-50/40 p-4 min-h-[200px] flex flex-col">
-            <div className="mb-3">
-                <h4 className="font-display text-base text-slate-800">{title}</h4>
-                {hint ? <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p> : null}
-            </div>
-            <div className="space-y-2 flex-1">
-                {items.length === 0 ? <p className="text-sm text-slate-400">{emptyText}</p> : items.map((q) => (
-                    <div
-                        key={`${q.studentId}-${q.taskId}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}`)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}`);
-                            }
-                        }}
-                        className="w-full text-left rounded-xl border border-white bg-white p-3 shadow-sm text-sm transition-colors hover:border-blue-100 hover:bg-blue-50/30 cursor-pointer"
-                    >
-                        <div className="font-medium text-slate-800">{q.taskTitle}</div>
-                        <div className="mt-1.5">
-                            <button
-                                type="button"
-                                className="text-sm text-blue-700 hover:underline font-medium"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/mentor/mentee/${q.studentId}`);
-                                }}
-                            >
-                                {q.studentName}
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function MentorMenteesPanel({ navigate, mentorId }) {
-    const menteeRows = buildMentorMenteeRows(mentorId);
+function MentorMenteesPanel({ navigate, mentorId, refreshKey = 0 }) {
+    const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     return (
         <div className="space-y-4">
             <h2 className="font-display text-2xl text-slate-800">Мои менти</h2>
+            <p className="text-sm text-slate-500 -mt-2">Карточки строятся из результатов и профиля потока — те же данные, что в карточке менти.</p>
             <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading={null} />
         </div>
     );
 }
 
-function MentorReviewQueuePanel({ navigate, mentorId }) {
-    const board = pvlDomainApi.mentorApi.getMentorReviewBoard(mentorId);
+function MentorReviewQueuePanel({ navigate, mentorId, refresh, refreshKey = 0 }) {
     return (
         <div className="space-y-4">
             <h2 className="font-display text-2xl text-slate-800">Очередь проверок</h2>
-            <section>
-                <div className="grid lg:grid-cols-3 gap-4">
-                    <MentorKanbanCol title="Не проверено" hint="Отправлено, ждёт проверки" items={board.unchecked} emptyText="Нет работ в очереди." navigate={navigate} />
-                    <MentorKanbanCol title="На доработке" hint="Нужен ответ или новая версия" items={board.revision} emptyText="Нет работ на доработке." navigate={navigate} />
-                    <MentorKanbanCol title="Проверено" hint="Принято, закрыто" items={board.done} emptyText="Пока нет закрытых в этом срезе." navigate={navigate} />
-                </div>
-            </section>
+            <p className="text-sm text-slate-500 -mt-2">
+                Те же задания, что на дашборде. Перетаскивание между колонками сохраняет статус в данных курса и обновляет результаты.
+            </p>
+            <MentorKanbanBoard mentorId={mentorId} navigate={navigate} refreshKey={refreshKey} onStatusChanged={refresh} />
         </div>
     );
 }
@@ -2110,24 +2291,26 @@ function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
     const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     const mentorCohortId = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId)?.cohortIds?.[0] || 'cohort-2026-1';
     return (
-        <div className="space-y-8">
-            <div>
+        <div className="space-y-6">
+            <header className="border-b border-slate-100 pb-4">
                 <h2 className="font-display text-2xl text-slate-800">Дашборд ментора</h2>
-                <p className="text-sm text-slate-500 mt-1">Менти, календарь потока и канбан проверок — данные из результатов и общего календаря.</p>
-            </div>
+                <p className="text-xs text-slate-500 mt-1.5">
+                    Сначала люди и прогресс, затем календарь потока и очередь проверок — без отдельной «витрины», всё из тех же источников данных.
+                </p>
+            </header>
             <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading="Мои менти" />
-            <section className="space-y-3">
-                <h3 className="font-display text-lg text-slate-800">Календарь курса</h3>
+            <section>
                 <PvlDashboardCalendarBlock
+                    title="Календарь курса"
                     viewerRole="mentor"
                     cohortId={mentorCohortId}
                     navigate={navigate}
                     routePrefix="/mentor"
                 />
             </section>
-            <section className="space-y-3">
+            <section className="space-y-2">
                 <h3 className="font-display text-lg text-slate-800">Канбан проверок</h3>
-                <p className="text-xs text-slate-500">Перетащите карточку в другую колонку — статус сохранится в данных курса.</p>
+                <p className="text-xs text-slate-500">Перетащите карточку в другую колонку — вызовется сохранение статуса в mock API; списки и карточки обновятся после перерисовки.</p>
                 <MentorKanbanBoard mentorId={mentorId} navigate={navigate} refreshKey={refreshKey} onStatusChanged={refresh} />
             </section>
         </div>
@@ -2140,8 +2323,8 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     }
     if (route === '/mentor/settings') return <PvlCabinetSettingsStub />;
     if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
-    if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} mentorId={mentorId} />;
-    if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} mentorId={mentorId} />;
+    if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} mentorId={mentorId} refreshKey={refreshKey} />;
+    if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
     if (route === '/mentor/tracker') {
         return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} routePrefix="/mentor" />;
     }
@@ -2297,13 +2480,599 @@ function TeacherPvlHome({ navigate }) {
     );
 }
 
-function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacements }) {
+function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint }) {
+    const html = String(item?.fullDescription || item?.description || '').trim();
+    if (!visible) {
+        return (
+            <article className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500 leading-snug">
+                {disabledHint}
+            </article>
+        );
+    }
+    return (
+        <article className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-200/30">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{roleTitle}</div>
+            <div className="text-sm font-semibold text-slate-800 mt-1">{item.title || '—'}</div>
+            {item.shortDescription ? <p className="text-xs text-slate-500 mt-2 line-clamp-4">{item.shortDescription}</p> : null}
+            <div
+                className="mt-3 text-sm text-slate-700 max-h-[220px] overflow-y-auto prose prose-sm prose-slate max-w-none"
+                dangerouslySetInnerHTML={{ __html: html || '<p class="text-slate-400 text-sm">Текст материала пустой.</p>' }}
+            />
+        </article>
+    );
+}
+
+function AdminContentItemScreen({
+    contentId,
+    navigate,
+    cmsItems,
+    setCmsItems,
+    cmsPlacements,
+    setCmsPlacements,
+    forceRefresh,
+}) {
+    const item = cmsItems.find((x) => x.id === contentId);
+    const [panelMode, setPanelMode] = useState('view');
+    const [editForm, setEditForm] = useState(null);
+    const [placementEditId, setPlacementEditId] = useState(null);
+    const [placementEditForm, setPlacementEditForm] = useState(null);
+
+    useEffect(() => {
+        setPanelMode('view');
+        setEditForm(null);
+        setPlacementEditId(null);
+        setPlacementEditForm(null);
+    }, [contentId]);
+
+    const placementSectionOptions = useMemo(() => Object.keys(TARGET_SECTION_LABELS), []);
+
+    const itemPlacements = useMemo(
+        () => cmsPlacements.filter((p) => (p.contentId || p.contentItemId) === contentId),
+        [cmsPlacements, contentId],
+    );
+
+    const sections = ['lessons', 'library', 'glossary'];
+    const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
+
+    const beginEdit = () => {
+        if (!item) return;
+        setEditForm({
+            title: item.title || '',
+            shortDescription: item.shortDescription || '',
+            fullDescriptionHtml: item.fullDescription || item.description || '',
+            contentType: item.contentType || 'text',
+            targetSection: item.targetSection || 'library',
+            targetRole: item.targetRole || 'student',
+            targetCohort: item.targetCohort || 'cohort-2026-1',
+            weekNumber: item.weekNumber ?? 0,
+            moduleNumber: item.moduleNumber ?? 0,
+            estimatedDuration: item.estimatedDuration || '',
+            tagsText: Array.isArray(item.tags) ? item.tags.join(', ') : '',
+        });
+        setPanelMode('edit');
+    };
+
+    const cancelEdit = () => {
+        setEditForm(null);
+        setPanelMode('view');
+    };
+
+    const applyPatchToState = (patch) => {
+        setCmsItems((prev) => updateContentItem(prev, contentId, { ...patch, updatedAt: new Date().toLocaleString('ru-RU') }));
+        forceRefresh?.();
+    };
+
+    const saveFieldUpdatesFromForm = () => {
+        if (!editForm) return;
+        const tags = String(editForm.tagsText || '').split(',').map((t) => t.trim()).filter(Boolean);
+        const payload = {
+            title: editForm.title.trim(),
+            shortDescription: editForm.shortDescription,
+            fullDescription: editForm.fullDescriptionHtml,
+            description: editForm.fullDescriptionHtml,
+            contentType: editForm.contentType,
+            targetSection: editForm.targetSection,
+            targetRole: editForm.targetRole,
+            targetCohort: editForm.targetCohort,
+            weekNumber: Number(editForm.weekNumber) || 0,
+            moduleNumber: Number(editForm.moduleNumber) || 0,
+            estimatedDuration: editForm.estimatedDuration,
+            tags,
+        };
+        pvlDomainApi.adminApi.updateContentItem(contentId, payload);
+        applyPatchToState(payload);
+    };
+
+    /** Одна запись полей + публикация карточки; placements в API не трогаем. */
+    const commitPublish = () => {
+        if (panelMode === 'edit') saveFieldUpdatesFromForm();
+        pvlDomainApi.adminApi.publishContentItem(contentId);
+        setCmsItems((prev) => publishContentItem(prev, contentId));
+        forceRefresh?.();
+        cancelEdit();
+    };
+
+    const handleSaveDraft = () => {
+        saveFieldUpdatesFromForm();
+        cancelEdit();
+    };
+
+    const handleUnpublish = () => {
+        if (panelMode === 'edit') saveFieldUpdatesFromForm();
+        pvlDomainApi.adminApi.unpublishContentItem(contentId);
+        setCmsItems((prev) => unpublishToDraftItems(prev, contentId));
+        forceRefresh?.();
+        cancelEdit();
+    };
+
+    const handleArchive = () => {
+        if (!window.confirm('Отправить материал в архив?')) return;
+        if (panelMode === 'edit') saveFieldUpdatesFromForm();
+        pvlDomainApi.adminApi.archiveContentItem(contentId);
+        setCmsItems((prev) => archiveContentItem(prev, contentId));
+        forceRefresh?.();
+        cancelEdit();
+    };
+
+    const handleAssignPlacement = () => {
+        if (!item) return;
+        const pl = pvlDomainApi.adminApi.assignContentPlacement({
+            contentItemId: item.id,
+            targetSection: item.targetSection,
+            targetRole: item.targetRole,
+            cohortId: item.targetCohort || 'cohort-2026-1',
+            weekNumber: item.weekNumber || 0,
+            moduleNumber: item.moduleNumber || 0,
+            orderIndex: item.orderIndex || 999,
+        });
+        if (pl) setCmsPlacements((prev) => [...prev, pl]);
+        forceRefresh?.();
+    };
+
+    const startPlacementEdit = (p) => {
+        const role = String(p.targetRole || 'student').toLowerCase();
+        const roleNorm = role === 'mentor' || role === 'both' ? role : 'student';
+        setPlacementEditId(p.id);
+        setPlacementEditForm({
+            targetSection: p.targetSection || 'library',
+            targetRole: roleNorm,
+            cohortId: p.targetCohort || p.cohortId || 'cohort-2026-1',
+            orderIndex: p.orderIndex ?? 0,
+            weekNumber: p.weekNumber ?? 0,
+            moduleNumber: p.moduleNumber ?? 0,
+            isPublished: p.isPublished !== false,
+        });
+    };
+
+    const cancelPlacementEdit = () => {
+        setPlacementEditId(null);
+        setPlacementEditForm(null);
+    };
+
+    const savePlacementEdit = () => {
+        if (!placementEditId || !placementEditForm) return;
+        const patch = {
+            targetSection: placementEditForm.targetSection,
+            targetRole: placementEditForm.targetRole,
+            cohortId: placementEditForm.cohortId,
+            targetCohort: placementEditForm.cohortId,
+            orderIndex: Number(placementEditForm.orderIndex) || 0,
+            weekNumber: Number(placementEditForm.weekNumber) || 0,
+            moduleNumber: Number(placementEditForm.moduleNumber) || 0,
+            isPublished: !!placementEditForm.isPublished,
+        };
+        pvlDomainApi.adminApi.updatePlacement(placementEditId, patch);
+        setCmsPlacements((prev) => prev.map((x) => (x.id === placementEditId ? { ...x, ...patch } : x)));
+        cancelPlacementEdit();
+        forceRefresh?.();
+    };
+
+    const deletePlacementRow = (pid) => {
+        if (!window.confirm('Удалить это размещение?')) return;
+        pvlDomainApi.adminApi.deletePlacement(pid);
+        setCmsPlacements((prev) => prev.filter((x) => x.id !== pid));
+        if (placementEditId === pid) cancelPlacementEdit();
+        forceRefresh?.();
+    };
+
+    if (!item) {
+        return (
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-8 shadow-sm text-center space-y-4">
+                <p className="text-slate-600">Материал не найден или удалён.</p>
+                <Button variant="secondary" onClick={() => navigate('/admin/content')}>К списку материалов</Button>
+            </div>
+        );
+    }
+
+    const previewSource = panelMode === 'edit' && editForm
+        ? {
+            title: editForm.title,
+            shortDescription: editForm.shortDescription,
+            fullDescription: editForm.fullDescriptionHtml,
+            description: editForm.fullDescriptionHtml,
+            targetRole: editForm.targetRole,
+        }
+        : item;
+    const prevStudentSees = previewSource.targetRole === 'student' || previewSource.targetRole === 'both';
+    const prevMentorSees = previewSource.targetRole === 'mentor' || previewSource.targetRole === 'both';
+
+    const publishedPlacements = itemPlacements.filter((p) => p.isPublished !== false);
+    const unpublishedPlacements = itemPlacements.filter((p) => p.isPublished === false);
+    const cohortsForPlacement = pvlDomainApi.adminApi.getAdminCohorts() || [];
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Материалы курса</p>
+                    <h2 className="font-display text-2xl text-slate-800 mt-1 break-words">{item.title}</h2>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                        <StatusBadge>{CONTENT_STATUS_LABEL[item.status] || item.status}</StatusBadge>
+                        <StatusBadge>{labelTargetSection(item.targetSection)}</StatusBadge>
+                        <StatusBadge>{TARGET_ROLE_LABELS[item.targetRole] || item.targetRole}</StatusBadge>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                    <Button variant="secondary" onClick={() => navigate('/admin/content')}>К списку материалов</Button>
+                    {panelMode === 'view' ? (
+                        <Button onClick={beginEdit}>Редактировать</Button>
+                    ) : (
+                        <>
+                            <Button variant="secondary" onClick={cancelEdit}>Отменить</Button>
+                            <Button onClick={handleSaveDraft}>Сохранить черновик</Button>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-100/90 bg-slate-50/60 p-5 shadow-sm">
+                <h3 className="font-display text-lg text-slate-800 mb-3">Размещение и аудитория</h3>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-slate-600">
+                    <div className="rounded-xl border border-slate-100 bg-white p-3">
+                        <div className="text-[10px] font-semibold uppercase text-slate-400">Раздел (метаданные)</div>
+                        <div className="font-medium text-slate-800 mt-1">{labelTargetSection(item.targetSection)}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-3">
+                        <div className="text-[10px] font-semibold uppercase text-slate-400">Роль</div>
+                        <div className="font-medium text-slate-800 mt-1">{TARGET_ROLE_LABELS[item.targetRole] || item.targetRole}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-3">
+                        <div className="text-[10px] font-semibold uppercase text-slate-400">Поток</div>
+                        <div className="font-medium text-slate-800 mt-1">{item.targetCohort || '—'}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-3 tabular-nums">
+                        <div className="text-[10px] font-semibold uppercase text-slate-400">Неделя / модуль</div>
+                        <div className="font-medium text-slate-800 mt-1">{item.weekNumber ?? '—'} · {item.moduleNumber ?? '—'}</div>
+                    </div>
+                </div>
+                <div className="mt-4">
+                    <div className="text-xs font-medium text-slate-500 mb-2">Привязки в разделах (placements)</div>
+                    {itemPlacements.length === 0 ? (
+                        <p className="text-sm text-slate-500">Пока нет отдельных привязок — только метаданные материала.</p>
+                    ) : (
+                        <ul className="grid gap-3">
+                            {itemPlacements.map((p) => (
+                                <li key={p.id} className="rounded-xl border border-slate-100 bg-white p-3 text-xs text-slate-600 space-y-2">
+                                    {placementEditId === p.id && placementEditForm ? (
+                                        <div className="grid sm:grid-cols-2 gap-2">
+                                            <label className="block text-[10px] text-slate-500">Раздел
+                                                <select
+                                                    value={placementEditForm.targetSection}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, targetSection: e.target.value }))}
+                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm bg-white"
+                                                >
+                                                    {placementSectionOptions.map((k) => (
+                                                        <option key={k} value={k}>{labelTargetSection(k)}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <label className="block text-[10px] text-slate-500">Роль
+                                                <select
+                                                    value={placementEditForm.targetRole}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, targetRole: e.target.value }))}
+                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm bg-white"
+                                                >
+                                                    <option value="student">{TARGET_ROLE_LABELS.student}</option>
+                                                    <option value="mentor">{TARGET_ROLE_LABELS.mentor}</option>
+                                                    <option value="both">{TARGET_ROLE_LABELS.both}</option>
+                                                </select>
+                                            </label>
+                                            <label className="block text-[10px] text-slate-500">Поток
+                                                <select
+                                                    value={placementEditForm.cohortId}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, cohortId: e.target.value }))}
+                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm bg-white"
+                                                >
+                                                    {cohortsForPlacement.map((c) => (
+                                                        <option key={c.id} value={c.id}>{c.title}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <label className="block text-[10px] text-slate-500">Порядок
+                                                <input
+                                                    type="number"
+                                                    value={placementEditForm.orderIndex}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, orderIndex: e.target.value }))}
+                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm tabular-nums bg-white"
+                                                />
+                                            </label>
+                                            <label className="block text-[10px] text-slate-500">Неделя
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={placementEditForm.weekNumber}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, weekNumber: e.target.value }))}
+                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm tabular-nums bg-white"
+                                                />
+                                            </label>
+                                            <label className="block text-[10px] text-slate-500">Модуль
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={placementEditForm.moduleNumber}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, moduleNumber: e.target.value }))}
+                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm tabular-nums bg-white"
+                                                />
+                                            </label>
+                                            <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={placementEditForm.isPublished}
+                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, isPublished: e.target.checked }))}
+                                                    className="rounded border-slate-300"
+                                                />
+                                                Размещение опубликовано (видно по правилам курса)
+                                            </label>
+                                            <div className="sm:col-span-2 flex flex-wrap gap-2 pt-1">
+                                                <button type="button" onClick={savePlacementEdit} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50">Сохранить</button>
+                                                <button type="button" onClick={cancelPlacementEdit} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50">Отмена</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex flex-wrap justify-between gap-2 items-start">
+                                                <span>
+                                                    <span className="font-medium text-slate-800">{labelTargetSection(p.targetSection)}</span>
+                                                    {' · '}
+                                                    {TARGET_ROLE_LABELS[p.targetRole] || p.targetRole}
+                                                    {' · '}
+                                                    {p.targetCohort || p.cohortId || '—'}
+                                                    {typeof p.orderIndex === 'number' ? ` · порядок ${p.orderIndex}` : ''}
+                                                    {typeof p.weekNumber === 'number' ? ` · нед. ${p.weekNumber}` : ''}
+                                                </span>
+                                                <span className={p.isPublished === false ? 'text-amber-700 font-medium' : 'text-emerald-700 font-medium'}>
+                                                    {p.isPublished === false ? 'снято с публикации' : 'опубликовано'}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button type="button" onClick={() => startPlacementEdit(p)} className="text-[11px] rounded-lg border border-slate-200 px-2 py-1 text-slate-700 hover:bg-slate-50">Изменить</button>
+                                                <button type="button" onClick={() => deletePlacementRow(p.id)} className="text-[11px] rounded-lg border border-rose-200 text-rose-800 px-2 py-1 hover:bg-rose-50">Удалить</button>
+                                            </div>
+                                        </>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    <button
+                        type="button"
+                        onClick={handleAssignPlacement}
+                        className="mt-3 text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 hover:bg-slate-50"
+                    >
+                        Добавить размещение по метаданным материала
+                    </button>
+                </div>
+            </div>
+
+            {panelMode === 'view' ? (
+                <div className="space-y-4">
+                    <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/50 p-5 shadow-sm space-y-3">
+                        <h3 className="font-display text-lg text-slate-800">Где материал сейчас в потоке</h3>
+                        <ul className="text-sm text-slate-700 space-y-2 list-disc list-inside leading-relaxed">
+                            <li>
+                                <span className="font-medium">Статус карточки:</span>
+                                {' '}
+                                {CONTENT_STATUS_LABEL[item.status] || item.status}
+                                .
+                                {' '}
+                                Участницам и менторам контент доступен при статусе «Опубликован» и учёте целевой роли (и при активных привязках ниже).
+                            </li>
+                            <li>
+                                <span className="font-medium">Целевая роль материала (метаданные):</span>
+                                {' '}
+                                {TARGET_ROLE_LABELS[item.targetRole] || item.targetRole}
+                                .
+                            </li>
+                            <li>
+                                <span className="font-medium">Задуманный раздел (метаданные):</span>
+                                {' '}
+                                {labelTargetSection(item.targetSection)}
+                                {' '}
+                                (поток
+                                {' '}
+                                {item.targetCohort || '—'}
+                                ).
+                            </li>
+                            <li>
+                                <span className="font-medium">Опубликованные привязки (placements):</span>
+                                {' '}
+                                {publishedPlacements.length === 0 ? (
+                                    <span className="text-slate-500">нет — только метаданные или всё снято с публикации.</span>
+                                ) : (
+                                    <span className="text-slate-800">
+                                        {publishedPlacements.map((p) => `${labelTargetSection(p.targetSection)} (${TARGET_ROLE_LABELS[p.targetRole] || p.targetRole})`).join('; ')}
+                                    </span>
+                                )}
+                            </li>
+                            {unpublishedPlacements.length > 0 ? (
+                                <li className="text-amber-900/90">
+                                    <span className="font-medium">Снятые привязки:</span>
+                                    {' '}
+                                    {unpublishedPlacements.map((p) => `${labelTargetSection(p.targetSection)} (${TARGET_ROLE_LABELS[p.targetRole] || p.targetRole})`).join('; ')}
+                                </li>
+                            ) : null}
+                        </ul>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                        <h3 className="font-display text-lg text-slate-800 mb-2">Просмотр</h3>
+                        <p className="text-sm text-slate-500 mb-4">{item.shortDescription || 'Без краткого описания.'}</p>
+                        <div
+                            className="prose prose-sm prose-slate max-w-none text-slate-700 border border-slate-100 rounded-xl p-4 bg-slate-50/50 max-h-[360px] overflow-y-auto"
+                            dangerouslySetInnerHTML={{ __html: String(item.fullDescription || item.description || '').trim() || '<p class="text-slate-400">Текст пустой.</p>' }}
+                        />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="secondary" onClick={handleUnpublish} disabled={item.status !== 'published'}>Снять с публикации</Button>
+                        <Button onClick={commitPublish} disabled={item.status === 'published'}>Опубликовать</Button>
+                        <Button variant="danger" onClick={handleArchive} disabled={item.status === 'archived'}>В архив</Button>
+                    </div>
+                </div>
+            ) : (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5 md:p-6 shadow-sm space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-display text-lg text-slate-800">Редактирование материала</h3>
+                        <span className="text-xs font-medium text-blue-800/90 uppercase tracking-wide">Режим правки</span>
+                    </div>
+                    {editForm ? (
+                        <div className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-xs text-slate-500 ml-0.5">Название</label>
+                                <input
+                                    value={editForm.title}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs text-slate-500 ml-0.5">Краткое описание</label>
+                                <input
+                                    value={editForm.shortDescription}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, shortDescription: e.target.value }))}
+                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                                />
+                            </div>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Раздел</label>
+                                    <select
+                                        value={editForm.targetSection}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, targetSection: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                    >
+                                        {sections.map((s) => <option key={s} value={s}>{labelTargetSection(s)}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Тип контента</label>
+                                    <select
+                                        value={editForm.contentType}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, contentType: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                    >
+                                        {types.map((s) => <option key={s} value={s}>{CONTENT_TYPE_LABEL[s] || s}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Целевая роль</label>
+                                    <select
+                                        value={editForm.targetRole}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, targetRole: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                    >
+                                        <option value="student">{TARGET_ROLE_LABELS.student}</option>
+                                        <option value="mentor">{TARGET_ROLE_LABELS.mentor}</option>
+                                        <option value="both">{TARGET_ROLE_LABELS.both}</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Поток</label>
+                                    <select
+                                        value={editForm.targetCohort}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, targetCohort: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                    >
+                                        {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => (
+                                            <option key={c.id} value={c.id}>{c.title}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Неделя</label>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={12}
+                                        value={editForm.weekNumber}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, weekNumber: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm tabular-nums"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Длительность</label>
+                                    <input
+                                        value={editForm.estimatedDuration}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, estimatedDuration: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm"
+                                        placeholder="например 20 мин"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs text-slate-500 ml-0.5">Теги через запятую</label>
+                                <input
+                                    value={editForm.tagsText}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, tagsText: e.target.value }))}
+                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-slate-500 ml-0.5">Текст материала</label>
+                                <RichEditor
+                                    key={`pvl-cms-${contentId}`}
+                                    value={editForm.fullDescriptionHtml}
+                                    onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
+                                    onUploadImage={pvlRichEditorUploadImage}
+                                    placeholder="Напишите текст материала..."
+                                />
+                            </div>
+                            <div className="flex flex-wrap gap-2 pt-2">
+                                <Button variant="secondary" onClick={cancelEdit}>Отменить</Button>
+                                <Button onClick={handleSaveDraft}>Сохранить черновик</Button>
+                                <Button variant="secondary" onClick={commitPublish}>Сохранить и опубликовать</Button>
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+            )}
+
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
+                <h3 className="font-display text-lg text-slate-800">Предпросмотр карточки</h3>
+                <p className="text-xs text-slate-500">Так материал может выглядеть в библиотеке курса у разных ролей (по целевой роли).</p>
+                <div className="grid md:grid-cols-2 gap-4">
+                    <ParticipantMaterialPreviewCard
+                        roleTitle="Участница"
+                        item={previewSource}
+                        visible={prevStudentSees}
+                        disabledHint="Для участниц материал не показывается при текущей целевой роли."
+                    />
+                    <ParticipantMaterialPreviewCard
+                        roleTitle="Ментор"
+                        item={previewSource}
+                        visible={prevMentorSees}
+                        disabledHint="Для менторов материал не показывается при текущей целевой роли."
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacements, navigate }) {
     const items = cmsItems;
     const placements = cmsPlacements;
     const setItems = setCmsItems;
     const setPlacements = setCmsPlacements;
     const [filters, setFilters] = useState({ section: 'all', status: 'all', role: 'all', type: 'all', cohort: 'all', week: 'all', query: '' });
-    const [previewId, setPreviewId] = useState('');
     const [draft, setDraft] = useState({
         title: '',
         shortDescription: '',
@@ -2324,7 +3093,6 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         .filter((i) => sections.includes(i.targetSection))
         .filter((i) => (filters.cohort === 'all' ? true : i.targetCohort === filters.cohort))
         .filter((i) => (filters.week === 'all' ? true : String(i.weekNumber || 0) === String(filters.week)));
-    const previewItem = items.find((x) => x.id === previewId) || null;
     const handleCreate = () => {
         if (!draft.title.trim()) return;
         const { tagsText, ...rest } = draft;
@@ -2337,13 +3105,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         const created = pvlDomainApi.adminApi.createContentItem(record);
         setItems((prev) => [created, ...prev]);
         setDraft((d) => ({ ...d, title: '', shortDescription: '', fullDescription: '', tagsText: '' }));
+        navigate(`/admin/content/${created.id}`);
     };
     const handleDeleteItem = (i) => {
         if (!window.confirm(`Удалить материал «${i.title}»? Связанные размещения в разделах тоже будут убраны.`)) return;
         pvlDomainApi.adminApi.deleteContentItem(i.id);
         setItems((prev) => prev.filter((x) => x.id !== i.id));
         setPlacements((prev) => prev.filter((p) => (p.contentId || p.contentItemId) !== i.id));
-        setPreviewId((pid) => (pid === i.id ? '' : pid));
     };
     return (
         <div className="space-y-4">
@@ -2407,17 +3175,17 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 <div className="text-sm font-medium text-slate-800">{i.title}</div>
                                 <div className="text-xs text-slate-500 mt-0.5">{labelTargetSection(i.targetSection)} · {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole} · неделя {i.weekNumber} · размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}</div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 <StatusBadge>{CONTENT_STATUS_LABEL[i.status] || i.status}</StatusBadge>
-                                <button type="button" onClick={() => { pvlDomainApi.adminApi.updateContentItem(i.id, { title: `${i.title} (upd)` }); setItems((prev) => updateContentItem(prev, i.id, { title: `${i.title} (upd)` })); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Правка</button>
+                                <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50 font-medium">Открыть</button>
                                 <button type="button" onClick={() => { pvlDomainApi.adminApi.publishContentItem(i.id); setItems((prev) => publishContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Опубликовать</button>
-                                <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
+                                <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Снять с публикации</button>
+                                <button type="button" onClick={() => { pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
                                 <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
                                 <button type="button" onClick={() => {
-                                    pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: i.weekNumber || 0, moduleNumber: i.moduleNumber || 0, orderIndex: i.orderIndex || 999 });
-                                    setPlacements((prev) => assignContentToSection(prev, i.id, i.targetSection, i.targetRole, i.targetCohort || 'cohort-2026-1'));
+                                    const pl = pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: i.weekNumber || 0, moduleNumber: i.moduleNumber || 0, orderIndex: i.orderIndex || 999 });
+                                    if (pl) setPlacements((prev) => [...prev, pl]);
                                 }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Разместить</button>
-                                <button type="button" onClick={() => setPreviewId(i.id)} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Просмотр</button>
                                 <button type="button" onClick={() => {
                                     const copy = pvlDomainApi.adminApi.createContentItem({
                                         ...i,
@@ -2449,14 +3217,6 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                     </article>
                 ))}
             </div>
-            {previewItem ? (
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                    <h3 className="font-display text-lg text-slate-800 mb-2">Предпросмотр</h3>
-                    <div className="text-sm font-medium text-slate-800">{previewItem.title}</div>
-                    <p className="text-sm text-slate-500 mt-2">{previewItem.shortDescription || previewItem.description}</p>
-                    <p className="text-xs text-slate-400 mt-2">{labelTargetSection(previewItem.targetSection)} · {TARGET_ROLE_LABELS[previewItem.targetRole] || previewItem.targetRole} · {CONTENT_STATUS_LABEL[previewItem.status] || previewItem.status}</p>
-                </div>
-            ) : null}
         </div>
     );
 }
@@ -2752,17 +3512,35 @@ function AdminPage({
     if (legacyAdmin.includes(route)) return <AdminLegacyRedirect navigate={navigate} target="/admin/pvl" />;
 
     if (route === '/admin/pvl') return <TeacherPvlHome navigate={navigate} />;
-    if (route === '/admin/content') {
+    const adminPathOnly = adminRoutePath(route);
+    if (adminPathOnly === '/admin/content') {
         return (
             <AdminContentCenter
                 cmsItems={cmsItems}
                 setCmsItems={setCmsItems}
                 cmsPlacements={cmsPlacements}
                 setCmsPlacements={setCmsPlacements}
+                navigate={navigate}
             />
         );
     }
-    if (route === '/admin/calendar') return <PvlAdminCalendarScreen navigate={navigate} refresh={forceRefresh} />;
+    const adminContentDetail = adminPathOnly.match(/^\/admin\/content\/([^/]+)$/);
+    if (adminContentDetail) {
+        return (
+            <AdminContentItemScreen
+                contentId={adminContentDetail[1]}
+                navigate={navigate}
+                cmsItems={cmsItems}
+                setCmsItems={setCmsItems}
+                cmsPlacements={cmsPlacements}
+                setCmsPlacements={setCmsPlacements}
+                forceRefresh={forceRefresh}
+            />
+        );
+    }
+    if (adminPathOnly === '/admin/calendar') {
+        return <PvlAdminCalendarScreen navigate={navigate} refresh={forceRefresh} route={route} />;
+    }
     const adminCourseRouteKey = route === '/admin/questions' ? '/admin/qa' : route;
     if (ADMIN_COURSE_ROUTE_RE.test(adminCourseRouteKey)) {
         const studentRoute = adminCourseRouteKey.replace(/^\/admin/, '/student');
@@ -2822,6 +3600,7 @@ function AdminPage({
                 navigate={navigate}
                 mentorRoutePrefix="/admin"
                 onRefresh={forceRefresh}
+                showHeaderBack={false}
                 onBack={() => navigate(`/admin/students/${menteeSeg}`)}
                 initialData={buildTaskDetailStateFromApi(resolved, taskId, 'mentor')}
                 onMentorReply={(msg) => {
@@ -2843,6 +3622,7 @@ function AdminPage({
                 key={`adm-card-${menteeSeg}-${refreshKey}`}
                 menteeId={menteeSeg}
                 linkMode="admin"
+                showHeaderBack={false}
                 backLabel="← Вернуться к списку учениц"
                 navigate={navigate}
                 refreshKey={refreshKey}
@@ -2913,6 +3693,7 @@ const QA_ROUTE_LIST = [
     '/mentor/mentee/:id/task/:taskId',
     '/admin/pvl',
     '/admin/content',
+    '/admin/content/:contentId',
     '/admin/students',
     '/admin/students/:id',
     '/admin/students/:id/task/:taskId',
@@ -3363,6 +4144,7 @@ export default function PvlPrototypeApp({
                             forceRefresh={forceRefresh}
                         />
                     ) : null}
+                    {route.startsWith('/admin/') ? <AdminDrilldownNavBar route={route} navigate={navigate} /> : null}
                     {content}
                     {pvlDevToolsEnabled() ? (
                         <>

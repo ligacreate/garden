@@ -1,9 +1,28 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { loadViewPreferences, saveViewPreferences } from '../services/pvlAppKernel';
 import { pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
 /** Согласовано с прототипом дедлайнов ПВЛ */
 const PVL_TODAY = '2026-06-03';
+
+const CALENDAR_UI_PREFS_KEY = 'admin.calendar';
+
+function readCalendarUiPrefs() {
+    try {
+        const p = loadViewPreferences(CALENDAR_UI_PREFS_KEY);
+        return p && typeof p === 'object' ? p : null;
+    } catch {
+        return null;
+    }
+}
+
+function monthDateFromPrefsYm(ym) {
+    if (!ym || typeof ym !== 'string' || !/^(\d{4})-(\d{2})$/.test(ym)) return null;
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || m < 1 || m > 12) return null;
+    return new Date(y, m - 1, 1, 12, 0, 0);
+}
 
 export const PVL_CAL_EVENT_LABELS = {
     mentor_meeting: 'Встреча с менторами',
@@ -35,6 +54,17 @@ function eventsForMonth(events, year, monthIndex) {
     const pad = (n) => String(n).padStart(2, '0');
     const prefix = `${y}-${pad(m)}`;
     return events.filter((e) => eventDayKey(e).startsWith(prefix));
+}
+
+function parseCalendarEventIdFromRoute(route) {
+    if (!route || typeof route !== 'string') return '';
+    const q = route.includes('?') ? route.split('?')[1] : '';
+    if (!q) return '';
+    try {
+        return new URLSearchParams(q).get('event') || '';
+    } catch {
+        return '';
+    }
 }
 
 function groupByDay(list) {
@@ -249,13 +279,33 @@ export function PvlDashboardCalendarBlock({
 /**
  * Полный экран календаря в учительской: сетка, список, CRUD.
  */
-export function PvlAdminCalendarScreen({ navigate, refresh }) {
+export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/calendar' }) {
     const [tick, setTick] = useState(0);
-    const [currentDate, setCurrentDate] = useState(() => new Date(`${PVL_TODAY}T12:00:00`));
-    const [filterType, setFilterType] = useState('all');
-    const [filterRole, setFilterRole] = useState('all');
-    const [filterCohort, setFilterCohort] = useState('all');
+    const [currentDate, setCurrentDate] = useState(() => {
+        const p = readCalendarUiPrefs();
+        const d = p?.monthYm ? monthDateFromPrefsYm(p.monthYm) : null;
+        return d || new Date(`${PVL_TODAY}T12:00:00`);
+    });
+    const [filterType, setFilterType] = useState(() => readCalendarUiPrefs()?.filterType || 'all');
+    const [filterRole, setFilterRole] = useState(() => readCalendarUiPrefs()?.filterRole || 'all');
+    const [filterCohort, setFilterCohort] = useState(() => readCalendarUiPrefs()?.filterCohort || 'all');
     const [editingId, setEditingId] = useState('');
+
+    useEffect(() => {
+        const fromUrl = parseCalendarEventIdFromRoute(route);
+        setEditingId(fromUrl || '');
+    }, [route]);
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    useEffect(() => {
+        saveViewPreferences(CALENDAR_UI_PREFS_KEY, {
+            monthYm: `${year}-${String(month + 1).padStart(2, '0')}`,
+            filterType,
+            filterRole,
+            filterCohort,
+        });
+    }, [year, month, filterType, filterRole, filterCohort]);
     const events = useMemo(() => {
         void tick;
         return pvlDomainApi.calendarApi.listForViewer('admin', null);
@@ -276,8 +326,6 @@ export function PvlAdminCalendarScreen({ navigate, refresh }) {
         refresh?.();
     };
 
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     const startOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
@@ -318,8 +366,8 @@ export function PvlAdminCalendarScreen({ navigate, refresh }) {
                     type="button"
                     onClick={() => {
                         const row = pvlDomainApi.adminApi.createCalendarEvent({});
-                        setEditingId(row.id);
                         bump();
+                        navigate?.(`/admin/calendar?event=${encodeURIComponent(row.id)}`);
                     }}
                     className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 ml-auto"
                 >
@@ -347,7 +395,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh }) {
                                     key={key}
                                     type="button"
                                     onClick={() => {
-                                        if (dayEvts[0]) setEditingId(dayEvts[0].id);
+                                        if (dayEvts[0] && navigate) navigate(`/admin/calendar?event=${encodeURIComponent(dayEvts[0].id)}`);
                                     }}
                                     className={`aspect-square rounded-lg border text-xs flex flex-col items-center justify-start pt-0.5 ${dayEvts.length ? 'border-teal-100 bg-teal-50/40' : 'border-slate-50 bg-slate-50/30'}`}
                                 >
@@ -370,7 +418,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh }) {
                             <button
                                 key={ev.id}
                                 type="button"
-                                onClick={() => setEditingId(ev.id)}
+                                onClick={() => navigate?.(`/admin/calendar?event=${encodeURIComponent(ev.id)}`)}
                                 className={`w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors ${editingId === ev.id ? 'border-blue-200 bg-blue-50/50' : 'border-slate-100 hover:bg-slate-50'}`}
                             >
                                 <div className="flex items-center gap-2">
@@ -485,7 +533,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh }) {
                             onClick={() => {
                                 if (window.confirm('Удалить событие?')) {
                                     pvlDomainApi.adminApi.deleteCalendarEvent(editing.id);
-                                    setEditingId('');
+                                    navigate?.('/admin/calendar');
                                     bump();
                                 }
                             }}
@@ -493,8 +541,8 @@ export function PvlAdminCalendarScreen({ navigate, refresh }) {
                         >
                             Удалить
                         </button>
-                        <button type="button" onClick={() => setEditingId('')} className="text-sm rounded-xl border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50 ml-auto">
-                            Закрыть форму
+                        <button type="button" onClick={() => navigate?.('/admin/calendar')} className="text-sm rounded-xl border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50 ml-auto">
+                            ← Назад к календарю
                         </button>
                     </div>
                 </div>

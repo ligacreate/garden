@@ -1224,7 +1224,9 @@ export const adminApi = {
         return p;
     },
     unpublishContentItem(contentId) {
-        return this.archiveContentItem(contentId);
+        const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.DRAFT });
+        if (item) addAuditEvent('u-adm-1', ROLES.ADMIN, 'unpublish_content', 'content_item', contentId, 'Unpublished content item', {});
+        return item;
     },
     deletePlacement(placementId) {
         const idx = db.contentPlacements.findIndex((p) => p.id === placementId);

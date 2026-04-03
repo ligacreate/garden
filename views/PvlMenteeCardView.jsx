@@ -155,10 +155,13 @@ export function MenteeHeader({
     nearestDeadlineLine,
     riskHint,
     backLabel = '← Назад в дашборд ментора',
+    showBackButton = true,
 }) {
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-5">
-            <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            {showBackButton ? (
+                <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="font-display text-3xl text-[#4A3728]">{profile.fullName}</h2>
@@ -558,6 +561,7 @@ export function renderMenteeCard({
     onOpenTask,
     onBack,
     backLabel,
+    showHeaderBack = true,
 }) {
     const riskHint = buildRiskHint(risks);
     return (
@@ -570,6 +574,7 @@ export function renderMenteeCard({
                 nearestDeadlineLine={nearestDeadlineLine}
                 riskHint={riskHint}
                 backLabel={backLabel}
+                showBackButton={showHeaderBack}
             />
             <MenteeHomeworkResultsList tasks={homeworkResults} onOpenTask={onOpenTask} />
             {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
@@ -625,6 +630,8 @@ export default function PvlMenteeCardView({
     /** 'mentor' | 'admin' — база маршрутов для открытия задания */
     linkMode = 'mentor',
     backLabel,
+    /** false — когда «назад» показывает общая шапка учительской (AdminDrilldownNavBar) */
+    showHeaderBack = true,
 }) {
     const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
 
@@ -742,6 +749,7 @@ export default function PvlMenteeCardView({
         onOpenTask,
         onBack,
         backLabel,
+        showHeaderBack,
     });
 }
 

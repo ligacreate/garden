@@ -82,6 +82,10 @@ export function gardenPvlItemActive(route, item) {
     if (base === '/admin/questions' && (route === '/admin/questions' || route === '/admin/qa')) return true;
     if (base === '/admin/students' && /^\/admin\/students(\/|$)/.test(route || '')) return true;
     if (base === '/admin/mentors' && /^\/admin\/mentors(\/|$)/.test(route || '')) return true;
+    if (base === '/admin/content') {
+        const p = (route || '').split('?')[0];
+        return p === '/admin/content' || /^\/admin\/content\/.+/.test(p);
+    }
     if (base.endsWith('/library') && route.startsWith(`${base}/`)) return true;
     if (base.endsWith('/results') && route.startsWith(`${base}/`)) return true;
     if (base === '/mentor/mentees' && route.startsWith('/mentor/mentee/')) return true;

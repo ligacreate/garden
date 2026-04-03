@@ -262,11 +262,13 @@ export function submitForReview(setter) {
     changeTaskStatus(setter, 'к проверке', 'Участница', 'Отправлено на проверку');
 }
 
-export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»' }) {
+export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»', showBackButton = true }) {
     const isOverdue = data.deadlineAt && new Date(data.deadlineAt) < new Date() && data.status !== 'принято';
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            {showBackButton ? (
+                <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="font-display text-3xl text-[#4A3728]">{data.title}</h2>
@@ -288,10 +290,12 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
 }
 
 /** Компактная шапка задания для ментора: только название, дедлайн, статус, оценка */
-export function MentorTaskHeaderCompact({ data, onBack, backLabel }) {
+export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButton = true }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            {showBackButton ? (
+                <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            ) : null}
             <h2 className="font-display text-2xl md:text-3xl text-[#4A3728]">{data.title}</h2>
             <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-[#2C1810]">
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] px-3 py-2">
@@ -610,6 +614,7 @@ function MentorTaskSlim({
     onMentorReview,
     onRefresh,
     mentorRoutePrefix = '/mentor',
+    showHeaderBack = true,
 }) {
     const td = state.taskDetail;
     const [reply, setReply] = useState('');
@@ -663,7 +668,7 @@ function MentorTaskSlim({
 
     return (
         <div className="space-y-4">
-            <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} />
+            <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
             <TaskRevisionSummary revisionCyclesFromHistory={td.revisionCycles ?? 0} storedRevisionCycles={td.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center gap-3">
@@ -739,13 +744,14 @@ export function renderTaskDetail({
     setMentorForm,
     onSaveMentorForm,
     backLabel,
+    showHeaderBack = true,
     threadLocked,
     disputeOpen,
     onOpenDispute,
 }) {
     return (
         <div className="space-y-3">
-            <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} />
+            <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
             <TaskMeta data={state.taskDetail} />
             <TaskRevisionSummary revisionCyclesFromHistory={state.taskDetail.revisionCycles ?? 0} storedRevisionCycles={state.taskDetail.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
@@ -786,6 +792,7 @@ export default function PvlTaskDetailView({
     onRefresh,
     navigate,
     mentorRoutePrefix = '/mentor',
+    showHeaderBack = true,
 }) {
     const [state, setState] = useState({
         taskDetail: initialData?.taskDetail || { ...taskDetail },
@@ -858,7 +865,12 @@ export default function PvlTaskDetailView({
         setMentorForm((prev) => ({ ...prev, warningTooManyRevisions }));
     };
 
-    const backLabel = role === 'mentor' ? '← К карточке менти' : '← Назад в «Результаты»';
+    const backLabel =
+        role === 'mentor'
+            ? mentorRoutePrefix === '/admin'
+                ? '← К карточке ученицы'
+                : '← К карточке менти'
+            : '← Назад в «Результаты»';
 
     const showReviewAck =
         role === 'student'
@@ -878,6 +890,7 @@ export default function PvlTaskDetailView({
                     onMentorReview={onMentorReview}
                     onRefresh={onRefresh}
                     mentorRoutePrefix={mentorRoutePrefix}
+                    showHeaderBack={showHeaderBack}
                 />
             </div>
         );
@@ -905,6 +918,7 @@ export default function PvlTaskDetailView({
                 state,
                 onBack,
                 backLabel,
+                showHeaderBack,
                 threadLocked,
                 disputeOpen,
                 onOpenDispute: handleOpenDispute,

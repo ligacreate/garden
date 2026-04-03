@@ -1,14 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { pvlDomainApi } from '../services/pvlMockApi';
 
-function pvlDevToolsEnabled() {
-    try {
-        return typeof localStorage !== 'undefined' && localStorage.getItem('pvl_dev_tools') === '1';
-    } catch {
-        return false;
-    }
-}
-
 function threadEventLabel(messageType) {
     const m = {
         status: 'Системное событие',
@@ -325,7 +317,27 @@ export function TaskMeta({ data }) {
             <h3 className="font-display text-2xl text-[#4A3728] mb-2">Метаданные</h3>
             <div className="grid md:grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Тип: {data.type}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Контрольная точка: {data.isControlPoint ? 'да' : 'нет'}</div>
+            </div>
+        </div>
+    );
+}
+
+function TaskRevisionSummary({ revisionCyclesFromHistory, storedRevisionCycles }) {
+    const stored = Number(storedRevisionCycles);
+    const n = Math.max(
+        revisionCyclesFromHistory || 0,
+        Number.isFinite(stored) ? stored : 0,
+    );
+    return (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 text-sm text-[#2C1810] shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-900/75">Доработок (циклов)</div>
+                    <div className="font-display text-2xl tabular-nums text-amber-950">{n}</div>
+                </div>
+                <p className="text-xs text-amber-950/80 max-w-xl leading-relaxed">
+                    Счётчик совпадает с «Результаты»: каждый переход в «на доработке» увеличивает число. Стандартный ответ ментора — в блоке «Ответ ментора» и в ленте ниже.
+                </p>
             </div>
         </div>
     );
@@ -597,8 +609,13 @@ function MentorTaskSlim({
     navigate,
     onMentorReview,
     onRefresh,
+    mentorRoutePrefix = '/mentor',
 }) {
     const td = state.taskDetail;
+    const revisionCyclesFromHistory = useMemo(
+        () => state.statusHistory.filter((h) => h.toStatus === 'на доработке').length,
+        [state.statusHistory],
+    );
     const [reply, setReply] = useState('');
     const [scoreInput, setScoreInput] = useState(() => String(td.maxScore != null ? td.maxScore : ''));
     const [formError, setFormError] = useState('');
@@ -644,13 +661,14 @@ function MentorTaskSlim({
 
     const openLesson = () => {
         if (typeof navigate === 'function') {
-            navigate('/mentor/tracker');
+            navigate(`${mentorRoutePrefix}/tracker`);
         }
     };
 
     return (
         <div className="space-y-4">
             <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} />
+            <TaskRevisionSummary revisionCyclesFromHistory={revisionCyclesFromHistory} storedRevisionCycles={td.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center gap-3">
                 <button
@@ -666,6 +684,7 @@ function MentorTaskSlim({
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
                     <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
+                    <p className="text-xs text-[#9B8B80]">Единое поле ответа: фиксируйте решение (принять / доработка), критерии и следующий шаг — это же уйдёт участнице в ленту.</p>
                     <textarea
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
@@ -727,12 +746,14 @@ export function renderTaskDetail({
     threadLocked,
     disputeOpen,
     onOpenDispute,
+    revisionCyclesFromHistory = 0,
 }) {
     return (
         <div className="space-y-3">
             <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} />
             <TaskMeta data={state.taskDetail} />
-            <TaskDescription data={state.taskDescription} showControlPointNote={!!state.taskDetail.isControlPoint} />
+            <TaskRevisionSummary revisionCyclesFromHistory={revisionCyclesFromHistory} storedRevisionCycles={state.taskDetail.revisionCycles} />
+            <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <SubmissionHistory
                 versions={state.submissionVersions}
                 role={role}
@@ -752,8 +773,6 @@ export function renderTaskDetail({
                 onOpenDispute={onOpenDispute}
             />
             <MentorResponseForm role={role} form={mentorForm} setForm={setMentorForm} onSave={onSaveMentorForm} />
-            <ControlPointMeta taskData={state.taskDetail} />
-            <RelatedLinks />
         </div>
     );
 }
@@ -772,6 +791,7 @@ export default function PvlTaskDetailView({
     mentorActorId,
     onRefresh,
     navigate,
+    mentorRoutePrefix = '/mentor',
 }) {
     const [state, setState] = useState({
         taskDetail: initialData?.taskDetail || { ...taskDetail },
@@ -861,11 +881,6 @@ export default function PvlTaskDetailView({
     if (role === 'mentor') {
         return (
             <div className="space-y-3">
-                {pvlDevToolsEnabled() ? (
-                    <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-xs text-[#9B8B80]">
-                        Циклов доработки (dev): {revisionCycles}
-                    </div>
-                ) : null}
                 <MentorTaskSlim
                     state={state}
                     onBack={onBack}
@@ -873,6 +888,7 @@ export default function PvlTaskDetailView({
                     navigate={navigate}
                     onMentorReview={onMentorReview}
                     onRefresh={onRefresh}
+                    mentorRoutePrefix={mentorRoutePrefix}
                 />
             </div>
         );
@@ -919,6 +935,7 @@ export default function PvlTaskDetailView({
                 mentorForm,
                 setMentorForm,
                 onSaveMentorForm: handleSaveMentorForm,
+                revisionCyclesFromHistory: revisionCycles,
             })}
         </div>
     );

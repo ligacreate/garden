@@ -56,18 +56,23 @@ export function buildGardenPvlMentorNav() {
 
 export function buildGardenPvlAdminNav() {
     return [
-        { type: 'item', key: 'pvl-adm-home', label: 'Учительская ПВЛ', iconKey: 'dashboard', route: '/admin/pvl' },
-        { type: 'item', key: 'pvl-adm-dash', label: 'Сводка', iconKey: 'dashboard', route: '/admin/dashboard' },
+        { type: 'item', key: 'pvl-adm-dash', label: 'Дашборд', iconKey: 'dashboard', route: '/admin/pvl' },
+        { type: 'divider', key: 'pvl-adm-d0' },
         { type: 'item', key: 'pvl-adm-st', label: 'Ученицы', iconKey: 'users', route: '/admin/students' },
-        { type: 'item', key: 'pvl-adm-rev', label: 'Проверки и риски', iconKey: 'mentor', route: '/admin/review' },
         { type: 'item', key: 'pvl-adm-men', label: 'Менторы', iconKey: 'users', route: '/admin/mentors' },
-        { type: 'item', key: 'pvl-adm-coh', label: 'Потоки', iconKey: 'calendar', route: '/admin/cohorts' },
-        { type: 'item', key: 'pvl-adm-cert', label: 'Сертификация', iconKey: 'book', route: '/admin/certification' },
-        { type: 'item', key: 'pvl-adm-qa', label: 'Вопросы учениц', iconKey: 'bell', route: '/admin/qa-moderation' },
         { type: 'item', key: 'pvl-adm-content', label: 'Материалы курса', iconKey: 'graduation', route: '/admin/content' },
-        { type: 'item', key: 'pvl-adm-set', label: 'Настройки', iconKey: 'dashboard', route: '/admin/settings' },
+        { type: 'item', key: 'pvl-adm-cal', label: 'Календарь', iconKey: 'calendar', route: '/admin/calendar' },
         { type: 'divider', key: 'pvl-adm-d1' },
-        { type: 'item', key: 'pvl-adm-settings', label: 'Настройки сада', iconKey: 'dashboard', action: 'settings' },
+        { type: 'item', key: 'pvl-adm-about', label: 'О курсе', iconKey: 'book', route: '/admin/about' },
+        { type: 'item', key: 'pvl-adm-gloss', label: 'Глоссарий курса', iconKey: 'book', route: '/admin/glossary' },
+        { type: 'item', key: 'pvl-adm-lib', label: 'Библиотека курса', iconKey: 'graduation', route: '/admin/library' },
+        { type: 'item', key: 'pvl-adm-trk', label: 'Трекер курса', iconKey: 'tracker', route: '/admin/tracker' },
+        { type: 'item', key: 'pvl-adm-prac', label: 'Практикумы с менторами', iconKey: 'calendar', route: '/admin/practicums' },
+        { type: 'item', key: 'pvl-adm-res', label: 'Результаты', iconKey: 'book', route: '/admin/results' },
+        { type: 'item', key: 'pvl-adm-cert', label: 'Сертификация и самооценка', iconKey: 'book', route: '/admin/certification' },
+        { type: 'item', key: 'pvl-adm-qa', label: 'Вопросы и ответы', iconKey: 'bell', route: '/admin/questions' },
+        { type: 'divider', key: 'pvl-adm-d2' },
+        { type: 'item', key: 'pvl-adm-set', label: 'Настройки', iconKey: 'dashboard', route: '/admin/settings' },
         { type: 'item', key: 'pvl-adm-exit', label: 'Вернуться в сад', iconKey: 'dashboard', action: 'exit_pvl' },
     ];
 }
@@ -77,6 +82,9 @@ export function gardenPvlItemActive(route, item) {
     if (!item?.route || item.type !== 'item') return false;
     if (route === item.route) return true;
     const base = item.route;
+    if (base === '/admin/questions' && (route === '/admin/questions' || route === '/admin/qa')) return true;
+    if (base === '/admin/students' && /^\/admin\/students(\/|$)/.test(route || '')) return true;
+    if (base === '/admin/mentors' && /^\/admin\/mentors(\/|$)/.test(route || '')) return true;
     if (base.endsWith('/library') && route.startsWith(`${base}/`)) return true;
     if (base.endsWith('/results') && route.startsWith(`${base}/`)) return true;
     if (base === '/mentor/mentees' && route.startsWith('/mentor/mentee/')) return true;

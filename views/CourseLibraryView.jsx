@@ -472,9 +472,7 @@ const CourseLibraryView = ({
         setSelectedMaterial(null);
     }, [availableCourses, selectedCourseId]);
 
-    const completedCount = selectedCourse ? courseMaterials.filter(m => completedIds.has(String(m.id))).length : 0;
     const totalCount = selectedCourse ? courseMaterials.length : 0;
-    const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
     useEffect(() => {
         const loadProgress = async () => {
@@ -533,7 +531,7 @@ const CourseLibraryView = ({
             nowDate: '2026-06-03',
             route: getHomeRouteByRole(pvlRole),
             studentSection: 'О курсе',
-            adminSection: 'Учительская ПВЛ',
+            adminSection: 'Дашборд',
         });
     };
 
@@ -591,6 +589,31 @@ const CourseLibraryView = ({
         setGardenCampPaused(true);
         localStorage.removeItem(AI_CAMP_SESSION_KEY);
         clearAppSession();
+    }, []);
+
+    /** Demo-переключатель ролей внутри ПВЛ: синхронизация с боковым меню сада и сессией прототипа */
+    const handleEmbeddedPvlDemoRoleChange = useCallback((nextRole) => {
+        setAiCampSession((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev, role: nextRole };
+            try {
+                localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(next));
+            } catch {
+                /* ignore */
+            }
+            return next;
+        });
+        const actingUserId = nextRole === 'mentor' ? 'u-men-1' : nextRole === 'admin' ? 'u-adm-1' : 'u-st-1';
+        saveAppSession({
+            role: nextRole,
+            studentId: 'u-st-1',
+            actingUserId,
+            nowDate: '2026-06-03',
+            route: getHomeRouteByRole(nextRole),
+            studentSection: 'Дашборд',
+            adminSection: 'Дашборд',
+            mentorSection: 'Дашборд',
+        });
     }, []);
 
     const gardenPvlItems = useMemo(() => {
@@ -672,18 +695,8 @@ const CourseLibraryView = ({
                 </div>
             </div>
 
-            {selectedCourse && (
-                <div className="mb-8 bg-white/80 border border-white/60 rounded-3xl p-5 flex flex-col md:flex-row md:items-center gap-4">
-                    <div className="flex-1">
-                        <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Прогресс</div>
-                        <div className="flex items-center gap-3">
-                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${progressPercent}%` }} />
-                            </div>
-                            <div className="text-xs font-medium text-slate-500 w-16 text-right">{progressPercent}%</div>
-                        </div>
-                        <div className="text-xs text-slate-400 mt-1">{completedCount} из {totalCount} уроков пройдено</div>
-                    </div>
+            {selectedCourse && selectedCourse.id !== PVL_ENTRY_COURSE_ID && (
+                <div className="mb-6 flex flex-wrap justify-end gap-2">
                     <Button variant="secondary" onClick={() => { setSelectedCourseId(null); setSelectedTag('Все'); setSelectedMaterial(null); }}>Назад к курсам</Button>
                 </div>
             )}
@@ -850,11 +863,12 @@ const CourseLibraryView = ({
                                     )}
                                     >
                                         <PvlPrototypeApp
-                                            key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.name}`}
+                                            key={`${pvlResetKey}-al-camp`}
                                             embeddedInGarden
                                             gardenBridgeRef={gardenPvlBridgeRef}
                                             onGardenRouteChange={setPvlGardenRoute}
                                             onGardenExit={onBackToGarden}
+                                            onEmbeddedDemoRoleChange={handleEmbeddedPvlDemoRoleChange}
                                         />
                                     </Suspense>
                                 </PvlErrorBoundary>

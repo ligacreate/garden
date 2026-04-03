@@ -235,13 +235,17 @@ export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
                                 <div className="text-sm font-medium text-[#4A3728]">{t.title}</div>
                                 <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
                             </div>
-                            <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                                    Доработок: {t.revisionCycles ?? 0}
+                                </span>
+                                <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
+                            </div>
                         </div>
-                        <div className="grid md:grid-cols-4 gap-2 mt-2 text-xs text-[#2C1810]">
+                        <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs text-[#2C1810]">
                             <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
                             <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
                             <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
-                            <div className="tabular-nums">Циклы: {t.revisionCycles}</div>
                         </div>
                         <p className="text-xs text-[#9B8B80] mt-2">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
                     </article>
@@ -324,11 +328,15 @@ export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
                             </div>
                             <Pill tone={statusTone(task.status)}>{task.status}</Pill>
                         </div>
-                        <div className="grid md:grid-cols-4 gap-2 mt-2 text-xs text-[#2C1810]">
+                        <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs text-[#2C1810]">
                             <div>Дедлайн: {task.deadlineAt}</div>
                             <div>Сдано: {task.submittedAt || '—'}</div>
-                            <div>Баллы: {task.score}/{task.maxScore}</div>
-                            <div>Циклы: {task.revisionCycles}</div>
+                            <div className="tabular-nums">Баллы: {task.score}/{task.maxScore}</div>
+                        </div>
+                        <div className="mt-2">
+                            <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                                Доработок: {task.revisionCycles ?? 0}
+                            </span>
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
                             <span className="text-xs text-[#9B8B80]">{task.mentorCommentPreview || 'Комментария пока нет'}</span>
@@ -366,7 +374,6 @@ export function MenteeTasksList({ tasks, statusFilter, setStatusFilter, onOpenTa
                         <option value="на доработке">на доработке</option>
                         <option value="просрочено">просрочено</option>
                         <option value="принято">принято</option>
-                        <option value="контрольные точки">контрольные точки</option>
                     </select>
                 </div>
             </div>

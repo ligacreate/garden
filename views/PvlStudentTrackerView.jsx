@@ -183,21 +183,20 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
 }
 
 /**
- * Полный путь курса (pvl_platform.html): модули, шаги, прогресс + задания потока и КТ со статусами.
+ * Полный путь курса: модули (включая неделю 0), шаги, прогресс и задания потока со статусами.
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
-export function StudentCourseTracker({ studentId, navigate }) {
+export function StudentCourseTracker({ studentId, navigate, routePrefix = '/student' }) {
     const { stats } = usePlatformStepChecklist(studentId);
     const { doneSteps, totalSteps, pct } = stats;
 
     const homework = useMemo(() => pvlDomainApi.studentApi.getStudentResults(studentId, {}), [studentId]);
-    const controlPoints = useMemo(() => pvlDomainApi.studentApi.getStudentControlPointsProgress(studentId), [studentId]);
 
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-700/90 to-slate-800/95 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
-                <p className="text-sm text-white/75 mt-1">Полный путь по модулям — как в методическом маршруте. Отмечайте шаги по мере прохождения (те же отметки, что в «Уроках»).</p>
+                <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">недели 0 (вход и настройка)</span> — первый блок в списке ниже. Отмечайте шаги по мере прохождения.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{doneSteps}</div>
@@ -231,30 +230,13 @@ export function StudentCourseTracker({ studentId, navigate }) {
                                 {navigate ? (
                                     <button
                                         type="button"
-                                        onClick={() => navigate(`/student/results/${t.id}`)}
+                                        onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
                                         className="text-[11px] rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[#C8855A] hover:bg-amber-50/80"
                                     >
                                         Открыть
                                     </button>
                                 ) : null}
                             </div>
-                        </li>
-                    ))}
-                </ul>
-            </section>
-
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-1">Контрольные точки</h4>
-                <p className="text-xs text-slate-500 mb-3">Якоря допуска и сертификации по неделям.</p>
-                <ul className="space-y-2">
-                    {controlPoints.map((cp) => (
-                        <li key={cp.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-sm">
-                            <div>
-                                <span className="font-medium text-slate-800">{cp.id}</span>
-                                <span className="text-slate-600"> · {cp.title}</span>
-                                <span className="text-[11px] text-slate-400 ml-1">(нед. {cp.weekNumber})</span>
-                            </div>
-                            <TrackerStatusBadge>{cp.statusLabel}</TrackerStatusBadge>
                         </li>
                     ))}
                 </ul>

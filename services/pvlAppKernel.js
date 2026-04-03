@@ -183,6 +183,7 @@ export function getAllRoutes() {
         '/admin/certification',
         '/admin/self-assessment',
         '/admin/qa',
+        '/admin/questions',
         '/admin/settings',
         '/qa',
         '/debug/qa',

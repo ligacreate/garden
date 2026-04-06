@@ -2,7 +2,9 @@ import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'rea
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
-    GraduationCap, MessagesSquare, Bell
+    GraduationCap, MessagesSquare, Bell, Info, Languages, Library,
+    Route, CalendarCheck2, BarChart3, BadgeCheck, MessageCircleQuestion,
+    CornerUpLeft
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -247,6 +249,20 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         mentor: Users,
         notifications: Sparkles,
         bell: Bell,
+    };
+    const courseLabelIconMap = {
+        'Дашборд': LayoutGrid,
+        'О курсе': Info,
+        'Глоссарий': Languages,
+        'Библиотека': Library,
+        'Трекер': Route,
+        'Практикумы': CalendarCheck2,
+        'Результаты': BarChart3,
+        'Сертификация': BadgeCheck,
+        'Вопросы': MessageCircleQuestion,
+        'FAQ': MessageCircleQuestion,
+        'Настройки': Settings,
+        'Вернуться в сад': CornerUpLeft,
     };
     const isCourseSidebarMode = view === 'library' && courseSidebar.enabled;
 
@@ -596,7 +612,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         if (item.type === 'divider') {
                                             return <div key={item.key} className="h-px bg-slate-100/60 my-2 mx-2" />;
                                         }
-                                        const Icon = courseIconMap[item.iconKey] || GraduationCap;
+                                        const Icon = courseLabelIconMap[item.label] || courseIconMap[item.iconKey] || GraduationCap;
                                         if (item.action === 'settings') {
                                             return (
                                                 <SidebarItem
@@ -623,7 +639,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                                     }}
                                                     className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all duration-300 text-slate-600 hover:bg-white/80 hover:text-slate-900 active:scale-[0.98] select-none"
                                                 >
-                                                    <LayoutGrid size={22} className="stroke-[1.6px]" width={24} />
+                                                    <CornerUpLeft size={22} className="stroke-[1.6px]" width={24} />
                                                     <span className="font-medium tracking-wide text-[15px]">{item.label}</span>
                                                 </button>
                                             );

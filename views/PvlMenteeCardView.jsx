@@ -208,52 +208,54 @@ export function menteeHomeworkNeedsHighlight(t) {
 
 export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
     return (
-        <section className="space-y-3">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+        <section className="rounded-3xl border border-[#E8D5C4]/80 bg-gradient-to-br from-white via-[#FAF6F2]/40 to-emerald-50/20 p-4 md:p-5 shadow-sm shadow-slate-200/30">
+            <div className="mb-4 pb-3 border-b border-slate-200/70">
                 <h3 className="font-display text-xl text-slate-800">Домашние работы</h3>
-                <p className="text-xs text-slate-500 mt-1">Данные из раздела «Результаты» участницы</p>
+                <p className="text-xs text-slate-500 mt-1">Данные из раздела «Результаты» участницы ({tasks.length})</p>
             </div>
-            {tasks.map((t) => {
-                const highlight = menteeHomeworkNeedsHighlight(t);
-                return (
-                    <article
-                        key={t.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => onOpenTask(t.id)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                onOpenTask(t.id);
-                            }
-                        }}
-                        className={`rounded-2xl border p-5 shadow-sm cursor-pointer transition-colors ${
-                            highlight
-                                ? 'border-amber-300 ring-2 ring-amber-200/80 bg-amber-50/50'
-                                : 'border-slate-100/90 bg-white hover:border-blue-100'
-                        }`}
-                    >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <div className="text-sm font-medium text-[#4A3728]">{t.title}</div>
-                                <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
+            <div className="divide-y divide-slate-100/90">
+                {tasks.map((t) => {
+                    const highlight = menteeHomeworkNeedsHighlight(t);
+                    return (
+                        <article
+                            key={t.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => onOpenTask(t.id)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    onOpenTask(t.id);
+                                }
+                            }}
+                            className={`group cursor-pointer py-4 first:pt-0 last:pb-0 transition-colors rounded-xl -mx-1 px-2 ${
+                                highlight
+                                    ? 'bg-amber-50/70 ring-1 ring-amber-200/80'
+                                    : 'hover:bg-white/80'
+                            }`}
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <div className="text-sm font-medium text-[#4A3728] group-hover:text-emerald-900">{t.title}</div>
+                                    <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                                        Доработок: {t.revisionCycles ?? 0}
+                                    </span>
+                                    <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
+                                </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
-                                    Доработок: {t.revisionCycles ?? 0}
-                                </span>
-                                <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
+                            <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs text-[#2C1810]">
+                                <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
+                                <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
+                                <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
                             </div>
-                        </div>
-                        <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs text-[#2C1810]">
-                            <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
-                            <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
-                            <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
-                        </div>
-                        <p className="text-xs text-[#9B8B80] mt-2">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
-                    </article>
-                );
-            })}
+                            <p className="text-xs text-[#9B8B80] mt-2">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
+                        </article>
+                    );
+                })}
+            </div>
         </section>
     );
 }

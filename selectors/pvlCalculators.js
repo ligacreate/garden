@@ -116,12 +116,20 @@ export function calculateRiskLevel(db, studentId) {
     return RISK_LEVEL.LOW;
 }
 
+function resolveMentorActorId(db, mentorId) {
+    const profiles = db.mentorProfiles || [];
+    if (!mentorId) return profiles[0]?.userId || 'u-men-1';
+    if (profiles.some((m) => m.userId === mentorId)) return mentorId;
+    return profiles[0]?.userId || 'u-men-1';
+}
+
 function resolveMentorMenteeIds(db, mentorId) {
-    const profile = (db.mentorProfiles || []).find((m) => m.userId === mentorId);
+    const resolved = resolveMentorActorId(db, mentorId);
+    const profile = (db.mentorProfiles || []).find((m) => m.userId === resolved);
     if (profile && Array.isArray(profile.menteeIds) && profile.menteeIds.length > 0) {
         return profile.menteeIds;
     }
-    return db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+    return db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
 }
 
 export function buildMentorRisks(db, mentorId) {

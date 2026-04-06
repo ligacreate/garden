@@ -252,7 +252,17 @@ export function PlatformCourseModulesGrid({
 export function StudentCourseTracker({ studentId, navigate }) {
     const { checked, toggleItem, stats } = usePlatformStepChecklist(studentId);
     const { doneSteps, totalSteps, pct } = stats;
-    const [activeStep, setActiveStep] = useState(null);
+    const [activeStepKey, setActiveStepKey] = useState('');
+    const orderedSteps = useMemo(
+        () => PVL_PLATFORM_MODULES.flatMap((mod) => mod.items.map((item, i) => ({ key: `${mod.id}-${i}`, item, module: mod, index: i }))),
+        [],
+    );
+    const activeStepIndex = useMemo(() => orderedSteps.findIndex((s) => s.key === activeStepKey), [orderedSteps, activeStepKey]);
+    const activeStep = activeStepIndex >= 0 ? orderedSteps[activeStepIndex] : null;
+    const prevStep = activeStepIndex > 0 ? orderedSteps[activeStepIndex - 1] : null;
+    const nextStep = activeStepIndex >= 0 && activeStepIndex < orderedSteps.length - 1 ? orderedSteps[activeStepIndex + 1] : null;
+    const activeTagLabel = activeStep ? (PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал') : 'материал';
+    const activeStatus = activeStep ? stepLessonStatus(!!checked[activeStep.key], activeStep.item?.tag) : '';
 
     return (
         <div className="space-y-4">
@@ -275,27 +285,48 @@ export function StudentCourseTracker({ studentId, navigate }) {
                 </div>
             </div>
 
-            <PlatformCourseModulesGrid
-                studentId={studentId}
-                variant="tracker"
-                checkedOverride={checked}
-                onToggleItem={toggleItem}
-                interactionMode="open"
-                onOpenItem={(payload) => setActiveStep(payload)}
-            />
-
             {activeStep ? (
                 <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                    <div className="mb-2 flex flex-wrap gap-2 text-[11px]">
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-800">Трекер</span>
-                        <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{activeStep.module?.title || 'Урок'}</span>
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800">Трекер</span>
+                        <span> / </span>
+                        <span>{activeStep.module?.title || 'Модуль'}</span>
+                        <span> / </span>
+                        <span className="text-slate-700">{activeStep.item?.text}</span>
                     </div>
-                    <h4 className="font-display text-xl text-slate-800">{activeStep.item?.text}</h4>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h4 className="font-display text-xl text-slate-800">{activeStep.item?.text}</h4>
+                        <TrackerStatusBadge>{activeStatus}</TrackerStatusBadge>
+                    </div>
                     <p className="text-sm text-slate-600 mt-2">
-                        Тип: {PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал'}.
+                        Тип: {activeTagLabel}.
                         Откройте материал, изучите и затем отметьте выполнение.
                     </p>
+                    {activeStep.item?.anchor ? <p className="text-xs text-emerald-700 mt-1">Якорный шаг модуля</p> : null}
                     <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setActiveStepKey('')}
+                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                        >
+                            Назад к трекеру
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!prevStep}
+                            onClick={() => prevStep && setActiveStepKey(prevStep.key)}
+                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            Предыдущий урок
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!nextStep}
+                            onClick={() => nextStep && setActiveStepKey(nextStep.key)}
+                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            Следующий урок
+                        </button>
                         <button
                             type="button"
                             onClick={() => toggleItem(activeStep.key)}
@@ -303,16 +334,18 @@ export function StudentCourseTracker({ studentId, navigate }) {
                         >
                             {checked[activeStep.key] ? 'Снять отметку «Изучено»' : 'Отметить как изучено'}
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveStep(null)}
-                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                        >
-                            Закрыть урок
-                        </button>
                     </div>
                 </section>
             ) : null}
+
+            <PlatformCourseModulesGrid
+                studentId={studentId}
+                variant="tracker"
+                checkedOverride={checked}
+                onToggleItem={toggleItem}
+                interactionMode="open"
+                onOpenItem={(payload) => setActiveStepKey(payload.key)}
+            />
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>

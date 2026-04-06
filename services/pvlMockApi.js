@@ -481,12 +481,21 @@ function getStudentSnapshot(studentId) {
     return { user, profile };
 }
 
+/** Демо: в кабинете ментора `actingUserId` часто остаётся ученицей — иначе список менти и канбан пустые. */
+function resolveMentorActorId(mentorId) {
+    const profiles = db.mentorProfiles || [];
+    if (!mentorId) return profiles[0]?.userId || 'u-men-1';
+    if (profiles.some((m) => m.userId === mentorId)) return mentorId;
+    return profiles[0]?.userId || 'u-men-1';
+}
+
 function getMentorMenteeIds(mentorId) {
-    const mentorProfile = (db.mentorProfiles || []).find((m) => m.userId === mentorId);
+    const resolved = resolveMentorActorId(mentorId);
+    const mentorProfile = (db.mentorProfiles || []).find((m) => m.userId === resolved);
     if (mentorProfile && Array.isArray(mentorProfile.menteeIds) && mentorProfile.menteeIds.length > 0) {
         return mentorProfile.menteeIds;
     }
-    return db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+    return db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
 }
 
 function getTaskDetail(studentId, taskId) {

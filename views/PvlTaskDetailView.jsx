@@ -687,25 +687,29 @@ function MentorTaskSlim({
 
     const openLesson = () => {
         if (typeof navigate === 'function') {
-            navigate(`${mentorRoutePrefix}/tracker`);
+            if (td.linkedLessonId) {
+                navigate(`${mentorRoutePrefix}/library/${td.linkedLessonId}`);
+                return;
+            }
+            navigate(`${mentorRoutePrefix}/library`);
         }
     };
 
     return (
         <div className="space-y-4">
             <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
-            <TaskRevisionSummary revisionCyclesFromHistory={td.revisionCycles ?? 0} storedRevisionCycles={td.revisionCycles} />
-            <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center gap-3">
                 <button
                     type="button"
                     onClick={openLesson}
                     className="text-sm rounded-full border border-[#E8D5C4] bg-[#FAF6F2] px-4 py-2 text-[#4A3728] hover:bg-[#F5EDE6]"
                 >
-                    {td.linkedLessonTitle ? `Открыть урок: ${td.linkedLessonTitle}` : 'Открыть трекер курса (уроки и контекст)'}
+                    {td.linkedLessonTitle ? `Открыть урок: ${td.linkedLessonTitle}` : 'Открыть урок в библиотеке курса'}
                 </button>
-                <p className="text-xs text-[#9B8B80] max-w-xl">Переход к трекеру, чтобы увидеть материалы недели и формулировку урока.</p>
+                <p className="text-xs text-[#9B8B80] max-w-xl">Открывает отдельный урок как материал в библиотеке, а не общий трекер.</p>
             </div>
+            <TaskRevisionSummary revisionCyclesFromHistory={td.revisionCycles ?? 0} storedRevisionCycles={td.revisionCycles} />
+            <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <MentorStudentAnswerCompact versions={state.submissionVersions} />
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">

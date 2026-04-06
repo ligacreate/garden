@@ -113,6 +113,13 @@ function buildMergedCmsState() {
     return { items, placements };
 }
 
+/** В демо `actingUserId` часто остаётся ученицей при переключении на кабинет ментора — иначе getMentorMenteeIds даёт пустой список и канбан пустой. */
+function resolvePvlMentorActorId(actingUserId) {
+    const profiles = pvlDomainApi.db?.mentorProfiles || [];
+    if (profiles.some((m) => m.userId === actingUserId)) return actingUserId;
+    return 'u-men-1';
+}
+
 function toRoute(name) {
     const map = {
         'О курсе': 'about',
@@ -256,16 +263,13 @@ const StatusBadge = ({ children }) => (
 
 function shortTaskStatusLabel(status) {
     const s = String(status || '').toLowerCase().trim();
-    if (s.includes('проверено') && s.includes('оценк')) return 'Проверено';
-    if (s === 'проверено') return 'Проверено';
-    if (s === 'на проверке') return 'На проверке';
+    if (s.includes('проверено') || s === 'принято') return 'Принято';
+    if (s === 'на проверке' || s === 'к проверке' || s === 'отправлено') return 'На проверке';
     if (s === 'на доработке') return 'На доработке';
     if (s === 'отправлено') return 'Отправлено';
     if (s === 'черновик') return 'Черновик';
-    if (s === 'в работе') return 'В работе';
-    if (s === 'принято') return 'Принято';
+    if (s === 'в работе' || s === 'не начато') return 'Черновик';
     if (s === 'просрочено') return 'Просрочено';
-    if (s === 'не начато') return 'Не начато';
     return status;
 }
 
@@ -1007,22 +1011,62 @@ function sortLibraryItems(items, sortBy = 'order') {
     return arr.sort((a, b) => (a.orderIndex || 999) - (b.orderIndex || 999));
 }
 
+function stripMaterialNumbering(title) {
+    const source = String(title || '').trim();
+    return source.replace(/^\s*\d+(?:[.)]\d+)*(?:[.)]|[\-:])?\s+/u, '');
+}
+
 function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student' }) {
     const [loading] = useState(false);
     const [error] = useState('');
-    const [selectedCategoryId, setSelectedCategoryId] = useState('');
+    const [selectedCategoryId, setSelectedCategoryId] = useState('all');
     const [query, setQuery] = useState('');
     const [contentType, setContentType] = useState('all');
-    const [completion, setCompletion] = useState('all');
-    const [flag, setFlag] = useState('all');
-    const [sortBy, setSortBy] = useState('order');
     const [selectedItemId, setSelectedItemId] = useState(initialItemId || '');
 
     const progress = pvlDomainApi.studentApi.getStudentLibraryProgress(studentId);
     const categories = pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(studentId);
     const baseItems = pvlDomainApi.studentApi.getStudentLibrary(studentId, {});
-    const filteredItems = sortLibraryItems(searchLibraryItems(filterLibraryItems(baseItems, { categoryId: selectedCategoryId, contentType, completion, flag }), query), sortBy);
-    const selectedItem = filteredItems.find((x) => x.id === selectedItemId) || baseItems.find((x) => x.id === selectedItemId) || null;
+    const filteredItems = sortLibraryItems(
+        searchLibraryItems(
+            filterLibraryItems(baseItems, {
+                categoryId: selectedCategoryId === 'all' ? '' : selectedCategoryId,
+                contentType,
+                completion: 'all',
+                flag: 'all',
+            }),
+            query,
+        ),
+        'order',
+    );
+    const lessonGroups = useMemo(() => {
+        const map = new Map();
+        filteredItems.forEach((item) => {
+            const cleanTitle = stripMaterialNumbering(item.title);
+            const key = String(cleanTitle || '').split(':')[0].trim() || cleanTitle || 'Материал';
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(item);
+        });
+        return Array.from(map.entries()).map(([lessonTitle, materials]) => ({ lessonTitle, materials }));
+    }, [filteredItems]);
+    const selectedLesson = String(selectedItemId || '').startsWith('les-')
+        ? pvlDomainApi.db.lessons.find((l) => l.id === selectedItemId)
+        : null;
+    const selectedLessonWeek = selectedLesson?.weekId
+        ? pvlDomainApi.db.courseWeeks.find((w) => w.id === selectedLesson.weekId)
+        : null;
+    const selectedLessonMaterial = selectedLesson ? {
+        id: selectedLesson.id,
+        title: selectedLesson.title || `Урок ${selectedLesson.id}`,
+        fullDescription: `Материал урока из трекера.\n\nНеделя: ${selectedLessonWeek?.weekNumber ?? '—'}\nДедлайн: ${selectedLesson.deadlineAt || '—'}\n\nОткройте этот блок как отдельный урок и отмечайте изучение в трекере.`,
+        shortDescription: `Урок недели ${selectedLessonWeek?.weekNumber ?? '—'}`,
+        categoryTitle: `Уроки · неделя ${selectedLessonWeek?.weekNumber ?? '—'}`,
+        contentType: 'video',
+        estimatedDuration: '15 мин',
+        externalLinks: [],
+        attachments: [],
+    } : null;
+    const selectedItem = filteredItems.find((x) => x.id === selectedItemId) || baseItems.find((x) => x.id === selectedItemId) || selectedLessonMaterial || null;
 
     return (
         <ScreenState loading={loading} error={error} empty={false}>
@@ -1030,11 +1074,6 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
                     <h2 className="font-display text-2xl text-slate-800">Библиотека курса</h2>
                     <p className="text-sm text-slate-500 mt-1">Материалы в стиле библиотеки сада: удобно изучать и распечатывать.</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">Все</span>
-                        <span className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Курсы</span>
-                        <span className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Полезное</span>
-                    </div>
                     <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-slate-600">
                         <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Пройдено: <span className="font-medium tabular-nums text-slate-800">{progress.completed}</span></div>
                         <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Всего: <span className="font-medium tabular-nums text-slate-800">{progress.total}</span></div>
@@ -1043,74 +1082,76 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 grid md:grid-cols-5 gap-2 shadow-sm">
+                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 grid md:grid-cols-2 gap-2 shadow-sm">
                     <input value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Поиск по названию, описанию, тегам" />
                     <select value={contentType} onChange={(e) => setContentType(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
                         <option value="all">Все типы</option>
                         {Object.entries(CONTENT_TYPE_LABEL).map(([k, lab]) => <option key={k} value={k}>{lab}</option>)}
-                    </select>
-                    <select value={completion} onChange={(e) => setCompletion(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
-                        <option value="all">Все</option><option value="completed">Просмотренные</option><option value="pending">Непройденные</option>
-                    </select>
-                    <select value={flag} onChange={(e) => setFlag(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
-                        <option value="all">Все метки</option><option value="new">Новые</option><option value="recommended">Рекомендованные</option>
-                    </select>
-                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
-                        <option value="order">По порядку</option><option value="title">По названию</option><option value="duration">По длительности</option>
                     </select>
                 </div>
 
                 <div className="grid xl:grid-cols-[240px_1fr] gap-3 items-start">
                     <aside className="rounded-2xl border border-slate-100/90 bg-white p-3 shadow-sm">
                         <h3 className="text-sm font-medium text-slate-700 mb-2">Категории</h3>
-                        <div className="grid gap-1.5">
-                            <button type="button" onClick={() => setSelectedCategoryId('')} className={`text-left rounded-xl border px-3 py-2 text-sm transition-colors ${!selectedCategoryId ? 'border-slate-200 bg-slate-50 text-slate-800' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}>Все</button>
+                        <div className="grid gap-2">
+                            <button type="button" onClick={() => setSelectedCategoryId('all')} className={`text-left rounded-2xl border px-3 py-2.5 text-sm transition-all ${selectedCategoryId === 'all' ? 'border-emerald-200 bg-emerald-50/80 text-emerald-900 shadow-sm' : 'border-slate-200/80 bg-slate-50/60 text-slate-700 hover:bg-slate-50'}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span>Все</span>
+                                    <span className="rounded-full border border-white/80 bg-white/80 px-2 py-0.5 text-[10px] text-slate-500">{baseItems.length}</span>
+                                </div>
+                            </button>
                             {categories.map((c) => (
-                                <button type="button" key={c.id} onClick={() => setSelectedCategoryId(c.id)} className={`text-left rounded-xl border px-3 py-2 transition-colors ${selectedCategoryId === c.id ? 'border-slate-200 bg-slate-50 text-slate-800' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}>
+                                <button type="button" key={c.id} onClick={() => setSelectedCategoryId(c.id)} className={`text-left rounded-2xl border px-3 py-2.5 transition-all ${selectedCategoryId === c.id ? 'border-emerald-200 bg-emerald-50/80 text-emerald-900 shadow-sm' : 'border-slate-200/80 bg-slate-50/60 text-slate-700 hover:bg-slate-50'}`}>
                                     <div className="text-sm">{c.title}</div>
-                                    <div className="text-[11px] text-slate-400">{c.count} · {c.progressPercent}%</div>
+                                    <div className="text-[11px] text-slate-500 mt-0.5">{c.count} · {c.progressPercent}%</div>
                                 </button>
                             ))}
                         </div>
                     </aside>
 
                     <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                        <h3 className="font-display text-lg text-slate-800 mb-2">Материалы</h3>
-                        {filteredItems.length === 0 ? (
+                        <h3 className="font-display text-lg text-slate-800 mb-2">Уроки и материалы темы</h3>
+                        {lessonGroups.length === 0 ? (
                             <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-500">
                                 Нет материалов по выбранным фильтрам или категории.
                             </div>
                         ) : (
-                            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                {filteredItems.map((i) => (
-                                    <article key={i.id} className="rounded-2xl border border-slate-100 bg-white p-3.5 hover:border-emerald-200 transition-colors shadow-sm">
-                                        <div className="h-24 rounded-xl bg-gradient-to-br from-[#FAF6F2] via-emerald-50 to-teal-100 border border-slate-100" />
-                                        <div className="text-xs text-slate-400">{i.categoryTitle}</div>
-                                        <div className="text-sm font-medium text-slate-800 mt-1">{i.title}</div>
-                                        <p className="text-xs text-slate-500 mt-1 line-clamp-3">{i.shortDescription}</p>
-                                        <div className="mt-2 flex flex-wrap gap-1">
-                                            <StatusBadge>{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</StatusBadge>
-                                            {i.isNew ? <StatusBadge>новое</StatusBadge> : null}
-                                            {i.isRecommended ? <StatusBadge>рекомендовано</StatusBadge> : null}
-                                            {i.isRequired ? <StatusBadge>обязательно</StatusBadge> : null}
-                                            {i.completed ? <StatusBadge>просмотрено</StatusBadge> : null}
+                            <div className="grid gap-3">
+                                {lessonGroups.map((group) => (
+                                    <article key={group.lessonTitle} className="rounded-3xl border border-slate-100 bg-gradient-to-br from-slate-50/80 to-white p-3.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <h4 className="font-medium text-slate-800">{stripMaterialNumbering(group.lessonTitle)}</h4>
+                                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">{group.materials.length} {group.materials.length === 1 ? 'материал' : 'материала'}</span>
                                         </div>
-                                        <div className="mt-3 flex items-center justify-between gap-2">
-                                            <span className="text-[11px] text-slate-400">{i.estimatedDuration || '—'}</span>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => printMaterialSheet(i.title, i.fullDescription || i.shortDescription || '')}
-                                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
-                                                >
-                                                    Распечатать
-                                                </button>
-                                                <button type="button" onClick={() => {
-                                                    setSelectedItemId(i.id);
-                                                    pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
-                                                    if (navigate) navigate(`${routePrefix}/library/${i.id}`);
-                                                }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Изучить</button>
-                                            </div>
+                                        <div className="mt-2 grid gap-2">
+                                            {group.materials.map((i) => (
+                                                <div key={i.id} className="rounded-2xl border border-slate-100 bg-white px-3 py-2.5 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm text-slate-800">{stripMaterialNumbering(i.title)}</div>
+                                                        <div className="text-[11px] text-slate-500 mt-0.5">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType} · {i.estimatedDuration || '—'}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => printMaterialSheet(i.title, i.fullDescription || i.shortDescription || '')}
+                                                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
+                                                        >
+                                                            Распечатать
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedItemId(i.id);
+                                                                pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
+                                                                if (navigate) navigate(`${routePrefix}/library/${i.id}`);
+                                                            }}
+                                                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                                        >
+                                                            Изучить
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </article>
                                 ))}
@@ -1126,7 +1167,7 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{selectedItem.categoryTitle || 'Материал'}</span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-display text-xl text-slate-800">{selectedItem.title}</h3>
+                            <h3 className="font-display text-xl text-slate-800">{stripMaterialNumbering(selectedItem.title)}</h3>
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
@@ -1699,7 +1740,9 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
 function StudentGlossarySearch() {
     const [q, setQuery] = useState('');
     const [cat, setCat] = useState('all');
+    const [letter, setLetter] = useState('all');
     const [expandedId, setExpandedId] = useState('');
+    const alphabet = useMemo(() => 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЭЮЯ'.split(''), []);
     const seen = new Set();
     const apiExtra = [...pvlDomainApi.sharedApi.getGlossary(), ...pvlMockData.glossaryItems.map((g) => ({ id: g.id, term: g.term, definition: g.definition }))].filter((g) => {
         const k = String(g.term || g.id).toLowerCase();
@@ -1730,7 +1773,11 @@ function StudentGlossarySearch() {
         })),
     ];
     const qlow = q.trim().toLowerCase();
-    const filtered = base.filter((g) => {
+    const termFirstLetter = (term) => {
+        const t = String(term || '').trim().replace(/^["«(]+/, '');
+        return t.charAt(0).toUpperCase().replace('Ё', 'Е');
+    };
+    const afterCategoryAndSearch = base.filter((g) => {
         if (cat === 'all') return true;
         if (!g.fromRef) return false;
         return g.cat === cat;
@@ -1738,6 +1785,15 @@ function StudentGlossarySearch() {
         if (!qlow) return true;
         const def = String(g.definition || '');
         return String(g.term).toLowerCase().includes(qlow) || def.toLowerCase().includes(qlow);
+    });
+    const lettersPresent = new Set();
+    afterCategoryAndSearch.forEach((g) => {
+        const ch = termFirstLetter(g.term);
+        if (ch) lettersPresent.add(ch);
+    });
+    const filtered = afterCategoryAndSearch.filter((g) => {
+        if (letter === 'all') return true;
+        return termFirstLetter(g.term) === letter;
     });
     const exportGlossaryPdf = () => {
         const doc = new jsPDF('p', 'mm', 'a4');
@@ -1789,16 +1845,50 @@ function StudentGlossarySearch() {
                     </button>
                 ))}
             </div>
-            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-medium text-slate-500 mb-2">Быстрый фильтр по первой букве</p>
+                <div className="flex flex-wrap gap-1.5">
+                    <button
+                        type="button"
+                        onClick={() => setLetter('all')}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${letter === 'all' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        Все
+                    </button>
+                    {alphabet.map((ch) => {
+                        const hasTerms = lettersPresent.has(ch);
+                        return (
+                            <button
+                                key={ch}
+                                type="button"
+                                disabled={!hasTerms}
+                                onClick={() => hasTerms && setLetter(ch)}
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                    letter === ch
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                        : hasTerms
+                                          ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                          : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                                }`}
+                            >
+                                {ch}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 auto-rows-[220px]">
                 {filtered.map((g) => (
-                    <article key={g.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${g.fromRef ? 'border-[#E8D5C4]' : 'border-slate-100'}`}>
+                    <article key={g.id} className={`h-full rounded-2xl border bg-white p-3.5 shadow-sm flex flex-col ${g.fromRef ? 'border-[#E8D5C4]' : 'border-slate-100'}`}>
                         <div className="flex flex-wrap items-baseline gap-2">
                             <h4 className="font-display text-base text-[#4A3728] leading-tight">{g.term}</h4>
                         </div>
                         {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80] mt-1">{g.catLabel}</div> : null}
-                        <p className="text-xs text-[#2C1810] mt-2 leading-relaxed">{expandedId === g.id ? g.definition : `${String(g.definition || '').slice(0, 110)}${String(g.definition || '').length > 110 ? '…' : ''}`}</p>
+                        <p className="text-xs text-[#2C1810] mt-2 leading-relaxed flex-1 overflow-hidden">
+                            {expandedId === g.id ? g.definition : `${String(g.definition || '').slice(0, 110)}${String(g.definition || '').length > 110 ? '…' : ''}`}
+                        </p>
                         {String(g.definition || '').length > 110 ? (
-                            <button type="button" onClick={() => setExpandedId((prev) => (prev === g.id ? '' : g.id))} className="mt-2 text-[11px] text-emerald-700 hover:underline">
+                            <button type="button" onClick={() => setExpandedId((prev) => (prev === g.id ? '' : g.id))} className="mt-2 text-[11px] text-emerald-700 hover:underline self-start">
                                 {expandedId === g.id ? 'Свернуть' : 'Подробнее'}
                             </button>
                         ) : null}
@@ -1896,81 +1986,141 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
     const pref = loadViewPreferences('student.results');
     const [filter, setFilter] = useState(pref?.filter || 'все');
     const apiItems = pvlDomainApi.studentApi.getStudentResults(studentId, {});
+    const tasksAll = apiItems.map((t) => ({ ...t, uiStatus: shortTaskStatusLabel(t.displayStatus || t.status) }));
     const tasks = apiItems.filter((t) => {
-        if (filter === 'все' || filter === 'контрольные точки') return true;
-        const face = t.displayStatus || t.status;
-        return face === filter;
+        if (filter === 'все') return true;
+        return shortTaskStatusLabel(t.displayStatus || t.status) === filter;
     });
     const pointsHistory = (pvlDomainApi.db.pointsHistory || []).filter((x) => x.studentId === studentId).slice(-5).reverse();
+    const pointsLanes = useMemo(() => {
+        const lanes = {
+            homework: [],
+            marks: [],
+            lessons: [],
+        };
+        pointsHistory.forEach((item) => {
+            if (item.sourceType === 'controlPoint') {
+                lanes.homework.push(item);
+            } else if (item.sourceType === 'week0' || item.sourceType === 'weekCompletion') {
+                lanes.lessons.push(item);
+            } else {
+                lanes.marks.push(item);
+            }
+        });
+        return lanes;
+    }, [pointsHistory]);
+    const summary = {
+        coursePoints: pvlDomainApi.helpers.getStudentPointsSummary(studentId).coursePointsTotal || 0,
+        accepted: tasksAll.filter((t) => t.uiStatus === 'Принято').length,
+        inReview: tasksAll.filter((t) => t.uiStatus === 'На проверке').length,
+        inRevision: tasksAll.filter((t) => t.uiStatus === 'На доработке').length,
+    };
     React.useEffect(() => {
         saveViewPreferences('student.results', { filter });
     }, [filter]);
     return (
-        <div className="space-y-3">
+        <div className="space-y-4">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-display text-2xl text-slate-800">Результаты</h2>
                 <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700">
                     <option value="все">Все задания</option>
-                    <option value="не начато">Не начато</option>
-                    <option value="в работе">В работе</option>
-                    <option value="черновик">Черновик</option>
-                    <option value="отправлено">Отправлено</option>
-                    <option value="на проверке">На проверке</option>
-                    <option value="на доработке">На доработке</option>
-                    <option value="проверено">Проверено</option>
-                    <option value="принято">Принято</option>
-                    <option value="просрочено">Просрочено</option>
+                    <option value="Принято">Принято</option>
+                    <option value="На проверке">На проверке</option>
+                    <option value="На доработке">На доработке</option>
+                    <option value="Черновик">Черновик</option>
+                    <option value="Просрочено">Просрочено</option>
                 </select>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm max-w-3xl">
-                <h3 className="font-display text-lg text-slate-800 mb-2">История баллов</h3>
-                <ul className="space-y-2">
-                    {pointsHistory.map((it) => (
-                        <li key={it.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="text-sm font-medium text-slate-800">{it.sourceLabel || 'Начисление баллов'}</div>
-                                <span className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800 tabular-nums">+{it.pointsDelta}</span>
+            <section className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <article className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="text-xs text-slate-500">Курсовые баллы</div>
+                    <div className="font-display text-3xl text-slate-800 tabular-nums mt-1">{summary.coursePoints}</div>
+                </article>
+                <article className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm">
+                    <div className="text-xs text-emerald-700">Принято</div>
+                    <div className="font-display text-3xl text-emerald-800 tabular-nums mt-1">{summary.accepted}</div>
+                </article>
+                <article className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4 shadow-sm">
+                    <div className="text-xs text-sky-700">На проверке</div>
+                    <div className="font-display text-3xl text-sky-800 tabular-nums mt-1">{summary.inReview}</div>
+                </article>
+                <article className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 shadow-sm">
+                    <div className="text-xs text-amber-700">На доработке</div>
+                    <div className="font-display text-3xl text-amber-800 tabular-nums mt-1">{summary.inRevision}</div>
+                </article>
+            </section>
+
+            <section className="space-y-3">
+                {tasks.map((t) => (
+                    <article key={t.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <h3 className="text-sm font-semibold text-slate-800">{t.title}</h3>
+                                <p className="text-xs text-slate-500 mt-1">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</p>
                             </div>
-                            <div className="mt-1 text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
-                                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">{pointsSourceLabel(it.sourceType)}</span>
-                                {it.comment ? <span>{it.comment}</span> : null}
-                                <span>{formatPvlDateTime(it.createdAt)}</span>
+                            <div className="shrink-0 text-right">
+                                <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
+                                <div className="text-xs tabular-nums text-slate-500 mt-1">Оценка: {t.score ?? 0}/{t.maxScore ?? 0}</div>
                             </div>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            {tasks.map((t) => (
-                <article key={t.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <div className="text-sm font-semibold text-slate-800">{t.title}</div>
-                            <div className="text-xs text-slate-500 mt-1">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                            <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
-                            <span className="text-xs tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore ?? 0}</span>
+                        <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-600">
+                            <span>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</span>
+                            <span>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</span>
                         </div>
-                    </div>
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3 text-xs">
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Неделя: {t.week ?? '—'}</div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Модуль: {t.moduleNumber ?? '—'}</div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
+                        <div className="mt-3 text-xs">
+                            {t.mentorCommentPreview ? (
+                                <p className="text-slate-700">Комментарий ментора: {t.mentorCommentPreview}</p>
+                            ) : (
+                                <p className="text-slate-400">Комментарий пока отсутствует</p>
+                            )}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                             {(t.revisionCycles ?? 0) > 0 ? (
                                 <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 tabular-nums">
                                     Доработок: {t.revisionCycles ?? 0}
                                 </span>
-                            ) : null}
-                            <div className="text-xs text-slate-500 mt-2 line-clamp-1">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</div>
+                            ) : <span />}
+                            <button
+                                type="button"
+                                onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
+                                className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-emerald-800 hover:bg-emerald-100"
+                            >
+                                Открыть задание
+                            </button>
                         </div>
-                        <button type="button" onClick={() => navigate(`${routePrefix}/results/${t.id}`)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Открыть задание</button>
+                    </article>
+                ))}
+            </section>
+            <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                <details>
+                    <summary className="font-display text-base text-slate-800 cursor-pointer">История баллов</summary>
+                    <p className="text-xs text-slate-500 mt-2">Вторичный блок: начисления сгруппированы по смыслу.</p>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                        {[
+                            { key: 'homework', title: 'За домашки', tone: 'border-emerald-100 bg-emerald-50/40' },
+                            { key: 'marks', title: 'За отметки', tone: 'border-sky-100 bg-sky-50/40' },
+                            { key: 'lessons', title: 'За пройденные уроки', tone: 'border-violet-100 bg-violet-50/40' },
+                        ].map((lane) => (
+                            <article key={lane.key} className={`rounded-xl border p-3 ${lane.tone}`}>
+                                <h4 className="text-sm font-medium text-slate-800">{lane.title}</h4>
+                                <div className="mt-2 space-y-2">
+                                    {(pointsLanes[lane.key] || []).length ? (pointsLanes[lane.key] || []).map((it) => (
+                                        <div key={it.id} className="rounded-lg border border-white/70 bg-white/80 px-2.5 py-2">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-xs font-medium text-slate-700">{it.sourceLabel || 'Начисление'}</div>
+                                                <span className="text-[11px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800 tabular-nums">+{it.pointsDelta}</span>
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 mt-1">{pointsSourceLabel(it.sourceType)} · {formatPvlDateTime(it.createdAt)}</div>
+                                        </div>
+                                    )) : (
+                                        <div className="text-xs text-slate-400">Пока нет начислений</div>
+                                    )}
+                                </div>
+                            </article>
+                        ))}
                     </div>
-                </article>
-            ))}
+                </details>
+            </section>
         </div>
     );
 }
@@ -2302,6 +2452,11 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
     return (
         <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30">
             {heading ? <h3 className="font-display text-xl text-slate-800 mb-4">{heading}</h3> : null}
+            {menteeRows.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-600">
+                    Список менти пуст. Если вы только что переключили роль, обновите страницу или откройте «Мои менти» — демо-данные подгружаются по профилю ментора.
+                </div>
+            ) : null}
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {menteeRows.map((row) => (
                     <div
@@ -4334,7 +4489,7 @@ export default function PvlPrototypeApp({
             );
         }
         if (route.startsWith('/mentor/')) {
-            return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} mentorId={actingUserId} />;
+            return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} mentorId={resolvePvlMentorActorId(actingUserId)} />;
         }
         if (route.startsWith('/student/')) {
             return <StudentPage route={route} studentId={studentId} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;

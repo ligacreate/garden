@@ -152,13 +152,24 @@ const relatedLinks = [
 
 const statusTone = (status) => {
     const s = String(status || '').toLowerCase();
-    if (s === 'принято') return 'bg-emerald-50 text-emerald-700 border-emerald-600/30';
-    if (s === 'на доработке') return 'bg-amber-50 text-amber-700 border-amber-600/30';
-    if (s === 'не принято' || s === 'просрочено') return 'bg-rose-50 text-rose-700 border-rose-600/30';
-    if (s === 'к проверке' || s === 'отправлено') return 'bg-blue-50 text-blue-700 border-blue-600/30';
-    if (s === 'в работе') return 'bg-indigo-50 text-indigo-700 border-indigo-600/30';
+    if (s === 'принято' || s === 'проверено') return 'bg-emerald-50 text-emerald-700 border-emerald-300';
+    if (s === 'на доработке') return 'bg-amber-50 text-amber-800 border-amber-300';
+    if (s === 'не принято' || s === 'просрочено') return 'bg-rose-50 text-rose-700 border-rose-300';
+    if (s === 'к проверке' || s === 'на проверке' || s === 'отправлено') return 'bg-sky-50 text-sky-700 border-sky-300';
+    if (s === 'в работе' || s === 'черновик') return 'bg-slate-100 text-slate-700 border-slate-300';
     return 'bg-slate-100 text-slate-600 border-slate-300';
 };
+
+function shortStatusLabel(status) {
+    const s = String(status || '').toLowerCase();
+    if (s.includes('проверено')) return 'Проверено';
+    if (s === 'принято') return 'Проверено';
+    if (s === 'к проверке' || s === 'на проверке' || s === 'отправлено') return 'На проверке';
+    if (s === 'на доработке') return 'На доработке';
+    if (s === 'черновик' || s === 'в работе' || s === 'не начато') return 'Черновик';
+    if (s === 'просрочено' || s === 'не принято') return 'Просрочено';
+    return status;
+}
 
 const Pill = ({ children, tone }) => (
     <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${tone}`}>
@@ -265,24 +276,25 @@ export function submitForReview(setter) {
 export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»', showBackButton = true }) {
     const isOverdue = data.deadlineAt && new Date(data.deadlineAt) < new Date() && data.status !== 'принято';
     return (
-        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             {showBackButton ? (
-                <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+                <button type="button" onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700 mb-2">{backLabel}</button>
             ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className="font-display text-3xl text-[#4A3728]">{data.title}</h2>
-                    <p className="text-sm text-[#9B8B80] mt-1">Неделя {data.weekNumber} · Модуль {data.moduleNumber} · {data.type}</p>
+                    <h2 className="font-display text-3xl text-slate-800">{data.title}</h2>
+                    <p className="text-sm text-slate-500 mt-1">Неделя {data.weekNumber} · Модуль {data.moduleNumber} · {data.type}</p>
                 </div>
-                <Pill tone={statusTone(data.status)}>{data.status}</Pill>
+                <div className="flex flex-col items-end gap-1">
+                    <Pill tone={statusTone(data.status)}>{shortStatusLabel(data.status)}</Pill>
+                    <span className="text-xs tabular-nums text-slate-500">Оценка: {data.score}/{data.maxScore}</span>
+                </div>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3 text-sm">
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {data.deadlineAt}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Начало работы: {data.startedAt || '—'}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Отправка: {data.submittedAt || '—'}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Проверка / принято: {data.acceptedAt || '—'}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Статус обновлён: {data.lastStatusChangedAt || '—'}</div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Оценка: {data.score}/{data.maxScore}</div>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-3 text-sm">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Дедлайн: {data.deadlineAt}</div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Сдано: {data.submittedAt || '—'}</div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Принято: {data.acceptedAt || '—'}</div>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Обновлено: {data.lastStatusChangedAt || '—'}</div>
             </div>
             {isOverdue ? <div className="mt-2 text-xs text-rose-700">Просрочен дедлайн сдачи.</div> : null}
         </div>
@@ -349,25 +361,25 @@ function TaskRevisionSummary({ revisionCyclesFromHistory, storedRevisionCycles }
 
 export function TaskDescription({ data, showControlPointNote = false }) {
     return (
-        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Задание</h3>
-            <p className="text-sm text-[#2C1810]">{data.summary}</p>
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-xl text-slate-800 mb-2">Задание</h3>
+            <p className="text-sm text-slate-700">{data.summary}</p>
             <p className="text-sm mt-2"><strong>Ожидаемый артефакт:</strong> {data.artifact}</p>
             <p className="text-sm mt-2"><strong>Что загружать:</strong> {data.uploadTypes.join(', ')}</p>
             <div className="mt-2">
-                <p className="text-sm font-medium text-[#4A3728]">Критерии зачета:</p>
-                <ul className="text-sm text-[#2C1810] list-disc pl-5">
+                <p className="text-sm font-medium text-slate-800">Критерии зачета:</p>
+                <ul className="text-sm text-slate-700 list-disc pl-5">
                     {data.criteria.map((c) => <li key={c}>{c}</li>)}
                 </ul>
             </div>
             <div className="mt-2">
-                <p className="text-sm font-medium text-[#4A3728]">Подсказки:</p>
-                <ul className="text-sm text-[#2C1810] list-disc pl-5">
+                <p className="text-sm font-medium text-slate-800">Подсказки:</p>
+                <ul className="text-sm text-slate-700 list-disc pl-5">
                     {data.hints.map((h) => <li key={h}>{h}</li>)}
                 </ul>
             </div>
             {showControlPointNote ? (
-                <div className="mt-2 text-xs text-[#9B8B80]">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
+                <div className="mt-2 text-xs text-slate-500">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
             ) : null}
         </div>
     );
@@ -375,15 +387,15 @@ export function TaskDescription({ data, showControlPointNote = false }) {
 
 export function SubmissionVersionCard({ version }) {
     return (
-        <article className={`rounded-xl border p-3 ${version.isCurrent ? 'border-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] bg-[#FAF6F2]'}`}>
+        <article className={`rounded-xl border p-3 ${version.isCurrent ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/70'}`}>
             <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="text-sm font-medium text-[#4A3728]">Версия {version.versionNumber}</div>
-                {version.isCurrent ? <span className="text-[10px] uppercase tracking-[0.08em] text-[#C8855A]">текущая</span> : null}
+                <div className="text-sm font-medium text-slate-800">Версия {version.versionNumber}</div>
+                {version.isCurrent ? <span className="text-[10px] uppercase tracking-[0.08em] text-emerald-700">текущая</span> : null}
             </div>
-            <p className="text-xs text-[#9B8B80]">{version.createdAt} · {version.authorRole}</p>
-            <p className="text-sm text-[#2C1810] mt-1">{version.textContent}</p>
-            {version.attachments?.length ? <p className="text-xs text-[#9B8B80] mt-1">Файлы: {version.attachments.join(', ')}</p> : null}
-            {version.links?.length ? <p className="text-xs text-[#9B8B80] mt-1">Ссылки: {version.links.join(', ')}</p> : null}
+            <p className="text-xs text-slate-500">{version.createdAt} · {version.authorRole}</p>
+            <p className="text-sm text-slate-700 mt-1">{version.textContent}</p>
+            {version.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Файлы: {version.attachments.join(', ')}</p> : null}
+            {version.links?.length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {version.links.join(', ')}</p> : null}
         </article>
     );
 }
@@ -393,27 +405,40 @@ export function renderSubmissionVersions(versions) {
 }
 
 export function SubmissionHistory({ versions, role, onUploadVersion, onSaveDraft, onSubmit, draftText, setDraftText }) {
+    const currentVersion = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
+    const previousVersions = versions.filter((v) => v.id !== currentVersion?.id).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
     return (
-        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ответ участницы</h3>
-            <div className="grid gap-2">{renderSubmissionVersions(versions)}</div>
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-xl text-slate-800 mb-2">Ответ участницы</h3>
+            {currentVersion ? (
+                <div>
+                    <p className="text-xs text-slate-500 mb-2">Текущая версия</p>
+                    <SubmissionVersionCard version={currentVersion} />
+                </div>
+            ) : null}
+            {previousVersions.length > 0 ? (
+                <details className="mt-3">
+                    <summary className="text-xs text-slate-600 cursor-pointer">Предыдущие версии ({previousVersions.length})</summary>
+                    <div className="grid gap-2 mt-2">{previousVersions.map((version) => <SubmissionVersionCard key={version.id} version={version} />)}</div>
+                </details>
+            ) : null}
             {role === 'student' ? (
-                <div className="mt-3 border-t border-[#F5EDE6] pt-3">
+                <div className="mt-3 border-t border-slate-100 pt-3">
                     <textarea
                         value={draftText}
                         onChange={(e) => setDraftText(e.target.value)}
-                        className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm"
+                        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
                         rows={4}
                         placeholder="Черновик ответа..."
                     />
                     <div className="flex flex-wrap gap-2 mt-2">
-                        <button onClick={() => onSaveDraft(draftText)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Сохранить черновик</button>
-                        <button onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Добавить новую версию</button>
-                        <button onClick={onSubmit} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Отправить на проверку</button>
+                        <button onClick={() => onSaveDraft(draftText)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Сохранить черновик</button>
+                        <button onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800 hover:bg-sky-100">Добавить новую версию</button>
+                        <button onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
                     </div>
                 </div>
             ) : (
-                <div className="mt-3 text-xs text-[#9B8B80]">Для ментора: доступны просмотр всех версий, скачивание вложений и сравнение последней и предыдущей.</div>
+                <div className="mt-3 text-xs text-slate-500">Для ментора: доступны просмотр всех версий, скачивание вложений и сравнение последней и предыдущей.</div>
             )}
         </div>
     );
@@ -443,16 +468,16 @@ export function StatusTimeline({ history }) {
 
 export function renderCommentsThread(messages) {
     return messages.map((m) => (
-        <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-[#FAF6F2] border-[#E8D5C4]' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-[#E8D5C4]'}`}>
+        <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80]">{threadEventLabel(m.messageType)}</span>
-                    <p className="text-sm font-medium text-[#4A3728]">{m.authorName} <span className="text-xs text-[#9B8B80] font-normal">({m.authorRole})</span></p>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{threadEventLabel(m.messageType)}</span>
+                    <p className="text-sm font-medium text-slate-800">{m.authorName} <span className="text-xs text-slate-500 font-normal">({m.authorRole})</span></p>
                 </div>
-                <p className="text-xs text-[#9B8B80]">{m.createdAt}</p>
+                <p className="text-xs text-slate-500">{m.createdAt}</p>
             </div>
-            <p className="text-sm text-[#2C1810] mt-1">{m.text}</p>
-            {m.attachments?.length ? <p className="text-xs text-[#9B8B80] mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
+            <p className="text-sm text-slate-700 mt-1">{m.text}</p>
+            {m.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
             {m.isUnreadForCurrentUser ? <p className="text-xs text-rose-700 mt-1">Новое</p> : null}
         </article>
     ));
@@ -470,9 +495,9 @@ export function CommentsThread({
     const disputeMode = disputeOpen;
     const showComposer = !threadLocked || disputeMode;
     return (
-        <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-1">Лента по заданию</h3>
-            <p className="text-xs text-[#9B8B80] mb-3">Сообщения, проверка, системные события и напоминания в одном месте.</p>
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <h3 className="font-display text-xl text-slate-800 mb-1">Лента по заданию</h3>
+            <p className="text-xs text-slate-500 mb-3">Сообщения, проверка и системные события по заданию.</p>
             <div className="grid gap-2">{renderCommentsThread(messages)}</div>
             {threadLocked && !disputeMode ? (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
@@ -490,12 +515,12 @@ export function CommentsThread({
                 <p className="mt-3 text-xs text-slate-600">Открыт спор — пишите только по сути расхождения с оценкой или проверкой.</p>
             ) : null}
             {showComposer ? (
-                <div className="mt-3 border-t border-[#F5EDE6] pt-3">
+                <div className="mt-3 border-t border-slate-100 pt-3">
                     <textarea
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         rows={3}
-                        className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm"
+                        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
                         placeholder={disputeMode ? 'Сообщение в рамках спора…' : 'Написать комментарий…'}
                     />
                     <div className="mt-2">
@@ -512,7 +537,7 @@ export function CommentsThread({
                                 });
                                 setMessage('');
                             }}
-                            className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]"
+                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
                         >
                             {disputeMode ? 'Отправить в споре' : 'Отправить сообщение'}
                         </button>
@@ -752,7 +777,6 @@ export function renderTaskDetail({
     return (
         <div className="space-y-3">
             <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
-            <TaskMeta data={state.taskDetail} />
             <TaskRevisionSummary revisionCyclesFromHistory={state.taskDetail.revisionCycles ?? 0} storedRevisionCycles={state.taskDetail.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <SubmissionHistory
@@ -876,8 +900,7 @@ export default function PvlTaskDetailView({
         role === 'student'
         && taskStudentId
         && taskId
-        && String(state.taskDetail.status || '').toLowerCase().includes('проверено')
-        && String(state.taskDetail.status || '').toLowerCase().includes('оценку');
+        && String(state.taskDetail.status || '').toLowerCase().includes('проверено');
 
     if (role === 'mentor') {
         return (

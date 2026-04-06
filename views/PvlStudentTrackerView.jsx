@@ -168,8 +168,17 @@ export function usePlatformStepChecklist(studentId) {
 /**
  * Та же карта модулей и шагов, что в трекере (общее localStorage). variant: tracker — как в трекере; lessons — спокойнее для раздела «Уроки».
  */
-export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
-    const { checked, toggleItem } = usePlatformStepChecklist(studentId);
+export function PlatformCourseModulesGrid({
+    studentId,
+    variant = 'tracker',
+    checkedOverride = null,
+    onToggleItem = null,
+    onOpenItem = null,
+    interactionMode = 'toggle',
+}) {
+    const hookState = usePlatformStepChecklist(studentId);
+    const checked = checkedOverride || hookState.checked;
+    const toggleItem = onToggleItem || hookState.toggleItem;
     const tagLabelFor = (tag) => {
         const t = tag || 'task';
         return variant === 'lessons' ? (PVL_TRACKER_TAG_LABEL[t] || t) : (CHECKLIST_TAG_LABEL[t] || t);
@@ -204,7 +213,13 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
                                         <li key={key}>
                                             <button
                                                 type="button"
-                                                onClick={() => toggleItem(key)}
+                                                onClick={() => {
+                                                    if (interactionMode === 'open' && onOpenItem) {
+                                                        onOpenItem({ key, item, module: mod, index: i, isDone });
+                                                        return;
+                                                    }
+                                                    toggleItem(key);
+                                                }}
                                                 className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-1 rounded-lg text-left hover:bg-slate-50/80 transition-colors"
                                             >
                                                 <span
@@ -235,14 +250,15 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
 export function StudentCourseTracker({ studentId, navigate }) {
-    const { stats } = usePlatformStepChecklist(studentId);
+    const { checked, toggleItem, stats } = usePlatformStepChecklist(studentId);
     const { doneSteps, totalSteps, pct } = stats;
+    const [activeStep, setActiveStep] = useState(null);
 
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-700/95 via-emerald-800/95 to-teal-900 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
-                <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">недели 0 (вход и настройка)</span> — первый блок в списке ниже. Отмечайте шаги по мере прохождения.</p>
+                <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">недели 0 (вход и настройка)</span>. Клик по строке открывает урок справа, отметка ставится только внутри урока.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{doneSteps}</div>
@@ -259,7 +275,44 @@ export function StudentCourseTracker({ studentId, navigate }) {
                 </div>
             </div>
 
-            <PlatformCourseModulesGrid studentId={studentId} variant="tracker" />
+            <PlatformCourseModulesGrid
+                studentId={studentId}
+                variant="tracker"
+                checkedOverride={checked}
+                onToggleItem={toggleItem}
+                interactionMode="open"
+                onOpenItem={(payload) => setActiveStep(payload)}
+            />
+
+            {activeStep ? (
+                <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                    <div className="mb-2 flex flex-wrap gap-2 text-[11px]">
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-800">Трекер</span>
+                        <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{activeStep.module?.title || 'Урок'}</span>
+                    </div>
+                    <h4 className="font-display text-xl text-slate-800">{activeStep.item?.text}</h4>
+                    <p className="text-sm text-slate-600 mt-2">
+                        Тип: {PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал'}.
+                        Откройте материал, изучите и затем отметьте выполнение.
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => toggleItem(activeStep.key)}
+                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100"
+                        >
+                            {checked[activeStep.key] ? 'Снять отметку «Изучено»' : 'Отметить как изучено'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveStep(null)}
+                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                        >
+                            Закрыть урок
+                        </button>
+                    </div>
+                </section>
+            ) : null}
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>

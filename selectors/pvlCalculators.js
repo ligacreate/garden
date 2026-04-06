@@ -116,8 +116,16 @@ export function calculateRiskLevel(db, studentId) {
     return RISK_LEVEL.LOW;
 }
 
+function resolveMentorMenteeIds(db, mentorId) {
+    const profile = (db.mentorProfiles || []).find((m) => m.userId === mentorId);
+    if (profile && Array.isArray(profile.menteeIds) && profile.menteeIds.length > 0) {
+        return profile.menteeIds;
+    }
+    return db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+}
+
 export function buildMentorRisks(db, mentorId) {
-    const menteeIds = db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+    const menteeIds = resolveMentorMenteeIds(db, mentorId);
     return db.deadlineRisks.filter((r) => menteeIds.includes(r.studentId) && !r.isResolved);
 }
 
@@ -126,7 +134,7 @@ export function buildAdminRisks(db) {
 }
 
 export function getPendingReviewTasks(db, mentorId) {
-    const menteeIds = db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+    const menteeIds = resolveMentorMenteeIds(db, mentorId);
     return db.studentTaskStates
         .filter((s) => menteeIds.includes(s.studentId) && (s.status === TASK_STATUS.PENDING_REVIEW || s.status === TASK_STATUS.SUBMITTED))
         .map((s) => ({ ...s, task: db.homeworkTasks.find((t) => t.id === s.taskId) }));

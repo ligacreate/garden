@@ -69,8 +69,9 @@ export const seed = {
         { id: 'sp-4', userId: 'u-st-4', cohortId: 'cohort-2026-1', mentorId: 'u-men-1', currentWeek: 2, currentModule: 1, courseStatus: COURSE_STATUS.AT_RISK, coursePoints: 20, szSelfAssessmentPoints: 0, szMentorAssessmentPoints: 0, szAdmissionStatus: CERTIFICATION_STATUS.NOT_STARTED, lastActivityAt: '2026-05-01', unreadCount: 0, createdAt: now, updatedAt: now },
     ],
     mentorProfiles: [
-        { id: 'mp-1', userId: 'u-men-1', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-1', 'u-st-2', 'u-st-4'], activeReviewCount: 5, activeRiskCount: 2, createdAt: now, updatedAt: now },
-        { id: 'mp-2', userId: 'u-men-2', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-3'], activeReviewCount: 1, activeRiskCount: 1, createdAt: now, updatedAt: now },
+        // Демо-режим: оба ментора видят весь набор учениц, как в учительской.
+        { id: 'mp-1', userId: 'u-men-1', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-1', 'u-st-2', 'u-st-3', 'u-st-4'], activeReviewCount: 6, activeRiskCount: 3, createdAt: now, updatedAt: now },
+        { id: 'mp-2', userId: 'u-men-2', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-1', 'u-st-2', 'u-st-3', 'u-st-4'], activeReviewCount: 6, activeRiskCount: 3, createdAt: now, updatedAt: now },
     ],
     adminProfiles: [
         { id: 'ap-1', userId: 'u-adm-1', permissions: ['content:write', 'cohorts:write', 'certification:write'], createdAt: now, updatedAt: now },
@@ -135,6 +136,9 @@ export const seed = {
         { id: 'sts-4', studentId: 'u-st-1', taskId: 'task-4', status: TASK_STATUS.ACCEPTED, submittedAt: '2026-05-25', acceptedAt: '2026-05-28', reviewSeenByStudentAt: null, lastStatusChangedAt: '2026-05-28', currentVersionId: 'ver-5', revisionCycles: 0, mentorBonusPoints: 0, autoPoints: 10, totalTaskPoints: 10, isOverdue: false, overdueDays: 0, createdAt: now, updatedAt: now },
         { id: 'sts-5', studentId: 'u-st-4', taskId: 'task-5', status: TASK_STATUS.NOT_STARTED, submittedAt: null, acceptedAt: null, lastStatusChangedAt: now, currentVersionId: null, revisionCycles: 0, mentorBonusPoints: 0, autoPoints: 0, totalTaskPoints: 0, isOverdue: true, overdueDays: 18, createdAt: now, updatedAt: now },
         { id: 'sts-6', studentId: 'u-st-4', taskId: 'task-6', status: TASK_STATUS.REVISION_REQUESTED, submittedAt: '2026-05-01', acceptedAt: null, lastStatusChangedAt: '2026-05-03', currentVersionId: 'ver-6a', revisionCycles: 2, mentorBonusPoints: 0, autoPoints: 3, totalTaskPoints: 3, isOverdue: true, overdueDays: 28, createdAt: now, updatedAt: now },
+        // Доп. демо-задачи для канбана ментора: чтобы можно было тестово "подвигать" статусы.
+        { id: 'sts-7', studentId: 'u-st-3', taskId: 'task-2b', status: TASK_STATUS.REVISION_REQUESTED, submittedAt: '2026-06-11', acceptedAt: null, lastStatusChangedAt: '2026-06-12', currentVersionId: 'ver-7a', revisionCycles: 1, mentorBonusPoints: 0, autoPoints: 4, totalTaskPoints: 4, isOverdue: false, overdueDays: 0, createdAt: now, updatedAt: now },
+        { id: 'sts-8', studentId: 'u-st-4', taskId: 'task-1b', status: TASK_STATUS.PENDING_REVIEW, submittedAt: '2026-06-12', acceptedAt: null, lastStatusChangedAt: '2026-06-12', currentVersionId: 'ver-8a', revisionCycles: 0, mentorBonusPoints: 0, autoPoints: 0, totalTaskPoints: 0, isOverdue: false, overdueDays: 0, createdAt: now, updatedAt: now },
     ],
     submissions: [
         { id: 'sub-1', studentId: 'u-st-1', taskId: 'task-1', currentVersionId: 'ver-2', draftVersionId: null, createdAt: now, updatedAt: now },
@@ -144,6 +148,8 @@ export const seed = {
         { id: 'sub-4', studentId: 'u-st-1', taskId: 'task-4', currentVersionId: 'ver-5', draftVersionId: null, createdAt: now, updatedAt: now },
         { id: 'sub-2b', studentId: 'u-st-2', taskId: 'task-2b', currentVersionId: 'ver-2b1', draftVersionId: null, createdAt: now, updatedAt: now },
         { id: 'sub-6', studentId: 'u-st-4', taskId: 'task-6', currentVersionId: 'ver-6a', draftVersionId: null, createdAt: now, updatedAt: now },
+        { id: 'sub-7', studentId: 'u-st-3', taskId: 'task-2b', currentVersionId: 'ver-7a', draftVersionId: null, createdAt: now, updatedAt: now },
+        { id: 'sub-8', studentId: 'u-st-4', taskId: 'task-1b', currentVersionId: 'ver-8a', draftVersionId: null, createdAt: now, updatedAt: now },
     ],
     submissionVersions: [
         { id: 'ver-1', submissionId: 'sub-1', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Черновик v1', attachments: [], links: [], isDraft: false, isCurrent: false, createdAt: '2026-06-01' },
@@ -154,6 +160,8 @@ export const seed = {
         { id: 'ver-5', submissionId: 'sub-4', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Рефлексия готова', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-05-25' },
         { id: 'ver-2b1', submissionId: 'sub-2b', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Черновик анкеты', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-06-05' },
         { id: 'ver-6a', submissionId: 'sub-6', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Попытка 1', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-05-01' },
+        { id: 'ver-7a', submissionId: 'sub-7', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Версия после правок', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-06-11' },
+        { id: 'ver-8a', submissionId: 'sub-8', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Заполнила чек-лист, жду ревью', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-06-12' },
     ],
     statusHistory: [
         { id: 'sh-1', studentId: 'u-st-1', taskId: 'task-1', fromStatus: TASK_STATUS.SUBMITTED, toStatus: TASK_STATUS.PENDING_REVIEW, changedByUserId: 'u-st-1', comment: 'Отправлено', createdAt: '2026-06-02' },

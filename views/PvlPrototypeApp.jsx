@@ -1,6 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { jsPDF } from 'jspdf';
+import {
+    BadgeCheck,
+    BarChart3,
+    CalendarCheck2,
+    CalendarDays,
+    CornerUpLeft,
+    Files,
+    Info,
+    KanbanSquare,
+    Languages,
+    LayoutGrid,
+    Library,
+    MessageCircleQuestion,
+    Route,
+    Settings2,
+    UserCog,
+    Users,
+} from 'lucide-react';
 import Button from '../components/Button';
 import RichEditor from '../components/RichEditor';
 import PvlTaskDetailView from './PvlTaskDetailView';
@@ -263,6 +281,32 @@ function pointsSourceLabel(sourceType) {
     return map[sourceType] || 'Другое';
 }
 
+function printMaterialSheet(title, bodyText) {
+    const safeTitle = String(title || 'Материал');
+    const safeBody = String(bodyText || '');
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (!popup) return;
+    const escapedTitle = safeTitle.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    const escapedBody = safeBody
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('\n', '<br/>');
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>${escapedTitle}</title>
+        <style>
+            body{font-family:Arial,sans-serif;padding:28px;line-height:1.55;color:#1f2937}
+            h1{font-size:22px;margin:0 0 16px;color:#065f46}
+            .meta{font-size:12px;color:#6b7280;margin-bottom:16px}
+        </style></head><body>
+        <h1>${escapedTitle}</h1>
+        <div class="meta">Материал курса ПВЛ</div>
+        <div>${escapedBody}</div>
+        </body></html>`);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+}
+
 const RiskBadge = ({ level }) => <StatusBadge>{level}</StatusBadge>;
 const DeadlineBadge = ({ value }) => <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#9B8B80]">{value}</span>;
 const DashboardWidget = ({ title, value, hint }) => (
@@ -348,9 +392,61 @@ const AssessmentComparisonCard = ({ selfPoints, mentorPoints }) => (
 );
 
 function pvlSidebarNavClass(active) {
-    return `w-full text-left rounded-2xl px-4 py-3 text-[15px] transition-all duration-200 ${active
+    return `group w-full text-left rounded-2xl px-4 py-3 text-[15px] transition-all duration-200 ${active
         ? 'bg-blue-50 text-blue-700 border border-blue-100 shadow-[0_6px_16px_-12px_rgba(47,111,84,0.45)] font-semibold'
-        : 'text-slate-600 border border-transparent hover:bg-white/90 hover:text-slate-900'}`;
+        : 'text-slate-500 border border-transparent hover:bg-white/90 hover:text-slate-800'}`;
+}
+
+const menuIconClass = 'h-[18px] w-[18px] shrink-0 opacity-85 transition-opacity duration-200 group-hover:opacity-100';
+const menuIconProps = { size: 18, strokeWidth: 1.9, className: menuIconClass };
+
+const COURSE_MENU_ICON = {
+    'О курсе': Info,
+    Глоссарий: Languages,
+    Библиотека: Library,
+    Трекер: Route,
+    Практикумы: CalendarCheck2,
+    Результаты: BarChart3,
+    Сертификация: BadgeCheck,
+    FAQ: MessageCircleQuestion,
+};
+
+const STUDENT_MENU_ICON = {
+    Дашборд: LayoutGrid,
+    Настройки: Settings2,
+    'Вернуться в сад': CornerUpLeft,
+    ...COURSE_MENU_ICON,
+};
+
+const MENTOR_MENU_ICON = {
+    Дашборд: LayoutGrid,
+    'Мои менти': Users,
+    Очередь: KanbanSquare,
+    Настройки: Settings2,
+    'Вернуться в сад': CornerUpLeft,
+    ...COURSE_MENU_ICON,
+};
+
+const ADMIN_MENU_ICON = {
+    Дашборд: LayoutGrid,
+    Ученицы: Users,
+    Менторы: UserCog,
+    'Материалы курса': Files,
+    Календарь: CalendarDays,
+    Настройки: Settings2,
+    'Вернуться в сад': CornerUpLeft,
+    ...COURSE_MENU_ICON,
+};
+
+function MenuLabel({ iconMap, label }) {
+    const Icon = iconMap[label];
+    if (!Icon) return <span>{label}</span>;
+    return (
+        <span className="inline-flex items-center gap-2.5">
+            <Icon {...menuIconProps} />
+            <span>{label}</span>
+        </span>
+    );
 }
 
 const pvlSidebarDividerClass = 'h-px bg-slate-100/80 my-3 mx-1';
@@ -384,7 +480,7 @@ const SidebarMenu = ({
                     }}
                     className={pvlSidebarNavClass(currentRoute === '/student/dashboard')}
                 >
-                    Дашборд
+                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Дашборд" />
                 </button>
                 {COURSE_MENU_LABELS.map((item) => {
                     const base = `/student/${toRoute(item)}`;
@@ -399,7 +495,7 @@ const SidebarMenu = ({
                             }}
                             className={pvlSidebarNavClass(subActive)}
                         >
-                            {item}
+                            <MenuLabel iconMap={STUDENT_MENU_ICON} label={item} />
                         </button>
                     );
                 })}
@@ -412,7 +508,7 @@ const SidebarMenu = ({
                     }}
                     className={pvlSidebarNavClass(currentRoute === '/student/settings')}
                 >
-                    Настройки
+                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Настройки" />
                 </button>
                 {onGardenExit ? (
                     <>
@@ -422,7 +518,7 @@ const SidebarMenu = ({
                             onClick={onGardenExit}
                             className="w-full text-left rounded-2xl px-4 py-3 text-[15px] text-slate-500 border border-transparent hover:bg-white/90 hover:text-slate-900"
                         >
-                            Вернуться в сад
+                            <MenuLabel iconMap={STUDENT_MENU_ICON} label="Вернуться в сад" />
                         </button>
                     </>
                 ) : null}
@@ -442,7 +538,7 @@ const SidebarMenu = ({
                             }}
                             className={pvlSidebarNavClass(subActive)}
                         >
-                            {label}
+                            <MenuLabel iconMap={MENTOR_MENU_ICON} label={label} />
                         </button>
                     );
                 })}
@@ -460,7 +556,7 @@ const SidebarMenu = ({
                             }}
                             className={pvlSidebarNavClass(subActive)}
                         >
-                            {item}
+                            <MenuLabel iconMap={MENTOR_MENU_ICON} label={item} />
                         </button>
                     );
                 })}
@@ -473,7 +569,7 @@ const SidebarMenu = ({
                     }}
                     className={pvlSidebarNavClass(currentRoute === '/mentor/settings')}
                 >
-                    Настройки
+                    <MenuLabel iconMap={MENTOR_MENU_ICON} label="Настройки" />
                 </button>
                 {onGardenExit ? (
                     <>
@@ -483,7 +579,7 @@ const SidebarMenu = ({
                             onClick={onGardenExit}
                             className="w-full text-left rounded-2xl px-4 py-3 text-[15px] text-slate-500 border border-transparent hover:bg-white/90 hover:text-slate-900"
                         >
-                            Вернуться в сад
+                            <MenuLabel iconMap={MENTOR_MENU_ICON} label="Вернуться в сад" />
                         </button>
                     </>
                 ) : null}
@@ -512,7 +608,7 @@ const SidebarMenu = ({
                             }}
                             className={pvlSidebarNavClass(subActive)}
                         >
-                            {entry.label}
+                            <MenuLabel iconMap={ADMIN_MENU_ICON} label={entry.label} />
                         </button>
                     );
                 })}
@@ -524,7 +620,7 @@ const SidebarMenu = ({
                             onClick={onGardenExit}
                             className="w-full text-left rounded-2xl px-4 py-3 text-[15px] text-slate-500 border border-transparent hover:bg-white/90 hover:text-slate-900"
                         >
-                            Вернуться в сад
+                            <MenuLabel iconMap={ADMIN_MENU_ICON} label="Вернуться в сад" />
                         </button>
                     </>
                 ) : null}
@@ -985,9 +1081,10 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                 Нет материалов по выбранным фильтрам или категории.
                             </div>
                         ) : (
-                            <div className="grid md:grid-cols-2 gap-3">
+                            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
                                 {filteredItems.map((i) => (
                                     <article key={i.id} className="rounded-2xl border border-slate-100 bg-white p-3.5 hover:border-emerald-200 transition-colors shadow-sm">
+                                        <div className="h-24 rounded-xl bg-gradient-to-br from-[#FAF6F2] via-emerald-50 to-teal-100 border border-slate-100" />
                                         <div className="text-xs text-slate-400">{i.categoryTitle}</div>
                                         <div className="text-sm font-medium text-slate-800 mt-1">{i.title}</div>
                                         <p className="text-xs text-slate-500 mt-1 line-clamp-3">{i.shortDescription}</p>
@@ -1001,7 +1098,13 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                         <div className="mt-3 flex items-center justify-between gap-2">
                                             <span className="text-[11px] text-slate-400">{i.estimatedDuration || '—'}</span>
                                             <div className="flex items-center gap-2">
-                                                <button type="button" onClick={() => window.print()} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Распечатать</button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => printMaterialSheet(i.title, i.fullDescription || i.shortDescription || '')}
+                                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
+                                                >
+                                                    Распечатать
+                                                </button>
                                                 <button type="button" onClick={() => {
                                                     setSelectedItemId(i.id);
                                                     pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
@@ -1025,7 +1128,13 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                         <div className="flex items-center justify-between gap-2">
                             <h3 className="font-display text-xl text-slate-800">{selectedItem.title}</h3>
                             <div className="flex items-center gap-2">
-                                <button type="button" onClick={() => window.print()} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Распечатать</button>
+                                <button
+                                    type="button"
+                                    onClick={() => printMaterialSheet(selectedItem.title, selectedItem.fullDescription || selectedItem.shortDescription || '')}
+                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
+                                >
+                                    Распечатать
+                                </button>
                                 <button type="button" onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Отметить как просмотрено</button>
                                 <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Закрыть</button>
                             </div>
@@ -1269,15 +1378,26 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                                 key={t.id}
                                 type="button"
                                 onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                className="text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-4 hover:border-emerald-200 hover:bg-emerald-50/20 transition-colors shadow-sm min-h-[148px] flex flex-col"
+                                className="text-left rounded-2xl border border-slate-100 bg-white p-4 hover:border-emerald-200 hover:bg-emerald-50/10 transition-colors shadow-sm min-h-[184px] flex flex-col"
                             >
-                                <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px]">{t.title}</div>
-                                <div className="text-[11px] text-slate-500 mt-2">Дедлайн: {fmtDeadline(t.deadlineAt)}</div>
-                                <div className="mt-2">
-                                    <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px]">{t.title}</div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
+                                        {Number(t.maxScore) > 0 ? <span className="text-[11px] tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore}</span> : null}
+                                    </div>
                                 </div>
-                                <div className="mt-auto pt-2 text-[11px] text-slate-500">
-                                    {(t.revisionCycles || 0) > 0 ? `Доработок: ${t.revisionCycles}` : ' '}
+                                <div className="mt-2 text-[11px] text-slate-500">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'}</div>
+                                <div className="mt-1.5 text-[11px] text-slate-500">Дедлайн: {fmtDeadline(t.deadlineAt)}</div>
+                                <div className="mt-1 text-[11px] text-slate-500">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
+                                {Number(t.revisionCycles || 0) > 0 ? (
+                                    <div className="mt-2 text-[11px]">
+                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">Доработок: {t.revisionCycles}</span>
+                                    </div>
+                                ) : null}
+                                <div className="mt-2 text-[11px] text-slate-500 line-clamp-1">{t.mentorCommentPreview || 'Без комментария'}</div>
+                                <div className="mt-auto pt-3">
+                                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-700">Открыть задание</span>
                                 </div>
                             </button>
                         ))}
@@ -1822,28 +1942,32 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
             </div>
             {tasks.map((t) => (
                 <article key={t.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <div className="text-sm font-medium text-[#4A3728]">{t.title}</div>
-                            <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
+                            <div className="text-sm font-semibold text-slate-800">{t.title}</div>
+                            <div className="text-xs text-slate-500 mt-1">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col items-end gap-1">
+                            <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
+                            <span className="text-xs tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore ?? 0}</span>
+                        </div>
+                    </div>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3 text-xs">
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Неделя: {t.week ?? '—'}</div>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">Модуль: {t.moduleNumber ?? '—'}</div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0">
                             {(t.revisionCycles ?? 0) > 0 ? (
-                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 tabular-nums">
                                     Доработок: {t.revisionCycles ?? 0}
                                 </span>
                             ) : null}
-                            <StatusBadge>{t.displayStatus || t.status}</StatusBadge>
+                            <div className="text-xs text-slate-500 mt-2 line-clamp-1">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</div>
                         </div>
-                    </div>
-                    <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs">
-                        <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
-                        <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
-                        <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between">
-                        <span className="text-xs text-[#9B8B80]">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</span>
-                        <button type="button" onClick={() => navigate(`${routePrefix}/results/${t.id}`)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Открыть задание</button>
+                        <button type="button" onClick={() => navigate(`${routePrefix}/results/${t.id}`)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Открыть задание</button>
                     </div>
                 </article>
             ))}
@@ -1851,8 +1975,11 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
     );
 }
 
-function StudentFaqBank({ navigate, routePrefix = '/student' }) {
+function StudentFaqBank() {
     const faq = pvlDomainApi.sharedApi.getFaq('student') || [];
+    const [isOpen, setIsOpen] = useState(false);
+    const [draftQuestion, setDraftQuestion] = useState('');
+    const [sent, setSent] = useState(false);
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
@@ -1860,7 +1987,7 @@ function StudentFaqBank({ navigate, routePrefix = '/student' }) {
                     <h2 className="font-display text-2xl text-slate-800">FAQ</h2>
                     <p className="text-sm text-slate-500 mt-1">Единый банк вопросов и ответов по курсу.</p>
                 </div>
-                <button type="button" onClick={() => navigate(`${routePrefix}/qa`)} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">
+                <button type="button" onClick={() => { setIsOpen(true); setSent(false); }} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">
                     Оставить вопрос
                 </button>
             </div>
@@ -1875,6 +2002,38 @@ function StudentFaqBank({ navigate, routePrefix = '/student' }) {
                     {faq.length === 0 ? <li className="text-sm text-slate-500">Пока нет опубликованных ответов.</li> : null}
                 </ul>
             </section>
+            {isOpen ? (
+                <div className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4">
+                    <div className="w-full max-w-xl rounded-2xl border border-slate-100 bg-white p-5 shadow-xl">
+                        <div className="flex items-center justify-between gap-2">
+                            <h3 className="font-display text-xl text-slate-800">Оставить вопрос</h3>
+                            <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-slate-500 hover:text-slate-700">Закрыть</button>
+                        </div>
+                        <p className="text-sm text-slate-500 mt-1">Напишите вопрос для учительской, он появится в очереди FAQ.</p>
+                        <textarea
+                            value={draftQuestion}
+                            onChange={(e) => setDraftQuestion(e.target.value)}
+                            className="mt-3 w-full min-h-[140px] rounded-xl border border-slate-200 p-3 text-sm"
+                            placeholder="Например: как лучше распределить шаги недели, если есть отставание?"
+                        />
+                        {sent ? <p className="text-xs text-emerald-700 mt-2">Вопрос отправлен.</p> : null}
+                        <div className="mt-3 flex items-center justify-end gap-2">
+                            <button type="button" onClick={() => setIsOpen(false)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50">Отмена</button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!draftQuestion.trim()) return;
+                                    setSent(true);
+                                    setDraftQuestion('');
+                                }}
+                                className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-800 hover:bg-emerald-100"
+                            >
+                                Отправить вопрос
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -1923,7 +2082,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     }
     if (route === '/student/settings') return <PvlCabinetSettingsStub />;
     if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
-    if (route === '/student/qa') return <StudentFaqBank navigate={navigate} routePrefix={routePrefix} />;
+    if (route === '/student/qa') return <StudentFaqBank />;
     if (route === '/student/results') return <StudentResults studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];

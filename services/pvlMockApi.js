@@ -481,6 +481,14 @@ function getStudentSnapshot(studentId) {
     return { user, profile };
 }
 
+function getMentorMenteeIds(mentorId) {
+    const mentorProfile = (db.mentorProfiles || []).find((m) => m.userId === mentorId);
+    if (mentorProfile && Array.isArray(mentorProfile.menteeIds) && mentorProfile.menteeIds.length > 0) {
+        return mentorProfile.menteeIds;
+    }
+    return db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+}
+
 function getTaskDetail(studentId, taskId) {
     const task = db.homeworkTasks.find((t) => t.id === taskId);
     const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
@@ -919,15 +927,16 @@ export const studentApi = {
 
 export const mentorApi = {
     getMentorDashboard(mentorId) {
-        const mentees = db.studentProfiles.filter((p) => p.mentorId === mentorId);
+        const menteeIds = getMentorMenteeIds(mentorId);
         return {
-            totalMentees: mentees.length,
+            totalMentees: menteeIds.length,
             reviewQueue: getPendingReviewTasks(db, mentorId),
             risks: buildMentorRisks(db, mentorId),
         };
     },
     getMentorMentees(mentorId) {
-        return db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => ({ ...p, user: db.users.find((u) => u.id === p.userId) }));
+        const menteeIds = new Set(getMentorMenteeIds(mentorId));
+        return db.studentProfiles.filter((p) => menteeIds.has(p.userId)).map((p) => ({ ...p, user: db.users.find((u) => u.id === p.userId) }));
     },
     getMentorMenteeCard(mentorId, studentId) {
         const pts = calculatePointsSummary(studentId);
@@ -990,7 +999,7 @@ export const mentorApi = {
     },
     /** Доска проверок: не проверено / на доработке / проверено (все задания менти ментора) */
     getMentorReviewBoard(mentorId) {
-        const menteeIds = db.studentProfiles.filter((p) => p.mentorId === mentorId).map((p) => p.userId);
+        const menteeIds = getMentorMenteeIds(mentorId);
         const enrich = (s) => {
             const task = db.homeworkTasks.find((t) => t.id === s.taskId);
             const user = db.users.find((u) => u.id === s.studentId);

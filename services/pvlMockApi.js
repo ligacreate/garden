@@ -332,13 +332,13 @@ export function mapTaskStatus(status) {
     return map[status] || status;
 }
 
-/** Плашки для менти (отличаются от служебного mapTaskStatus: «на проверке», «проверено, посмотрите оценку»). */
+/** Плашки для менти (отличаются от служебного mapTaskStatus: «на проверке», «проверено»). */
 export function mapStudentHomeworkDisplayStatus(state) {
     if (!state) return 'не начато';
     const s = state.status;
     if (state.isOverdue && s !== TASK_STATUS.ACCEPTED) return 'просрочено';
     if (s === TASK_STATUS.ACCEPTED) {
-        if (state.acceptedAt && !state.reviewSeenByStudentAt) return 'проверено, посмотрите оценку';
+        if (state.acceptedAt && !state.reviewSeenByStudentAt) return 'проверено';
         return 'принято';
     }
     if (s === TASK_STATUS.NOT_STARTED) return 'не начато';

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL } from '../data/pvlReferenceContent';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
-import { pvlDomainApi } from '../services/pvlMockApi';
 
 export function platformStepsStorageKey(studentId) {
     return `pvl_checked_${studentId}`;
@@ -18,10 +17,10 @@ const CHECKLIST_TAG_LABEL = {
 };
 
 function moduleNumClass(cls) {
-    if (cls === 'mod-0') return 'bg-[#9B8B80] text-white';
-    if (cls === 'mod-1') return 'bg-[#C8855A] text-white';
-    if (cls === 'mod-2') return 'bg-[#4A3728] text-white';
-    return 'bg-[#3D5A6B] text-white';
+    if (cls === 'mod-0') return 'bg-emerald-700 text-white';
+    if (cls === 'mod-1') return 'bg-emerald-600 text-white';
+    if (cls === 'mod-2') return 'bg-teal-700 text-white';
+    return 'bg-teal-800 text-white';
 }
 
 function tagPillClass(tag) {
@@ -235,15 +234,13 @@ export function PlatformCourseModulesGrid({ studentId, variant = 'tracker' }) {
  * Полный путь курса: модули (включая неделю 0), шаги, прогресс и задания потока со статусами.
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
-export function StudentCourseTracker({ studentId, navigate, routePrefix = '/student' }) {
+export function StudentCourseTracker({ studentId, navigate }) {
     const { stats } = usePlatformStepChecklist(studentId);
     const { doneSteps, totalSteps, pct } = stats;
 
-    const homework = useMemo(() => pvlDomainApi.studentApi.getStudentResults(studentId, {}), [studentId]);
-
     return (
         <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-700/90 to-slate-800/95 p-6 text-slate-50 shadow-sm">
+            <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-700/95 via-emerald-800/95 to-teal-900 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
                 <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">недели 0 (вход и настройка)</span> — первый блок в списке ниже. Отмечайте шаги по мере прохождения.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
@@ -263,33 +260,6 @@ export function StudentCourseTracker({ studentId, navigate, routePrefix = '/stud
             </div>
 
             <PlatformCourseModulesGrid studentId={studentId} variant="tracker" />
-
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-1">Задания вашего потока</h4>
-                <p className="text-xs text-slate-500 mb-3">Статусы как в личном кабинете: от «не начато» до «проверено, посмотрите оценку».</p>
-                <ul className="space-y-2">
-                    {homework.map((t) => (
-                        <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
-                            <div className="min-w-0">
-                                <div className="text-sm font-medium text-slate-800">{t.title}</div>
-                                <div className="text-[11px] text-slate-500">Неделя {t.week ?? '—'} · модуль {t.moduleNumber ?? '—'}</div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <TrackerStatusBadge>{t.displayStatus || t.status}</TrackerStatusBadge>
-                                {navigate ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                        className="text-[11px] rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[#C8855A] hover:bg-amber-50/80"
-                                    >
-                                        Открыть
-                                    </button>
-                                ) : null}
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            </section>
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>

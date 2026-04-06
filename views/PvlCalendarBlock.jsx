@@ -104,11 +104,17 @@ export function PvlDashboardCalendarBlock({
     title = 'Календарь курса',
     onOpenFullCalendar,
     fullCalendarLabel = 'Открыть календарь',
+    eventTypeFilter = [],
 }) {
     const [currentDate, setCurrentDate] = useState(() => new Date(`${PVL_TODAY}T12:00:00`));
     /** YYYY-MM-DD в видимом месяце или null — тогда справа «ближайшие» */
     const [selectedDayKey, setSelectedDayKey] = useState(null);
-    const events = useMemo(() => pvlDomainApi.calendarApi.listForViewer(viewerRole, cohortId), [viewerRole, cohortId]);
+    const events = useMemo(() => {
+        const all = pvlDomainApi.calendarApi.listForViewer(viewerRole, cohortId);
+        if (!Array.isArray(eventTypeFilter) || eventTypeFilter.length === 0) return all;
+        const allowed = new Set(eventTypeFilter.map((t) => String(t || '').toLowerCase()));
+        return all.filter((ev) => allowed.has(String(ev.eventType || '').toLowerCase()));
+    }, [viewerRole, cohortId, eventTypeFilter]);
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -146,7 +152,11 @@ export function PvlDashboardCalendarBlock({
             <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div>
                     <h3 className="font-display text-xl text-slate-800">{title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">События потока: встречи, эфиры, выход уроков.</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                        {Array.isArray(eventTypeFilter) && eventTypeFilter.length
+                            ? 'События потока по выбранному типу.'
+                            : 'События потока: встречи, эфиры, выход уроков.'}
+                    </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <button

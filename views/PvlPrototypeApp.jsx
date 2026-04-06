@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { jsPDF } from 'jspdf';
 import Button from '../components/Button';
 import RichEditor from '../components/RichEditor';
 import PvlTaskDetailView from './PvlTaskDetailView';
@@ -113,6 +114,8 @@ function toRoute(name) {
         'Сертификация и самооценка': 'certification',
         Самооценка: 'self-assessment',
         Вопросы: 'qa',
+        FAQ: 'qa',
+        'FAQ курса': 'qa',
         'Вопросы и ответы': 'qa',
         'Культурный код Лиги': 'cultural-code',
     };
@@ -128,7 +131,7 @@ const COURSE_MENU_LABELS = [
     'Практикумы',
     'Результаты',
     'Сертификация',
-    'Вопросы',
+    'FAQ',
 ];
 
 const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
@@ -149,7 +152,7 @@ const ADMIN_SIDEBAR_CONFIG = [
     ...COURSE_MENU_LABELS.map((label) => ({
         type: 'item',
         label,
-        path: label === 'Вопросы' ? '/admin/questions' : `/admin/${toRoute(label)}`,
+        path: label === 'FAQ' ? '/admin/questions' : `/admin/${toRoute(label)}`,
     })),
     { type: 'divider' },
     { type: 'item', label: 'Настройки', path: '/admin/settings' },
@@ -160,7 +163,7 @@ const ADMIN_COURSE_ROUTE_RE = /^\/admin\/(about|glossary|library|tracker|practic
 function courseSidebarItemActive(currentRoute, prefix, label) {
     const base = `${prefix}/${toRoute(label)}`;
     if (currentRoute === base) return true;
-    if (label === 'Вопросы' && prefix === '/admin' && (currentRoute === '/admin/questions' || currentRoute === '/admin/qa')) return true;
+    if (label === 'FAQ' && prefix === '/admin' && (currentRoute === '/admin/questions' || currentRoute === '/admin/qa')) return true;
     if (label === 'Библиотека' && (currentRoute || '').startsWith(`${prefix}/library/`)) return true;
     if (label === 'Результаты' && (currentRoute || '').startsWith(`${prefix}/results/`)) return true;
     return false;
@@ -188,7 +191,7 @@ function adminSectionForRoute(allowedRoute) {
     if (ap === '/admin/content' || /^\/admin\/content\//.test(ap)) return 'Материалы курса';
     if (ap === '/admin/calendar') return 'Календарь';
     if (ap === '/admin/settings') return 'Настройки';
-    if (ap === '/admin/qa' || ap === '/admin/questions') return 'Вопросы';
+    if (ap === '/admin/qa' || ap === '/admin/questions') return 'FAQ';
     for (const label of COURSE_MENU_LABELS) {
         if (courseSidebarItemActive(allowedRoute, '/admin', label)) return label;
     }
@@ -232,6 +235,33 @@ const StatusBadge = ({ children }) => (
         {children}
     </span>
 );
+
+function shortTaskStatusLabel(status) {
+    const s = String(status || '').toLowerCase().trim();
+    if (s.includes('проверено') && s.includes('оценк')) return 'Проверено';
+    if (s === 'проверено') return 'Проверено';
+    if (s === 'на проверке') return 'На проверке';
+    if (s === 'на доработке') return 'На доработке';
+    if (s === 'отправлено') return 'Отправлено';
+    if (s === 'черновик') return 'Черновик';
+    if (s === 'в работе') return 'В работе';
+    if (s === 'принято') return 'Принято';
+    if (s === 'просрочено') return 'Просрочено';
+    if (s === 'не начато') return 'Не начато';
+    return status;
+}
+
+function pointsSourceLabel(sourceType) {
+    const map = {
+        week0: 'Неделя 0',
+        weekCompletion: 'Закрытие недель',
+        controlPoint: 'Контрольные точки',
+        mentorBonus: 'Бонус ментора',
+        szSelfAssessment: 'Самооценка СЗ',
+        szMentorAssessment: 'Оценка ментора СЗ',
+    };
+    return map[sourceType] || 'Другое';
+}
 
 const RiskBadge = ({ level }) => <StatusBadge>{level}</StatusBadge>;
 const DeadlineBadge = ({ value }) => <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#9B8B80]">{value}</span>;
@@ -519,7 +549,7 @@ const BREADCRUMB_LABELS = {
     results: 'Результаты',
     certification: 'Сертификация',
     'self-assessment': 'Самооценка',
-    qa: 'Вопросы и ответы',
+    qa: 'FAQ',
     'cultural-code': 'Культурный код',
     materials: 'Материалы',
     mentee: 'Ученица',
@@ -903,7 +933,12 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
             <div className="space-y-4">
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
                     <h2 className="font-display text-2xl text-slate-800">Библиотека курса</h2>
-                    <p className="text-sm text-slate-500 mt-1">Дополнительные материалы и справочные тексты.</p>
+                    <p className="text-sm text-slate-500 mt-1">Материалы в стиле библиотеки сада: удобно изучать и распечатывать.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">Все</span>
+                        <span className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Курсы</span>
+                        <span className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Полезное</span>
+                    </div>
                     <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-slate-600">
                         <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Пройдено: <span className="font-medium tabular-nums text-slate-800">{progress.completed}</span></div>
                         <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Всего: <span className="font-medium tabular-nums text-slate-800">{progress.total}</span></div>
@@ -950,9 +985,9 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                 Нет материалов по выбранным фильтрам или категории.
                             </div>
                         ) : (
-                            <div className="grid md:grid-cols-2 gap-2">
+                            <div className="grid md:grid-cols-2 gap-3">
                                 {filteredItems.map((i) => (
-                                    <article key={i.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 hover:border-slate-200 transition-colors">
+                                    <article key={i.id} className="rounded-2xl border border-slate-100 bg-white p-3.5 hover:border-emerald-200 transition-colors shadow-sm">
                                         <div className="text-xs text-slate-400">{i.categoryTitle}</div>
                                         <div className="text-sm font-medium text-slate-800 mt-1">{i.title}</div>
                                         <p className="text-xs text-slate-500 mt-1 line-clamp-3">{i.shortDescription}</p>
@@ -963,13 +998,16 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                             {i.isRequired ? <StatusBadge>обязательно</StatusBadge> : null}
                                             {i.completed ? <StatusBadge>просмотрено</StatusBadge> : null}
                                         </div>
-                                        <div className="mt-2 flex items-center justify-between">
+                                        <div className="mt-3 flex items-center justify-between gap-2">
                                             <span className="text-[11px] text-slate-400">{i.estimatedDuration || '—'}</span>
-                                            <button type="button" onClick={() => {
-                                                setSelectedItemId(i.id);
-                                                pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
-                                                if (navigate) navigate(`${routePrefix}/library/${i.id}`);
-                                            }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Открыть</button>
+                                            <div className="flex items-center gap-2">
+                                                <button type="button" onClick={() => window.print()} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Распечатать</button>
+                                                <button type="button" onClick={() => {
+                                                    setSelectedItemId(i.id);
+                                                    pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
+                                                    if (navigate) navigate(`${routePrefix}/library/${i.id}`);
+                                                }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Изучить</button>
+                                            </div>
                                         </div>
                                     </article>
                                 ))}
@@ -980,9 +1018,14 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
 
                 {selectedItem ? (
                     <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                        <div className="mb-2 flex flex-wrap gap-2 text-[11px]">
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-800">Библиотека</span>
+                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{selectedItem.categoryTitle || 'Материал'}</span>
+                        </div>
                         <div className="flex items-center justify-between gap-2">
                             <h3 className="font-display text-xl text-slate-800">{selectedItem.title}</h3>
                             <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => window.print()} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Распечатать</button>
                                 <button type="button" onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Отметить как просмотрено</button>
                                 <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Закрыть</button>
                             </div>
@@ -1092,7 +1135,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     };
 }
 
-const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'на доработке', 'проверено, посмотрите оценку', 'в работе']);
+const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'на доработке', 'проверено', 'в работе']);
 
 function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
@@ -1220,24 +1263,21 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                 {homeworkShortlist.length === 0 ? (
                     <p className="text-sm text-slate-500 mt-4">Нет заданий в фокусе — откройте «Результаты».</p>
                 ) : (
-                    <div className="mt-4 flex gap-3 overflow-x-auto pb-1 scrollbar-thin">
+                    <div className="mt-4 grid md:grid-cols-2 xl:grid-cols-3 gap-3">
                         {homeworkShortlist.map((t) => (
                             <button
                                 key={t.id}
                                 type="button"
                                 onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                className="min-w-[220px] max-w-[260px] shrink-0 text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-4 hover:border-emerald-200 hover:bg-emerald-50/20 transition-colors shadow-sm"
+                                className="text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-4 hover:border-emerald-200 hover:bg-emerald-50/20 transition-colors shadow-sm min-h-[148px] flex flex-col"
                             >
-                                <div className="text-sm font-semibold text-slate-800 line-clamp-2">{t.title}</div>
+                                <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px]">{t.title}</div>
                                 <div className="text-[11px] text-slate-500 mt-2">Дедлайн: {fmtDeadline(t.deadlineAt)}</div>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    <StatusBadge>{t.displayStatus || t.status}</StatusBadge>
-                                    {t.maxScore > 0 && String(t.displayStatus || t.status).toLowerCase().includes('принят') ? (
-                                        <span className="text-[10px] tabular-nums text-slate-500">{t.score}/{t.maxScore}</span>
-                                    ) : null}
-                                    {(t.revisionCycles || 0) > 0 ? (
-                                        <span className="text-[10px] rounded-full bg-amber-50 text-amber-900 border border-amber-100 px-2 py-0.5">Доработок: {t.revisionCycles}</span>
-                                    ) : null}
+                                <div className="mt-2">
+                                    <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
+                                </div>
+                                <div className="mt-auto pt-2 text-[11px] text-slate-500">
+                                    {(t.revisionCycles || 0) > 0 ? `Доработок: ${t.revisionCycles}` : ' '}
                                 </div>
                             </button>
                         ))}
@@ -1250,21 +1290,25 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                 <p className="text-xs text-slate-500 mt-1">Короткая лента по курсу.</p>
                 <ul className="mt-4 space-y-2 text-sm text-slate-600">
                     {feed.length === 0 ? <li className="text-slate-400">Пока нет событий.</li> : null}
-                    {feed.map((item) => (
-                        <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-50 pb-2 last:border-0">
-                            <div className="min-w-0">
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 align-middle mr-2 shrink-0" aria-hidden />
-                                <span className="font-medium text-slate-800">{item.text}</span>
-                                {item.detail ? <span className="text-slate-500"> — {item.detail}</span> : null}
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[11px] text-slate-400 tabular-nums">{formatPvlDateTime(item.at)}</span>
-                                {item.taskId && navigate ? (
-                                    <button type="button" onClick={() => navigate(`${routePrefix}/results/${item.taskId}`)} className="text-[11px] text-[#C8855A] hover:underline">К заданию</button>
-                                ) : null}
-                            </div>
-                        </li>
-                    ))}
+                    {feed.map((item) => {
+                        const isSystem = ['cert', 'meeting'].includes(String(item.kind || '').toLowerCase());
+                        return (
+                            <li key={item.id} className={`flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-3 py-2 border-b border-slate-50 last:border-0 ${isSystem ? 'border border-emerald-200/80 bg-emerald-50/40' : ''}`}>
+                                <div className="min-w-0">
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full align-middle mr-2 shrink-0 ${isSystem ? 'bg-emerald-700' : 'bg-emerald-500'}`} aria-hidden />
+                                    <span className="font-medium text-slate-800">{item.text}</span>
+                                    {item.detail ? <span className="text-slate-500"> — {item.detail}</span> : null}
+                                    {isSystem ? <span className="ml-2 text-[10px] rounded-full border border-emerald-200 bg-white text-emerald-800 px-2 py-0.5">Системное</span> : <span className="ml-2 text-[10px] rounded-full border border-slate-200 bg-white text-slate-600 px-2 py-0.5">Личное</span>}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-[11px] text-slate-400 tabular-nums">{formatPvlDateTime(item.at)}</span>
+                                    {item.taskId && navigate ? (
+                                        <button type="button" onClick={() => navigate(`${routePrefix}/results/${item.taskId}`)} className="text-[11px] text-[#C8855A] hover:underline">К заданию</button>
+                                    ) : null}
+                                </div>
+                            </li>
+                        );
+                    })}
                 </ul>
             </section>
         </div>
@@ -1518,7 +1562,7 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                 </ul>
             </div>
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-3">Вопросы и ответы</h4>
+                <h4 className="font-display text-lg text-slate-800 mb-3">FAQ</h4>
                 <div className="space-y-3">
                     {PVL_TRACKER_FAQ.map((row) => (
                         <div key={row.q} className="border-b border-slate-50 pb-3 last:border-0 last:pb-0">
@@ -1535,6 +1579,7 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
 function StudentGlossarySearch() {
     const [q, setQuery] = useState('');
     const [cat, setCat] = useState('all');
+    const [expandedId, setExpandedId] = useState('');
     const seen = new Set();
     const apiExtra = [...pvlDomainApi.sharedApi.getGlossary(), ...pvlMockData.glossaryItems.map((g) => ({ id: g.id, term: g.term, definition: g.definition }))].filter((g) => {
         const k = String(g.term || g.id).toLowerCase();
@@ -1574,8 +1619,38 @@ function StudentGlossarySearch() {
         const def = String(g.definition || '');
         return String(g.term).toLowerCase().includes(qlow) || def.toLowerCase().includes(qlow);
     });
+    const exportGlossaryPdf = () => {
+        const doc = new jsPDF('p', 'mm', 'a4');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('Глоссарий курса ПВЛ', 14, 16);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text('Все термины курса, распечатайте и держите рядом.', 14, 22);
+        let y = 30;
+        filtered.forEach((item, idx) => {
+            if (y > 270) {
+                doc.addPage();
+                y = 16;
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text(`${idx + 1}. ${item.term}`, 14, y);
+            y += 5;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            const lines = doc.splitTextToSize(String(item.definition || ''), 180);
+            doc.text(lines, 14, y);
+            y += (lines.length * 4) + 3;
+        });
+        doc.save('pvl-glossary.pdf');
+    };
     return (
         <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-600">Все термины курса, распечатайте и держите рядом.</p>
+                <button type="button" onClick={exportGlossaryPdf} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">Скачать PDF</button>
+            </div>
             <input
                 value={q}
                 onChange={(e) => setQuery(e.target.value)}
@@ -1594,15 +1669,19 @@ function StudentGlossarySearch() {
                     </button>
                 ))}
             </div>
-            <div className="grid md:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 {filtered.map((g) => (
-                    <article key={g.id} className={`rounded-2xl border bg-white p-4 shadow-sm ${g.fromRef ? 'border-[#E8D5C4]' : 'border-slate-100'}`}>
+                    <article key={g.id} className={`rounded-2xl border bg-white p-3.5 shadow-sm ${g.fromRef ? 'border-[#E8D5C4]' : 'border-slate-100'}`}>
                         <div className="flex flex-wrap items-baseline gap-2">
-                            <h4 className="font-display text-xl text-[#4A3728]">{g.term}</h4>
-                            {g.abbr ? <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#9B8B80]">{g.abbr}</span> : null}
+                            <h4 className="font-display text-base text-[#4A3728] leading-tight">{g.term}</h4>
                         </div>
                         {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80] mt-1">{g.catLabel}</div> : null}
-                        <p className="text-sm text-[#2C1810] mt-2 leading-relaxed">{g.definition}</p>
+                        <p className="text-xs text-[#2C1810] mt-2 leading-relaxed">{expandedId === g.id ? g.definition : `${String(g.definition || '').slice(0, 110)}${String(g.definition || '').length > 110 ? '…' : ''}`}</p>
+                        {String(g.definition || '').length > 110 ? (
+                            <button type="button" onClick={() => setExpandedId((prev) => (prev === g.id ? '' : g.id))} className="mt-2 text-[11px] text-emerald-700 hover:underline">
+                                {expandedId === g.id ? 'Свернуть' : 'Подробнее'}
+                            </button>
+                        ) : null}
                     </article>
                 ))}
             </div>
@@ -1718,14 +1797,28 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                     <option value="отправлено">Отправлено</option>
                     <option value="на проверке">На проверке</option>
                     <option value="на доработке">На доработке</option>
-                    <option value="проверено, посмотрите оценку">Проверено — посмотрите оценку</option>
+                    <option value="проверено">Проверено</option>
                     <option value="принято">Принято</option>
                     <option value="просрочено">Просрочено</option>
                 </select>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm max-w-3xl">
                 <h3 className="font-display text-lg text-slate-800 mb-2">История баллов</h3>
-                <PointsHistoryList items={pointsHistory} />
+                <ul className="space-y-2">
+                    {pointsHistory.map((it) => (
+                        <li key={it.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-sm font-medium text-slate-800">{it.sourceLabel || 'Начисление баллов'}</div>
+                                <span className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800 tabular-nums">+{it.pointsDelta}</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">{pointsSourceLabel(it.sourceType)}</span>
+                                {it.comment ? <span>{it.comment}</span> : null}
+                                <span>{formatPvlDateTime(it.createdAt)}</span>
+                            </div>
+                        </li>
+                    ))}
+                </ul>
             </div>
             {tasks.map((t) => (
                 <article key={t.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
@@ -1735,9 +1828,11 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                             <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
-                                Доработок: {t.revisionCycles ?? 0}
-                            </span>
+                            {(t.revisionCycles ?? 0) > 0 ? (
+                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                                    Доработок: {t.revisionCycles ?? 0}
+                                </span>
+                            ) : null}
                             <StatusBadge>{t.displayStatus || t.status}</StatusBadge>
                         </div>
                     </div>
@@ -1752,6 +1847,34 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                     </div>
                 </article>
             ))}
+        </div>
+    );
+}
+
+function StudentFaqBank({ navigate, routePrefix = '/student' }) {
+    const faq = pvlDomainApi.sharedApi.getFaq('student') || [];
+    return (
+        <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 className="font-display text-2xl text-slate-800">FAQ</h2>
+                    <p className="text-sm text-slate-500 mt-1">Единый банк вопросов и ответов по курсу.</p>
+                </div>
+                <button type="button" onClick={() => navigate(`${routePrefix}/qa`)} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">
+                    Оставить вопрос
+                </button>
+            </div>
+            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <ul className="space-y-3">
+                    {faq.map((item) => (
+                        <li key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                            <div className="text-sm font-medium text-slate-800">{item.title}</div>
+                            <p className="text-sm text-slate-600 mt-1">{item.answer}</p>
+                        </li>
+                    ))}
+                    {faq.length === 0 ? <li className="text-sm text-slate-500">Пока нет опубликованных ответов.</li> : null}
+                </ul>
+            </section>
         </div>
     );
 }
@@ -1800,14 +1923,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     }
     if (route === '/student/settings') return <PvlCabinetSettingsStub />;
     if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
-    if (route === '/student/qa') {
-        return (
-            <PvlContentStub
-                title="Вопросы и ответы"
-                hint="Задайте вопрос учительской и смотрите опубликованные ответы. Полный контур Q&A подключается к макету данных."
-            />
-        );
-    }
+    if (route === '/student/qa') return <StudentFaqBank navigate={navigate} routePrefix={routePrefix} />;
     if (route === '/student/results') return <StudentResults studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];
@@ -1848,14 +1964,10 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} routePrefix={routePrefix} />;
     }
     if (route === '/student/lessons' || route === '/student/checklist') {
-        return <StudentCourseTracker studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
+        return <StudentCourseTracker studentId={studentId} navigate={navigate} />;
     }
-    if (route === '/student/practicums') return (
-        <div className="space-y-4">
-            <StudentPracticumsCalendar studentId={studentId} />
-        </div>
-    );
-    if (route === '/student/tracker') return <StudentCourseTracker studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
+    if (route === '/student/practicums') return <PvlDashboardCalendarBlock viewerRole="student" cohortId="cohort-2026-1" navigate={navigate} routePrefix={routePrefix} title="Практикумы с менторами" eventTypeFilter={['mentor_meeting']} />;
+    if (route === '/student/tracker') return <StudentCourseTracker studentId={studentId} navigate={navigate} />;
     if (route === '/student/certification' || route === '/student/self-assessment') {
         const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
         return (
@@ -2329,7 +2441,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} routePrefix="/mentor" />;
     }
     if (route === '/mentor/qa') {
-        return <PvlContentStub title="Вопросы и ответы" hint="Общий Q&A и модерация публикаций — в разработке." />;
+        return <PvlContentStub title="FAQ" hint="Общий Q&A и модерация публикаций — в разработке." />;
     }
     if (route === '/mentor/materials') return <MentorMaterialsPage cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (route === '/mentor/library' || route.startsWith('/mentor/library/')) {
@@ -4010,7 +4122,7 @@ export default function PvlPrototypeApp({
                 results: 'Результаты',
                 certification: 'Сертификация',
                 'self-assessment': 'Сертификация',
-                qa: 'Вопросы',
+                qa: 'FAQ',
                 settings: 'Настройки',
                 'cultural-code': 'Культурный код Лиги',
             };

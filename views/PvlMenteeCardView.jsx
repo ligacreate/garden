@@ -42,9 +42,9 @@ export const controlPointStatuses = [
     { id: 'КТ1', title: 'Встреча с ПП + лист наблюдения', weekNumber: 0, deadlineAt: '2026-04-21', submittedAt: '2026-04-20', status: 'принято', affectsPoints: true, affectsAdmission: true, specialNote: '' },
     { id: 'КТ2', title: 'Микропрактики + рефлексия', weekNumber: 3, deadlineAt: '2026-05-12', submittedAt: '2026-05-12', status: 'принято', affectsPoints: true, affectsAdmission: true, specialNote: '' },
     { id: 'КТ3', title: 'Паспорт встречи', weekNumber: 4, deadlineAt: '2026-05-19', submittedAt: '2026-05-18', status: 'принято', affectsPoints: true, affectsAdmission: true, specialNote: '' },
-    { id: 'КТ4', title: 'Сценарий >= v0.8', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: '2026-06-01', status: 'на доработке', affectsPoints: true, affectsAdmission: true, specialNote: 'Неделя 6: отдельная КТ из трех.' },
-    { id: 'КТ5', title: 'Мини-проведение + самоанализ', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: '2026-06-02', status: 'к проверке', affectsPoints: true, affectsAdmission: true, specialNote: 'Неделя 6: отдельная КТ из трех.' },
-    { id: 'КТ6', title: 'Два завтрака Лиги', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: null, status: 'просрочено', affectsPoints: true, affectsAdmission: true, specialNote: 'Неделя 6: отдельная КТ из трех.' },
+    { id: 'КТ4', title: 'Сценарий >= v0.8', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: '2026-06-01', status: 'на доработке', affectsPoints: true, affectsAdmission: true, specialNote: 'Модуль 2: отдельная КТ из трех.' },
+    { id: 'КТ5', title: 'Мини-проведение + самоанализ', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: '2026-06-02', status: 'к проверке', affectsPoints: true, affectsAdmission: true, specialNote: 'Модуль 2: отдельная КТ из трех.' },
+    { id: 'КТ6', title: 'Два завтрака Лиги', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: null, status: 'просрочено', affectsPoints: true, affectsAdmission: true, specialNote: 'Модуль 2: отдельная КТ из трех.' },
     { id: 'КТ7', title: 'План набора гостей на СЗ', weekNumber: 8, deadlineAt: '2026-06-16', submittedAt: null, status: 'не начато', affectsPoints: true, affectsAdmission: true, specialNote: '' },
     { id: 'КТ8', title: 'Пробный завтрак + запись СЗ', weekNumber: 10, deadlineAt: '2026-06-30', submittedAt: null, status: 'не начато', affectsPoints: true, affectsAdmission: true, specialNote: 'Дедлайн записи СЗ: до 30.06.2026.' },
     { id: 'КТ9', title: 'Сертификационный пакет', weekNumber: 12, deadlineAt: '2026-07-14', submittedAt: null, status: 'не начато', affectsPoints: true, affectsAdmission: true, specialNote: '' },
@@ -190,7 +190,7 @@ export function MenteeCoursePathShort({ stats, lastLessonTitle, courseProgressPe
             <h3 className="font-display text-lg text-[#4A3728] mb-2">Путь по курсу</h3>
             <p className="text-sm text-[#2C1810]">
                 Уроки в расписании: <span className="font-medium tabular-nums">{stats.lessonsDone}/{stats.lessonsTotal}</span>
-                <span className="text-[#9B8B80]"> (ориентир по текущей неделе потока)</span>
+                <span className="text-[#9B8B80]"> (ориентир по текущему модулю потока)</span>
             </p>
             <p className="text-sm text-[#9B8B80] mt-1">Последний урок в потоке: <span className="text-[#2C1810]">{lastLessonTitle || '—'}</span></p>
             <p className="text-sm text-[#2C1810] mt-1">
@@ -207,15 +207,46 @@ export function menteeHomeworkNeedsHighlight(t) {
 }
 
 export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
+    const nowMs = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const toStatus = (t) => String(t.displayStatus || t.status || '').toLowerCase().trim();
+    const statusRank = (t) => {
+        const s = toStatus(t);
+        if (s.includes('проверк') || s === 'отправлено' || s === 'к проверке') return 0;
+        if (s.includes('доработ')) return 1;
+        if (s.includes('просроч')) return 2;
+        if (s === 'черновик' || s === 'в работе' || s === 'не начато') return 3;
+        if (s === 'принято' || s.includes('проверено')) return 8;
+        return 5;
+    };
+    const acceptedAtMs = (t) => {
+        const raw = String(t.acceptedAt || t.lastStatusChangedAt || '').slice(0, 10);
+        if (!raw) return 0;
+        return new Date(`${raw}T00:00:00`).getTime();
+    };
+    const isArchivedAccepted = (t) => {
+        const s = toStatus(t);
+        if (!(s === 'принято' || s.includes('проверено'))) return false;
+        const at = acceptedAtMs(t);
+        if (!at) return false;
+        return (nowMs - at) >= DAY_MS;
+    };
+    const sorted = [...tasks].sort((a, b) => {
+        const rankCmp = statusRank(a) - statusRank(b);
+        if (rankCmp !== 0) return rankCmp;
+        return String(b.deadlineAt || '').localeCompare(String(a.deadlineAt || ''));
+    });
+    const activeTasks = sorted.filter((t) => !isArchivedAccepted(t));
+    const archivedTasks = sorted.filter((t) => isArchivedAccepted(t));
+
     return (
-        <section className="rounded-3xl border border-[#E8D5C4]/80 bg-gradient-to-br from-white via-[#FAF6F2]/40 to-emerald-50/20 p-4 md:p-5 shadow-sm shadow-slate-200/30">
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
             <div className="mb-4 pb-3 border-b border-slate-200/70">
                 <h3 className="font-display text-xl text-slate-800">Домашние работы</h3>
                 <p className="text-xs text-slate-500 mt-1">Данные из раздела «Результаты» участницы ({tasks.length})</p>
             </div>
-            <div className="divide-y divide-slate-100/90">
-                {tasks.map((t) => {
-                    const highlight = menteeHomeworkNeedsHighlight(t);
+            <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
+                {activeTasks.map((t) => {
                     return (
                         <article
                             key={t.id}
@@ -228,33 +259,59 @@ export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
                                     onOpenTask(t.id);
                                 }
                             }}
-                            className={`group cursor-pointer py-4 first:pt-0 last:pb-0 transition-colors rounded-xl -mx-1 px-2 ${
-                                highlight
-                                    ? 'bg-amber-50/70 ring-1 ring-amber-200/80'
-                                    : 'hover:bg-white/80'
-                            }`}
+                            className="group cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-3 transition-colors hover:border-slate-300 hover:bg-slate-50/40"
                         >
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div>
-                                    <div className="text-sm font-medium text-[#4A3728] group-hover:text-emerald-900">{t.title}</div>
-                                    <div className="text-xs text-[#9B8B80]">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</div>
+                                    <div className="text-sm font-medium text-slate-800">{t.title}</div>
+                                    <div className="text-xs text-slate-500">Модуль {t.moduleNumber ?? t.week ?? '—'} · {t.typeLabel || t.type}</div>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 tabular-nums">
                                         Доработок: {t.revisionCycles ?? 0}
                                     </span>
                                     <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
                                 </div>
                             </div>
-                            <div className="grid md:grid-cols-3 gap-2 mt-2 text-xs text-[#2C1810]">
+                            <div className="mt-2 grid gap-2 text-xs text-slate-700 md:grid-cols-3">
                                 <div>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</div>
                                 <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
                                 <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
                             </div>
-                            <p className="text-xs text-[#9B8B80] mt-2">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
+                            <p className="mt-2 text-xs text-slate-500">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
                         </article>
                     );
                 })}
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-medium text-slate-700">Архив</h4>
+                    <span className="text-[11px] text-slate-500">{archivedTasks.length}</span>
+                </div>
+                <div className="mt-2 max-h-[220px] space-y-2 overflow-y-auto pr-1">
+                    {archivedTasks.length === 0 ? (
+                        <p className="text-xs text-slate-400 py-2">Пока пусто. Принятые задачи автоматически попадают сюда через 24 часа.</p>
+                    ) : archivedTasks.map((t) => (
+                        <article
+                            key={`arch-${t.id}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => onOpenTask(t.id)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    onOpenTask(t.id);
+                                }
+                            }}
+                            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-colors hover:border-slate-300 hover:bg-slate-50/40"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs text-slate-600 line-clamp-1">{t.title}</div>
+                                <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
+                            </div>
+                        </article>
+                    ))}
+                </div>
             </div>
         </section>
     );
@@ -322,7 +379,7 @@ export function MenteeHomeworkPrioritized({ tasks, onOpenTask }) {
 export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
     return (
         <article className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h4 className="font-display text-2xl text-[#4A3728] mb-2">Неделя {weekNumber}</h4>
+            <h4 className="font-display text-2xl text-[#4A3728] mb-2">Модуль {weekNumber}</h4>
             <div className="grid gap-2">
                 {tasks.map((task) => (
                     <div key={task.id} className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">
@@ -395,7 +452,7 @@ export function renderControlPoints(points) {
                 <Pill tone={statusTone(cp.status)}>{cp.status}</Pill>
             </div>
             <div className="grid md:grid-cols-4 gap-2 mt-2 text-xs text-[#2C1810]">
-                <div>Неделя: {cp.weekNumber}</div>
+                <div>Модуль: {cp.weekNumber}</div>
                 <div>Дедлайн: {cp.deadlineAt}</div>
                 <div>Сдано: {cp.submittedAt || '—'}</div>
                 <div>Переход дальше: {cp.affectsAdmission ? 'да' : 'нет'}</div>
@@ -447,7 +504,7 @@ export function renderMentorMeetings(items) {
                 <div className="text-sm font-medium text-[#4A3728]">{m.title}</div>
                 <Pill tone={statusTone(m.status)}>{m.status}</Pill>
             </div>
-            <p className="text-xs text-[#9B8B80] mt-1">Неделя {m.weekNumber} · {m.scheduledAt}</p>
+            <p className="text-xs text-[#9B8B80] mt-1">Модуль {m.weekNumber} · {m.scheduledAt}</p>
             <p className="text-sm text-[#2C1810] mt-1">Фокус: {m.focus}</p>
             <p className="text-xs text-[#9B8B80] mt-1">Рефлексия: {m.reflectionStatus}</p>
             <p className="text-xs text-[#9B8B80] mt-1">Связано с артефактом: {m.linkedTaskId}</p>
@@ -653,7 +710,7 @@ export default function PvlMenteeCardView({
         const nd = dash.nextDeadline;
         const nearestDeadlineLine = nd ? `${nd.title} · ${formatPvlDateTime(nd.deadlineAt)}` : '—';
 
-        const coursePathLine = `${cohortTitle} · Модуль ${prof?.currentModule ?? '—'} · неделя ${prof?.currentWeek ?? '—'}`;
+        const coursePathLine = `${cohortTitle} · Модуль ${prof?.currentModule ?? prof?.currentWeek ?? '—'}`;
         const closedTotal = homeworkResults.length;
         const closedDone = homeworkResults.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
         let closedTasksPercent = closedTotal ? Math.round((closedDone / closedTotal) * 100) : 0;

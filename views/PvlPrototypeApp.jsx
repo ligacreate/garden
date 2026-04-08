@@ -58,6 +58,7 @@ import {
     validateRoleAccessMap,
     validateRouteMap,
 } from '../services/pvlAppKernel';
+import { api } from '../services/dataService';
 
 function pvlDevToolsEnabled() {
     try {
@@ -185,13 +186,25 @@ const ADMIN_SIDEBAR_CONFIG = [
 
 const ADMIN_COURSE_ROUTE_RE = /^\/admin\/(about|glossary|library|tracker|practicums|results|certification|self-assessment|qa)(\/|$)/;
 
+function sidebarRoutePath(route) {
+    const raw = String(route || '').split('?')[0] || '/';
+    if (raw.length > 1 && raw.endsWith('/')) return raw.slice(0, -1);
+    return raw;
+}
+
 function courseSidebarItemActive(currentRoute, prefix, label) {
+    const routePath = sidebarRoutePath(currentRoute);
     const base = `${prefix}/${toRoute(label)}`;
-    if (currentRoute === base) return true;
-    if (label === 'FAQ' && prefix === '/admin' && (currentRoute === '/admin/questions' || currentRoute === '/admin/qa')) return true;
-    if (label === 'Библиотека' && (currentRoute || '').startsWith(`${prefix}/library/`)) return true;
-    if (label === 'Результаты' && (currentRoute || '').startsWith(`${prefix}/results/`)) return true;
-    return false;
+    if (label === 'FAQ') {
+        if (prefix === '/admin') {
+            return routePath === '/admin/questions'
+                || routePath.startsWith('/admin/questions/')
+                || routePath === '/admin/qa'
+                || routePath.startsWith('/admin/qa/');
+        }
+        return routePath === `${prefix}/qa` || routePath.startsWith(`${prefix}/qa/`);
+    }
+    return routePath === base || routePath.startsWith(`${base}/`);
 }
 
 function mentorSectionForRoute(allowedRoute) {
@@ -273,10 +286,40 @@ function shortTaskStatusLabel(status) {
     return status;
 }
 
+function sortHomeworkByRecency(items = []) {
+    const safeDate = (v) => String(v || '');
+    return [...items].sort((a, b) => {
+        const moduleA = Number(a?.moduleNumber ?? a?.week ?? -1);
+        const moduleB = Number(b?.moduleNumber ?? b?.week ?? -1);
+        if (moduleA !== moduleB) return moduleB - moduleA;
+        const deadlineCmp = safeDate(b?.deadlineAt).localeCompare(safeDate(a?.deadlineAt));
+        if (deadlineCmp !== 0) return deadlineCmp;
+        return safeDate(b?.submittedAt).localeCompare(safeDate(a?.submittedAt));
+    });
+}
+
+function deadlineUrgencyTone(deadlineAt) {
+    const raw = String(deadlineAt || '').slice(0, 10);
+    if (!raw) return 'bg-white text-slate-600 border-slate-200';
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dl = new Date(`${raw}T00:00:00`);
+    const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 2) return 'bg-white text-rose-700 border-rose-200';
+    if (diffDays <= 6) return 'bg-white text-amber-800 border-amber-200';
+    return 'bg-white text-emerald-700 border-emerald-200';
+}
+
+function hideDeadlineForAcceptedWithScore(task) {
+    const status = shortTaskStatusLabel(task?.displayStatus || task?.status);
+    const hasScore = Number(task?.maxScore) > 0;
+    return status === 'Принято' && hasScore;
+}
+
 function pointsSourceLabel(sourceType) {
     const map = {
-        week0: 'Неделя 0',
-        weekCompletion: 'Закрытие недель',
+        week0: 'Модуль 0',
+        weekCompletion: 'Закрытие модулей',
         controlPoint: 'Контрольные точки',
         mentorBonus: 'Бонус ментора',
         szSelfAssessment: 'Самооценка СЗ',
@@ -354,8 +397,8 @@ const CoursePointsCard = ({ points }) => (
         <div className="mt-3"><PointsProgressBar value={points.coursePointsTotal} max={400} tone="bg-emerald-600/70" /></div>
         <div className="mt-2">
             <PointsBreakdownList items={[
-                { label: 'Неделя 0', value: points.week0Points },
-                { label: 'Недели 1-12', value: points.weeksPoints },
+                { label: 'Модуль 0', value: points.week0Points },
+                { label: 'Модули 1-4', value: points.weeksPoints },
                 { label: 'КТ', value: points.controlPointsTotal },
                 { label: 'Бонус ментора', value: `${points.mentorBonusTotal}/50` },
             ]} />
@@ -466,8 +509,10 @@ const SidebarMenu = ({
     setMentorSection,
     navigate,
     onGardenExit,
-}) => (
-    <aside className="h-fit xl:sticky xl:top-6 rounded-3xl border border-slate-100/90 bg-white/85 backdrop-blur-sm p-3 shadow-sm shadow-slate-200/50">
+}) => {
+    const routePath = sidebarRoutePath(currentRoute);
+    return (
+        <aside className="h-fit xl:sticky xl:top-6 rounded-3xl border border-slate-100/90 bg-white/85 backdrop-blur-sm p-3 shadow-sm shadow-slate-200/50">
         <div className="px-2 pt-1 pb-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{PVL_COURSE_DISPLAY_NAME}</div>
             <h3 className="font-display text-lg text-slate-800 mt-0.5 leading-tight">
@@ -482,7 +527,7 @@ const SidebarMenu = ({
                         setStudentSection('Дашборд');
                         navigate('/student/dashboard');
                     }}
-                    className={pvlSidebarNavClass(currentRoute === '/student/dashboard')}
+                    className={pvlSidebarNavClass(routePath === '/student/dashboard')}
                 >
                     <MenuLabel iconMap={STUDENT_MENU_ICON} label="Дашборд" />
                 </button>
@@ -510,7 +555,7 @@ const SidebarMenu = ({
                         setStudentSection('Настройки');
                         navigate('/student/settings');
                     }}
-                    className={pvlSidebarNavClass(currentRoute === '/student/settings')}
+                    className={pvlSidebarNavClass(routePath === '/student/settings')}
                 >
                     <MenuLabel iconMap={STUDENT_MENU_ICON} label="Настройки" />
                 </button>
@@ -530,8 +575,8 @@ const SidebarMenu = ({
         ) : role === 'mentor' ? (
             <nav className="space-y-1 px-0.5 pb-2">
                 {MENTOR_TOP_NAV.map(({ label, path }) => {
-                    const subActive = currentRoute === path
-                        || (path === '/mentor/mentees' && /^\/mentor\/mentee\//.test(currentRoute || ''));
+                    const subActive = routePath === path
+                        || (path === '/mentor/mentees' && /^\/mentor\/mentee\//.test(routePath || ''));
                     return (
                         <button
                             type="button"
@@ -571,7 +616,7 @@ const SidebarMenu = ({
                         setMentorSection('Настройки');
                         navigate('/mentor/settings');
                     }}
-                    className={pvlSidebarNavClass(currentRoute === '/mentor/settings')}
+                    className={pvlSidebarNavClass(routePath === '/mentor/settings')}
                 >
                     <MenuLabel iconMap={MENTOR_MENU_ICON} label="Настройки" />
                 </button>
@@ -596,12 +641,12 @@ const SidebarMenu = ({
                     }
                     const subActive = COURSE_MENU_LABELS.includes(entry.label)
                         ? courseSidebarItemActive(currentRoute, '/admin', entry.label)
-                        : currentRoute === entry.path
-                            || (entry.path === '/admin/students' && /^\/admin\/students(\/|$)/.test(currentRoute || ''))
-                            || (entry.path === '/admin/mentors' && /^\/admin\/mentors(\/|$)/.test(currentRoute || ''))
-                            || (entry.path === '/admin/content' && (adminRoutePath(currentRoute || '') === '/admin/content' || /^\/admin\/content\/.+/.test(adminRoutePath(currentRoute || ''))))
-                            || (entry.path === '/admin/calendar' && adminRoutePath(currentRoute || '') === '/admin/calendar')
-                            || (entry.path === '/admin/pvl' && currentRoute === '/admin/pvl');
+                        : routePath === entry.path
+                            || (entry.path === '/admin/students' && /^\/admin\/students(\/|$)/.test(routePath || ''))
+                            || (entry.path === '/admin/mentors' && /^\/admin\/mentors(\/|$)/.test(routePath || ''))
+                            || (entry.path === '/admin/content' && (routePath === '/admin/content' || /^\/admin\/content\/.+/.test(routePath || '')))
+                            || (entry.path === '/admin/calendar' && routePath === '/admin/calendar')
+                            || (entry.path === '/admin/pvl' && routePath === '/admin/pvl');
                     return (
                         <button
                             key={entry.path}
@@ -630,8 +675,9 @@ const SidebarMenu = ({
                 ) : null}
             </nav>
         )}
-    </aside>
-);
+        </aside>
+    );
+};
 
 const BREADCRUMB_LABELS = {
     student: 'Участница',
@@ -729,6 +775,16 @@ function resolveAdminDrilldownNav(route) {
             crumbs: [
                 { label: 'Ученицы', to: '/admin/students' },
                 { label: 'Карточка ученицы', to: null },
+            ],
+        };
+    }
+    if (path === '/admin/students') {
+        return {
+            backTo: '/admin/pvl',
+            backLabel: 'К дашборду учительской',
+            crumbs: [
+                { label: 'Дашборд', to: '/admin/pvl' },
+                { label: 'Ученицы', to: null },
             ],
         };
     }
@@ -911,7 +967,7 @@ const TARGET_SECTION_LABELS = {
 const TARGET_ROLE_LABELS = {
     student: 'Участницы',
     mentor: 'Менторов',
-    both: 'Обе роли',
+    both: 'Всем',
 };
 
 const CONTENT_STATUS_LABEL = {
@@ -928,7 +984,7 @@ function practicumEventTypeRu(t) {
     const k = String(t || '').toLowerCase();
     const map = {
         mentor_meeting: 'Встреча с ментором',
-        week_closure: 'Закрытие недели',
+        week_closure: 'Закрытие модуля',
         deadline: 'Дедлайн',
         session: 'Сессия',
     };
@@ -1016,6 +1072,12 @@ function stripMaterialNumbering(title) {
     return source.replace(/^\s*\d+(?:[.)]\d+)*(?:[.)]|[\-:])?\s+/u, '');
 }
 
+function clampPvlModule(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(4, Math.round(n)));
+}
+
 function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student' }) {
     const [loading] = useState(false);
     const [error] = useState('');
@@ -1055,18 +1117,25 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
     const selectedLessonWeek = selectedLesson?.weekId
         ? pvlDomainApi.db.courseWeeks.find((w) => w.id === selectedLesson.weekId)
         : null;
+    const selectedLessonModule = clampPvlModule(selectedLessonWeek?.moduleNumber ?? selectedLessonWeek?.weekNumber ?? 0);
     const selectedLessonMaterial = selectedLesson ? {
         id: selectedLesson.id,
         title: selectedLesson.title || `Урок ${selectedLesson.id}`,
-        fullDescription: `Материал урока из трекера.\n\nНеделя: ${selectedLessonWeek?.weekNumber ?? '—'}\nДедлайн: ${selectedLesson.deadlineAt || '—'}\n\nОткройте этот блок как отдельный урок и отмечайте изучение в трекере.`,
-        shortDescription: `Урок недели ${selectedLessonWeek?.weekNumber ?? '—'}`,
-        categoryTitle: `Уроки · неделя ${selectedLessonWeek?.weekNumber ?? '—'}`,
+        fullDescription: `Материал урока из трекера.\n\nМодуль: ${selectedLessonModule}\nДедлайн: ${selectedLesson.deadlineAt || '—'}\n\nОткройте этот блок как отдельный урок и отмечайте изучение в трекере.`,
+        shortDescription: `Урок модуля ${selectedLessonModule}`,
+        categoryTitle: `Уроки · модуль ${selectedLessonModule}`,
         contentType: 'video',
         estimatedDuration: '15 мин',
         externalLinks: [],
         attachments: [],
     } : null;
     const selectedItem = filteredItems.find((x) => x.id === selectedItemId) || baseItems.find((x) => x.id === selectedItemId) || selectedLessonMaterial || null;
+    useEffect(() => {
+        if (!selectedItem || !selectedItem.categoryId) return;
+        if (selectedCategoryId !== selectedItem.categoryId) {
+            setSelectedCategoryId(selectedItem.categoryId);
+        }
+    }, [selectedItem, selectedCategoryId]);
 
     return (
         <ScreenState loading={loading} error={error} empty={false}>
@@ -1110,82 +1179,76 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                     </aside>
 
                     <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                        <h3 className="font-display text-lg text-slate-800 mb-2">Уроки и материалы темы</h3>
-                        {lessonGroups.length === 0 ? (
-                            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-500">
-                                Нет материалов по выбранным фильтрам или категории.
-                            </div>
-                        ) : (
-                            <div className="grid gap-3">
-                                {lessonGroups.map((group) => (
-                                    <article key={group.lessonTitle} className="rounded-3xl border border-slate-100 bg-gradient-to-br from-slate-50/80 to-white p-3.5">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <h4 className="font-medium text-slate-800">{stripMaterialNumbering(group.lessonTitle)}</h4>
-                                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">{group.materials.length} {group.materials.length === 1 ? 'материал' : 'материала'}</span>
-                                        </div>
-                                        <div className="mt-2 grid gap-2">
-                                            {group.materials.map((i) => (
-                                                <div key={i.id} className="rounded-2xl border border-slate-100 bg-white px-3 py-2.5 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] flex flex-wrap items-center justify-between gap-2">
-                                                    <div className="min-w-0">
-                                                        <div className="text-sm text-slate-800">{stripMaterialNumbering(i.title)}</div>
-                                                        <div className="text-[11px] text-slate-500 mt-0.5">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType} · {i.estimatedDuration || '—'}</div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
+                        {!selectedItem ? (
+                            <>
+                                <h3 className="font-display text-lg text-slate-800 mb-2">Уроки и материалы темы</h3>
+                                {lessonGroups.length === 0 ? (
+                                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-500">
+                                        Нет материалов по выбранным фильтрам или категории.
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-3">
+                                        {lessonGroups.map((group) => (
+                                            <article key={group.lessonTitle} className="rounded-3xl border border-slate-100 bg-gradient-to-br from-slate-50/80 to-white p-3.5">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <h4 className="font-medium text-slate-800">{stripMaterialNumbering(group.lessonTitle)}</h4>
+                                                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">{group.materials.length} {group.materials.length === 1 ? 'материал' : 'материала'}</span>
+                                                </div>
+                                                <div className="mt-2 grid gap-2">
+                                                    {group.materials.map((i) => (
                                                         <button
-                                                            type="button"
-                                                            onClick={() => printMaterialSheet(i.title, i.fullDescription || i.shortDescription || '')}
-                                                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
-                                                        >
-                                                            Распечатать
-                                                        </button>
-                                                        <button
+                                                            key={i.id}
                                                             type="button"
                                                             onClick={() => {
                                                                 setSelectedItemId(i.id);
                                                                 pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
                                                                 if (navigate) navigate(`${routePrefix}/library/${i.id}`);
                                                             }}
-                                                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                                            className="w-full text-left rounded-2xl border border-slate-100 bg-white px-3 py-2.5 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] hover:border-emerald-200 hover:bg-emerald-50/20 transition-colors flex flex-wrap items-center justify-between gap-2"
                                                         >
-                                                            Изучить
+                                                            <div className="min-w-0">
+                                                                <div className="text-sm text-slate-800">{stripMaterialNumbering(i.title)}</div>
+                                                                <div className="text-[11px] text-slate-500 mt-0.5">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType} · {i.estimatedDuration || '—'}</div>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                <span className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700">Открыть</span>
+                                                            </div>
                                                         </button>
-                                                    </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
+                                            </article>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <section>
+                                <div className="mb-2 flex flex-wrap gap-2 text-[11px]">
+                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-800">Библиотека</span>
+                                    <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{selectedItem.categoryTitle || 'Материал'}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <h3 className="font-display text-xl text-slate-800">{stripMaterialNumbering(selectedItem.title)}</h3>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => printMaterialSheet(selectedItem.title, selectedItem.fullDescription || selectedItem.shortDescription || '')}
+                                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
+                                        >
+                                            Распечатать
+                                        </button>
+                                        <button type="button" onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Отметить как просмотрено</button>
+                                        <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Назад к списку</button>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-slate-600 mt-2">{selectedItem.fullDescription || selectedItem.shortDescription}</p>
+                                <div className="mt-2 text-xs text-slate-500">{CONTENT_TYPE_LABEL[selectedItem.contentType] || selectedItem.contentType} · {selectedItem.estimatedDuration || '—'}</div>
+                                {(selectedItem.externalLinks || []).length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {(selectedItem.externalLinks || []).join(', ')}</p> : null}
+                                {(selectedItem.attachments || []).length ? <p className="text-xs text-slate-500 mt-1">Вложения: {(selectedItem.attachments || []).join(', ')}</p> : null}
+                            </section>
                         )}
                     </section>
                 </div>
-
-                {selectedItem ? (
-                    <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                        <div className="mb-2 flex flex-wrap gap-2 text-[11px]">
-                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-800">Библиотека</span>
-                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{selectedItem.categoryTitle || 'Материал'}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-display text-xl text-slate-800">{stripMaterialNumbering(selectedItem.title)}</h3>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => printMaterialSheet(selectedItem.title, selectedItem.fullDescription || selectedItem.shortDescription || '')}
-                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
-                                >
-                                    Распечатать
-                                </button>
-                                <button type="button" onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Отметить как просмотрено</button>
-                                <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Закрыть</button>
-                            </div>
-                        </div>
-                        <p className="text-sm text-slate-600 mt-2">{selectedItem.fullDescription || selectedItem.shortDescription}</p>
-                        <div className="mt-2 text-xs text-slate-500">{CONTENT_TYPE_LABEL[selectedItem.contentType] || selectedItem.contentType} · {selectedItem.estimatedDuration || '—'}</div>
-                        {(selectedItem.externalLinks || []).length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {(selectedItem.externalLinks || []).join(', ')}</p> : null}
-                        {(selectedItem.attachments || []).length ? <p className="text-xs text-slate-500 mt-1">Вложения: {(selectedItem.attachments || []).join(', ')}</p> : null}
-                    </section>
-                ) : null}
             </div>
         </ScreenState>
     );
@@ -1296,9 +1359,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
     const apiTasks = pvlDomainApi.studentApi.getStudentResults(studentId, {});
     const activeHomework = apiTasks.filter((t) => ACTIVE_HOMEWORK_LABELS.has(t.displayStatus || t.status));
     const homeworkShortlist = useMemo(() => {
-        return [...activeHomework]
-            .sort((a, b) => String(a.deadlineAt || '').localeCompare(String(b.deadlineAt || '')))
-            .slice(0, 8);
+        return sortHomeworkByRecency(activeHomework).slice(0, 8);
     }, [activeHomework]);
     const feed = snapshot.activityFeed || [];
     const user = getUser(studentId);
@@ -1419,25 +1480,31 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                                 key={t.id}
                                 type="button"
                                 onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                className="text-left rounded-2xl border border-slate-100 bg-white p-4 hover:border-emerald-200 hover:bg-emerald-50/10 transition-colors shadow-sm min-h-[184px] flex flex-col"
+                                className="text-left rounded-2xl border border-slate-100 bg-white p-4 hover:border-emerald-200 hover:bg-emerald-50/10 transition-colors shadow-sm min-h-[214px] grid grid-rows-[auto_auto_auto_auto_1fr_auto] gap-1"
                             >
                                 <div className="flex items-start justify-between gap-2">
-                                    <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px]">{t.title}</div>
+                                    <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px] pr-1">{t.title}</div>
                                     <div className="flex flex-col items-end gap-1">
                                         <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
                                         {Number(t.maxScore) > 0 ? <span className="text-[11px] tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore}</span> : null}
                                     </div>
                                 </div>
-                                <div className="mt-2 text-[11px] text-slate-500">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'}</div>
-                                <div className="mt-1.5 text-[11px] text-slate-500">Дедлайн: {fmtDeadline(t.deadlineAt)}</div>
-                                <div className="mt-1 text-[11px] text-slate-500">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
-                                {Number(t.revisionCycles || 0) > 0 ? (
-                                    <div className="mt-2 text-[11px]">
+                                <div className="text-[11px] text-slate-500">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)}</div>
+                                <div className="text-[11px]">
+                                    {!hideDeadlineForAcceptedWithScore(t) ? (
+                                        <span className={`inline-flex rounded-full border px-2 py-0.5 ${deadlineUrgencyTone(t.deadlineAt)}`}>
+                                            Дедлайн: {fmtDeadline(t.deadlineAt)}
+                                        </span>
+                                    ) : <span className="inline-block h-[20px]" />}
+                                </div>
+                                <div className="text-[11px] text-slate-500">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
+                                <div className="text-[11px]">
+                                    {Number(t.revisionCycles || 0) > 0 ? (
                                         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">Доработок: {t.revisionCycles}</span>
-                                    </div>
-                                ) : null}
-                                <div className="mt-2 text-[11px] text-slate-500 line-clamp-1">{t.mentorCommentPreview || 'Без комментария'}</div>
-                                <div className="mt-auto pt-3">
+                                    ) : <span className="inline-block h-[20px]" />}
+                                </div>
+                                <div className="text-[11px] text-slate-500 line-clamp-1 self-end">{t.mentorCommentPreview || 'Без комментария'}</div>
+                                <div className="pt-2">
                                     <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-700">Открыть задание</span>
                                 </div>
                             </button>
@@ -1459,7 +1526,6 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                                     <span className={`inline-block w-1.5 h-1.5 rounded-full align-middle mr-2 shrink-0 ${isSystem ? 'bg-emerald-700' : 'bg-emerald-500'}`} aria-hidden />
                                     <span className="font-medium text-slate-800">{item.text}</span>
                                     {item.detail ? <span className="text-slate-500"> — {item.detail}</span> : null}
-                                    {isSystem ? <span className="ml-2 text-[10px] rounded-full border border-emerald-200 bg-white text-emerald-800 px-2 py-0.5">Системное</span> : <span className="ml-2 text-[10px] rounded-full border border-slate-200 bg-white text-slate-600 px-2 py-0.5">Личное</span>}
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                     <span className="text-[11px] text-slate-400 tabular-nums">{formatPvlDateTime(item.at)}</span>
@@ -1483,7 +1549,7 @@ function practicumStatusRu(status) {
         happened: 'прошла',
         missed: 'пропущена',
         cancelled: 'отменена',
-        deadline: 'дедлайн недели',
+        deadline: 'дедлайн модуля',
     };
     return map[s] || status;
 }
@@ -1557,7 +1623,7 @@ function StudentPracticumsCalendar({ studentId }) {
                                             <div className="text-[11px] font-medium text-slate-400">{practicumEventTypeRu(ev.eventType)}</div>
                                             <div className="text-sm font-medium text-slate-800 mt-0.5">{ev.title}</div>
                                             {ev.focus ? <div className="text-xs text-slate-500 mt-1">{ev.focus}</div> : null}
-                                            <div className="text-xs text-slate-400 mt-1">Неделя {ev.weekNumber}</div>
+                                            <div className="text-xs text-slate-400 mt-1">Модуль {clampPvlModule(ev.moduleNumber ?? ev.weekNumber ?? 0)}</div>
                                         </div>
                                         <div className="text-right shrink-0">
                                             <div className="text-sm font-medium text-slate-800">{formatPvlDateTime(ev.at)}</div>
@@ -1580,14 +1646,14 @@ const ABOUT_COURSE_MATERIALS = [
         tag: 'Обзор',
         kind: 'документ',
         title: `Курс «${PVL_COURSE_DISPLAY_NAME}»`,
-        summary: 'Три месяца интенсивной траектории, дедлайны по неделям, сопровождение ментором и учительской.',
+        summary: 'Три месяца интенсивной траектории по модулям, сопровождение ментором и учительской.',
     },
     {
         id: 'structure',
         tag: 'Курс',
         kind: 'документ',
         title: 'Как устроен курс',
-        summary: 'Модули по неделям, шаги в трекере, домашние задания со статусами и обратной связью ментора. Сертификационный завтрак и самооценка — в конце пути.',
+        summary: 'Модули 0-4, шаги в трекере, домашние задания со статусами и обратной связью ментора. Сертификационный завтрак и самооценка — в конце пути.',
     },
     {
         id: 'platform',
@@ -1601,7 +1667,7 @@ const ABOUT_COURSE_MATERIALS = [
         tag: 'Старт',
         kind: 'документ',
         title: 'Онбординг',
-        summary: 'Пошаговое знакомство с курсом без отдельного пункта меню. Далее — неделя 0 в трекере.',
+        summary: 'Пошаговое знакомство с курсом без отдельного пункта меню. Далее — модуль 0 в трекере.',
     },
     {
         id: 'safety',
@@ -1628,8 +1694,8 @@ const ABOUT_COURSE_MATERIALS = [
         id: 'week0',
         tag: 'Трекер',
         kind: 'действие',
-        title: 'Старт, неделя 0',
-        summary: 'Первый модуль в трекере — «Неделя 0: Вход и настройка». Отметьте шаги старта перед модулем 1.',
+        title: 'Старт, модуль 0',
+        summary: 'Первый модуль в трекере — «Модуль 0: Вход и настройка». Отметьте шаги старта перед модулем 1.',
     },
 ];
 
@@ -1823,8 +1889,7 @@ function StudentGlossarySearch() {
     };
     return (
         <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-slate-600">Все термины курса, распечатайте и держите рядом.</p>
+            <div className="flex justify-end">
                 <button type="button" onClick={exportGlossaryPdf} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">Скачать PDF</button>
             </div>
             <input
@@ -1880,18 +1945,30 @@ function StudentGlossarySearch() {
             <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 auto-rows-[220px]">
                 {filtered.map((g) => (
                     <article key={g.id} className={`h-full rounded-2xl border bg-white p-3.5 shadow-sm flex flex-col ${g.fromRef ? 'border-[#E8D5C4]' : 'border-slate-100'}`}>
+                        {/*
+                         * "Подробнее" показываем только когда текст почти точно не помещается в карточку.
+                         * Порог выше прежнего, чтобы короткие и средние определения не сворачивались.
+                         */}
+                        {(() => {
+                            const defText = String(g.definition || '');
+                            const shouldCollapse = defText.length > 230;
+                            return (
+                                <>
                         <div className="flex flex-wrap items-baseline gap-2">
                             <h4 className="font-display text-base text-[#4A3728] leading-tight">{g.term}</h4>
                         </div>
                         {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80] mt-1">{g.catLabel}</div> : null}
                         <p className="text-xs text-[#2C1810] mt-2 leading-relaxed flex-1 overflow-hidden">
-                            {expandedId === g.id ? g.definition : `${String(g.definition || '').slice(0, 110)}${String(g.definition || '').length > 110 ? '…' : ''}`}
+                            {shouldCollapse && expandedId !== g.id ? `${defText.slice(0, 180)}…` : defText}
                         </p>
-                        {String(g.definition || '').length > 110 ? (
+                        {shouldCollapse ? (
                             <button type="button" onClick={() => setExpandedId((prev) => (prev === g.id ? '' : g.id))} className="mt-2 text-[11px] text-emerald-700 hover:underline self-start">
                                 {expandedId === g.id ? 'Свернуть' : 'Подробнее'}
                             </button>
                         ) : null}
+                                </>
+                            );
+                        })()}
                     </article>
                 ))}
             </div>
@@ -1987,10 +2064,10 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
     const [filter, setFilter] = useState(pref?.filter || 'все');
     const apiItems = pvlDomainApi.studentApi.getStudentResults(studentId, {});
     const tasksAll = apiItems.map((t) => ({ ...t, uiStatus: shortTaskStatusLabel(t.displayStatus || t.status) }));
-    const tasks = apiItems.filter((t) => {
+    const tasks = sortHomeworkByRecency(apiItems.filter((t) => {
         if (filter === 'все') return true;
         return shortTaskStatusLabel(t.displayStatus || t.status) === filter;
-    });
+    }));
     const pointsHistory = (pvlDomainApi.db.pointsHistory || []).filter((x) => x.studentId === studentId).slice(-5).reverse();
     const pointsLanes = useMemo(() => {
         const lanes = {
@@ -2056,16 +2133,22 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <h3 className="text-sm font-semibold text-slate-800">{t.title}</h3>
-                                <p className="text-xs text-slate-500 mt-1">Неделя {t.week ?? '—'} · Модуль {t.moduleNumber ?? '—'} · {t.typeLabel || t.type}</p>
+                                <p className="text-xs text-slate-500 mt-1">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)} · {t.typeLabel || t.type}</p>
                             </div>
                             <div className="shrink-0 text-right">
                                 <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
                                 <div className="text-xs tabular-nums text-slate-500 mt-1">Оценка: {t.score ?? 0}/{t.maxScore ?? 0}</div>
                             </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-600">
-                            <span>Дедлайн: {formatPvlDateTime(t.deadlineAt)}</span>
-                            <span>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</span>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                            {!hideDeadlineForAcceptedWithScore(t) ? (
+                                <span className={`inline-flex min-w-[148px] items-center rounded-full border px-2 py-0.5 ${deadlineUrgencyTone(t.deadlineAt)}`}>
+                                    Дедлайн: {formatPvlDateTime(t.deadlineAt)}
+                                </span>
+                            ) : null}
+                            <span className="inline-flex min-w-[148px] items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-slate-600">
+                                Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}
+                            </span>
                         </div>
                         <div className="mt-3 text-xs">
                             {t.mentorCommentPreview ? (
@@ -2083,7 +2166,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                             <button
                                 type="button"
                                 onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-emerald-800 hover:bg-emerald-100"
+                                className="text-xs rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-slate-700 hover:bg-slate-50"
                             >
                                 Открыть задание
                             </button>
@@ -2164,7 +2247,7 @@ function StudentFaqBank() {
                             value={draftQuestion}
                             onChange={(e) => setDraftQuestion(e.target.value)}
                             className="mt-3 w-full min-h-[140px] rounded-xl border border-slate-200 p-3 text-sm"
-                            placeholder="Например: как лучше распределить шаги недели, если есть отставание?"
+                            placeholder="Например: как лучше распределить шаги модуля, если есть отставание?"
                         />
                         {sent ? <p className="text-xs text-emerald-700 mt-2">Вопрос отправлен.</p> : null}
                         <div className="mt-3 flex items-center justify-end gap-2">
@@ -2358,7 +2441,7 @@ function buildTeacherStudentRows() {
         const userId = sp.userId;
         const user = getUser(userId);
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
-        const courseLine = `${cohortTitle} · Модуль ${sp.currentModule ?? '—'} · неделя ${sp.currentWeek ?? '—'}`;
+        const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
         const total = Math.max(1, tasks.length);
         const closed = tasks.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
@@ -2404,16 +2487,16 @@ function buildMentorMenteeRows(mentorId) {
         const revisionCyclesTotal = tasks.reduce((acc, t) => acc + (Number(t.revisionCycles) || 0), 0);
         let stateLine = 'в ритме';
         if (overdueN > 0) stateLine = 'есть долги';
-        else if (pendingReview > 0) stateLine = 'нужна проверка';
-        else if (inRevision > 0) stateLine = 'есть доработки';
-        const courseLine = `${cohortTitle} · Модуль ${profile?.currentModule ?? '—'} · неделя ${profile?.currentWeek ?? '—'}`;
+        else if (pendingReview > 0 || inRevision > 0) stateLine = 'нужна проверка';
+        const cohortLine = `ПВЛ 2026 · ${cohortTitle}`;
+        const moduleWeekLine = `Модуль ${clampPvlModule(profile?.currentModule ?? profile?.currentWeek ?? 0)}`;
         const lastAct = profile?.lastActivityAt ? formatPvlDateTime(profile.lastActivityAt) : '—';
         const city = profile?.city || '';
         return {
             user,
             userId: m.userId,
-            courseBrandLine: PVL_COURSE_DISPLAY_NAME,
-            courseLine,
+            cohortLine,
+            moduleWeekLine,
             city,
             closedPct,
             closedCount: closed,
@@ -2428,7 +2511,6 @@ function buildMentorMenteeRows(mentorId) {
             coursePoints: pts.coursePointsTotal ?? 0,
             coursePointsMax: SCORING_RULES.COURSE_POINTS_MAX,
             riskCount: risks.length,
-            roleLabel: 'Участница ПВЛ',
         };
     });
 }
@@ -2487,18 +2569,15 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                                 >
                                     {row.user?.fullName || row.userId}
                                 </button>
-                                <p className="text-[11px] text-slate-500 mt-0.5">{row.roleLabel}</p>
                                 {row.city ? <p className="text-[11px] text-slate-400 mt-0.5">{row.city}</p> : null}
                             </div>
                         </div>
-                        {row.courseBrandLine ? (
-                            <p className="text-[10px] uppercase tracking-wide text-slate-400">{row.courseBrandLine}</p>
-                        ) : null}
-                        <p className="text-xs text-slate-600 leading-snug">{row.courseLine}</p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-400">{row.cohortLine}</p>
+                        <p className="text-xs text-slate-600 leading-snug">{row.moduleWeekLine}</p>
                         <div>
                             <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 mb-1.5">
                                 <span>
-                                    Задания:{' '}
+                                    Прогресс модуля:{' '}
                                     <span className="tabular-nums font-medium text-slate-800">
                                         {row.closedCount ?? 0}/{row.totalTasks ?? 0}
                                     </span>{' '}
@@ -2517,16 +2596,6 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                             <span className="text-[10px] rounded-full bg-white/90 border border-slate-200/90 px-2.5 py-1 text-slate-700 tabular-nums shadow-sm">
                                 Баллы {row.coursePoints}/{row.coursePointsMax ?? ptsMax}
                             </span>
-                            {(row.revisionCyclesTotal ?? 0) > 0 ? (
-                                <span className="text-[10px] rounded-full bg-white/90 border border-amber-100 px-2.5 py-1 text-amber-950 tabular-nums">
-                                    Циклы доработок: {row.revisionCyclesTotal}
-                                </span>
-                            ) : null}
-                            {row.inRevision > 0 ? (
-                                <span className="text-[10px] rounded-full bg-amber-50 border border-amber-100 px-2.5 py-1 text-amber-950">
-                                    На доработке: {row.inRevision}
-                                </span>
-                            ) : null}
                             {row.overdueN > 0 ? (
                                 <span className="text-[10px] rounded-full bg-rose-50 border border-rose-100 px-2.5 py-1 text-rose-900">
                                     Просрочки: {row.overdueN}
@@ -2584,7 +2653,7 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
         const dl = q.deadlineAt ? formatPvlDateTime(`${String(q.deadlineAt).slice(0, 10)}T12:00:00`) : '—';
         const maxSc = Number(q.maxScore) || 0;
         const awarded = Number(q.scoreAwarded) || 0;
-        const hasScore = maxSc > 0 && (awarded > 0 || q.rawStatus === TASK_STATUS.ACCEPTED);
+        const hasScore = col === 'done' && maxSc > 0 && (awarded > 0 || q.rawStatus === TASK_STATUS.ACCEPTED);
         return (
             <div
                 key={`${q.studentId}-${q.taskId}-${col}`}
@@ -2600,12 +2669,12 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                 }}
                 onClick={() => {
                     if (Date.now() - lastDragEndRef.current < 280) return;
-                    navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}`);
+                    navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}?from=kanban`);
                 }}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}`);
+                        navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}?from=kanban`);
                     }
                 }}
                 className="w-full text-left rounded-xl border border-white bg-white p-3 shadow-sm text-sm transition-colors hover:border-emerald-100 hover:bg-emerald-50/20 cursor-grab active:cursor-grabbing"
@@ -2661,7 +2730,7 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
     );
 
     return (
-        <div className="grid lg:grid-cols-3 gap-4">
+        <div className="grid lg:grid-cols-4 gap-4">
             {col(
                 'unchecked',
                 'Не проверено',
@@ -2681,10 +2750,18 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
             {col(
                 'done',
                 'Проверено',
-                'Принято, закрыто',
+                'Принято, закрыто (первые 24 часа)',
                 board.done,
                 'Пока пусто в этом списке',
                 'Принятые работы окажутся здесь. Можно перетащить карточку из «Не проверено», чтобы отметить задание закрытым.',
+            )}
+            {col(
+                'archive',
+                'Архив',
+                'Принятые более 24 часов назад',
+                board.archive || [],
+                'Архив пока пуст',
+                'Карточки из «Проверено» автоматически переходят сюда через 24 часа.',
             )}
         </div>
     );
@@ -2744,6 +2821,8 @@ function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
 }
 
 function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0, mentorId = 'u-men-1' }) {
+    const [pathOnly, query = ''] = String(route || '').split('?');
+    const fromKanban = /(?:^|&)from=kanban(?:&|$)/.test(query);
     if (route === '/mentor/onboarding') {
         return <PvlMergeOnboardingRedirect navigate={navigate} to="/mentor/about" />;
     }
@@ -2762,8 +2841,8 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         const itemId = route === '/mentor/library' ? '' : route.slice('/mentor/library/'.length).split('/')[0] || '';
         return <LibraryPage studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" />;
     }
-    if (/^\/mentor\/mentee\/[^/]+\/task\/[^/]+$/.test(route)) {
-        const [, , , menteeId, , taskId] = route.split('/');
+    if (/^\/mentor\/mentee\/[^/]+\/task\/[^/]+$/.test(pathOnly)) {
+        const [, , , menteeId, , taskId] = pathOnly.split('/');
         const resolvedMentee = LEGACY_MENTEE_ROUTE_TO_USER[menteeId] || menteeId;
         const mentorActorId = pvlDomainApi.db.studentProfiles.find((p) => p.userId === resolvedMentee)?.mentorId || 'u-men-1';
         return (
@@ -2775,8 +2854,9 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                 mentorActorId={mentorActorId}
                 navigate={navigate}
                 mentorRoutePrefix="/mentor"
+                backLabelOverride={fromKanban ? '← К дашборду ментора' : undefined}
                 onRefresh={refresh}
-                onBack={() => navigate(`/mentor/mentee/${menteeId}`)}
+                onBack={() => navigate(fromKanban ? '/mentor/dashboard' : `/mentor/mentee/${menteeId}`)}
                 initialData={buildTaskDetailStateFromApi(resolvedMentee, taskId, 'mentor')}
                 onMentorReply={(msg) => {
                     pvlDomainApi.mentorApi.addMentorThreadReply(mentorActorId, resolvedMentee, taskId, { text: msg.text, disputeOnly: msg.disputeOnly });
@@ -2838,7 +2918,7 @@ function TeacherPvlHome({ navigate }) {
         { area: 'Теги и типы', state: 'Частично', note: 'Теги вводятся строкой; типы — из списка в форме.' },
         { area: 'Видимость', state: 'Работает', note: 'Кто видит материал: участницы, менторы или оба.' },
         { area: 'Публикация', state: 'Работает', note: 'Публикация, архив, размещение в разделах.' },
-        { area: 'Расписание недель', state: 'Просмотр', note: 'Недели и уроки в данных курса; отдельного редактора расписания здесь нет.' },
+        { area: 'Расписание модулей', state: 'Просмотр', note: 'Модули и уроки в данных курса; отдельного редактора расписания здесь нет.' },
         { area: 'Библиотека', state: 'Работает', note: 'Те же материалы доступны участницам и менторам в их кабинетах.' },
     ];
     return (
@@ -2898,7 +2978,7 @@ function TeacherPvlHome({ navigate }) {
                         </table>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 leading-relaxed">
-                        Для полноценного продукта позже понадобятся отдельные сервисы: справочник тегов, редактор недель, сохранение данных на сервере, гранулярные роли.
+                        Для полноценного продукта позже понадобятся отдельные сервисы: справочник тегов, редактор модулей, сохранение данных на сервере, гранулярные роли.
                     </div>
                 </>
             ) : null}
@@ -2908,6 +2988,32 @@ function TeacherPvlHome({ navigate }) {
 
 function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint }) {
     const html = String(item?.fullDescription || item?.description || '').trim();
+    const tableSummary = useMemo(() => {
+        if (!html || !/<table[\s>]/i.test(html) || typeof DOMParser === 'undefined') return null;
+        try {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const tables = Array.from(doc.querySelectorAll('table'));
+            if (!tables.length) return null;
+            const first = tables[0];
+            const rows = Array.from(first.querySelectorAll('tr'));
+            const rowCount = rows.length;
+            const colCount = rows.length
+                ? Math.max(...rows.map((tr) => tr.querySelectorAll('th,td').length))
+                : 0;
+            return {
+                tables: tables.length,
+                rows: rowCount,
+                cols: colCount,
+            };
+        } catch {
+            return null;
+        }
+    }, [html]);
+    const textPreview = useMemo(() => {
+        if (!html) return '';
+        const withoutTables = html.replace(/<table[\s\S]*?<\/table>/gi, ' ');
+        return withoutTables.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }, [html]);
     if (!visible) {
         return (
             <article className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500 leading-snug">
@@ -2920,11 +3026,365 @@ function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{roleTitle}</div>
             <div className="text-sm font-semibold text-slate-800 mt-1">{item.title || '—'}</div>
             {item.shortDescription ? <p className="text-xs text-slate-500 mt-2 line-clamp-4">{item.shortDescription}</p> : null}
-            <div
-                className="mt-3 text-sm text-slate-700 max-h-[220px] overflow-y-auto prose prose-sm prose-slate max-w-none"
-                dangerouslySetInnerHTML={{ __html: html || '<p class="text-slate-400 text-sm">Текст материала пустой.</p>' }}
-            />
+            {tableSummary ? (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                    Таблица: {tableSummary.rows || 0} строк · {tableSummary.cols || 0} столбцов
+                    {tableSummary.tables > 1 ? ` · таблиц: ${tableSummary.tables}` : ''}
+                </div>
+            ) : null}
+            <div className="mt-3 text-sm text-slate-700 max-h-[180px] overflow-y-auto">
+                {textPreview || 'Текст материала пустой.'}
+            </div>
         </article>
+    );
+}
+
+const QUIZ_Q_TYPES = [
+    { id: 'single', label: 'Один правильный ответ' },
+    { id: 'multi', label: 'Несколько правильных ответов' },
+    { id: 'open', label: 'Открытый ответ' },
+];
+
+function createQuizOption(seed = '') {
+    return { id: `opt-${Date.now()}-${Math.floor(Math.random() * 10000)}`, text: seed, isCorrect: false };
+}
+
+function createQuizQuestion(type = 'single') {
+    return {
+        id: `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        type,
+        text: '',
+        points: 1,
+        required: true,
+        hint: '',
+        feedback: '',
+        reviewMode: type === 'open' ? 'manual' : 'auto',
+        options: type === 'open' ? [] : [createQuizOption(''), createQuizOption('')],
+        collapsed: false,
+    };
+}
+
+function createDefaultLessonQuiz() {
+    return {
+        settings: { attempts: 1, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
+        instruction: '',
+        questions: [createQuizQuestion('single')],
+    };
+}
+
+function normalizeLessonQuiz(raw) {
+    const base = createDefaultLessonQuiz();
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const settings = { ...base.settings, ...(src.settings || {}) };
+    const questions = Array.isArray(src.questions) && src.questions.length
+        ? src.questions.map((q) => ({
+            id: q.id || `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            type: q.type === 'multi' || q.type === 'open' ? q.type : 'single',
+            text: q.text || '',
+            points: Number.isFinite(Number(q.points)) ? Number(q.points) : 1,
+            required: q.required !== false,
+            hint: q.hint || '',
+            feedback: q.feedback || '',
+            reviewMode: q.type === 'open' ? 'manual' : 'auto',
+            options: q.type === 'open'
+                ? []
+                : (Array.isArray(q.options) && q.options.length
+                    ? q.options.map((o) => ({ id: o.id || `opt-${Date.now()}-${Math.floor(Math.random() * 10000)}`, text: o.text || '', isCorrect: !!o.isCorrect }))
+                    : [createQuizOption(''), createQuizOption('')]),
+            collapsed: !!q.collapsed,
+        }))
+        : base.questions;
+    return {
+        settings: {
+            attempts: Math.max(1, Number(settings.attempts) || 1),
+            passPercent: Math.max(1, Math.min(100, Number(settings.passPercent) || 70)),
+            showCorrectAfterSubmit: !!settings.showCorrectAfterSubmit,
+            showResultImmediately: !!settings.showResultImmediately,
+            shuffleOptions: !!settings.shuffleOptions,
+        },
+        instruction: src.instruction || '',
+        questions,
+    };
+}
+
+function validateLessonQuiz(quiz) {
+    const errors = {};
+    const qz = normalizeLessonQuiz(quiz);
+    if (!Array.isArray(qz.questions) || qz.questions.length === 0) errors.global = 'Добавьте хотя бы один вопрос.';
+    qz.questions.forEach((q) => {
+        const qErrors = [];
+        if (!String(q.text || '').trim()) qErrors.push('Заполните текст вопроса.');
+        if (q.type === 'single' && (q.options || []).filter((o) => o.isCorrect).length !== 1) qErrors.push('Нужен ровно один правильный вариант.');
+        if (q.type === 'multi' && (q.options || []).filter((o) => o.isCorrect).length < 1) qErrors.push('Отметьте хотя бы один правильный вариант.');
+        if (q.type !== 'open' && (q.options || []).some((o) => !String(o.text || '').trim())) qErrors.push('Заполните текст всех вариантов.');
+        if (q.type === 'open' && q.reviewMode !== 'manual') qErrors.push('Открытый вопрос только с ручной проверкой.');
+        if (qErrors.length) errors[q.id] = qErrors;
+    });
+    return errors;
+}
+
+function LessonQuizBuilder({ value, onChange, validation = {} }) {
+    const quiz = normalizeLessonQuiz(value);
+    const setQuiz = (updater) => {
+        const next = typeof updater === 'function' ? updater(quiz) : updater;
+        onChange(normalizeLessonQuiz(next));
+    };
+    const updateQuestion = (qid, updater) => {
+        setQuiz((prev) => ({
+            ...prev,
+            questions: prev.questions.map((q) => (q.id === qid ? (typeof updater === 'function' ? updater(q) : { ...q, ...updater }) : q)),
+        }));
+    };
+    const moveQuestion = (qid, dir) => {
+        setQuiz((prev) => {
+            const idx = prev.questions.findIndex((q) => q.id === qid);
+            const nextIdx = idx + dir;
+            if (idx < 0 || nextIdx < 0 || nextIdx >= prev.questions.length) return prev;
+            const copy = [...prev.questions];
+            const [row] = copy.splice(idx, 1);
+            copy.splice(nextIdx, 0, row);
+            return { ...prev, questions: copy };
+        });
+    };
+    const duplicateQuestion = (qid) => {
+        setQuiz((prev) => {
+            const idx = prev.questions.findIndex((q) => q.id === qid);
+            if (idx < 0) return prev;
+            const src = prev.questions[idx];
+            const clone = {
+                ...src,
+                id: `q-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+                options: (src.options || []).map((o) => ({ ...o, id: `opt-${Date.now()}-${Math.floor(Math.random() * 10000)}` })),
+                collapsed: false,
+            };
+            const copy = [...prev.questions];
+            copy.splice(idx + 1, 0, clone);
+            return { ...prev, questions: copy };
+        });
+    };
+    const removeQuestion = (qid) => {
+        if (!window.confirm('Удалить вопрос?')) return;
+        setQuiz((prev) => {
+            const next = prev.questions.filter((q) => q.id !== qid);
+            return { ...prev, questions: next.length ? next : [createQuizQuestion('single')] };
+        });
+    };
+
+    return (
+        <div className="space-y-4">
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-medium text-slate-800 mb-3">Настройки теста</div>
+                <div className="grid md:grid-cols-3 gap-3">
+                    <input type="number" min={1} value={quiz.settings.attempts} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, attempts: Math.max(1, Number(e.target.value) || 1) } }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Сколько попыток дать ученице (например: 1)" />
+                    <input type="number" min={1} max={100} value={quiz.settings.passPercent} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, passPercent: Math.max(1, Math.min(100, Number(e.target.value) || 1)) } }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Проходной порог в процентах (например: 70)" />
+                    <div className="rounded-xl border border-slate-200 p-2 text-sm text-slate-600">Вопросов: <span className="font-medium">{quiz.questions.length}</span></div>
+                    <label className="rounded-xl border border-slate-200 p-2 text-xs text-slate-700 flex items-center justify-between">Показывать правильные<input type="checkbox" checked={quiz.settings.showCorrectAfterSubmit} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, showCorrectAfterSubmit: e.target.checked } }))} /></label>
+                    <label className="rounded-xl border border-slate-200 p-2 text-xs text-slate-700 flex items-center justify-between">Показывать итог сразу<input type="checkbox" checked={quiz.settings.showResultImmediately} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, showResultImmediately: e.target.checked } }))} /></label>
+                    <label className="rounded-xl border border-slate-200 p-2 text-xs text-slate-700 flex items-center justify-between">Перемешивать варианты<input type="checkbox" checked={quiz.settings.shuffleOptions} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, shuffleOptions: e.target.checked } }))} /></label>
+                </div>
+                <textarea value={quiz.instruction} onChange={(e) => setQuiz((prev) => ({ ...prev, instruction: e.target.value }))} className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm min-h-[84px]" placeholder="Что увидит ученица перед стартом теста: правила, время, как считается результат" />
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="text-sm font-medium text-slate-800">Вопросы</div>
+                    <button type="button" onClick={() => setQuiz((prev) => ({ ...prev, questions: [...prev.questions, createQuizQuestion('single')] }))} className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50">Добавить вопрос</button>
+                </div>
+                {validation.global ? <div className="mb-2 text-xs text-rose-700">{validation.global}</div> : null}
+                <div className="space-y-3">
+                    {quiz.questions.map((q, idx) => {
+                        const qErrors = validation[q.id] || [];
+                        return (
+                            <article key={q.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                    <div className="text-sm font-medium text-slate-800">Вопрос {idx + 1} · {QUIZ_Q_TYPES.find((t) => t.id === q.type)?.label || q.type} · {Number(q.points) || 0} б.</div>
+                                    <div className="flex flex-wrap gap-1">
+                                        <button type="button" onClick={() => updateQuestion(q.id, (row) => ({ ...row, collapsed: !row.collapsed }))} className="text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1">{q.collapsed ? 'Развернуть' : 'Свернуть'}</button>
+                                        <button type="button" onClick={() => moveQuestion(q.id, -1)} className="text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1">Вверх</button>
+                                        <button type="button" onClick={() => moveQuestion(q.id, 1)} className="text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1">Вниз</button>
+                                        <button type="button" onClick={() => duplicateQuestion(q.id)} className="text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1">Дублировать</button>
+                                        <button type="button" onClick={() => removeQuestion(q.id)} className="text-[11px] rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-rose-800">Удалить</button>
+                                    </div>
+                                </div>
+                                {q.collapsed ? (
+                                    <div className="text-xs text-slate-600">
+                                        {String(q.text || '').slice(0, 120) || 'Текст вопроса не заполнен'}
+                                        {qErrors.length ? <div className="mt-1 text-rose-700">{qErrors.join(' ')}</div> : null}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <div className="grid md:grid-cols-3 gap-2">
+                                            <select value={q.type} onChange={(e) => updateQuestion(q.id, (row) => ({ ...createQuizQuestion(e.target.value), id: row.id, text: row.text, points: row.points, required: row.required, hint: row.hint, feedback: row.feedback }))} className="rounded-lg border border-slate-200 p-2 text-sm bg-white">
+                                                {QUIZ_Q_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                            </select>
+                                            <input type="number" min={0} value={q.points} onChange={(e) => updateQuestion(q.id, { points: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Сколько баллов за этот вопрос" />
+                                            <label className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700 flex items-center justify-between">Обязательный<input type="checkbox" checked={q.required !== false} onChange={(e) => updateQuestion(q.id, { required: e.target.checked })} /></label>
+                                        </div>
+                                        <textarea value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white min-h-[70px]" placeholder="Сформулируйте вопрос для ученицы" />
+                                        <input value={q.hint || ''} onChange={(e) => updateQuestion(q.id, { hint: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Подсказка к вопросу (необязательно)" />
+                                        <input value={q.feedback || ''} onChange={(e) => updateQuestion(q.id, { feedback: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Что показать после ответа (необязательно)" />
+                                        {q.type === 'open' ? (
+                                            <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600">Режим проверки: <span className="font-medium">ручная проверка</span></div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {(q.options || []).map((opt) => (
+                                                    <div key={opt.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+                                                        {q.type === 'single'
+                                                            ? <input type="radio" checked={!!opt.isCorrect} onChange={() => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => ({ ...x, isCorrect: x.id === opt.id })) }))} />
+                                                            : <input type="checkbox" checked={!!opt.isCorrect} onChange={(e) => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => (x.id === opt.id ? { ...x, isCorrect: e.target.checked } : x)) }))} />}
+                                                        <input value={opt.text} onChange={(e) => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => (x.id === opt.id ? { ...x, text: e.target.value } : x)) }))} className="rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Вариант ответа (что увидит ученица)" />
+                                                        <button type="button" onClick={() => updateQuestion(q.id, (row) => ({ ...row, options: row.options.length > 2 ? row.options.filter((x) => x.id !== opt.id) : row.options }))} className="text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1">Удалить</button>
+                                                    </div>
+                                                ))}
+                                                <button type="button" onClick={() => updateQuestion(q.id, (row) => ({ ...row, options: [...(row.options || []), createQuizOption('')] }))} className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1">Добавить вариант</button>
+                                            </div>
+                                        )}
+                                        {qErrors.length ? <div className="text-xs text-rose-700">{qErrors.join(' ')}</div> : null}
+                                    </div>
+                                )}
+                            </article>
+                        );
+                    })}
+                </div>
+            </section>
+        </div>
+    );
+}
+
+function createDefaultLessonHomework() {
+    return {
+        responseFormat: {
+            artifactType: 'text',
+            allowText: true,
+            allowFile: false,
+            allowLink: false,
+            formatHint: '',
+        },
+        criteria: [''],
+        hints: [''],
+        mentorComment: '',
+        scoring: { enabled: false, maxScore: 20 },
+        deadline: { type: 'fixed_date', at: '', weekBasedLabel: '', note: '' },
+        revisions: {
+            limitMode: 'limit',
+            limit: 3,
+            allowResubmitAfterRevision: true,
+            showCounterToStudent: true,
+            limitReachedNote: '',
+        },
+    };
+}
+
+function normalizeLessonHomework(raw) {
+    const base = createDefaultLessonHomework();
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const responseFormat = { ...base.responseFormat, ...(src.responseFormat || {}) };
+    const scoring = { ...base.scoring, ...(src.scoring || {}) };
+    const deadline = { ...base.deadline, ...(src.deadline || {}) };
+    const revisions = { ...base.revisions, ...(src.revisions || {}) };
+    return {
+        responseFormat: {
+            artifactType: responseFormat.artifactType || 'text',
+            allowText: !!responseFormat.allowText,
+            allowFile: !!responseFormat.allowFile,
+            allowLink: !!responseFormat.allowLink,
+            formatHint: responseFormat.formatHint || '',
+        },
+        criteria: (Array.isArray(src.criteria) && src.criteria.length ? src.criteria : ['']).map((x) => String(x || '')),
+        hints: (Array.isArray(src.hints) && src.hints.length ? src.hints : ['']).map((x) => String(x || '')),
+        mentorComment: src.mentorComment || '',
+        scoring: {
+            enabled: !!scoring.enabled,
+            maxScore: Math.max(1, Number(scoring.maxScore) || 20),
+        },
+        deadline: {
+            type: ['fixed_date', 'week_based', 'none'].includes(deadline.type) ? deadline.type : 'fixed_date',
+            at: String(deadline.at || '').slice(0, 10),
+            weekBasedLabel: deadline.weekBasedLabel || '',
+            note: deadline.note || '',
+        },
+        revisions: {
+            limitMode: revisions.limitMode === 'unlimited' ? 'unlimited' : 'limit',
+            limit: Math.max(0, Number(revisions.limit) || 0),
+            allowResubmitAfterRevision: !!revisions.allowResubmitAfterRevision,
+            showCounterToStudent: !!revisions.showCounterToStudent,
+            limitReachedNote: revisions.limitReachedNote || '',
+        },
+    };
+}
+
+function validateLessonHomework(hw, opts = {}) {
+    const errors = {};
+    const d = normalizeLessonHomework(hw);
+    if (!d.responseFormat.allowText && !d.responseFormat.allowFile && !d.responseFormat.allowLink) {
+        errors.responseFormat = 'Нужно разрешить хотя бы один формат ответа: текст, файл или ссылка.';
+    }
+    if (d.scoring.enabled && (!Number.isFinite(Number(d.scoring.maxScore)) || Number(d.scoring.maxScore) <= 0)) {
+        errors.scoring = 'Для оценивания с баллами укажите корректный максимум.';
+    }
+    if (d.deadline.type === 'fixed_date' && !d.deadline.at) {
+        errors.deadline = 'Для жесткого дедлайна укажите дату.';
+    }
+    if (d.revisions.limitMode === 'limit' && (Number(d.revisions.limit) < 0 || !Number.isFinite(Number(d.revisions.limit)))) {
+        errors.revisions = 'Лимит доработок должен быть валидным числом.';
+    }
+    const nonEmptyCriteria = d.criteria.filter((x) => String(x).trim());
+    if (opts.requireCriteria && nonEmptyCriteria.length === 0) {
+        errors.criteria = 'Добавьте хотя бы один критерий или отключите обязательность критериев.';
+    }
+    return errors;
+}
+
+function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
+    const hw = normalizeLessonHomework(value);
+    const setHw = (updater) => {
+        const next = typeof updater === 'function' ? updater(hw) : updater;
+        onChange(normalizeLessonHomework(next));
+    };
+    const updateList = (key, idx, val) => {
+        setHw((prev) => ({ ...prev, [key]: prev[key].map((x, i) => (i === idx ? val : x)) }));
+    };
+    const moveListItem = (key, idx, dir) => {
+        setHw((prev) => {
+            const nextIdx = idx + dir;
+            if (nextIdx < 0 || nextIdx >= prev[key].length) return prev;
+            const copy = [...prev[key]];
+            const [row] = copy.splice(idx, 1);
+            copy.splice(nextIdx, 0, row);
+            return { ...prev, [key]: copy };
+        });
+    };
+
+    return (
+        <div className="space-y-4">
+            <input type="hidden" value={hw.responseFormat.artifactType} readOnly />
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <div className="text-sm font-medium text-slate-800">Настройки дедлайна и доработок</div>
+                <div className="grid md:grid-cols-2 gap-3">
+                    <select value={hw.deadline.type} onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, type: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm">
+                        <option value="fixed_date">Жесткая дата</option>
+                        <option value="week_based">Дата по модулю</option>
+                        <option value="none">Без дедлайна</option>
+                    </select>
+                    {hw.deadline.type === 'fixed_date' ? (
+                        <input type="date" value={hw.deadline.at} onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, at: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm" />
+                    ) : (
+                        <input value={hw.deadline.weekBasedLabel} onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, weekBasedLabel: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Правило дедлайна по модулю" />
+                    )}
+                    <select value={hw.revisions.limitMode} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limitMode: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm">
+                        <option value="limit">Лимит доработок</option>
+                        <option value="unlimited">Без лимита</option>
+                    </select>
+                    <input type="number" min={0} disabled={hw.revisions.limitMode !== 'limit'} value={hw.revisions.limit} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limit: Number(e.target.value) || 0 } }))} className="rounded-xl border border-slate-200 p-2 text-sm disabled:bg-slate-50" placeholder="Лимит доработок" />
+                    <label className="rounded-xl border border-slate-200 p-2 text-xs flex items-center justify-between">Разрешить повторную отправку<input type="checkbox" checked={hw.revisions.allowResubmitAfterRevision} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, allowResubmitAfterRevision: e.target.checked } }))} /></label>
+                    <label className="rounded-xl border border-slate-200 p-2 text-xs flex items-center justify-between">Показывать счетчик ученице<input type="checkbox" checked={hw.revisions.showCounterToStudent} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, showCounterToStudent: e.target.checked } }))} /></label>
+                </div>
+                <input value={hw.revisions.limitReachedNote} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limitReachedNote: e.target.value } }))} className="w-full rounded-xl border border-slate-200 p-2 text-sm" placeholder="Комментарий при достижении лимита" />
+                {validation.deadline ? <div className="text-xs text-rose-700">{validation.deadline}</div> : null}
+                {validation.revisions ? <div className="text-xs text-rose-700">{validation.revisions}</div> : null}
+            </section>
+        </div>
     );
 }
 
@@ -2938,6 +3398,7 @@ function AdminContentItemScreen({
     forceRefresh,
 }) {
     const item = cmsItems.find((x) => x.id === contentId);
+    const previewCardRef = useRef(null);
     const [panelMode, setPanelMode] = useState('view');
     const [editForm, setEditForm] = useState(null);
     const [placementEditId, setPlacementEditId] = useState(null);
@@ -2959,6 +3420,13 @@ function AdminContentItemScreen({
 
     const sections = ['lessons', 'library', 'glossary'];
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
+    const libraryCategories = useMemo(() => {
+        try {
+            return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(MENTOR_COURSE_MIRROR_STUDENT_ID) || [];
+        } catch {
+            return [];
+        }
+    }, []);
 
     const beginEdit = () => {
         if (!item) return;
@@ -2968,10 +3436,14 @@ function AdminContentItemScreen({
             fullDescriptionHtml: item.fullDescription || item.description || '',
             contentType: item.contentType || 'text',
             targetSection: item.targetSection || 'library',
-            targetRole: item.targetRole || 'student',
+            lessonKind: item.lessonKind || (item.targetSection === 'lessons' && item.contentType === 'checklist' ? 'quiz' : 'text_video'),
+            lessonQuiz: normalizeLessonQuiz(item.lessonQuiz),
+            lessonHomework: normalizeLessonHomework(item.lessonHomework),
+            libraryCategoryId: item.libraryCategoryId || item.categoryId || 'all',
+            targetRole: item.targetRole || 'both',
             targetCohort: item.targetCohort || 'cohort-2026-1',
-            weekNumber: item.weekNumber ?? 0,
-            moduleNumber: item.moduleNumber ?? 0,
+            weekNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
+            moduleNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
             estimatedDuration: item.estimatedDuration || '',
             tagsText: Array.isArray(item.tags) ? item.tags.join(', ') : '',
         });
@@ -2991,6 +3463,7 @@ function AdminContentItemScreen({
     const saveFieldUpdatesFromForm = () => {
         if (!editForm) return;
         const tags = String(editForm.tagsText || '').split(',').map((t) => t.trim()).filter(Boolean);
+        const normalizedQuiz = normalizeLessonQuiz(editForm.lessonQuiz);
         const payload = {
             title: editForm.title.trim(),
             shortDescription: editForm.shortDescription,
@@ -2998,10 +3471,17 @@ function AdminContentItemScreen({
             description: editForm.fullDescriptionHtml,
             contentType: editForm.contentType,
             targetSection: editForm.targetSection,
-            targetRole: editForm.targetRole,
+            lessonKind: editForm.lessonKind,
+            lessonQuiz: editForm.targetSection === 'lessons' && editForm.lessonKind === 'quiz' ? normalizedQuiz : undefined,
+            lessonHomework: editForm.targetSection === 'lessons' && editForm.lessonKind === 'homework' ? normalizeLessonHomework(editForm.lessonHomework) : undefined,
+            categoryId: editForm.targetSection === 'library' ? (editForm.libraryCategoryId || item?.categoryId || item?.libraryCategoryId) : undefined,
+            categoryTitle: editForm.targetSection === 'library'
+                ? (libraryCategories.find((c) => c.id === (editForm.libraryCategoryId || item?.categoryId || item?.libraryCategoryId))?.title || item?.categoryTitle || item?.libraryCategoryTitle || '')
+                : undefined,
+            targetRole: 'both',
             targetCohort: editForm.targetCohort,
-            weekNumber: Number(editForm.weekNumber) || 0,
-            moduleNumber: Number(editForm.moduleNumber) || 0,
+            weekNumber: clampPvlModule(editForm.moduleNumber),
+            moduleNumber: clampPvlModule(editForm.moduleNumber),
             estimatedDuration: editForm.estimatedDuration,
             tags,
         };
@@ -3011,7 +3491,27 @@ function AdminContentItemScreen({
 
     /** Одна запись полей + публикация карточки; placements в API не трогаем. */
     const commitPublish = () => {
-        if (panelMode === 'edit') saveFieldUpdatesFromForm();
+        if (panelMode === 'edit') {
+            if (!String(editForm?.title || '').trim()) {
+                window.alert('Перед публикацией заполните название материала.');
+                return;
+            }
+            if (editForm?.targetSection === 'lessons' && editForm?.lessonKind === 'quiz') {
+                const errors = validateLessonQuiz(editForm.lessonQuiz);
+                if (errors.global || Object.keys(errors).some((k) => k !== 'global')) {
+                    window.alert('Тест не готов к публикации: проверьте вопросы и правильные ответы.');
+                    return;
+                }
+            }
+            if (editForm?.targetSection === 'lessons' && editForm?.lessonKind === 'homework') {
+                const errors = validateLessonHomework(editForm.lessonHomework, { requireCriteria: false });
+                if (Object.keys(errors).length) {
+                    window.alert('Домашнее задание не готово к публикации: проверьте формат ответа, дедлайн и лимит доработок.');
+                    return;
+                }
+            }
+            saveFieldUpdatesFromForm();
+        }
         pvlDomainApi.adminApi.publishContentItem(contentId);
         setCmsItems((prev) => publishContentItem(prev, contentId));
         forceRefresh?.();
@@ -3047,8 +3547,8 @@ function AdminContentItemScreen({
             targetSection: item.targetSection,
             targetRole: item.targetRole,
             cohortId: item.targetCohort || 'cohort-2026-1',
-            weekNumber: item.weekNumber || 0,
-            moduleNumber: item.moduleNumber || 0,
+            weekNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
+            moduleNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
             orderIndex: item.orderIndex || 999,
         });
         if (pl) setCmsPlacements((prev) => [...prev, pl]);
@@ -3064,8 +3564,8 @@ function AdminContentItemScreen({
             targetRole: roleNorm,
             cohortId: p.targetCohort || p.cohortId || 'cohort-2026-1',
             orderIndex: p.orderIndex ?? 0,
-            weekNumber: p.weekNumber ?? 0,
-            moduleNumber: p.moduleNumber ?? 0,
+            weekNumber: clampPvlModule(p.moduleNumber ?? p.weekNumber ?? 0),
+            moduleNumber: clampPvlModule(p.moduleNumber ?? p.weekNumber ?? 0),
             isPublished: p.isPublished !== false,
         });
     };
@@ -3083,8 +3583,8 @@ function AdminContentItemScreen({
             cohortId: placementEditForm.cohortId,
             targetCohort: placementEditForm.cohortId,
             orderIndex: Number(placementEditForm.orderIndex) || 0,
-            weekNumber: Number(placementEditForm.weekNumber) || 0,
-            moduleNumber: Number(placementEditForm.moduleNumber) || 0,
+            weekNumber: clampPvlModule(placementEditForm.moduleNumber),
+            moduleNumber: clampPvlModule(placementEditForm.moduleNumber),
             isPublished: !!placementEditForm.isPublished,
         };
         pvlDomainApi.adminApi.updatePlacement(placementEditId, patch);
@@ -3125,6 +3625,12 @@ function AdminContentItemScreen({
     const publishedPlacements = itemPlacements.filter((p) => p.isPublished !== false);
     const unpublishedPlacements = itemPlacements.filter((p) => p.isPublished === false);
     const cohortsForPlacement = pvlDomainApi.adminApi.getAdminCohorts() || [];
+    const softBtn = 'text-sm rounded-xl border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50';
+    const primaryBtn = 'text-sm rounded-xl border border-emerald-700 bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800';
+    const dangerBtn = 'text-sm rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-rose-800 hover:bg-rose-100';
+    const openPublishedCardPreview = () => {
+        previewCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
 
     return (
         <div className="space-y-4">
@@ -3136,157 +3642,12 @@ function AdminContentItemScreen({
                         <StatusBadge>{CONTENT_STATUS_LABEL[item.status] || item.status}</StatusBadge>
                         <StatusBadge>{labelTargetSection(item.targetSection)}</StatusBadge>
                         <StatusBadge>{TARGET_ROLE_LABELS[item.targetRole] || item.targetRole}</StatusBadge>
+                        {item.status === 'published' ? (
+                            <button type="button" onClick={openPublishedCardPreview} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">
+                                Открыть карточку
+                            </button>
+                        ) : null}
                     </div>
-                </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                    <Button variant="secondary" onClick={() => navigate('/admin/content')}>К списку материалов</Button>
-                    {panelMode === 'view' ? (
-                        <Button onClick={beginEdit}>Редактировать</Button>
-                    ) : (
-                        <>
-                            <Button variant="secondary" onClick={cancelEdit}>Отменить</Button>
-                            <Button onClick={handleSaveDraft}>Сохранить черновик</Button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100/90 bg-slate-50/60 p-5 shadow-sm">
-                <h3 className="font-display text-lg text-slate-800 mb-3">Размещение и аудитория</h3>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-slate-600">
-                    <div className="rounded-xl border border-slate-100 bg-white p-3">
-                        <div className="text-[10px] font-semibold uppercase text-slate-400">Раздел (метаданные)</div>
-                        <div className="font-medium text-slate-800 mt-1">{labelTargetSection(item.targetSection)}</div>
-                    </div>
-                    <div className="rounded-xl border border-slate-100 bg-white p-3">
-                        <div className="text-[10px] font-semibold uppercase text-slate-400">Роль</div>
-                        <div className="font-medium text-slate-800 mt-1">{TARGET_ROLE_LABELS[item.targetRole] || item.targetRole}</div>
-                    </div>
-                    <div className="rounded-xl border border-slate-100 bg-white p-3">
-                        <div className="text-[10px] font-semibold uppercase text-slate-400">Поток</div>
-                        <div className="font-medium text-slate-800 mt-1">{item.targetCohort || '—'}</div>
-                    </div>
-                    <div className="rounded-xl border border-slate-100 bg-white p-3 tabular-nums">
-                        <div className="text-[10px] font-semibold uppercase text-slate-400">Неделя / модуль</div>
-                        <div className="font-medium text-slate-800 mt-1">{item.weekNumber ?? '—'} · {item.moduleNumber ?? '—'}</div>
-                    </div>
-                </div>
-                <div className="mt-4">
-                    <div className="text-xs font-medium text-slate-500 mb-2">Привязки в разделах (placements)</div>
-                    {itemPlacements.length === 0 ? (
-                        <p className="text-sm text-slate-500">Пока нет отдельных привязок — только метаданные материала.</p>
-                    ) : (
-                        <ul className="grid gap-3">
-                            {itemPlacements.map((p) => (
-                                <li key={p.id} className="rounded-xl border border-slate-100 bg-white p-3 text-xs text-slate-600 space-y-2">
-                                    {placementEditId === p.id && placementEditForm ? (
-                                        <div className="grid sm:grid-cols-2 gap-2">
-                                            <label className="block text-[10px] text-slate-500">Раздел
-                                                <select
-                                                    value={placementEditForm.targetSection}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, targetSection: e.target.value }))}
-                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm bg-white"
-                                                >
-                                                    {placementSectionOptions.map((k) => (
-                                                        <option key={k} value={k}>{labelTargetSection(k)}</option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                            <label className="block text-[10px] text-slate-500">Роль
-                                                <select
-                                                    value={placementEditForm.targetRole}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, targetRole: e.target.value }))}
-                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm bg-white"
-                                                >
-                                                    <option value="student">{TARGET_ROLE_LABELS.student}</option>
-                                                    <option value="mentor">{TARGET_ROLE_LABELS.mentor}</option>
-                                                    <option value="both">{TARGET_ROLE_LABELS.both}</option>
-                                                </select>
-                                            </label>
-                                            <label className="block text-[10px] text-slate-500">Поток
-                                                <select
-                                                    value={placementEditForm.cohortId}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, cohortId: e.target.value }))}
-                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm bg-white"
-                                                >
-                                                    {cohortsForPlacement.map((c) => (
-                                                        <option key={c.id} value={c.id}>{c.title}</option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                            <label className="block text-[10px] text-slate-500">Порядок
-                                                <input
-                                                    type="number"
-                                                    value={placementEditForm.orderIndex}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, orderIndex: e.target.value }))}
-                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm tabular-nums bg-white"
-                                                />
-                                            </label>
-                                            <label className="block text-[10px] text-slate-500">Неделя
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    value={placementEditForm.weekNumber}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, weekNumber: e.target.value }))}
-                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm tabular-nums bg-white"
-                                                />
-                                            </label>
-                                            <label className="block text-[10px] text-slate-500">Модуль
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    value={placementEditForm.moduleNumber}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, moduleNumber: e.target.value }))}
-                                                    className="mt-0.5 w-full rounded-lg border border-slate-200 p-2 text-sm tabular-nums bg-white"
-                                                />
-                                            </label>
-                                            <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={placementEditForm.isPublished}
-                                                    onChange={(e) => setPlacementEditForm((f) => ({ ...f, isPublished: e.target.checked }))}
-                                                    className="rounded border-slate-300"
-                                                />
-                                                Размещение опубликовано (видно по правилам курса)
-                                            </label>
-                                            <div className="sm:col-span-2 flex flex-wrap gap-2 pt-1">
-                                                <button type="button" onClick={savePlacementEdit} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50">Сохранить</button>
-                                                <button type="button" onClick={cancelPlacementEdit} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50">Отмена</button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="flex flex-wrap justify-between gap-2 items-start">
-                                                <span>
-                                                    <span className="font-medium text-slate-800">{labelTargetSection(p.targetSection)}</span>
-                                                    {' · '}
-                                                    {TARGET_ROLE_LABELS[p.targetRole] || p.targetRole}
-                                                    {' · '}
-                                                    {p.targetCohort || p.cohortId || '—'}
-                                                    {typeof p.orderIndex === 'number' ? ` · порядок ${p.orderIndex}` : ''}
-                                                    {typeof p.weekNumber === 'number' ? ` · нед. ${p.weekNumber}` : ''}
-                                                </span>
-                                                <span className={p.isPublished === false ? 'text-amber-700 font-medium' : 'text-emerald-700 font-medium'}>
-                                                    {p.isPublished === false ? 'снято с публикации' : 'опубликовано'}
-                                                </span>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <button type="button" onClick={() => startPlacementEdit(p)} className="text-[11px] rounded-lg border border-slate-200 px-2 py-1 text-slate-700 hover:bg-slate-50">Изменить</button>
-                                                <button type="button" onClick={() => deletePlacementRow(p.id)} className="text-[11px] rounded-lg border border-rose-200 text-rose-800 px-2 py-1 hover:bg-rose-50">Удалить</button>
-                                            </div>
-                                        </>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    <button
-                        type="button"
-                        onClick={handleAssignPlacement}
-                        className="mt-3 text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 hover:bg-slate-50"
-                    >
-                        Добавить размещение по метаданным материала
-                    </button>
                 </div>
             </div>
 
@@ -3301,24 +3662,22 @@ function AdminContentItemScreen({
                                 {CONTENT_STATUS_LABEL[item.status] || item.status}
                                 .
                                 {' '}
-                                Участницам и менторам контент доступен при статусе «Опубликован» и учёте целевой роли (и при активных привязках ниже).
-                            </li>
-                            <li>
-                                <span className="font-medium">Целевая роль материала (метаданные):</span>
-                                {' '}
-                                {TARGET_ROLE_LABELS[item.targetRole] || item.targetRole}
-                                .
+                                Материал доступен всем при статусе «Опубликован» и активных привязках ниже.
                             </li>
                             <li>
                                 <span className="font-medium">Задуманный раздел (метаданные):</span>
                                 {' '}
                                 {labelTargetSection(item.targetSection)}
-                                {' '}
-                                (поток
-                                {' '}
-                                {item.targetCohort || '—'}
-                                ).
+                                {' · '}
+                                поток {item.targetCohort || '—'}
                             </li>
+                            {item.targetSection === 'lessons' ? (
+                                <li>
+                                    <span className="font-medium">Модуль:</span>
+                                    {' '}
+                                    {clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0)}
+                                </li>
+                            ) : null}
                             <li>
                                 <span className="font-medium">Опубликованные привязки (placements):</span>
                                 {' '}
@@ -3338,19 +3697,6 @@ function AdminContentItemScreen({
                                 </li>
                             ) : null}
                         </ul>
-                    </div>
-                    <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                        <h3 className="font-display text-lg text-slate-800 mb-2">Просмотр</h3>
-                        <p className="text-sm text-slate-500 mb-4">{item.shortDescription || 'Без краткого описания.'}</p>
-                        <div
-                            className="prose prose-sm prose-slate max-w-none text-slate-700 border border-slate-100 rounded-xl p-4 bg-slate-50/50 max-h-[360px] overflow-y-auto"
-                            dangerouslySetInnerHTML={{ __html: String(item.fullDescription || item.description || '').trim() || '<p class="text-slate-400">Текст пустой.</p>' }}
-                        />
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="secondary" onClick={handleUnpublish} disabled={item.status !== 'published'}>Снять с публикации</Button>
-                        <Button onClick={commitPublish} disabled={item.status === 'published'}>Опубликовать</Button>
-                        <Button variant="danger" onClick={handleArchive} disabled={item.status === 'archived'}>В архив</Button>
                     </div>
                 </div>
             ) : (
@@ -3398,17 +3744,32 @@ function AdminContentItemScreen({
                                         {types.map((s) => <option key={s} value={s}>{CONTENT_TYPE_LABEL[s] || s}</option>)}
                                     </select>
                                 </div>
+                                {editForm.targetSection === 'lessons' ? (
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-0.5">Тип материала в уроках</label>
+                                        <select
+                                            value={editForm.lessonKind || 'text_video'}
+                                            onChange={(e) => {
+                                                const lk = e.target.value;
+                                                setEditForm((f) => ({
+                                                    ...f,
+                                                    lessonKind: lk,
+                                                    contentType: lk === 'quiz' ? 'checklist' : lk === 'homework' ? 'template' : 'video',
+                                                }));
+                                            }}
+                                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                        >
+                                            <option value="text_video">Текстовый урок + видеоурок</option>
+                                            <option value="quiz">Тест</option>
+                                            <option value="homework">Домашнее задание</option>
+                                        </select>
+                                    </div>
+                                ) : null}
                                 <div className="space-y-1">
-                                    <label className="text-xs text-slate-500 ml-0.5">Целевая роль</label>
-                                    <select
-                                        value={editForm.targetRole}
-                                        onChange={(e) => setEditForm((f) => ({ ...f, targetRole: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
-                                    >
-                                        <option value="student">{TARGET_ROLE_LABELS.student}</option>
-                                        <option value="mentor">{TARGET_ROLE_LABELS.mentor}</option>
-                                        <option value="both">{TARGET_ROLE_LABELS.both}</option>
-                                    </select>
+                                    <label className="text-xs text-slate-500 ml-0.5">Кто видит материал</label>
+                                    <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-700">
+                                        {TARGET_ROLE_LABELS.both}
+                                    </div>
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-xs text-slate-500 ml-0.5">Поток</label>
@@ -3423,15 +3784,14 @@ function AdminContentItemScreen({
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs text-slate-500 ml-0.5">Неделя</label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        max={12}
-                                        value={editForm.weekNumber}
-                                        onChange={(e) => setEditForm((f) => ({ ...f, weekNumber: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm tabular-nums"
-                                    />
+                                    <label className="text-xs text-slate-500 ml-0.5">Модуль</label>
+                                    <select
+                                        value={clampPvlModule(editForm.moduleNumber)}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, moduleNumber: e.target.value, weekNumber: e.target.value }))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                    >
+                                        {[0, 1, 2, 3, 4].map((m) => <option key={m} value={m}>Модуль {m}</option>)}
+                                    </select>
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-xs text-slate-500 ml-0.5">Длительность</label>
@@ -3451,27 +3811,72 @@ function AdminContentItemScreen({
                                     className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-xs text-slate-500 ml-0.5">Текст материала</label>
-                                <RichEditor
-                                    key={`pvl-cms-${contentId}`}
-                                    value={editForm.fullDescriptionHtml}
-                                    onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
-                                    onUploadImage={pvlRichEditorUploadImage}
-                                    placeholder="Напишите текст материала..."
-                                />
-                            </div>
-                            <div className="flex flex-wrap gap-2 pt-2">
-                                <Button variant="secondary" onClick={cancelEdit}>Отменить</Button>
-                                <Button onClick={handleSaveDraft}>Сохранить черновик</Button>
-                                <Button variant="secondary" onClick={commitPublish}>Сохранить и опубликовать</Button>
-                            </div>
+                            {editForm.targetSection === 'lessons' && editForm.lessonKind === 'quiz' ? (
+                                <>
+                                    <LessonQuizBuilder
+                                        value={editForm.lessonQuiz}
+                                        onChange={(next) => setEditForm((f) => ({ ...f, lessonQuiz: next }))}
+                                        validation={validateLessonQuiz(editForm.lessonQuiz)}
+                                    />
+                                    <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                        <div className="text-sm font-medium text-slate-800 mb-1">Предпросмотр для ученицы</div>
+                                        <p className="text-xs text-slate-500 mb-2">{editForm.shortDescription || 'Без описания'}</p>
+                                        <div className="text-xs text-slate-600">Вопросов: {normalizeLessonQuiz(editForm.lessonQuiz).questions.length} · Проходной порог: {normalizeLessonQuiz(editForm.lessonQuiz).settings.passPercent}% · Попыток: {normalizeLessonQuiz(editForm.lessonQuiz).settings.attempts}</div>
+                                        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                                            {normalizeLessonQuiz(editForm.lessonQuiz).instruction || 'Инструкция перед тестом не заполнена.'}
+                                        </div>
+                                    </section>
+                                </>
+                            ) : editForm.targetSection === 'lessons' && editForm.lessonKind === 'homework' ? (
+                                <>
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-slate-500 ml-0.5">Полный текст задания</label>
+                                        <RichEditor
+                                            key={`pvl-hw-${contentId}`}
+                                            value={editForm.fullDescriptionHtml}
+                                            onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
+                                            onUploadImage={pvlRichEditorUploadImage}
+                                            placeholder="Опишите домашнее задание..."
+                                        />
+                                    </div>
+                                    <LessonHomeworkBuilder
+                                        value={editForm.lessonHomework}
+                                        onChange={(next) => setEditForm((f) => ({ ...f, lessonHomework: next }))}
+                                        validation={validateLessonHomework(editForm.lessonHomework, { requireCriteria: false })}
+                                    />
+                                    <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                        <div className="text-sm font-medium text-slate-800 mb-2">Предпросмотр для ученицы</div>
+                                        <div className="text-xs text-slate-600">Модуль {clampPvlModule(editForm.moduleNumber)}</div>
+                                        <div className="mt-1 text-xs text-slate-600">
+                                            Дедлайн: {normalizeLessonHomework(editForm.lessonHomework).deadline.type === 'fixed_date'
+                                                ? (normalizeLessonHomework(editForm.lessonHomework).deadline.at || 'не задан')
+                                                : normalizeLessonHomework(editForm.lessonHomework).deadline.type === 'week_based'
+                                                    ? (normalizeLessonHomework(editForm.lessonHomework).deadline.weekBasedLabel || 'по модулю')
+                                                    : 'без дедлайна'}
+                                        </div>
+                                        <div className="mt-2 text-xs text-slate-700">
+                                            Формат ответа: {normalizeLessonHomework(editForm.lessonHomework).responseFormat.artifactType}
+                                        </div>
+                                    </section>
+                                </>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="text-xs text-slate-500 ml-0.5">Текст материала</label>
+                                    <RichEditor
+                                        key={`pvl-cms-${contentId}`}
+                                        value={editForm.fullDescriptionHtml}
+                                        onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
+                                        onUploadImage={pvlRichEditorUploadImage}
+                                        placeholder="Напишите текст материала..."
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : null}
                 </div>
             )}
 
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
+            <div ref={previewCardRef} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
                 <h3 className="font-display text-lg text-slate-800">Предпросмотр карточки</h3>
                 <p className="text-xs text-slate-500">Так материал может выглядеть в библиотеке курса у разных ролей (по целевой роли).</p>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -3489,6 +3894,28 @@ function AdminContentItemScreen({
                     />
                 </div>
             </div>
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => navigate('/admin/content')} className={softBtn}>К списку материалов</button>
+                    {panelMode === 'view' ? (
+                        <>
+                            <button type="button" onClick={beginEdit} className={softBtn}>Редактировать</button>
+                            {item.status === 'published' ? (
+                                <button type="button" onClick={handleUnpublish} className={softBtn}>Снять с публикации</button>
+                            ) : (
+                                <button type="button" onClick={commitPublish} className={primaryBtn}>Опубликовать</button>
+                            )}
+                            <button type="button" onClick={handleArchive} disabled={item.status === 'archived'} className={dangerBtn}>В архив</button>
+                        </>
+                    ) : (
+                        <>
+                            <button type="button" onClick={cancelEdit} className={softBtn}>Отменить</button>
+                            <button type="button" onClick={handleSaveDraft} className={softBtn}>Сохранить черновик</button>
+                            <button type="button" onClick={commitPublish} className={primaryBtn}>Сохранить и опубликовать</button>
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
@@ -3498,46 +3925,172 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const placements = cmsPlacements;
     const setItems = setCmsItems;
     const setPlacements = setCmsPlacements;
-    const [filters, setFilters] = useState({ section: 'all', status: 'all', role: 'all', type: 'all', cohort: 'all', week: 'all', query: '' });
+    const [filters, setFilters] = useState({ section: 'all', status: 'all', role: 'all', type: 'all', cohort: 'all', module: 'all', query: '' });
+    const [isCoverUploading, setIsCoverUploading] = useState(false);
     const [draft, setDraft] = useState({
         title: '',
         shortDescription: '',
-        fullDescription: '',
+        fullDescriptionHtml: '',
         contentType: 'text',
         targetSection: 'library',
-        targetRole: 'student',
+        libraryCategoryId: 'all',
+        lessonKind: 'text_video',
+        lessonVideoUrl: '',
+        lessonVideoEmbed: '',
+        lessonRutubeUrl: '',
+        lessonTextBody: '',
+        lessonQuiz: createDefaultLessonQuiz(),
+        lessonHomeworkPrompt: '',
+        lessonHomeworkExpected: '',
+        lessonHomeworkAllowText: true,
+        lessonHomeworkAllowFile: true,
+        lessonHomeworkDeadlineRule: '',
+        lessonHomeworkRevisionLimit: 3,
+        lessonHomework: createDefaultLessonHomework(),
+        coverImage: '',
+        fileUrl: '',
+        externalUrl: '',
+        targetRole: 'both',
         targetCohort: 'cohort-2026-1',
         status: 'draft',
         visibility: 'all',
         weekNumber: 0,
+        moduleNumber: 0,
         estimatedDuration: '',
         tagsText: '',
     });
     const sections = ['lessons', 'library', 'glossary'];
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
+    const libraryCategories = useMemo(() => {
+        try {
+            return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(MENTOR_COURSE_MIRROR_STUDENT_ID) || [];
+        } catch {
+            return [];
+        }
+    }, []);
+    const moduleOptions = useMemo(() => [0, 1, 2, 3, 4], []);
     const filtered = filterContentItems(items, filters)
         .filter((i) => sections.includes(i.targetSection))
         .filter((i) => (filters.cohort === 'all' ? true : i.targetCohort === filters.cohort))
-        .filter((i) => (filters.week === 'all' ? true : String(i.weekNumber || 0) === String(filters.week)));
+        .filter((i) => (filters.module === 'all' ? true : String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(filters.module)));
     const handleCreate = () => {
         if (!draft.title.trim()) return;
+        if (draft.targetSection === 'library' && (!draft.libraryCategoryId || draft.libraryCategoryId === 'all')) {
+            window.alert('Для библиотечного материала выберите категорию.');
+            return;
+        }
+        if (draft.targetSection === 'lessons' && draft.lessonKind === 'quiz') {
+            const qErrors = validateLessonQuiz(draft.lessonQuiz);
+            if (qErrors.global || Object.keys(qErrors).some((k) => k !== 'global')) {
+                window.alert('Тест заполнен не полностью: проверьте вопросы и правильные ответы.');
+                return;
+            }
+        }
+        if (draft.targetSection === 'lessons' && draft.lessonKind === 'homework') {
+            const hwErrors = validateLessonHomework(draft.lessonHomework, { requireCriteria: false });
+            if (Object.keys(hwErrors).length) {
+                window.alert('Домашнее задание заполнено не полностью: проверьте формат ответа, дедлайн и лимит доработок.');
+                return;
+            }
+        }
         const { tagsText, ...rest } = draft;
+        let normalizedContentType = draft.contentType;
+        if (draft.targetSection === 'lessons') {
+            if (draft.lessonKind === 'text_video') normalizedContentType = 'video';
+            if (draft.lessonKind === 'quiz') normalizedContentType = 'checklist';
+            if (draft.lessonKind === 'homework') normalizedContentType = 'template';
+        } else if (draft.targetSection === 'glossary') {
+            normalizedContentType = 'text';
+        }
+        const resolvedCategoryTitle = draft.targetSection === 'library'
+            ? (libraryCategories.find((c) => c.id === draft.libraryCategoryId)?.title || '')
+            : '';
+        const normalizedDescription = String(draft.fullDescriptionHtml || draft.lessonTextBody || draft.shortDescription || '');
         const record = {
             ...rest,
+            contentType: normalizedContentType,
             tags: String(tagsText || '').split(',').map((x) => x.trim()).filter(Boolean),
-            description: draft.fullDescription || draft.shortDescription,
+            description: normalizedDescription,
+            fullDescription: normalizedDescription,
+            libraryCategoryId: draft.targetSection === 'library' ? draft.libraryCategoryId : undefined,
+            libraryCategoryTitle: draft.targetSection === 'library' ? resolvedCategoryTitle : undefined,
+            categoryId: draft.targetSection === 'library' ? draft.libraryCategoryId : undefined,
+            categoryTitle: draft.targetSection === 'library' ? resolvedCategoryTitle : undefined,
+            lessonKind: draft.targetSection === 'lessons' ? draft.lessonKind : undefined,
+            lessonVideoUrl: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonVideoUrl : undefined,
+            lessonVideoEmbed: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonVideoEmbed : undefined,
+            lessonRutubeUrl: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonRutubeUrl : undefined,
+            lessonTextBody: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonTextBody : undefined,
+            lessonQuiz: draft.targetSection === 'lessons' && draft.lessonKind === 'quiz' ? normalizeLessonQuiz(draft.lessonQuiz) : undefined,
+            lessonHomeworkPrompt: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? draft.lessonHomeworkPrompt : undefined,
+            lessonHomeworkExpected: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? draft.lessonHomeworkExpected : undefined,
+            lessonHomeworkAllowText: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? !!draft.lessonHomeworkAllowText : undefined,
+            lessonHomeworkAllowFile: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? !!draft.lessonHomeworkAllowFile : undefined,
+            lessonHomeworkDeadlineRule: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? draft.lessonHomeworkDeadlineRule : undefined,
+            lessonHomeworkRevisionLimit: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? Number(draft.lessonHomeworkRevisionLimit) || 0 : undefined,
+            lessonHomework: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? normalizeLessonHomework(draft.lessonHomework) : undefined,
+            coverImage: draft.targetSection === 'library' ? (draft.coverImage || '') : '',
+            externalLinks: [draft.externalUrl, draft.fileUrl].filter(Boolean),
             createdBy: 'u-adm-1',
         };
         const created = pvlDomainApi.adminApi.createContentItem(record);
         setItems((prev) => [created, ...prev]);
-        setDraft((d) => ({ ...d, title: '', shortDescription: '', fullDescription: '', tagsText: '' }));
+        setDraft((d) => ({
+            ...d,
+            title: '',
+            shortDescription: '',
+            fullDescriptionHtml: '',
+            tagsText: '',
+            lessonVideoUrl: '',
+            lessonVideoEmbed: '',
+            lessonRutubeUrl: '',
+            lessonTextBody: '',
+            lessonQuiz: createDefaultLessonQuiz(),
+            lessonHomeworkPrompt: '',
+            lessonHomeworkExpected: '',
+            lessonHomework: createDefaultLessonHomework(),
+            coverImage: '',
+            fileUrl: '',
+            externalUrl: '',
+        }));
         navigate(`/admin/content/${created.id}`);
+    };
+    const handleCoverUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            setIsCoverUploading(true);
+            const compressedFile = await api.compressMeetingImage(file);
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                setDraft((d) => ({ ...d, coverImage: ev.target?.result || '' }));
+            };
+            reader.readAsDataURL(compressedFile);
+            const url = await api.uploadMeetingImage(compressedFile);
+            setDraft((d) => ({ ...d, coverImage: url || d.coverImage }));
+        } catch {
+            window.alert('Не удалось загрузить обложку. Попробуйте еще раз.');
+        } finally {
+            setIsCoverUploading(false);
+            e.target.value = '';
+        }
     };
     const handleDeleteItem = (i) => {
         if (!window.confirm(`Удалить материал «${i.title}»? Связанные размещения в разделах тоже будут убраны.`)) return;
         pvlDomainApi.adminApi.deleteContentItem(i.id);
         setItems((prev) => prev.filter((x) => x.id !== i.id));
         setPlacements((prev) => prev.filter((p) => (p.contentId || p.contentItemId) !== i.id));
+    };
+    const canPublishItem = (row) => {
+        if (row?.targetSection === 'lessons' && row?.lessonKind === 'quiz') {
+            const errors = validateLessonQuiz(row.lessonQuiz);
+            return !(errors.global || Object.keys(errors).some((k) => k !== 'global'));
+        }
+        if (row?.targetSection === 'lessons' && row?.lessonKind === 'homework') {
+            const errors = validateLessonHomework(row.lessonHomework, { requireCriteria: false });
+            return Object.keys(errors).length === 0;
+        }
+        return true;
     };
     return (
         <div className="space-y-4">
@@ -3549,67 +4102,250 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 </div>
                 <button type="button" onClick={handleCreate} className="text-sm rounded-xl border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 shrink-0">Добавить материал</button>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 grid md:grid-cols-2 gap-3 shadow-sm">
-                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Название нового материала" />
-                <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Короткое описание" />
-                <select value={draft.targetSection} onChange={(e) => setDraft((d) => ({ ...d, targetSection: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    {sections.map((s) => <option key={s} value={s}>{labelTargetSection(s)}</option>)}
-                </select>
-                <select value={draft.contentType} onChange={(e) => setDraft((d) => ({ ...d, contentType: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    {types.map((s) => <option key={s} value={s}>{CONTENT_TYPE_LABEL[s] || s}</option>)}
-                </select>
-                <select value={draft.visibility || 'all'} onChange={(e) => setDraft((d) => ({ ...d, visibility: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm" title="Видимость материала">
-                    <option value="all">Кто видит: по размещению</option>
-                    <option value="students_only">Только участницы</option>
-                    <option value="mentors_only">Только менторы</option>
-                </select>
-                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Теги через запятую" />
-                <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Длительность (например 20 мин)" />
+            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm space-y-4">
+                <div className="grid md:grid-cols-3 gap-3">
+                    <label className="text-xs text-slate-500">Раздел
+                        <select
+                            value={draft.targetSection}
+                            onChange={(e) => {
+                                const nextSection = e.target.value;
+                                setDraft((d) => ({
+                                    ...d,
+                                    targetSection: nextSection,
+                                    contentType: nextSection === 'lessons'
+                                        ? (d.lessonKind === 'quiz' ? 'checklist' : d.lessonKind === 'homework' ? 'template' : 'video')
+                                        : nextSection === 'glossary' ? 'text' : d.contentType,
+                                }));
+                            }}
+                            className="mt-1 rounded-xl border border-slate-200 p-2 text-sm w-full"
+                        >
+                            {sections.map((s) => <option key={s} value={s}>{labelTargetSection(s)}</option>)}
+                        </select>
+                    </label>
+                    {draft.targetSection === 'lessons' ? (
+                        <label className="text-xs text-slate-500">Тип материала в уроках
+                            <select
+                                value={draft.lessonKind}
+                                onChange={(e) => {
+                                    const lessonKind = e.target.value;
+                                    setDraft((d) => ({
+                                        ...d,
+                                        lessonKind,
+                                        contentType: lessonKind === 'quiz' ? 'checklist' : lessonKind === 'homework' ? 'template' : 'video',
+                                    }));
+                                }}
+                                className="mt-1 rounded-xl border border-slate-200 p-2 text-sm w-full"
+                            >
+                                <option value="text_video">Текстовый урок + видеоурок</option>
+                                <option value="quiz">Тест</option>
+                                <option value="homework">Домашнее задание</option>
+                            </select>
+                        </label>
+                    ) : <div />}
+                </div>
+
+                {draft.targetSection === 'library' ? (
+                    <section className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
+                        <div className="text-sm font-medium text-emerald-900">Форма библиотечного материала</div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Название" />
+                            <select value={draft.libraryCategoryId} onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryId: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white">
+                                <option value="all">Категория библиотеки (обязательно)</option>
+                                {libraryCategories.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                            </select>
+                            <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Краткое описание" />
+                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Теги через запятую" />
+                            <div className="rounded-xl border border-slate-200 p-2 bg-white space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <input value={draft.coverImage} onChange={(e) => setDraft((d) => ({ ...d, coverImage: e.target.value }))} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Ссылка на обложку / изображение" />
+                                    <label className="text-xs rounded-lg border border-slate-200 px-3 py-2 bg-white cursor-pointer whitespace-nowrap">
+                                        {isCoverUploading ? 'Загрузка…' : 'Загрузить'}
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
+                                    </label>
+                                </div>
+                                {draft.coverImage ? (
+                                    <div className="h-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                                        <img src={draft.coverImage} alt="Обложка" className="w-full h-full object-cover" />
+                                    </div>
+                                ) : null}
+                            </div>
+                            <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Ссылка на документ (опционально)" />
+                            <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white md:col-span-2" placeholder="Внешняя ссылка / видео (опционально)" />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs text-slate-500">Текст материала</label>
+                            <RichEditor
+                                key="create-library"
+                                value={draft.fullDescriptionHtml}
+                                onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
+                                onUploadImage={pvlRichEditorUploadImage}
+                                placeholder="Напишите материал для библиотеки..."
+                            />
+                        </div>
+                    </section>
+                ) : null}
+
+                {draft.targetSection === 'glossary' ? (
+                    <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                        <div className="text-sm font-medium text-indigo-900">Форма термина глоссария</div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Термин" />
+                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Теги (опционально)" />
+                            <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white md:col-span-2" placeholder="Короткое пояснение (опционально)" />
+                        </div>
+                        <textarea
+                            value={draft.fullDescriptionHtml}
+                            onChange={(e) => setDraft((d) => ({ ...d, fullDescriptionHtml: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 p-3 text-sm min-h-[110px] bg-white"
+                            placeholder="Определение / описание термина"
+                        />
+                    </section>
+                ) : null}
+
+                {draft.targetSection === 'lessons' ? (
+                    <section className="rounded-xl border border-sky-100 bg-sky-50/40 p-4 space-y-3">
+                        <div className="text-sm font-medium text-sky-900">Форма урока</div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Название" />
+                            <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Краткое описание" />
+                            <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Длительность (например 20 мин)" />
+                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Теги через запятую" />
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                            <div className="text-xs font-medium text-slate-700">Куда публиковать в курсе</div>
+                            <div className="grid md:grid-cols-2 gap-2">
+                                <select
+                                    value={draft.moduleNumber}
+                                    onChange={(e) => setDraft((d) => ({ ...d, moduleNumber: e.target.value, weekNumber: e.target.value }))}
+                                    className="rounded-xl border border-slate-200 p-2 text-sm bg-white"
+                                >
+                                    {moduleOptions.map((m) => (
+                                        <option key={m} value={m}>Модуль {m}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={draft.targetCohort}
+                                    onChange={(e) => setDraft((d) => ({ ...d, targetCohort: e.target.value }))}
+                                    className="rounded-xl border border-slate-200 p-2 text-sm bg-white"
+                                >
+                                    {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        {draft.lessonKind === 'text_video' ? (
+                            <div className="space-y-3">
+                                <div className="grid md:grid-cols-2 gap-3">
+                                    <input value={draft.lessonVideoUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Ссылка на видео (YouTube/Kinescope)" />
+                                    <input value={draft.lessonRutubeUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Приватный RuTube URL" />
+                                    <input value={draft.lessonVideoEmbed} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white md:col-span-2" placeholder="Embed-код/iframe (Kinescope)" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500">Текст урока</label>
+                                    <RichEditor
+                                        key="create-lesson"
+                                        value={draft.fullDescriptionHtml}
+                                        onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val, lessonTextBody: val }))}
+                                        onUploadImage={pvlRichEditorUploadImage}
+                                        placeholder="Содержимое урока..."
+                                    />
+                                </div>
+                            </div>
+                        ) : null}
+                        {draft.lessonKind === 'quiz' ? (
+                            <>
+                                <LessonQuizBuilder
+                                    value={draft.lessonQuiz}
+                                    onChange={(next) => setDraft((d) => ({ ...d, lessonQuiz: next }))}
+                                    validation={validateLessonQuiz(draft.lessonQuiz)}
+                                />
+                                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                    <div className="text-sm font-medium text-slate-800 mb-1">Предпросмотр для ученицы</div>
+                                    <p className="text-xs text-slate-500 mb-2">{draft.shortDescription || 'Без описания'}</p>
+                                    <div className="text-xs text-slate-600">
+                                        Вопросов: {normalizeLessonQuiz(draft.lessonQuiz).questions.length}
+                                        {' · '}
+                                        Проходной порог: {normalizeLessonQuiz(draft.lessonQuiz).settings.passPercent}%
+                                        {' · '}
+                                        Попыток: {normalizeLessonQuiz(draft.lessonQuiz).settings.attempts}
+                                    </div>
+                                    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                                        {normalizeLessonQuiz(draft.lessonQuiz).instruction || 'Инструкция перед тестом не заполнена.'}
+                                    </div>
+                                </section>
+                            </>
+                        ) : null}
+                        {draft.lessonKind === 'homework' ? (
+                            <>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500">Полный текст задания</label>
+                                    <RichEditor
+                                        key="create-homework"
+                                        value={draft.fullDescriptionHtml}
+                                        onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val, lessonHomeworkPrompt: val }))}
+                                        onUploadImage={pvlRichEditorUploadImage}
+                                        placeholder="Опишите домашнее задание..."
+                                    />
+                                </div>
+                                <LessonHomeworkBuilder
+                                    value={draft.lessonHomework}
+                                    onChange={(next) => setDraft((d) => ({ ...d, lessonHomework: next }))}
+                                    validation={validateLessonHomework(draft.lessonHomework, { requireCriteria: false })}
+                                />
+                                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                    <div className="text-sm font-medium text-slate-800 mb-2">Предпросмотр для ученицы</div>
+                                    <div className="text-xs text-slate-600">Модуль {clampPvlModule(draft.moduleNumber)}</div>
+                                    <div className="mt-1 text-xs text-slate-600">
+                                        Дедлайн: {normalizeLessonHomework(draft.lessonHomework).deadline.type === 'fixed_date'
+                                            ? (normalizeLessonHomework(draft.lessonHomework).deadline.at || 'не задан')
+                                            : normalizeLessonHomework(draft.lessonHomework).deadline.type === 'week_based'
+                                                ? (normalizeLessonHomework(draft.lessonHomework).deadline.weekBasedLabel || 'по модулю')
+                                                : 'без дедлайна'}
+                                    </div>
+                                    <div className="mt-2 text-xs text-slate-700">
+                                        Формат ответа: {normalizeLessonHomework(draft.lessonHomework).responseFormat.artifactType} ·
+                                        {' '}разрешено: {normalizeLessonHomework(draft.lessonHomework).responseFormat.allowText ? 'текст ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowFile ? 'файл ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowLink ? 'ссылка' : ''}
+                                    </div>
+                                    <div className="mt-2 text-xs text-slate-700">
+                                        Лимит доработок: {normalizeLessonHomework(draft.lessonHomework).revisions.limitMode === 'unlimited' ? 'без лимита' : normalizeLessonHomework(draft.lessonHomework).revisions.limit}
+                                    </div>
+                                </section>
+                            </>
+                        ) : null}
+                    </section>
+                ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 grid md:grid-cols-6 gap-2 shadow-sm">
-                <select value={filters.section} onChange={(e) => setFilters((f) => ({ ...f, section: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    <option value="all">Все разделы</option>
-                    {sections.map((s) => <option key={s} value={s}>{labelTargetSection(s)}</option>)}
-                </select>
-                <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    <option value="all">Все статусы</option>
-                    <option value="draft">Черновик</option>
-                    <option value="published">Опубликован</option>
-                    <option value="archived">В архиве</option>
-                </select>
-                <select value={filters.role} onChange={(e) => setFilters((f) => ({ ...f, role: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    <option value="all">Все роли</option>
-                    <option value="student">{TARGET_ROLE_LABELS.student}</option>
-                    <option value="mentor">{TARGET_ROLE_LABELS.mentor}</option>
-                    <option value="both">{TARGET_ROLE_LABELS.both}</option>
-                </select>
-                <select value={filters.cohort} onChange={(e) => setFilters((f) => ({ ...f, cohort: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    <option value="all">Все потоки</option>
-                    {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-                </select>
-                <select value={filters.week} onChange={(e) => setFilters((f) => ({ ...f, week: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                    <option value="all">Все недели</option>
-                    {Array.from({ length: 13 }, (_, i) => <option key={i} value={i}>Неделя {i}</option>)}
-                </select>
-                <input value={filters.query} onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Поиск по названию" />
-            </div>
+            
             <div className="grid gap-3">
                 {filtered.map((i) => (
                     <article key={i.id} className="rounded-xl border border-slate-100/90 bg-white p-4 shadow-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <div className="text-sm font-medium text-slate-800">{i.title}</div>
-                                <div className="text-xs text-slate-500 mt-0.5">{labelTargetSection(i.targetSection)} · {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole} · неделя {i.weekNumber} · размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}</div>
+                                <div className="text-xs text-slate-500 mt-0.5">{labelTargetSection(i.targetSection)} · {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole} · модуль {clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)} · размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <StatusBadge>{CONTENT_STATUS_LABEL[i.status] || i.status}</StatusBadge>
                                 <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50 font-medium">Открыть</button>
-                                <button type="button" onClick={() => { pvlDomainApi.adminApi.publishContentItem(i.id); setItems((prev) => publishContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Опубликовать</button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!canPublishItem(i)) {
+                                            window.alert('Нельзя опубликовать тест: проверьте вопросы и правильные ответы.');
+                                            return;
+                                        }
+                                        pvlDomainApi.adminApi.publishContentItem(i.id);
+                                        setItems((prev) => publishContentItem(prev, i.id));
+                                    }}
+                                    className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                >
+                                    Опубликовать
+                                </button>
                                 <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Снять с публикации</button>
                                 <button type="button" onClick={() => { pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
                                 <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
                                 <button type="button" onClick={() => {
-                                    const pl = pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: i.weekNumber || 0, moduleNumber: i.moduleNumber || 0, orderIndex: i.orderIndex || 999 });
+                                    const normalizedModule = clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0);
+                                    const pl = pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: normalizedModule, moduleNumber: normalizedModule, orderIndex: i.orderIndex || 999 });
                                     if (pl) setPlacements((prev) => [...prev, pl]);
                                 }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Разместить</button>
                                 <button type="button" onClick={() => {
@@ -3647,7 +4383,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     );
 }
 
-function AdminStudents({ navigate }) {
+function AdminStudents({ navigate, route }) {
     const [cohortId, setCohortId] = useState('all');
     const cohorts = pvlDomainApi.adminApi.getAdminCohorts();
     const rows = buildTeacherStudentRows().filter((r) => {
@@ -3752,7 +4488,7 @@ function AdminMentors() {
         <div className="space-y-4">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
                 <h2 className="font-display text-2xl text-slate-800">Менторы</h2>
-                <p className="text-sm text-slate-500 mt-1">Очередь проверок, незакрытые работы и общий статус сопровождения по менти.</p>
+                <p className="text-sm text-slate-500 mt-1">Ключевые метрики по ментору: менти, незакрытые задачи, просроченные проверки и последний вход.</p>
             </div>
             <div className="grid gap-3">
                 {mentors.map((m) => (
@@ -3761,13 +4497,11 @@ function AdminMentors() {
                             <div className="text-sm font-medium text-slate-800">{m.user?.fullName || m.mentorUserId}</div>
                             <StatusBadge>{m.statusLabel}</StatusBadge>
                         </div>
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 mt-3 text-xs text-slate-600">
+                        <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
                             <div>Менти: <span className="font-medium tabular-nums text-slate-800">{m.menteeCount}</span></div>
                             <div>Незакрытых задач: <span className="font-medium tabular-nums text-slate-800">{m.unclosed}</span></div>
-                            <div>Ждут проверки: <span className="font-medium tabular-nums text-slate-800">{m.pendingReview}</span></div>
-                            <div>Просроченная проверка: <span className="font-medium tabular-nums text-rose-700">{m.overdueReview}</span></div>
-                            <div>Менти на доработке: <span className="font-medium tabular-nums text-slate-800">{m.menteesInRevision}</span></div>
-                            <div>Активность: <span className="text-slate-700">{m.lastActivity}</span></div>
+                            <div>Просроченных проверок: <span className="font-medium tabular-nums text-rose-700">{m.overdueReview}</span></div>
+                            <div>Последний вход: <span className="text-slate-700">{m.lastActivity}</span></div>
                         </div>
                     </article>
                 ))}
@@ -3892,7 +4626,7 @@ function AdminSettings() {
                 {pvlDevToolsEnabled() ? (
                     <>
                         <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700 font-mono">
-                            Курс макс {settings.scoreRules.COURSE_POINTS_MAX}, СЗ макс {settings.scoreRules.SZ_POINTS_MAX}, неделя 0 {settings.scoreRules.WEEK0_POINTS}, неделя {settings.scoreRules.WEEK_CLOSURE_POINTS}, КТ {settings.scoreRules.CONTROL_POINT_POINTS}, бонус {settings.scoreRules.MENTOR_BONUS_POOL_MAX}
+                            Курс макс {settings.scoreRules.COURSE_POINTS_MAX}, СЗ макс {settings.scoreRules.SZ_POINTS_MAX}, модуль 0 {settings.scoreRules.WEEK0_POINTS}, модуль {settings.scoreRules.WEEK_CLOSURE_POINTS}, КТ {settings.scoreRules.CONTROL_POINT_POINTS}, бонус {settings.scoreRules.MENTOR_BONUS_POOL_MAX}
                         </div>
                         <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/80 p-2 text-xs text-amber-900">Вопрос методологии: {settings.methodQuestions[0]}</div>
                     </>
@@ -4006,12 +4740,12 @@ function AdminPage({
             />
         );
     }
-    if (route === '/admin/students') return <AdminStudents navigate={navigate} />;
-    if (route === '/admin/mentors') return <AdminMentors />;
-    if (route === '/admin/settings') return <AdminSettings />;
+    if (adminPathOnly === '/admin/students') return <AdminStudents navigate={navigate} route={route} />;
+    if (adminPathOnly === '/admin/mentors') return <AdminMentors />;
+    if (adminPathOnly === '/admin/settings') return <AdminSettings />;
 
-    if (/^\/admin\/students\/[^/]+\/task\/[^/]+$/.test(route)) {
-        const parts = route.split('/');
+    if (/^\/admin\/students\/[^/]+\/task\/[^/]+$/.test(adminPathOnly)) {
+        const parts = adminPathOnly.split('/');
         const menteeSeg = parts[3];
         const taskId = parts[5];
         const resolved = LEGACY_MENTEE_ROUTE_TO_USER[menteeSeg] || menteeSeg;
@@ -4041,8 +4775,8 @@ function AdminPage({
             />
         );
     }
-    if (/^\/admin\/students\/[^/]+$/.test(route)) {
-        const menteeSeg = route.split('/')[3];
+    if (/^\/admin\/students\/[^/]+$/.test(adminPathOnly)) {
+        const menteeSeg = adminPathOnly.split('/')[3];
         return (
             <PvlMenteeCardView
                 key={`adm-card-${menteeSeg}-${refreshKey}`}
@@ -4188,9 +4922,9 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         { title: 'Библиотека не смешана с Уроками', ok: true },
         { title: 'Результаты содержат домашки/статусы/комментарии', ok: pvlDomainApi.studentApi.getStudentResults('u-st-1').length > 0 },
         { title: 'Курсовые 400 и СЗ 54 раздельно', ok: scoresSeparated },
-        { title: 'Недели 0–12 присутствуют', ok: weeks.some((w) => w.weekNumber === 0) && weeks.some((w) => w.weekNumber === 12) },
+        { title: 'Модули 0-4 присутствуют', ok: weeks.some((w) => w.moduleNumber === 0) && weeks.some((w) => w.moduleNumber === 4) },
         { title: '9 КТ присутствуют', ok: cps.length === 9 },
-        { title: 'Неделя 6: 3 отдельные КТ', ok: week6CpCount === 3 },
+        { title: 'Модуль с 3 отдельными КТ', ok: week6CpCount === 3 },
         { title: 'Дедлайн записи СЗ: 30.06.2026', ok: szDeadlineOk },
         { title: 'Учительская: 14 пунктов меню (управление + курс + Настройки)', ok: adminMenuOk },
         { title: 'Календарь ПВЛ: есть события в seed', ok: pvlCalendarOk },
@@ -4519,7 +5253,7 @@ export default function PvlPrototypeApp({
     ) : null;
 
     return (
-        <div className="relative rounded-3xl overflow-hidden">
+        <div className="relative rounded-3xl overflow-hidden" style={{ zoom: 1.15 }}>
             <div
                 className="pointer-events-none absolute inset-0 opacity-90"
                 aria-hidden
@@ -4545,7 +5279,7 @@ export default function PvlPrototypeApp({
                 <main className="space-y-4 min-w-0">
                     {!embeddedInGarden ? (
                         <div className="rounded-2xl border border-slate-100/90 bg-white/90 backdrop-blur-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shadow-slate-200/30">
-                            <SubtleTrail path={route} />
+                            {!route.startsWith('/admin/') ? <SubtleTrail path={route} /> : <div />}
                             <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} />
                             {devToolsBar}
                         </div>

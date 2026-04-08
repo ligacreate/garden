@@ -481,7 +481,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                 }}
                             />
                         </label>
-                        <label className="block text-xs text-slate-500">Дата (YYYY-MM-DD)
+                        <label className="block text-xs text-slate-500">Дата (ДД-ММ-ГГГГ)
                             <input
                                 className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
                                 value={editing.date || ''}

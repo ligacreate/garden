@@ -15,8 +15,8 @@ export const COURSE_POINT_SOURCES = Object.freeze({
 });
 
 /**
- * Неделя 0: +20 при закрытии (онбординг).
- * Недели 1–12: +20 за полностью закрытую неделю, суммарно не более 240.
+ * Модуль 0: +20 при закрытии (онбординг).
+ * Модули 1–4 (этапы 1–12): +20 за полностью закрытый этап, суммарно не более 240.
  */
 export function pointsForWeek0Closed(isClosed) {
     return isClosed ? SCORING_RULES.WEEK0_POINTS : 0;

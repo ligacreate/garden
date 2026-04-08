@@ -290,9 +290,11 @@ function calculatePointsSummary(studentId) {
     const szMentorAssessmentTotal = capSzMentor(sz?.mentorAssessmentPoints || 0);
 
     // history append-once events
-    if (week0Points > 0) addPointsHistory(studentId, 'week0', 'week0', SCORING_RULES.WEEK0_POINTS, 'Завершена неделя 0', '');
+    if (week0Points > 0) addPointsHistory(studentId, 'week0', 'week0', SCORING_RULES.WEEK0_POINTS, 'Завершён модуль 0', '');
     db.weekCompletionState.filter((w) => w.studentId === studentId && w.weekNumber >= 1 && w.weekNumber <= 12 && w.weekClosed).forEach((w) => {
-        addPointsHistory(studentId, 'weekCompletion', String(w.weekNumber), SCORING_RULES.WEEK_CLOSURE_POINTS, `Закрыта неделя ${w.weekNumber}`, '');
+        const cw = db.courseWeeks.find((row) => row.weekNumber === w.weekNumber);
+        const modLabel = cw?.moduleNumber ?? w.weekNumber;
+        addPointsHistory(studentId, 'weekCompletion', String(w.weekNumber), SCORING_RULES.WEEK_CLOSURE_POINTS, `Закрыт модуль ${modLabel}`, '');
     });
     db.controlPointState.filter((c) => c.studentId === studentId && c.status === 'accepted').forEach((c) => {
         addPointsHistory(studentId, 'controlPoint', c.controlPointId, SCORING_RULES.CONTROL_POINT_POINTS, `Принята ${c.controlPointId}`, '');
@@ -446,7 +448,10 @@ function buildStudentActivityFeed(studentId, limit = 10) {
             id: `meet-${meeting.id}`,
             kind: 'meeting',
             text: 'Ближайшая встреча с ментором',
-            detail: meeting.title || `Неделя ${meeting.weekNumber}`,
+            detail: meeting.title || (() => {
+                const cw = db.courseWeeks.find((row) => row.weekNumber === meeting.weekNumber);
+                return `Модуль ${cw?.moduleNumber ?? meeting.weekNumber}`;
+            })(),
             at: meeting.scheduledAt,
             taskId: null,
         });
@@ -682,7 +687,7 @@ export const studentApi = {
             status: 'deadline',
             weekNumber: w.weekNumber,
             focus: w.mentorMeetingFocus || '',
-            eventType: 'Дедлайн недели',
+            eventType: 'Дедлайн модуля',
         }));
         return [...meetings, ...rhythm].sort((a, b) => String(a.at).localeCompare(String(b.at)));
     },
@@ -1009,6 +1014,8 @@ export const mentorApi = {
     /** Доска проверок: не проверено / на доработке / проверено (все задания менти ментора) */
     getMentorReviewBoard(mentorId) {
         const menteeIds = getMentorMenteeIds(mentorId);
+        const nowMs = Date.now();
+        const DAY_MS = 24 * 60 * 60 * 1000;
         const enrich = (s) => {
             const task = db.homeworkTasks.find((t) => t.id === s.taskId);
             const user = db.users.find((u) => u.id === s.studentId);
@@ -1016,9 +1023,12 @@ export const mentorApi = {
             const lessonHint = (task?.linkedLessonIds || []).length
                 ? `Урок: ${(task.linkedLessonIds || []).join(', ')}`
                 : weekRow
-                  ? `Неделя ${weekRow.weekNumber}`
+                  ? `Модуль ${weekRow.moduleNumber ?? weekRow.weekNumber}`
                   : '—';
             const maxScore = task?.scoreMax ?? 0;
+            const acceptedAt = s.acceptedAt || s.lastStatusChangedAt || null;
+            const acceptedAgeMs = acceptedAt ? Math.max(0, nowMs - new Date(`${String(acceptedAt).slice(0, 10)}T00:00:00`).getTime()) : 0;
+            const isArchived = s.status === TASK_STATUS.ACCEPTED && acceptedAgeMs >= DAY_MS;
             return {
                 studentId: s.studentId,
                 taskId: s.taskId,
@@ -1034,13 +1044,17 @@ export const mentorApi = {
                 revisionCycles: s.revisionCycles ?? 0,
                 scoreAwarded: s.totalTaskPoints ?? 0,
                 maxScore,
+                acceptedAt,
+                isArchived,
             };
         };
         const all = db.studentTaskStates.filter((st) => menteeIds.includes(st.studentId));
         const unchecked = all.filter((st) => [TASK_STATUS.PENDING_REVIEW, TASK_STATUS.SUBMITTED].includes(st.status)).map(enrich);
         const revision = all.filter((st) => st.status === TASK_STATUS.REVISION_REQUESTED).map(enrich);
-        const done = all.filter((st) => st.status === TASK_STATUS.ACCEPTED).map(enrich);
-        return { unchecked, revision, done };
+        const doneRaw = all.filter((st) => st.status === TASK_STATUS.ACCEPTED).map(enrich);
+        const done = doneRaw.filter((x) => !x.isArchived);
+        const archive = doneRaw.filter((x) => x.isArchived);
+        return { unchecked, revision, done, archive };
     },
     openTaskDispute(actorUserId, studentId, taskId, openedByRole = 'mentor') {
         return openTaskDisputeCore(actorUserId, studentId, taskId, openedByRole);
@@ -1073,7 +1087,9 @@ export const mentorApi = {
         const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus: state.status, changedByUserId: mentorId, comment: payload?.generalComment || '', createdAt: nowIso() };
         db.statusHistory.push(history);
         db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: mentorId, authorRole: ROLES.MENTOR, messageType: 'mentor_review', text: payload?.generalComment || '', attachments: [], linkedVersionId: state.currentVersionId, linkedStatusHistoryId: history.id, isSystem: false, createdAt: nowIso(), readBy: [mentorId] });
-        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${mapTaskStatus(state.status)}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
+        if (state.status !== TASK_STATUS.ACCEPTED) {
+            db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${mapTaskStatus(state.status)}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
+        }
         pushEvent('mentor_commented', { mentorId, studentId, taskId });
         pushEvent('task_status_changed', { studentId, taskId, toStatus: state.status });
         addAuditEvent(mentorId, ROLES.MENTOR, 'mentor_review', 'task', taskId, 'Mentor reviewed task', { status: state.status });
@@ -1204,6 +1220,23 @@ export const adminApi = {
     publishContentItem(contentId) {
         const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.PUBLISHED });
         if (item) {
+            const relatedPlacements = db.contentPlacements.filter((p) => (p.contentItemId || p.contentId) === contentId);
+            if (relatedPlacements.length === 0) {
+                this.createPlacement({
+                    contentItemId: contentId,
+                    targetSection: item.targetSection || 'library',
+                    targetRole: item.targetRole || 'both',
+                    cohortId: item.targetCohort || 'cohort-2026-1',
+                    targetCohort: item.targetCohort || 'cohort-2026-1',
+                    weekNumber: Number(item.weekNumber) || 0,
+                    moduleNumber: Number(item.moduleNumber) || 0,
+                    orderIndex: Number(item.orderIndex) || 999,
+                    isPublished: true,
+                });
+            } else if (!relatedPlacements.some((p) => p.isPublished !== false)) {
+                const first = relatedPlacements[0];
+                this.updatePlacement(first.id, { isPublished: true });
+            }
             addAuditEvent('u-adm-1', ROLES.ADMIN, 'publish_content', 'content_item', contentId, 'Published content item', {});
             addNotification('u-adm-1', ROLES.ADMIN, 'content_published', 'Материал опубликован', { contentId });
         }
@@ -1370,7 +1403,9 @@ function setTaskStatus(studentId, taskId, toStatus, changedByUserId, comment = '
     }
     const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus, changedByUserId, comment, createdAt: nowIso() };
     db.statusHistory.push(history);
-    db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${toStatus}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
+    if (toStatus !== TASK_STATUS.ACCEPTED) {
+        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: `Статус изменен на ${toStatus}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
+    }
     pushEvent('task_status_changed', { studentId, taskId, toStatus });
     addAuditEvent(changedByUserId, 'system', 'set_task_status', 'task', taskId, `Status changed to ${toStatus}`, { studentId, comment });
     return history;

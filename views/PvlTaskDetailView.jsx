@@ -139,14 +139,14 @@ export const controlPointMeta = {
     deadlineAt: '2026-06-02',
     affectsPoints: true,
     affectsAdmission: true,
-    specialNote: 'Неделя 6 содержит 3 отдельные контрольные точки: КТ4, КТ5, КТ6.',
+    specialNote: 'Модуль 2 содержит 3 отдельные контрольные точки: КТ4, КТ5, КТ6.',
 };
 
 const relatedLinks = [
-    { id: 'rl1', label: 'Неделя курса', href: '#/course/week/6' },
+    { id: 'rl1', label: 'Модуль курса', href: '#/course/module/2' },
     { id: 'rl2', label: 'Связанный урок', href: '#/lesson/lesson-m2-scenario-logic' },
     { id: 'rl3', label: 'Практикум с ментором', href: '#/mentor-practice/practice-scenario-workshop' },
-    { id: 'rl4', label: 'Соседнее задание недели', href: '#/results/task-kt5-mini-run' },
+    { id: 'rl4', label: 'Соседнее задание модуля', href: '#/results/task-kt5-mini-run' },
     { id: 'rl5', label: 'Сертификация', href: '#/certification/recording' },
 ];
 
@@ -176,6 +176,19 @@ const Pill = ({ children, tone }) => (
         {children}
     </span>
 );
+
+function RevisionCyclesMeter({ revisionCycles = 0, maxCycles = 3 }) {
+    const used = Math.max(0, Number(revisionCycles) || 0);
+    const max = Math.max(1, Number(maxCycles) || 3);
+    return (
+        <div className="w-[120px] self-end">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                <span>Правок</span>
+                <span className="tabular-nums">{used}/{max}</span>
+            </div>
+        </div>
+    );
+}
 
 export function detectTooManyRevisions(nextActionsText = '') {
     const lines = String(nextActionsText)
@@ -283,18 +296,21 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="font-display text-3xl text-slate-800">{data.title}</h2>
-                    <p className="text-sm text-slate-500 mt-1">Неделя {data.weekNumber} · Модуль {data.moduleNumber} · {data.type}</p>
+                    <p className="text-sm text-slate-500 mt-1">Модуль {data.moduleNumber ?? data.weekNumber} · {data.type}</p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
+                <div className="flex w-[132px] flex-col items-end gap-1">
                     <Pill tone={statusTone(data.status)}>{shortStatusLabel(data.status)}</Pill>
-                    <span className="text-xs tabular-nums text-slate-500">Оценка: {data.score}/{data.maxScore}</span>
+                    <span className="w-[120px] text-right text-xs tabular-nums text-slate-500">Оценка: {data.score}/{data.maxScore}</span>
+                    <RevisionCyclesMeter revisionCycles={data.revisionCycles} maxCycles={3} />
                 </div>
             </div>
-            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-3 text-sm">
-                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Дедлайн: {data.deadlineAt}</div>
-                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Сдано: {data.submittedAt || '—'}</div>
-                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Принято: {data.acceptedAt || '—'}</div>
-                <div className="rounded-xl bg-slate-50 border border-slate-100 p-2">Обновлено: {data.lastStatusChangedAt || '—'}</div>
+            <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                    <span>Дедлайн: <span className="font-medium text-slate-800">{data.deadlineAt || '—'}</span></span>
+                    <span>Сдано: <span className="font-medium text-slate-800">{data.submittedAt || '—'}</span></span>
+                    <span>Принято: <span className="font-medium text-slate-800">{data.acceptedAt || '—'}</span></span>
+                    <span>Обновлено: <span className="font-medium text-slate-800">{data.lastStatusChangedAt || '—'}</span></span>
+                </div>
             </div>
             {isOverdue ? <div className="mt-2 text-xs text-rose-700">Просрочен дедлайн сдачи.</div> : null}
         </div>
@@ -309,18 +325,17 @@ export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButto
                 <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
             ) : null}
             <h2 className="font-display text-2xl md:text-3xl text-[#4A3728]">{data.title}</h2>
-            <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-[#2C1810]">
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] px-3 py-2">
-                    <span className="text-[#9B8B80] text-xs block">Дедлайн</span>
-                    <span className="font-medium">{data.deadlineAt || '—'}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-[#9B8B80] text-xs">Статус</span>
-                    <Pill tone={statusTone(data.status)}>{data.status}</Pill>
-                </div>
-                <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] px-3 py-2 tabular-nums">
-                    <span className="text-[#9B8B80] text-xs block">Оценка</span>
-                    <span className="font-medium">{data.score}/{data.maxScore}</span>
+            <div className="mt-3 rounded-xl border border-[#F0E6DC] bg-[#FAF6F2]/70 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#7A6758]">
+                    <span>Дедлайн: <span className="font-medium text-[#4A3728]">{data.deadlineAt || '—'}</span></span>
+                    <span className="inline-flex items-center gap-2">
+                        <span>Статус</span>
+                        <Pill tone={statusTone(data.status)}>{data.status}</Pill>
+                    </span>
+                    <span className="tabular-nums">Оценка: <span className="font-medium text-[#4A3728]">{data.score}/{data.maxScore}</span></span>
+                    <div className="min-w-[150px]">
+                        <RevisionCyclesMeter revisionCycles={data.revisionCycles} maxCycles={3} />
+                    </div>
                 </div>
             </div>
         </div>
@@ -404,7 +419,16 @@ export function renderSubmissionVersions(versions) {
     return versions.map((version) => <SubmissionVersionCard key={version.id} version={version} />);
 }
 
-export function SubmissionHistory({ versions, role, onUploadVersion, onSaveDraft, onSubmit, draftText, setDraftText }) {
+export function SubmissionHistory({
+    versions,
+    role,
+    onUploadVersion,
+    onSaveDraft,
+    onSubmit,
+    draftText,
+    setDraftText,
+    canEditStudentSubmission = true,
+}) {
     const currentVersion = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
     const previousVersions = versions.filter((v) => v.id !== currentVersion?.id).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
     return (
@@ -424,18 +448,26 @@ export function SubmissionHistory({ versions, role, onUploadVersion, onSaveDraft
             ) : null}
             {role === 'student' ? (
                 <div className="mt-3 border-t border-slate-100 pt-3">
-                    <textarea
-                        value={draftText}
-                        onChange={(e) => setDraftText(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                        rows={4}
-                        placeholder="Черновик ответа..."
-                    />
-                    <div className="flex flex-wrap gap-2 mt-2">
-                        <button onClick={() => onSaveDraft(draftText)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Сохранить черновик</button>
-                        <button onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800 hover:bg-sky-100">Добавить новую версию</button>
-                        <button onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
-                    </div>
+                    {canEditStudentSubmission ? (
+                        <>
+                            <textarea
+                                value={draftText}
+                                onChange={(e) => setDraftText(e.target.value)}
+                                className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+                                rows={4}
+                                placeholder="Черновик ответа..."
+                            />
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                <button onClick={() => onSaveDraft(draftText)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Сохранить черновик</button>
+                                <button onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800 hover:bg-sky-100">Добавить новую версию</button>
+                                <button onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-xs text-slate-500">
+                            Ответ уже отправлен и ожидает решения ментора. Редактирование откроется, если ментор вернет работу на доработку.
+                        </p>
+                    )}
                 </div>
             ) : (
                 <div className="mt-3 text-xs text-slate-500">Для ментора: доступны просмотр всех версий, скачивание вложений и сравнение последней и предыдущей.</div>
@@ -467,7 +499,13 @@ export function StatusTimeline({ history }) {
 }
 
 export function renderCommentsThread(messages) {
-    return messages.map((m) => (
+    const visibleMessages = (messages || []).filter((m) => {
+        const isAcceptedSystemStatus = m.authorRole === 'system'
+            && m.messageType === 'status'
+            && String(m.text || '').toLowerCase().includes('статус изменен на принято');
+        return !isAcceptedSystemStatus;
+    });
+    return visibleMessages.map((m) => (
         <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -493,7 +531,7 @@ export function CommentsThread({
 }) {
     const [message, setMessage] = useState('');
     const disputeMode = disputeOpen;
-    const showComposer = !threadLocked || disputeMode;
+    const showComposer = role !== 'student' && (!threadLocked || disputeMode);
     return (
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <h3 className="font-display text-xl text-slate-800 mb-1">Лента по заданию</h3>
@@ -510,6 +548,11 @@ export function CommentsThread({
                         Открыть спор по оценке
                     </button>
                 </div>
+            ) : null}
+            {role === 'student' ? (
+                <p className="mt-3 text-xs text-slate-500">
+                    Лента только для уведомлений: изменение статуса, ответ ментора и системные события.
+                </p>
             ) : null}
             {disputeMode ? (
                 <p className="mt-3 text-xs text-slate-600">Открыт спор — пишите только по сути расхождения с оценкой или проверкой.</p>
@@ -708,7 +751,6 @@ function MentorTaskSlim({
                 </button>
                 <p className="text-xs text-[#9B8B80] max-w-xl">Открывает отдельный урок как материал в библиотеке, а не общий трекер.</p>
             </div>
-            <TaskRevisionSummary revisionCyclesFromHistory={td.revisionCycles ?? 0} storedRevisionCycles={td.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <MentorStudentAnswerCompact versions={state.submissionVersions} />
             {!accepted ? (
@@ -777,11 +819,11 @@ export function renderTaskDetail({
     threadLocked,
     disputeOpen,
     onOpenDispute,
+    canEditStudentSubmission,
 }) {
     return (
         <div className="space-y-3">
             <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
-            <TaskRevisionSummary revisionCyclesFromHistory={state.taskDetail.revisionCycles ?? 0} storedRevisionCycles={state.taskDetail.revisionCycles} />
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
             <SubmissionHistory
                 versions={state.submissionVersions}
@@ -791,6 +833,7 @@ export function renderTaskDetail({
                 onSubmit={onSubmitForReview}
                 draftText={draftText}
                 setDraftText={setDraftText}
+                canEditStudentSubmission={canEditStudentSubmission}
             />
             <CommentsThread
                 messages={state.threadMessages}
@@ -821,6 +864,7 @@ export default function PvlTaskDetailView({
     navigate,
     mentorRoutePrefix = '/mentor',
     showHeaderBack = true,
+    backLabelOverride,
 }) {
     const [state, setState] = useState({
         taskDetail: initialData?.taskDetail || { ...taskDetail },
@@ -834,6 +878,11 @@ export default function PvlTaskDetailView({
 
     const threadLocked = (state.taskDetail.isAcceptedWork || state.taskDetail.status === 'принято') && !state.taskDetail.disputeOpen;
     const disputeOpen = !!state.taskDetail.disputeOpen;
+    const canEditStudentSubmission = useMemo(() => {
+        if (role !== 'student') return false;
+        const s = String(state.taskDetail.status || '').toLowerCase();
+        return s === 'на доработке' || s === 'черновик' || s === 'в работе' || s === 'не начато';
+    }, [role, state.taskDetail.status]);
 
     const handleOpenDispute = () => {
         if (role === 'mentor' && mentorActorId && taskStudentId && taskId) {
@@ -894,11 +943,14 @@ export default function PvlTaskDetailView({
     };
 
     const backLabel =
+        backLabelOverride
+        || (
         role === 'mentor'
             ? mentorRoutePrefix === '/admin'
                 ? '← К карточке ученицы'
                 : '← К карточке менти'
-            : '← Назад в «Результаты»';
+            : '← Назад в «Результаты»'
+            );
 
     const showReviewAck =
         role === 'student'
@@ -957,11 +1009,13 @@ export default function PvlTaskDetailView({
                     if (onStudentSaveDraft) onStudentSaveDraft(text);
                 },
                 onSubmitForReview: () => {
+                    if (!canEditStudentSubmission) return;
                     submitForReview(setState);
                     if (onStudentSubmit) onStudentSubmit(draftText);
                 },
                 draftText,
                 setDraftText,
+                canEditStudentSubmission,
                 mentorForm,
                 setMentorForm,
                 onSaveMentorForm: handleSaveMentorForm,

@@ -17,7 +17,7 @@ const byWeek = new Map(CANONICAL_SCHEDULE_2026.weeks.map((w) => [w.weekNumber, w
 
 const mkWeekId = (cohortId, weekNumber) => `${cohortId}-w${weekNumber}`;
 
-/** Закрытие недели для бальной логики (нед. 0 и 1–12). */
+/** Закрытие этапа (модуль 0 и 1–12) для бальной логики. */
 function mkWeekCompletion(studentId, weekNumber, closed) {
     return {
         id: `wcs-${studentId}-w${weekNumber}`,
@@ -83,9 +83,9 @@ export const seed = {
         startDate: w.startDate,
         endDate: w.endDate,
         moduleNumber: w.moduleNumber,
-        title: `Неделя ${w.weekNumber}`,
-        artifactTitle: w.weekNumber === 0 ? 'Стартовый маршрут' : `Артефакт недели ${w.weekNumber}`,
-        mentorMeetingFocus: `Фокус недели ${w.weekNumber}`,
+        title: `Модуль ${w.moduleNumber}`,
+        artifactTitle: w.weekNumber === 0 ? 'Стартовый маршрут' : `Артефакт модуля ${w.moduleNumber}`,
+        mentorMeetingFocus: `Фокус модуля ${w.moduleNumber}`,
         isPrelearning: w.weekNumber === 0,
         createdAt: now,
         updatedAt: now,
@@ -93,7 +93,7 @@ export const seed = {
     lessons: CANONICAL_SCHEDULE_2026.weeks.map((w, idx) => ({
         id: `les-${idx + 1}`,
         weekId: mkWeekId('cohort-2026-1', w.weekNumber),
-        title: `Урок недели ${w.weekNumber}`,
+        title: `Урок модуля ${w.moduleNumber}`,
         stepType: 'изучить',
         artifactType: 'text',
         deadlineAt: w.endDate,
@@ -104,14 +104,14 @@ export const seed = {
     })),
     homeworkTasks: [
         { id: 'task-1', weekId: mkWeekId('cohort-2026-1', 6), title: 'Сценарий встречи v0.8', description: 'Собрать сценарий', artifact: 'Документ', criteria: ['Логика', 'Структура'], uploadTypes: ['text', 'file'], taskType: 'homework', isControlPoint: true, controlPointId: 'cp-4', deadlineAt: byWeek.get(6).endDate, scoreMax: 20, scoreType: 'course_points', linkedLessonIds: ['les-7'], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
-        { id: 'task-1b', weekId: mkWeekId('cohort-2026-1', 6), title: 'Чек-лист практикума (неделя 6)', description: 'Внутренняя практика', artifact: 'Чек-лист', criteria: ['Полнота'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(6).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: ['les-7'], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
+        { id: 'task-1b', weekId: mkWeekId('cohort-2026-1', 6), title: 'Чек-лист практикума (модуль 2)', description: 'Внутренняя практика', artifact: 'Чек-лист', criteria: ['Полнота'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(6).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: ['les-7'], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
         { id: 'task-2', weekId: mkWeekId('cohort-2026-1', 6), title: 'Пилот 2 завтрака Лиги', description: 'Провести практикумы', artifact: 'Отчет', criteria: ['Подтверждение', 'Рефлексия'], uploadTypes: ['text', 'link'], taskType: 'control_point', isControlPoint: true, controlPointId: 'cp-6', deadlineAt: byWeek.get(6).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: ['les-7'], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
-        { id: 'task-2b', weekId: mkWeekId('cohort-2026-1', 7), title: 'Анкета обратной связи (неделя 7)', description: 'Собрать ОС', artifact: 'Таблица', criteria: ['Структура'], uploadTypes: ['file'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(7).endDate, scoreMax: 15, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
+        { id: 'task-2b', weekId: mkWeekId('cohort-2026-1', 7), title: 'Анкета обратной связи (модуль 3)', description: 'Собрать ОС', artifact: 'Таблица', criteria: ['Структура'], uploadTypes: ['file'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(7).endDate, scoreMax: 15, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
         { id: 'task-2c', weekId: mkWeekId('cohort-2026-1', 5), title: 'Мини-проект модуля 2', description: 'Короткий кейс', artifact: 'Текст', criteria: ['Ясность'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(5).endDate, scoreMax: 12, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
         { id: 'task-3', weekId: mkWeekId('cohort-2026-1', 10), title: 'Запись СЗ', description: 'Сдать запись СЗ', artifact: 'Видео', criteria: ['Качество', 'Структура'], uploadTypes: ['video', 'link'], taskType: 'control_point', isControlPoint: true, controlPointId: 'cp-8', deadlineAt: SCORE_RULES.SZ_RECORDING_DEADLINE, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: ['les-11'], linkedPracticumIds: [], linkedCertificationStage: 'sz_recording', createdAt: now, updatedAt: now },
         { id: 'task-4', weekId: mkWeekId('cohort-2026-1', 5), title: 'Рефлексия по модулю 1', description: 'Короткая рефлексия', artifact: 'Текст', criteria: ['Честность'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(5).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
-        { id: 'task-5', weekId: mkWeekId('cohort-2026-1', 3), title: 'Домашка недели 3 (слабый прогресс)', description: 'Базовое задание', artifact: 'Текст', criteria: ['Срок'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(3).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
-        { id: 'task-6', weekId: mkWeekId('cohort-2026-1', 2), title: 'Упражнение недели 2', description: 'Повторение', artifact: 'Текст', criteria: ['Точность'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(2).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
+        { id: 'task-5', weekId: mkWeekId('cohort-2026-1', 3), title: 'Домашка модуля 1 (слабый прогресс)', description: 'Базовое задание', artifact: 'Текст', criteria: ['Срок'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(3).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
+        { id: 'task-6', weekId: mkWeekId('cohort-2026-1', 2), title: 'Упражнение модуля 1', description: 'Повторение', artifact: 'Текст', criteria: ['Точность'], uploadTypes: ['text'], taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: byWeek.get(2).endDate, scoreMax: 10, scoreType: 'course_points', linkedLessonIds: [], linkedPracticumIds: [], linkedCertificationStage: null, createdAt: now, updatedAt: now },
     ],
     controlPoints: CANONICAL_SCHEDULE_2026.controlPoints.map((cp, idx) => ({
         id: `cp-${idx + 1}`,
@@ -154,7 +154,7 @@ export const seed = {
     submissionVersions: [
         { id: 'ver-1', submissionId: 'sub-1', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Черновик v1', attachments: [], links: [], isDraft: false, isCurrent: false, createdAt: '2026-06-01' },
         { id: 'ver-2', submissionId: 'sub-1', versionNumber: 2, authorRole: ROLES.STUDENT, textContent: 'Обновление v2', attachments: ['scenario.docx'], links: [], isDraft: false, isCurrent: true, createdAt: '2026-06-02' },
-        { id: 'ver-1b1', submissionId: 'sub-1b', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Заполнила чек-лист практикума недели 6, жду проверки.', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-06-10' },
+        { id: 'ver-1b1', submissionId: 'sub-1b', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Заполнила чек-лист практикума модуля 2, жду проверки.', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-06-10' },
         { id: 'ver-3', submissionId: 'sub-2', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Отчет по завтракам', attachments: [], links: ['https://example.com/report'], isDraft: false, isCurrent: true, createdAt: '2026-06-02' },
         { id: 'ver-4', submissionId: 'sub-3', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Ссылка на запись СЗ', attachments: [], links: ['https://example.com/video'], isDraft: false, isCurrent: true, createdAt: '2026-06-28' },
         { id: 'ver-5', submissionId: 'sub-4', versionNumber: 1, authorRole: ROLES.STUDENT, textContent: 'Рефлексия готова', attachments: [], links: [], isDraft: false, isCurrent: true, createdAt: '2026-05-25' },
@@ -176,13 +176,13 @@ export const seed = {
         { id: 'tm-4', studentId: 'u-st-1', taskId: 'task-4', authorUserId: 'system', authorRole: 'system', messageType: 'status', text: 'Статус изменен на принято', attachments: [], linkedVersionId: null, linkedStatusHistoryId: null, isSystem: true, createdAt: '2026-05-28', readBy: [] },
     ],
     mentorMeetings: [
-        { id: 'mm-1', cohortId: 'cohort-2026-1', studentId: 'u-st-1', mentorId: 'u-men-1', weekNumber: 6, title: 'Практикум недели 6', focus: 'Фокус на КТ4-6', scheduledAt: '2026-06-01T18:00:00.000Z', happenedAt: null, status: MEETING_STATUS.SCHEDULED, reflectionStatus: REFLECTION_STATUS.PENDING, linkedTaskId: 'task-1', note: '', createdAt: now, updatedAt: now },
+        { id: 'mm-1', cohortId: 'cohort-2026-1', studentId: 'u-st-1', mentorId: 'u-men-1', weekNumber: 6, title: 'Практикум модуля 2', focus: 'Фокус на КТ4-6', scheduledAt: '2026-06-01T18:00:00.000Z', happenedAt: null, status: MEETING_STATUS.SCHEDULED, reflectionStatus: REFLECTION_STATUS.PENDING, linkedTaskId: 'task-1', note: '', createdAt: now, updatedAt: now },
     ],
     /** Единый календарь курса ПВЛ: управление только из учительской. */
     calendarEvents: [
         {
             id: 'pvl-cal-1',
-            title: 'Практикум с менторами (неделя 6)',
+            title: 'Практикум с менторами (модуль 2)',
             description: 'Разбор кейсов и вопросы по КТ.',
             eventType: 'mentor_meeting',
             startAt: '2026-06-05T15:00:00.000Z',
@@ -216,7 +216,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-3',
-            title: 'Выход материалов: урок недели 6',
+            title: 'Выход материалов: урок модуля 2',
             description: 'Обновление урока и связанных шагов в трекере.',
             eventType: 'lesson_release',
             startAt: '2026-06-04T09:00:00.000Z',
@@ -254,12 +254,12 @@ export const seed = {
     ],
     deadlineRisks: [
         { id: 'risk-2', studentId: 'u-st-2', relatedTaskId: 'task-2', relatedControlPointId: 'cp-6', relatedMeetingId: null, riskType: 'anti_debt_d3', riskLevel: RISK_LEVEL.MEDIUM, title: 'Антидолг D+3', description: 'Требуется проверка реакции', daysOverdue: 3, recommendedAction: 'Уточнить план досдачи', isResolved: false, createdAt: now, updatedAt: now },
-        { id: 'risk-4a', studentId: 'u-st-4', relatedTaskId: 'task-5', relatedControlPointId: null, relatedMeetingId: null, riskType: 'deadline_overdue', riskLevel: RISK_LEVEL.HIGH, title: 'Просрочка домашки недели 3', description: 'Нет сдачи', daysOverdue: 18, recommendedAction: 'Связаться с менти', isResolved: false, createdAt: now, updatedAt: now },
+        { id: 'risk-4a', studentId: 'u-st-4', relatedTaskId: 'task-5', relatedControlPointId: null, relatedMeetingId: null, riskType: 'deadline_overdue', riskLevel: RISK_LEVEL.HIGH, title: 'Просрочка домашки модуля 1', description: 'Нет сдачи', daysOverdue: 18, recommendedAction: 'Связаться с менти', isResolved: false, createdAt: now, updatedAt: now },
         { id: 'risk-4b', studentId: 'u-st-4', relatedTaskId: 'task-6', relatedControlPointId: null, relatedMeetingId: null, riskType: 'deadline_overdue', riskLevel: RISK_LEVEL.MEDIUM, title: 'Доработка просрочена', description: 'Долго на доработке', daysOverdue: 28, recommendedAction: 'Проверить план', isResolved: false, createdAt: now, updatedAt: now },
     ],
     dashboardWidgets: DEFAULT_WIDGETS,
     faqItems: [
-        { id: 'faq-1', title: 'Как получить баллы?', answer: 'Закрывать недели, КТ и сдавать в срок.', targetRole: ROLES.STUDENT, orderIndex: 1 },
+        { id: 'faq-1', title: 'Как получить баллы?', answer: 'Закрывать модули, КТ и сдавать в срок.', targetRole: ROLES.STUDENT, orderIndex: 1 },
         { id: 'faq-2', title: 'Где комментарии ментора?', answer: 'В разделе Результаты и карточке задания.', targetRole: ROLES.STUDENT, orderIndex: 2 },
     ],
     emailTemplates: [

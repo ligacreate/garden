@@ -1,9 +1,4 @@
-/** Единый формат дат в ПВЛ: «ДД месяц» или «ДД месяц, ЧЧ:ММ» при наличии времени. */
-
-const MONTHS_GEN = [
-    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-];
+/** Единый формат дат в ПВЛ: «ДД-ММ-ГГГГ», при наличии времени — «ДД-ММ-ГГГГ, ЧЧ:ММ». */
 
 function pad2(n) {
     return String(n).padStart(2, '0');
@@ -22,6 +17,12 @@ function parseToDate(input) {
         const dt = new Date(Number(y), Number(mo) - 1, Number(dayNum), hh != null ? Number(hh) : 0, mm != null ? Number(mm) : 0);
         return Number.isNaN(dt.getTime()) ? null : dt;
     }
+    const dm = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T\s,](\d{2}):(\d{2}))?/);
+    if (dm) {
+        const [, dayNum, mo, y, hh, mm] = dm;
+        const dt = new Date(Number(y), Number(mo) - 1, Number(dayNum), hh != null ? Number(hh) : 0, mm != null ? Number(mm) : 0);
+        return Number.isNaN(dt.getTime()) ? null : dt;
+    }
     return null;
 }
 
@@ -35,16 +36,16 @@ export function formatPvlDateTime(input) {
         if (input == null || input === '') return '—';
         return String(input);
     }
-    const day = pad2(d.getDate());
-    const month = MONTHS_GEN[d.getMonth()];
+    const dateOnly = `${pad2(d.getDate())}-${pad2(d.getMonth() + 1)}-${d.getFullYear()}`;
     const hasTime = (() => {
         const s = String(input).trim();
-        return /[T\s]\d{2}:\d{2}/.test(s) || (s.length > 10 && /^\d{4}-\d{2}-\d{2}/.test(s) && (d.getHours() !== 0 || d.getMinutes() !== 0));
+        return /[T\s,]\d{2}:\d{2}/.test(s)
+            || (s.length > 10 && /^\d{4}-\d{2}-\d{2}/.test(s) && (d.getHours() !== 0 || d.getMinutes() !== 0));
     })();
     if (hasTime) {
-        return `${day} ${month}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+        return `${dateOnly}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
     }
-    return `${day} ${month}`;
+    return dateOnly;
 }
 
 export function formatPvlDateOnly(input) {
@@ -53,5 +54,5 @@ export function formatPvlDateOnly(input) {
         if (input == null || input === '') return '—';
         return String(input);
     }
-    return `${pad2(d.getDate())} ${MONTHS_GEN[d.getMonth()]}`;
+    return `${pad2(d.getDate())}-${pad2(d.getMonth() + 1)}-${d.getFullYear()}`;
 }

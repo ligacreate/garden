@@ -246,7 +246,7 @@ export function PlatformCourseModulesGrid({
 }
 
 /**
- * Полный путь курса: модули (включая неделю 0), шаги, прогресс и задания потока со статусами.
+ * Полный путь курса: модули (включая модуль 0), шаги, прогресс и задания потока со статусами.
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
 export function StudentCourseTracker({ studentId, navigate }) {
@@ -264,11 +264,95 @@ export function StudentCourseTracker({ studentId, navigate }) {
     const activeTagLabel = activeStep ? (PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал') : 'материал';
     const activeStatus = activeStep ? stepLessonStatus(!!checked[activeStep.key], activeStep.item?.tag) : '';
 
+    if (activeStep) {
+        const moduleItems = activeStep.module?.items || [];
+        return (
+            <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800">Трекер</span>
+                        <span> / </span>
+                        <span>{activeStep.module?.title || 'Модуль'}</span>
+                        <span> / </span>
+                        <span className="text-slate-700">{activeStep.item?.text}</span>
+                    </div>
+                    <div className="grid lg:grid-cols-[280px_1fr] gap-4">
+                        <aside className="rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Шаги текущего блока</div>
+                            <div className="space-y-1.5">
+                                {moduleItems.map((item, i) => {
+                                    const key = `${activeStep.module.id}-${i}`;
+                                    const isActive = key === activeStep.key;
+                                    const isDone = !!checked[key];
+                                    return (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() => setActiveStepKey(key)}
+                                            className={`w-full text-left rounded-xl border px-2.5 py-2 text-xs transition-colors ${isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="line-clamp-2">{item.text}</span>
+                                                {isDone ? <span className="text-[10px] text-emerald-700">✓</span> : null}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </aside>
+                        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-400">Материал</div>
+                            <h3 className="font-display text-2xl text-slate-800 mt-1">{activeStep.item?.text}</h3>
+                            <p className="text-xs text-slate-500 mt-2">
+                                {activeStep.module?.title} · {activeTagLabel} · {activeStatus}
+                            </p>
+                            <div className="mt-4 text-sm text-slate-700 leading-relaxed rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+                                Это экран урока в логике трекера. Изучите материал и отметьте прохождение кнопкой ниже.
+                            </div>
+                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveStepKey('')}
+                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                                >
+                                    Назад к трекеру
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!prevStep}
+                                    onClick={() => prevStep && setActiveStepKey(prevStep.key)}
+                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    Предыдущий урок
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!nextStep}
+                                    onClick={() => nextStep && setActiveStepKey(nextStep.key)}
+                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    Следующий урок
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => toggleItem(activeStep.key)}
+                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100"
+                                >
+                                    {checked[activeStep.key] ? 'Снять отметку «Изучено»' : 'Отметить как изучено'}
+                                </button>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-700/95 via-emerald-800/95 to-teal-900 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
-                <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">недели 0 (вход и настройка)</span>. Клик по строке открывает урок справа, отметка ставится только внутри урока.</p>
+                <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">модуля 0 (вход и настройка)</span>. Клик по строке открывает урок справа, отметка ставится только внутри урока.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{doneSteps}</div>
@@ -284,59 +368,6 @@ export function StudentCourseTracker({ studentId, navigate }) {
                     </div>
                 </div>
             </div>
-
-            {activeStep ? (
-                <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800">Трекер</span>
-                        <span> / </span>
-                        <span>{activeStep.module?.title || 'Модуль'}</span>
-                        <span> / </span>
-                        <span className="text-slate-700">{activeStep.item?.text}</span>
-                    </div>
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                        <h4 className="font-display text-xl text-slate-800">{activeStep.item?.text}</h4>
-                        <TrackerStatusBadge>{activeStatus}</TrackerStatusBadge>
-                    </div>
-                    <p className="text-sm text-slate-600 mt-2">
-                        Тип: {activeTagLabel}.
-                        Откройте материал, изучите и затем отметьте выполнение.
-                    </p>
-                    {activeStep.item?.anchor ? <p className="text-xs text-emerald-700 mt-1">Якорный шаг модуля</p> : null}
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setActiveStepKey('')}
-                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                        >
-                            Назад к трекеру
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!prevStep}
-                            onClick={() => prevStep && setActiveStepKey(prevStep.key)}
-                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            Предыдущий урок
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!nextStep}
-                            onClick={() => nextStep && setActiveStepKey(nextStep.key)}
-                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            Следующий урок
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => toggleItem(activeStep.key)}
-                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100"
-                        >
-                            {checked[activeStep.key] ? 'Снять отметку «Изучено»' : 'Отметить как изучено'}
-                        </button>
-                    </div>
-                </section>
-            ) : null}
 
             <PlatformCourseModulesGrid
                 studentId={studentId}
@@ -363,7 +394,7 @@ export function StudentWeeklyChecklistStub({ navigate }) {
         <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm space-y-3">
             <h2 className="font-display text-2xl text-slate-800">Чек-лист</h2>
             <p className="text-sm text-slate-600 leading-relaxed">
-                Здесь можно держать личные пометки по текущей неделе. Полная карта курса, модулей, уроков и статусов заданий — в отдельном разделе «Трекер курса».
+                Здесь можно держать личные пометки по текущему модулю. Полная карта курса, модулей, уроков и статусов заданий — в отдельном разделе «Трекер курса».
             </p>
             <button
                 type="button"

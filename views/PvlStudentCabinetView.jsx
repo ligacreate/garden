@@ -112,7 +112,7 @@ export const mentorPractices = [
 ];
 
 export const faqItems = [
-    { id: 'f-1', q: 'Как не копить долги?', a: 'Используйте антидолги D+1, D+3, D+7, D+10 и сдавайте шаги по неделям.' },
+    { id: 'f-1', q: 'Как не копить долги?', a: 'Используйте антидолги D+1, D+3, D+7, D+10 и сдавайте шаги по модулям.' },
     { id: 'f-2', q: 'Где смотреть комментарии ментора?', a: 'В разделе "Результаты", в карточке каждой домашки.' },
     { id: 'f-3', q: 'СЗ и курсовые баллы — это одно?', a: 'Нет. Курсовые баллы (до 400) отдельно, самооценка СЗ (до 54) отдельно.' },
 ];
@@ -220,7 +220,7 @@ export function renderLessonsPage() {
             {courseWeeks.map((w) => (
                 <article key={w.weekNumber} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                        <h4 className="font-display text-2xl text-[#4A3728]">Неделя {w.weekNumber}: {w.title}</h4>
+                        <h4 className="font-display text-2xl text-[#4A3728]">Модуль {w.weekNumber}: {w.title}</h4>
                         <span className="text-xs text-[#9B8B80]">Дедлайн: {w.deadlineAt}</span>
                     </div>
                     <div className="grid md:grid-cols-3 gap-2 text-sm">
@@ -258,7 +258,7 @@ function renderChecklistPage() {
             <p className="text-sm text-[#9B8B80] mb-3">Показывает обязательные точки, что закрыто, что просрочено, что впереди.</p>
             <div className="space-y-2 text-sm">
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">КТ1 закрыта</div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">КТ4-КТ6 скоро (неделя 6)</div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">КТ4-КТ6 скоро (модуль 2)</div>
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">Антидолг D+3 активен по 1 задаче</div>
             </div>
         </div>
@@ -287,7 +287,7 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
                             <h4 className="font-medium text-[#4A3728]">{item.title}</h4>
                             <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadge(item.status)}`}>{item.status}</span>
                         </div>
-                        <p className="text-xs text-[#9B8B80] mt-1">Неделя {item.week} · {item.type}</p>
+                        <p className="text-xs text-[#9B8B80] mt-1">Модуль {item.week} · {item.type}</p>
                         <div className="grid md:grid-cols-3 gap-2 mt-3 text-sm">
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {item.deadlineAt}</div>
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Сдано: {item.submittedAt || '—'}</div>
@@ -362,7 +362,7 @@ export function renderStudentDashboard(onNavigate, profile = studentProfile, sta
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
                     <div className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">Курсовые баллы</div>
                     <div className="font-display text-3xl text-[#C8855A]">{profile.coursePoints}/400</div>
-                    <p className="text-xs text-[#9B8B80] mt-2">Как получить баллы: закрывайте недели, контрольные точки, сдавайте в срок.</p>
+                    <p className="text-xs text-[#9B8B80] mt-2">Как получить баллы: закрывайте модули, контрольные точки, сдавайте в срок.</p>
                 </div>
             </div>
             <div className="grid md:grid-cols-2 gap-3">

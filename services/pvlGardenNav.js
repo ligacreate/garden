@@ -12,6 +12,7 @@ export const GARDEN_PVL_ICON = {
     tracker: 'tracker',
     mentor: 'mentor',
     bell: 'notifications',
+    messages: 'messages',
 };
 
 export function buildGardenPvlStudentNav() {
@@ -22,9 +23,9 @@ export function buildGardenPvlStudentNav() {
         { type: 'item', key: 'pvl-st-lib', label: 'Библиотека', iconKey: 'graduation', route: '/student/library' },
         { type: 'item', key: 'pvl-st-trk', label: 'Трекер', iconKey: 'tracker', route: '/student/tracker' },
         { type: 'item', key: 'pvl-st-prac', label: 'Практикумы', iconKey: 'calendar', route: '/student/practicums' },
+        { type: 'item', key: 'pvl-st-msg', label: 'Коммуникации', iconKey: 'messages', route: '/student/messages' },
         { type: 'item', key: 'pvl-st-res', label: 'Результаты', iconKey: 'book', route: '/student/results' },
         { type: 'item', key: 'pvl-st-cert', label: 'Сертификация', iconKey: 'book', route: '/student/certification' },
-        { type: 'item', key: 'pvl-st-qa', label: 'Вопросы', iconKey: 'bell', route: '/student/qa' },
         { type: 'divider', key: 'pvl-st-d2' },
         { type: 'item', key: 'pvl-st-settings', label: 'Настройки', iconKey: 'dashboard', action: 'settings' },
         { type: 'item', key: 'pvl-st-exit', label: 'Вернуться в сад', iconKey: 'dashboard', action: 'exit_pvl' },
@@ -42,9 +43,9 @@ export function buildGardenPvlMentorNav() {
         { type: 'item', key: 'pvl-men-lib', label: 'Библиотека', iconKey: 'graduation', route: '/mentor/library' },
         { type: 'item', key: 'pvl-men-trk', label: 'Трекер', iconKey: 'tracker', route: '/mentor/tracker' },
         { type: 'item', key: 'pvl-men-prac', label: 'Практикумы', iconKey: 'calendar', route: '/mentor/practicums' },
+        { type: 'item', key: 'pvl-men-msg', label: 'Коммуникации', iconKey: 'messages', route: '/mentor/messages' },
         { type: 'item', key: 'pvl-men-res', label: 'Результаты', iconKey: 'book', route: '/mentor/results' },
         { type: 'item', key: 'pvl-men-cert', label: 'Сертификация', iconKey: 'book', route: '/mentor/certification' },
-        { type: 'item', key: 'pvl-men-qa', label: 'Вопросы', iconKey: 'bell', route: '/mentor/qa' },
         { type: 'divider', key: 'pvl-men-d2' },
         { type: 'item', key: 'pvl-men-settings', label: 'Настройки', iconKey: 'dashboard', action: 'settings' },
         { type: 'item', key: 'pvl-men-exit', label: 'Вернуться в сад', iconKey: 'dashboard', action: 'exit_pvl' },
@@ -67,7 +68,6 @@ export function buildGardenPvlAdminNav() {
         { type: 'item', key: 'pvl-adm-prac', label: 'Практикумы', iconKey: 'calendar', route: '/admin/practicums' },
         { type: 'item', key: 'pvl-adm-res', label: 'Результаты', iconKey: 'book', route: '/admin/results' },
         { type: 'item', key: 'pvl-adm-cert', label: 'Сертификация', iconKey: 'book', route: '/admin/certification' },
-        { type: 'item', key: 'pvl-adm-qa', label: 'Вопросы', iconKey: 'bell', route: '/admin/questions' },
         { type: 'divider', key: 'pvl-adm-d2' },
         { type: 'item', key: 'pvl-adm-set', label: 'Настройки', iconKey: 'dashboard', route: '/admin/settings' },
         { type: 'item', key: 'pvl-adm-exit', label: 'Вернуться в сад', iconKey: 'dashboard', action: 'exit_pvl' },

@@ -8,3 +8,10 @@ __MACOSX/
 mini_unzipped/
 garden_antigravity/
 .agents/
+
+# Scratch / one-off dumps and probe screenshots (do not commit)
+.tmp-*.json
+artifacts-*.png
+
+# Supabase SQL editor CSV exports (often contain PII)
+Supabase*.csv

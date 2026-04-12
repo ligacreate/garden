@@ -4,7 +4,7 @@ import {
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap, MessagesSquare, Bell, Info, Languages, Library,
     Route, CalendarCheck2, BarChart3, BadgeCheck, MessageCircleQuestion,
-    CornerUpLeft
+    CornerUpLeft, MessageCircle
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -249,6 +249,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         mentor: Users,
         notifications: Sparkles,
         bell: Bell,
+        messages: MessageCircle,
     };
     const courseLabelIconMap = {
         'Дашборд': LayoutGrid,
@@ -257,9 +258,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         'Библиотека': Library,
         'Трекер': Route,
         'Практикумы': CalendarCheck2,
+        Коммуникации: MessageCircle,
         'Результаты': BarChart3,
         'Сертификация': BadgeCheck,
-        'Вопросы': MessageCircleQuestion,
         'FAQ': MessageCircleQuestion,
         'Настройки': Settings,
         'Вернуться в сад': CornerUpLeft,

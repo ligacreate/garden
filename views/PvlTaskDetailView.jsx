@@ -286,8 +286,33 @@ export function submitForReview(setter) {
     changeTaskStatus(setter, 'к проверке', 'Участница', 'Отправлено на проверку');
 }
 
+function buildTaskHeaderDateParts(data) {
+    const deadline = data.deadlineAt || '—';
+    const st = String(data.status || '').toLowerCase();
+    const accepted = st.includes('принят') || st.includes('проверено');
+    const submitted = data.submittedAt && String(data.submittedAt).trim() && data.submittedAt !== '—';
+    const acceptedAt = data.acceptedAt && String(data.acceptedAt).trim() && data.acceptedAt !== '—';
+    const changed = data.lastStatusChangedAt && String(data.lastStatusChangedAt).trim() && data.lastStatusChangedAt !== '—';
+
+    const second =
+        accepted && acceptedAt
+            ? { label: 'Принято', value: data.acceptedAt }
+            : accepted && submitted
+              ? { label: 'Принято', value: data.submittedAt }
+              : submitted
+                ? { label: 'Сдано', value: data.submittedAt }
+                : changed
+                  ? { label: 'Обновлено', value: data.lastStatusChangedAt }
+                  : null;
+
+    return { deadline, second };
+}
+
 export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»', showBackButton = true }) {
-    const isOverdue = data.deadlineAt && new Date(data.deadlineAt) < new Date() && data.status !== 'принято';
+    const stLower = String(data.status || '').toLowerCase();
+    const isDone = stLower.includes('принят') || stLower.includes('проверено');
+    const isOverdue = data.deadlineAt && new Date(data.deadlineAt) < new Date() && !isDone;
+    const { deadline, second } = buildTaskHeaderDateParts(data);
     return (
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             {showBackButton ? (
@@ -305,11 +330,15 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
                 </div>
             </div>
             <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
-                    <span>Дедлайн: <span className="font-medium text-slate-800">{data.deadlineAt || '—'}</span></span>
-                    <span>Сдано: <span className="font-medium text-slate-800">{data.submittedAt || '—'}</span></span>
-                    <span>Принято: <span className="font-medium text-slate-800">{data.acceptedAt || '—'}</span></span>
-                    <span>Обновлено: <span className="font-medium text-slate-800">{data.lastStatusChangedAt || '—'}</span></span>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-600">
+                    <span>
+                        Дедлайн: <span className="font-medium text-slate-800">{deadline}</span>
+                    </span>
+                    {second ? (
+                        <span>
+                            {second.label}: <span className="font-medium text-slate-800">{second.value}</span>
+                        </span>
+                    ) : null}
                 </div>
             </div>
             {isOverdue ? <div className="mt-2 text-xs text-rose-700">Просрочен дедлайн сдачи.</div> : null}
@@ -500,10 +529,7 @@ export function StatusTimeline({ history }) {
 
 export function renderCommentsThread(messages) {
     const visibleMessages = (messages || []).filter((m) => {
-        const isAcceptedSystemStatus = m.authorRole === 'system'
-            && m.messageType === 'status'
-            && String(m.text || '').toLowerCase().includes('статус изменен на принято');
-        return !isAcceptedSystemStatus;
+        return m.authorRole !== 'system';
     });
     return visibleMessages.map((m) => (
         <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
@@ -551,7 +577,7 @@ export function CommentsThread({
             ) : null}
             {role === 'student' ? (
                 <p className="mt-3 text-xs text-slate-500">
-                    Лента только для уведомлений: изменение статуса, ответ ментора и системные события.
+                    Лента только для уведомлений и ответов ментора по заданию.
                 </p>
             ) : null}
             {disputeMode ? (

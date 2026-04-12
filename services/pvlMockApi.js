@@ -2,8 +2,9 @@ import { seed } from '../data/pvl/seed';
 import { capSzMentor, capSzSelf, computeCourseBreakdown } from './pvlScoringEngine';
 import { CANONICAL_SCHEDULE_2026 } from '../data/pvl/constants';
 import { CERTIFICATION_STATUS, CONTENT_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
-import { PVL_PLATFORM_MODULES } from '../data/pvlReferenceContent';
+import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
+import { pvlPostgrestApi } from './pvlPostgrestApi';
 import {
     buildAdminRisks,
     buildAntiDebtProtocol,
@@ -25,6 +26,7 @@ import {
     getPendingReviewTasks,
     getUnreadThreadCount,
 } from '../selectors/pvlCalculators';
+import { api } from './dataService';
 
 /** Согласовано с калькуляторами дедлайнов в прототипе */
 const DASHBOARD_TODAY = '2026-06-03';
@@ -50,6 +52,397 @@ let notifications = [];
 if (!Array.isArray(db.studentLibraryProgress)) db.studentLibraryProgress = [];
 if (!Array.isArray(db.taskDisputes)) db.taskDisputes = [];
 if (!Array.isArray(db.calendarEvents)) db.calendarEvents = [];
+if (!Array.isArray(db.faqItems)) db.faqItems = [];
+if (!db.studentTrackerChecks || typeof db.studentTrackerChecks !== 'object') db.studentTrackerChecks = {};
+const IS_DEV = import.meta.env.DEV;
+
+const STUDENT_SQL_ID_BY_USER_ID = Object.freeze({
+    'u-st-1': '33333333-3333-3333-3333-333333333301',
+    'u-st-2': '33333333-3333-3333-3333-333333333302',
+    'u-st-3': '33333333-3333-3333-3333-333333333303',
+    'u-st-4': '33333333-3333-3333-3333-333333333304',
+});
+let sqlWeekIdByMockWeekId = new Map();
+let sqlHomeworkIdByMockTaskId = new Map();
+let mockTaskIdBySqlHomeworkId = new Map();
+
+function logDbFallback(payload = {}) {
+    if (!IS_DEV) return;
+    try {
+        // eslint-disable-next-line no-console
+        console.info('[PVL DB FALLBACK]', payload);
+    } catch {
+        /* noop */
+    }
+}
+
+function fireAndForget(promiseFactory, meta = {}) {
+    try {
+        Promise.resolve().then(promiseFactory).catch((error) => {
+            logDbFallback({
+                endpoint: meta.endpoint || '',
+                status: 'error',
+                table: meta.table || '',
+                id: meta.id || null,
+                error: String(error?.message || error || 'Unknown error'),
+            });
+        });
+    } catch {
+        logDbFallback({
+            endpoint: meta.endpoint || '',
+            status: 'error',
+            table: meta.table || '',
+            id: meta.id || null,
+            error: 'Unexpected sync error',
+        });
+    }
+}
+
+function mapDbContentItemToRuntime(row) {
+    return {
+        id: row.id,
+        title: row.title || '',
+        shortDescription: row.short_description || '',
+        fullDescription: row.body_html || '',
+        description: row.body_html || '',
+        contentType: row.content_type || 'text',
+        lessonVideoUrl: row.lesson_video_url || '',
+        lessonRutubeUrl: row.lesson_rutube_url || '',
+        lessonVideoEmbed: row.lesson_video_embed || '',
+        lessonQuiz: row.lesson_quiz || null,
+        lessonHomework: row.homework_config || null,
+        glossaryPayload: row.glossary_payload || null,
+        libraryPayload: row.library_payload || null,
+        status: row.status || 'draft',
+        createdBy: row.created_by || 'u-adm-1',
+        updatedBy: row.updated_by || row.created_by || 'u-adm-1',
+        createdAt: row.created_at || nowIso(),
+        updatedAt: row.updated_at || nowIso(),
+    };
+}
+
+function mapDbPlacementToRuntime(row) {
+    return {
+        id: row.id,
+        contentItemId: row.content_item_id,
+        targetRole: row.target_role || 'both',
+        targetSection: row.target_section || 'library',
+        cohortId: row.cohort_id || 'cohort-2026-1',
+        targetCohort: row.cohort_id || 'cohort-2026-1',
+        moduleNumber: row.module_number ?? 0,
+        weekNumber: row.week_number ?? 0,
+        orderIndex: Number(row.order_index ?? row.sort_order ?? 0),
+        isPublished: !!row.is_published,
+        createdAt: row.created_at || nowIso(),
+        updatedAt: row.updated_at || nowIso(),
+    };
+}
+
+function mapDbEventToRuntime(row) {
+    const eventTypeMap = {
+        mentor_meeting: 'mentor_meeting',
+        lesson_release: 'lesson_release',
+        deadline: 'deadline',
+        other: 'other',
+        // live schema aliases/legacy values:
+        live_stream: 'lesson_release',
+        session: 'mentor_meeting',
+        week_closure: 'deadline',
+    };
+    const normalizedEventType = eventTypeMap[String(row.event_type || '').toLowerCase()] || 'other';
+    return {
+        id: row.id,
+        title: row.title || 'Событие',
+        description: row.description || '',
+        eventType: normalizedEventType,
+        visibilityRole: row.visibility_role || 'all',
+        cohortId: row.cohort_id || 'cohort-2026-1',
+        moduleNumber: row.module_number ?? 0,
+        weekNumber: row.week_number ?? 0,
+        linkedLessonId: row.linked_lesson_id || null,
+        linkedPracticumId: row.linked_practicum_id || null,
+        startAt: row.start_at || row.starts_at || nowIso(),
+        endAt: row.end_at || row.ends_at || nowIso(),
+        colorToken: row.color_token || row.event_type || 'other',
+        isPublished: row.is_published !== false,
+        createdAt: row.created_at || nowIso(),
+        updatedAt: row.updated_at || nowIso(),
+    };
+}
+
+function normalizeCalendarEventTypeForDb(value) {
+    const raw = String(value || '').toLowerCase().trim();
+    const map = {
+        mentor_meeting: 'mentor_meeting',
+        lesson_release: 'lesson_release',
+        deadline: 'deadline',
+        other: 'other',
+        live_stream: 'lesson_release',
+        session: 'mentor_meeting',
+        week_closure: 'deadline',
+    };
+    return map[raw] || 'other';
+}
+
+function mapDbFaqToRuntime(row) {
+    return {
+        id: row.id,
+        title: row.question || '',
+        answer: row.answer || row.answer_html || '',
+        targetRole: row.target_role || 'all',
+        isPublished: row.is_published !== false,
+        orderIndex: Number(row.order_index ?? row.sort_order ?? 0),
+    };
+}
+
+function studentSqlIdByUserId(userId) {
+    return STUDENT_SQL_ID_BY_USER_ID[userId] || null;
+}
+
+async function ensureDbTrackerHomeworkStructure() {
+    const [weekRows, lessonRows, hwRows] = await Promise.all([
+        pvlPostgrestApi.listCourseWeeks(),
+        pvlPostgrestApi.listCourseLessons(),
+        pvlPostgrestApi.listHomeworkItems(),
+    ]);
+    const byWeekExternal = new Map((weekRows || []).map((r) => [String(r.external_key || ''), r]));
+    if (byWeekExternal.size === 0) {
+        for (const w of db.courseWeeks || []) {
+            // eslint-disable-next-line no-await-in-loop
+            await pvlPostgrestApi.upsertCourseWeek({
+                week_number: Number(w.weekNumber ?? 0),
+                title: w.title || `Неделя ${w.weekNumber ?? 0}`,
+                module_number: Number(w.moduleNumber ?? 0),
+                is_active: true,
+                starts_at: w.startDate || null,
+                ends_at: w.endDate || null,
+                external_key: w.id,
+            });
+        }
+    }
+    const weeks = await pvlPostgrestApi.listCourseWeeks();
+    sqlWeekIdByMockWeekId = new Map((weeks || [])
+        .filter((w) => w.external_key)
+        .map((w) => [String(w.external_key), w.id]));
+
+    const byLessonExternal = new Map((lessonRows || []).map((r) => [String(r.external_key || ''), r]));
+    if (byLessonExternal.size === 0) {
+        const lessons = db.lessons || [];
+        for (const l of lessons) {
+            const sqlWeekId = sqlWeekIdByMockWeekId.get(String(l.weekId));
+            if (!sqlWeekId) continue;
+            // eslint-disable-next-line no-await-in-loop
+            await pvlPostgrestApi.upsertCourseLesson({
+                week_id: sqlWeekId,
+                module_number: Number(l.moduleNumber ?? 0),
+                title: l.title || 'Урок',
+                lesson_type: l.contentType || 'lesson',
+                sort_order: Number(l.orderIndex ?? 0),
+                external_key: l.id,
+            });
+        }
+    }
+    const byHomeworkExternal = new Map((hwRows || []).map((r) => [String(r.external_key || ''), r]));
+    if (byHomeworkExternal.size === 0) {
+        for (const t of db.homeworkTasks || []) {
+            const sqlWeekId = sqlWeekIdByMockWeekId.get(String(t.weekId));
+            // eslint-disable-next-line no-await-in-loop
+            await pvlPostgrestApi.upsertHomeworkItem({
+                week_id: sqlWeekId || null,
+                title: t.title || 'Домашка',
+                item_type: t.isControlPoint ? 'control_point' : 'homework',
+                max_score: Number(t.scoreMax ?? 20),
+                is_control_point: !!t.isControlPoint,
+                sort_order: Number(t.orderIndex ?? 0),
+                external_key: t.id,
+            });
+        }
+    }
+    const homeworkRows = await pvlPostgrestApi.listHomeworkItems();
+    sqlHomeworkIdByMockTaskId = new Map((homeworkRows || [])
+        .filter((r) => r.external_key)
+        .map((r) => [String(r.external_key), r.id]));
+    mockTaskIdBySqlHomeworkId = new Map((homeworkRows || [])
+        .filter((r) => r.external_key)
+        .map((r) => [String(r.id), String(r.external_key)]));
+}
+
+async function syncTrackerAndHomeworkFromDb() {
+    await ensureDbTrackerHomeworkStructure();
+    for (const student of db.studentProfiles || []) {
+        const userId = student.userId;
+        const sqlStudentId = studentSqlIdByUserId(userId);
+        if (!sqlStudentId) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const progressRows = await pvlPostgrestApi.getStudentCourseProgress(sqlStudentId);
+        const checked = {};
+        (progressRows || []).forEach((row) => {
+            const keys = row?.payload?.checkedKeys;
+            if (Array.isArray(keys)) keys.forEach((k) => { checked[String(k)] = true; });
+            const mockWeekId = Array.from(sqlWeekIdByMockWeekId.entries()).find(([, sqlId]) => sqlId === row.week_id)?.[0];
+            const week = (db.courseWeeks || []).find((w) => w.id === mockWeekId);
+            if (week) {
+                upsertWeekCompletion(userId, week.weekNumber, {
+                    weekClosed: !!row.is_week_closed,
+                    studiedCompleted: Number(row.lessons_completed || 0) > 0,
+                    taskCompleted: Number(row.homework_completed || 0) > 0,
+                    submittedCompleted: Number(row.homework_completed || 0) > 0,
+                });
+            }
+        });
+        db.studentTrackerChecks[userId] = checked;
+
+        // eslint-disable-next-line no-await-in-loop
+        const subs = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
+        for (const row of subs || []) {
+            const taskId = mockTaskIdBySqlHomeworkId.get(String(row.homework_item_id));
+            if (!taskId) continue;
+            const state = db.studentTaskStates.find((s) => s.studentId === userId && s.taskId === taskId);
+            if (state) {
+                state.status = String(row.status || state.status);
+                state.submittedAt = row.submitted_at ? String(row.submitted_at).slice(0, 10) : state.submittedAt;
+                state.acceptedAt = row.accepted_at ? String(row.accepted_at).slice(0, 10) : state.acceptedAt;
+                state.revisionCycles = Number(row.revision_cycles || 0);
+                if (row.score != null) state.autoPoints = Number(row.score);
+                state.totalTaskPoints = (state.autoPoints || 0) + (state.mentorBonusPoints || 0);
+            }
+            let sub = db.submissions.find((s) => s.studentId === userId && s.taskId === taskId);
+            if (!sub) {
+                sub = { id: uid('sub'), studentId: userId, taskId, currentVersionId: null, draftVersionId: null, createdAt: nowIso(), updatedAt: nowIso() };
+                db.submissions.push(sub);
+            }
+            const payload = row.payload || {};
+            const versions = Array.isArray(payload.versions) ? payload.versions : [];
+            if (versions.length) {
+                db.submissionVersions = db.submissionVersions.filter((v) => v.submissionId !== sub.id);
+                versions.forEach((v) => db.submissionVersions.push({ ...v, submissionId: sub.id }));
+                sub.currentVersionId = payload.currentVersionId || versions.find((v) => v.isCurrent)?.id || null;
+                sub.draftVersionId = payload.draftVersionId || versions.find((v) => v.isDraft)?.id || null;
+            }
+            const thread = Array.isArray(payload.thread) ? payload.thread : [];
+            if (thread.length) {
+                db.threadMessages = db.threadMessages.filter((m) => !(m.studentId === userId && m.taskId === taskId));
+                thread.forEach((m) => db.threadMessages.push({ ...m, studentId: userId, taskId }));
+            }
+            // eslint-disable-next-line no-await-in-loop
+            const hist = await pvlPostgrestApi.listHomeworkStatusHistory(row.id);
+            if (Array.isArray(hist) && hist.length) {
+                db.statusHistory = db.statusHistory.filter((h) => !(h.studentId === userId && h.taskId === taskId));
+                hist.forEach((h) => db.statusHistory.push({
+                    id: h.id || uid('sh'),
+                    studentId: userId,
+                    taskId,
+                    fromStatus: h.from_status || null,
+                    toStatus: h.to_status || null,
+                    changedByUserId: h.changed_by || 'system',
+                    comment: h.comment || '',
+                    createdAt: h.changed_at || nowIso(),
+                }));
+            }
+        }
+    }
+}
+
+export async function syncPvlRuntimeFromDb() {
+    if (!pvlPostgrestApi.isEnabled()) return { synced: false, reason: 'disabled' };
+    const snapshot = await pvlPostgrestApi.loadRuntimeSnapshot();
+    db.contentItems = snapshot.items.map(mapDbContentItemToRuntime);
+    db.contentPlacements = snapshot.placements.map(mapDbPlacementToRuntime);
+    db.calendarEvents = snapshot.events.map(mapDbEventToRuntime);
+    db.faqItems = snapshot.faq.map(mapDbFaqToRuntime);
+    await syncTrackerAndHomeworkFromDb();
+    return { synced: true };
+}
+
+export async function syncPvlActorsFromGarden() {
+    try {
+        const users = await api.getUsers();
+        if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
+        const normalizedRole = (u) => String(u?.role || u?.status || '').trim().toLowerCase();
+        const mentors = users.filter((u) => normalizedRole(u) === 'mentor');
+        const applicants = users.filter((u) => normalizedRole(u) === 'applicant' || normalizedRole(u) === 'абитуриент');
+
+        mentors.forEach((u) => {
+            if (!u?.id) return;
+            const userId = String(u.id);
+            const existsUser = (db.users || []).some((x) => String(x.id) === userId);
+            if (!existsUser) {
+                db.users.push({
+                    id: userId,
+                    role: ROLES.MENTOR,
+                    fullName: u.name || u.fullName || u.email || userId,
+                    email: u.email || '',
+                    avatar: u.avatar || '',
+                    isActive: true,
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                });
+            }
+            const existsMentor = (db.mentorProfiles || []).some((x) => String(x.userId) === userId);
+            if (!existsMentor) {
+                db.mentorProfiles.push({
+                    id: uid('mp'),
+                    userId,
+                    cohortIds: ['cohort-2026-1'],
+                    menteeIds: [],
+                    activeReviewCount: 0,
+                    activeRiskCount: 0,
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                });
+            }
+        });
+
+        applicants.forEach((u) => {
+            if (!u?.id) return;
+            const userId = String(u.id);
+            const existsUser = (db.users || []).some((x) => String(x.id) === userId);
+            if (!existsUser) {
+                db.users.push({
+                    id: userId,
+                    role: ROLES.STUDENT,
+                    fullName: u.name || u.fullName || u.email || userId,
+                    email: u.email || '',
+                    avatar: u.avatar || '',
+                    isActive: true,
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                });
+            }
+            const existsStudent = (db.studentProfiles || []).some((x) => String(x.userId) === userId);
+            if (!existsStudent) {
+                db.studentProfiles.push({
+                    id: uid('sp'),
+                    userId,
+                    cohortId: 'cohort-2026-1',
+                    mentorId: (db.mentorProfiles || [])[0]?.userId || null,
+                    currentWeek: 0,
+                    currentModule: 0,
+                    courseStatus: COURSE_STATUS.ACTIVE,
+                    coursePoints: 0,
+                    szSelfAssessmentPoints: 0,
+                    szMentorAssessmentPoints: 0,
+                    szAdmissionStatus: CERTIFICATION_STATUS.NOT_STARTED,
+                    lastActivityAt: nowIso().slice(0, 10),
+                    unreadCount: 0,
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                });
+            }
+        });
+
+        return { synced: true, mentors: mentors.length, applicants: applicants.length };
+    } catch (error) {
+        logDbFallback({
+            endpoint: '/profiles',
+            status: 'error',
+            table: 'profiles',
+            id: null,
+            error: String(error?.message || error || 'garden sync failed'),
+        });
+        return { synced: false, reason: 'error' };
+    }
+}
 
 function isTaskDisputeOpen(studentId, taskId) {
     return (db.taskDisputes || []).some((d) => d.studentId === studentId && d.taskId === taskId && d.status === 'open');
@@ -121,7 +514,7 @@ const LIBRARY_CATEGORIES = [
 const LIBRARY_MOCK_ITEMS = Array.from({ length: 15 }, (_, idx) => {
     const c = LIBRARY_CATEGORIES[idx % LIBRARY_CATEGORIES.length];
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
-    return {
+    const base = {
         id: `lib-cnt-${idx + 1}`,
         title: `${c.title}: материал ${idx + 1}`,
         shortDescription: `Короткое описание материала ${idx + 1}`,
@@ -144,6 +537,17 @@ const LIBRARY_MOCK_ITEMS = Array.from({ length: 15 }, (_, idx) => {
         isNew: idx % 4 === 0,
         orderIndex: idx + 1,
     };
+    if (idx === 0) {
+        return {
+            ...base,
+            title: '1. Урок: введение (демо)',
+            shortDescription: 'Текст над видео: о чём урок и что подготовить перед просмотром.',
+            contentType: 'video',
+            lessonVideoEmbed: '<iframe src="https://kinescope.io/embed/8d6c3c5b-5a9d-4f2a-9d5e-000000000001" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>',
+            fullDescription: '<p><strong>Конспект.</strong> После просмотра зафиксируйте одну мысль и один вопрос к модулю.</p><ul><li>Связка «письмо — эмоции — нарратив»;</li><li>Практический шаг на сегодня.</li></ul>',
+        };
+    }
+    return base;
 });
 
 const pushEvent = (type, payload = {}) => {
@@ -151,7 +555,7 @@ const pushEvent = (type, payload = {}) => {
 };
 
 const addAuditEvent = (actorUserId, actorRole, actionType, entityType, entityId, summary, payload = {}) => {
-    auditLog.push({
+    const row = {
         id: uid('aud'),
         actorUserId,
         actorRole,
@@ -161,7 +565,21 @@ const addAuditEvent = (actorUserId, actorRole, actionType, entityType, entityId,
         summary,
         payload,
         createdAt: nowIso(),
-    });
+    };
+    auditLog.push(row);
+    fireAndForget(() => pvlPostgrestApi.createAuditLog({
+        id: row.id,
+        actor_user_id: actorUserId || null,
+        action: actionType,
+        entity_type: entityType,
+        entity_id: entityId || null,
+        payload: {
+            actorRole: actorRole || 'system',
+            summary,
+            payload,
+        },
+        created_at: row.createdAt,
+    }), { table: 'pvl_audit_log', endpoint: '/public.pvl_audit_log', id: row.id });
 };
 
 const addNotification = (userId, role, type, text, payload = {}) => {
@@ -521,6 +939,106 @@ function getTaskDetail(studentId, taskId) {
     };
 }
 
+function buildSubmissionPayload(studentId, taskId, submissionId) {
+    const versions = db.submissionVersions
+        .filter((v) => v.submissionId === submissionId)
+        .sort((a, b) => Number(a.versionNumber || 0) - Number(b.versionNumber || 0));
+    const thread = db.threadMessages
+        .filter((m) => m.studentId === studentId && m.taskId === taskId)
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const currentVersionId = versions.find((v) => v.isCurrent)?.id || null;
+    const draftVersionId = versions.find((v) => v.isDraft)?.id || null;
+    return { versions, thread, currentVersionId, draftVersionId };
+}
+
+function persistTrackerProgressToDb(studentId) {
+    const sqlStudentId = studentSqlIdByUserId(studentId);
+    if (!sqlStudentId) return;
+    const checkedMap = db.studentTrackerChecks?.[studentId] || {};
+    const checkedKeys = Object.keys(checkedMap).filter((k) => checkedMap[k]);
+    const moduleByStepKey = new Map();
+    PVL_PLATFORM_MODULES.forEach((mod) => {
+        mod.items.forEach((item, index) => {
+            const stepId = String(item?.id || '').trim();
+            if (stepId) moduleByStepKey.set(`sid:${stepId}`, Number(mod.id));
+            const textSlug = String(item?.text || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}]+/gu, '-')
+                .replace(/^-+|-+$/g, '');
+            moduleByStepKey.set(`m:${mod.id}:s:${textSlug || index}`, Number(mod.id));
+            moduleByStepKey.set(`${mod.id}-${index}`, Number(mod.id)); // backward-compatible legacy key
+        });
+    });
+    const groupedByModule = new Map();
+    checkedKeys.forEach((k) => {
+        const moduleId = moduleByStepKey.get(String(k));
+        if (!Number.isFinite(moduleId)) return;
+        if (!groupedByModule.has(moduleId)) groupedByModule.set(moduleId, []);
+        groupedByModule.get(moduleId).push(k);
+    });
+    groupedByModule.forEach((keys, moduleId) => {
+        const week = (db.courseWeeks || []).find((w) => Number(w.moduleNumber ?? -1) === Number(moduleId))
+            || (db.courseWeeks || []).find((w) => Number(w.weekNumber ?? -1) === Number(moduleId));
+        const sqlWeekId = week ? sqlWeekIdByMockWeekId.get(String(week.id)) : null;
+        if (!sqlWeekId) return;
+        fireAndForget(() => pvlPostgrestApi.upsertStudentCourseProgress(sqlStudentId, {
+            week_id: sqlWeekId,
+            lessons_completed: keys.length,
+            lessons_total: keys.length,
+            homework_completed: 0,
+            homework_total: 0,
+            is_week_closed: keys.length > 0,
+            auto_points_awarded: false,
+            payload: { checkedKeys: keys },
+        }), { table: 'pvl_student_course_progress', endpoint: '/pvl_student_course_progress', id: `${sqlStudentId}:${sqlWeekId}` });
+    });
+}
+
+function persistSubmissionToDb(studentId, taskId) {
+    const sqlStudentId = studentSqlIdByUserId(studentId);
+    const sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+    if (!sqlStudentId || !sqlHomeworkId) return;
+    const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
+    const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
+    if (!state || !submission) return;
+    const payload = buildSubmissionPayload(studentId, taskId, submission.id);
+    fireAndForget(async () => {
+        const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
+        const row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
+        const patch = {
+            student_id: sqlStudentId,
+            homework_item_id: sqlHomeworkId,
+            status: state.status || 'draft',
+            score: Number.isFinite(Number(state.autoPoints)) ? Number(state.autoPoints) : null,
+            mentor_bonus_score: Number(state.mentorBonusPoints || 0),
+            submitted_at: state.submittedAt ? `${String(state.submittedAt).slice(0, 10)}T00:00:00Z` : null,
+            checked_at: state.lastStatusChangedAt ? `${String(state.lastStatusChangedAt).slice(0, 10)}T00:00:00Z` : null,
+            accepted_at: state.acceptedAt ? `${String(state.acceptedAt).slice(0, 10)}T00:00:00Z` : null,
+            revision_cycles: Number(state.revisionCycles || 0),
+            payload,
+        };
+        if (!row) {
+            await pvlPostgrestApi.createHomeworkSubmission(patch);
+            return;
+        }
+        await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
+        const historyRows = db.statusHistory.filter((h) => h.studentId === studentId && h.taskId === taskId);
+        for (const h of historyRows.slice(-3)) {
+            // eslint-disable-next-line no-await-in-loop
+            await pvlPostgrestApi.appendHomeworkStatusHistory({
+                submission_id: row.id,
+                from_status: h.fromStatus || null,
+                to_status: h.toStatus || null,
+                comment: h.comment || '',
+                changed_by: null,
+                changed_at: h.createdAt || nowIso(),
+                payload: { studentId, taskId },
+            });
+        }
+    }, { table: 'pvl_student_homework_submissions', endpoint: '/pvl_student_homework_submissions', id: `${studentId}:${taskId}` });
+}
+
 function getPublishedContentFor(role, section, cohortId) {
     return db.contentPlacements
         .filter((p) => p.targetSection === section && p.isPublished)
@@ -539,6 +1057,13 @@ function getVisibleContentItems(userId, role, section) {
 }
 
 function ensureLibrarySeedInDb() {
+    const hasPublishedLibraryContent = (db.contentPlacements || []).some((p) => {
+        if (p.targetSection !== 'library' || p.isPublished === false) return false;
+        const itemId = p.contentItemId || p.contentId;
+        const item = (db.contentItems || []).find((x) => x.id === itemId);
+        return !!item && item.status === CONTENT_STATUS.PUBLISHED;
+    });
+    if (hasPublishedLibraryContent) return;
     const existingIds = new Set(db.contentItems.map((x) => x.id));
     LIBRARY_MOCK_ITEMS.forEach((item, index) => {
         if (!existingIds.has(item.id)) db.contentItems.push(item);
@@ -577,10 +1102,43 @@ function getPublishedLibraryContentForStudent(studentId) {
     });
 }
 
+function isTrackerOnlyLibraryItem(item) {
+    return PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS.includes(String(item?.categoryId || '').trim());
+}
+
+/** Материалы библиотеки в UI: без категорий, которые живут только в трекере (модуль 0 и т.п.). */
+function getLibraryUiItemsForStudent(studentId) {
+    return getPublishedLibraryContentForStudent(studentId).filter((i) => !isTrackerOnlyLibraryItem(i));
+}
+
 function getLibraryCategoriesWithCounts(studentId) {
-    const items = getPublishedLibraryContentForStudent(studentId);
-    return LIBRARY_CATEGORIES.map((c) => {
-        const categoryItems = items.filter((i) => (i.categoryId || i.categoryTitle || '').toString().includes(c.id) || i.categoryTitle === c.title);
+    const items = getLibraryUiItemsForStudent(studentId);
+    const baseCategories = [...LIBRARY_CATEGORIES];
+    const existingIds = new Set(baseCategories.map((c) => String(c.id || '').toLowerCase()));
+    const existingTitles = new Set(baseCategories.map((c) => String(c.title || '').toLowerCase()));
+    items.forEach((item) => {
+        const title = String(item.categoryTitle || '').trim();
+        const id = String(item.categoryId || '').trim();
+        const titleKey = title.toLowerCase();
+        const idKey = id.toLowerCase();
+        if (!title) return;
+        if (existingTitles.has(titleKey) || (idKey && existingIds.has(idKey))) return;
+        const normalizedId = id || `cat-${titleKey.replace(/\s+/g, '-')}`;
+        baseCategories.push({
+            id: normalizedId,
+            title,
+        });
+        existingIds.add(String(normalizedId).toLowerCase());
+        existingTitles.add(titleKey);
+    });
+    return baseCategories.map((c) => {
+        const categoryItems = items.filter((i) => {
+            const itemCategoryId = String(i.categoryId || '').toLowerCase();
+            const itemCategoryTitle = String(i.categoryTitle || '').toLowerCase();
+            const categoryId = String(c.id || '').toLowerCase();
+            const categoryTitle = String(c.title || '').toLowerCase();
+            return itemCategoryId === categoryId || itemCategoryTitle === categoryTitle;
+        });
         const completed = categoryItems.filter((i) => i.completed).length;
         return {
             ...c,
@@ -592,11 +1150,20 @@ function getLibraryCategoriesWithCounts(studentId) {
 }
 
 function getLibraryItemsByCategory(studentId, categoryId) {
-    const items = getPublishedLibraryContentForStudent(studentId);
+    if (PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS.includes(String(categoryId || '').trim())) return [];
+    const items = getLibraryUiItemsForStudent(studentId);
     return items.filter((i) => i.categoryId === categoryId || (i.categoryTitle || '').toLowerCase() === categoryId);
 }
 
 export const studentApi = {
+    getTrackerChecklist(studentId) {
+        return { ...(db.studentTrackerChecks?.[studentId] || {}) };
+    },
+    saveTrackerChecklist(studentId, checkedMap = {}) {
+        db.studentTrackerChecks[studentId] = { ...(checkedMap || {}) };
+        persistTrackerProgressToDb(studentId);
+        return db.studentTrackerChecks[studentId];
+    },
     getStudentDashboard(studentId) {
         const pts = calculatePointsSummary(studentId);
         const { user, profile } = getStudentSnapshot(studentId);
@@ -713,6 +1280,7 @@ export const studentApi = {
         db.submissionVersions.push(version);
         submission.draftVersionId = version.id;
         submission.updatedAt = nowIso();
+        persistSubmissionToDb(studentId, taskId);
         return version;
     },
     submitStudentTask(studentId, taskId, payload) {
@@ -744,6 +1312,7 @@ export const studentApi = {
         addAuditEvent(studentId, ROLES.STUDENT, 'submit_task', 'task', taskId, 'Student submitted task for review', { versionId: version.id });
         const mentorId = db.studentProfiles.find((p) => p.userId === studentId)?.mentorId;
         if (mentorId) addNotification(mentorId, ROLES.MENTOR, 'new_submission_version', 'Появилась новая версия задания', { studentId, taskId });
+        persistSubmissionToDb(studentId, taskId);
         return version;
     },
     addStudentThreadReply(studentId, taskId, payload) {
@@ -853,8 +1422,14 @@ export const studentApi = {
     getStudentChecklist(studentId) {
         return db.courseWeeks.map((w) => ({ weekNumber: w.weekNumber, progress: 0, studentId }));
     },
+    /** Материал из опубликованной библиотеки потока (для трекера по contentItemId). */
+    getPublishedLibraryItemById(studentId, contentId) {
+        if (!contentId) return null;
+        const items = getPublishedLibraryContentForStudent(studentId);
+        return items.find((i) => i.id === contentId) || null;
+    },
     getStudentLibrary(studentId, filters = {}) {
-        let items = getPublishedLibraryContentForStudent(studentId);
+        let items = getLibraryUiItemsForStudent(studentId);
         if (filters.categoryId) items = items.filter((i) => i.categoryId === filters.categoryId || i.categoryTitle === filters.categoryId);
         if (filters.contentType) items = items.filter((i) => i.contentType === filters.contentType);
         if (filters.completed === true) items = items.filter((i) => i.completed);
@@ -871,13 +1446,19 @@ export const studentApi = {
         return items.sort((a, b) => (a.orderIndex || 999) - (b.orderIndex || 999));
     },
     getStudentLibraryProgress(studentId) {
-        const items = getPublishedLibraryContentForStudent(studentId);
-        const completed = items.filter((i) => i.completed).length;
+        const items = getLibraryUiItemsForStudent(studentId);
         const total = items.length;
+        const completed = items.filter((i) => i.completed).length;
+        const sumProgress = items.reduce((s, i) => {
+            const p = Math.min(100, Math.max(0, Number(i.progressPercent) || 0));
+            return s + p;
+        }, 0);
+        /** Общий % по библиотеке: среднее по материалам (открытие и частичное изучение тоже двигают шкалу). */
+        const progressPercent = total ? Math.round(sumProgress / total) : 0;
         return {
             completed,
             total,
-            progressPercent: total ? Math.round((completed / total) * 100) : 0,
+            progressPercent,
             lastOpenedMaterial: [...items].sort((a, b) => String(b.lastOpenedAt || '').localeCompare(String(a.lastOpenedAt || '')))[0] || null,
             recommendedNextMaterial: items.find((i) => !i.completed && i.isRecommended) || items.find((i) => !i.completed) || null,
         };
@@ -1095,6 +1676,7 @@ export const mentorApi = {
         addAuditEvent(mentorId, ROLES.MENTOR, 'mentor_review', 'task', taskId, 'Mentor reviewed task', { status: state.status });
         addNotification(studentId, ROLES.STUDENT, 'mentor_commented', 'Ментор оставил комментарий по заданию', { taskId });
         addNotification(studentId, ROLES.STUDENT, 'task_status_changed', 'Статус задания изменен ментором', { taskId, status: state.status });
+        persistSubmissionToDb(studentId, taskId);
         return { history, warningTooManyRevisions: tooMany };
     },
     changeMentorTaskStatus(mentorId, studentId, taskId, status, comment) {
@@ -1190,6 +1772,25 @@ export const adminApi = {
         const item = { id: uid('cnt'), status: CONTENT_STATUS.DRAFT, visibility: 'all', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '', createdBy: 'u-adm-1', createdAt: nowIso(), updatedAt: nowIso(), ...payload };
         db.contentItems.unshift(item);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_content', 'content_item', item.id, 'Created content item', item);
+        fireAndForget(() => pvlPostgrestApi.upsertContentItem({
+            id: item.id,
+            title: item.title || '',
+            short_description: item.shortDescription || '',
+            body_html: item.fullDescription || item.description || '',
+            content_type: item.contentType || 'text',
+            lesson_video_url: item.lessonVideoUrl || null,
+            lesson_rutube_url: item.lessonRutubeUrl || null,
+            lesson_video_embed: item.lessonVideoEmbed || null,
+            lesson_quiz: item.lessonQuiz || null,
+            homework_config: item.lessonHomework || null,
+            glossary_payload: item.glossaryPayload || null,
+            library_payload: item.libraryPayload || null,
+            status: item.status || 'draft',
+            created_by: item.createdBy || 'u-adm-1',
+            updated_by: item.updatedBy || item.createdBy || 'u-adm-1',
+            created_at: item.createdAt,
+            updated_at: item.updatedAt,
+        }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: item.id });
         return item;
     },
     getContentItemById(contentId) {
@@ -1200,6 +1801,22 @@ export const adminApi = {
         if (!item) return null;
         Object.assign(item, payload, { updatedAt: nowIso() });
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_content', 'content_item', contentId, 'Updated content item', payload);
+        fireAndForget(() => pvlPostgrestApi.updateContentItem(contentId, {
+            title: item.title || '',
+            short_description: item.shortDescription || '',
+            body_html: item.fullDescription || item.description || '',
+            content_type: item.contentType || 'text',
+            lesson_video_url: item.lessonVideoUrl || null,
+            lesson_rutube_url: item.lessonRutubeUrl || null,
+            lesson_video_embed: item.lessonVideoEmbed || null,
+            lesson_quiz: item.lessonQuiz || null,
+            homework_config: item.lessonHomework || null,
+            glossary_payload: item.glossaryPayload || null,
+            library_payload: item.libraryPayload || null,
+            status: item.status || 'draft',
+            updated_by: 'u-adm-1',
+            updated_at: item.updatedAt,
+        }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: contentId });
         return item;
     },
     duplicateContentItem(contentId) {
@@ -1253,6 +1870,7 @@ export const adminApi = {
         db.contentItems.splice(idx, 1);
         db.contentPlacements = db.contentPlacements.filter((p) => (p.contentItemId || p.contentId) !== contentId);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'delete_content', 'content_item', contentId, 'Deleted content item', {});
+        fireAndForget(() => pvlPostgrestApi.deleteContentItem(contentId), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: contentId });
         return true;
     },
     unarchiveContentItem(contentId) {
@@ -1262,6 +1880,19 @@ export const adminApi = {
         const placement = { id: uid('pl'), isPublished: true, createdAt: nowIso(), updatedAt: nowIso(), ...payload };
         db.contentPlacements.push(placement);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_placement', 'content_placement', placement.id, 'Assigned content placement', payload);
+        fireAndForget(() => pvlPostgrestApi.upsertPlacement({
+            id: placement.id,
+            content_item_id: placement.contentItemId || placement.contentId,
+            target_role: placement.targetRole || 'both',
+            target_section: placement.targetSection || 'library',
+            cohort_id: placement.cohortId || placement.targetCohort || 'cohort-2026-1',
+            module_number: Number(placement.moduleNumber ?? placement.weekNumber ?? 0),
+            week_number: Number(placement.weekNumber ?? placement.moduleNumber ?? 0),
+            order_index: Number(placement.orderIndex ?? 0),
+            is_published: placement.isPublished !== false,
+            created_at: placement.createdAt,
+            updated_at: placement.updatedAt,
+        }), { table: 'pvl_content_placements', endpoint: '/public.pvl_content_placements', id: placement.id });
         return placement;
     },
     assignContentPlacement(payload) {
@@ -1272,6 +1903,16 @@ export const adminApi = {
         if (!p) return null;
         Object.assign(p, payload, { updatedAt: nowIso() });
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_placement', 'content_placement', placementId, 'Updated content placement', payload);
+        fireAndForget(() => pvlPostgrestApi.updatePlacement(placementId, {
+            target_role: p.targetRole || 'both',
+            target_section: p.targetSection || 'library',
+            cohort_id: p.cohortId || p.targetCohort || 'cohort-2026-1',
+            module_number: Number(p.moduleNumber ?? p.weekNumber ?? 0),
+            week_number: Number(p.weekNumber ?? p.moduleNumber ?? 0),
+            order_index: Number(p.orderIndex ?? 0),
+            is_published: p.isPublished !== false,
+            updated_at: p.updatedAt,
+        }), { table: 'pvl_content_placements', endpoint: '/public.pvl_content_placements', id: placementId });
         return p;
     },
     unpublishContentItem(contentId) {
@@ -1284,6 +1925,7 @@ export const adminApi = {
         if (idx < 0) return false;
         db.contentPlacements.splice(idx, 1);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'remove_placement', 'content_placement', placementId, 'Removed content placement', {});
+        fireAndForget(() => pvlPostgrestApi.deletePlacement(placementId), { table: 'pvl_content_placements', endpoint: '/public.pvl_content_placements', id: placementId });
         return true;
     },
     removePlacement(placementId) {
@@ -1300,6 +1942,62 @@ export const adminApi = {
     },
     getAdminMentors() {
         return db.mentorProfiles;
+    },
+    addMenteeToMentor(mentorUserId, studentUserId) {
+        const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
+        if (!mentor || !studentUserId) return null;
+        const next = new Set(Array.isArray(mentor.menteeIds) ? mentor.menteeIds : []);
+        next.add(studentUserId);
+        mentor.menteeIds = Array.from(next);
+        mentor.updatedAt = nowIso();
+        const profile = db.studentProfiles.find((s) => s.userId === studentUserId);
+        if (profile) {
+            profile.mentorId = mentor.userId || mentorUserId;
+            profile.updatedAt = nowIso();
+        }
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_mentee_to_mentor', 'mentor_profile', mentor.userId || mentor.id, 'Assigned mentee to mentor', { studentUserId });
+        return mentor;
+    },
+    removeMenteeFromMentor(mentorUserId, studentUserId) {
+        const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
+        if (!mentor || !studentUserId) return null;
+        mentor.menteeIds = (mentor.menteeIds || []).filter((id) => id !== studentUserId);
+        mentor.updatedAt = nowIso();
+        const resolvedMentorUserId = mentor.userId || mentorUserId;
+        const profile = db.studentProfiles.find((p) => p.userId === studentUserId);
+        if (profile && profile.mentorId === resolvedMentorUserId) {
+            profile.mentorId = null;
+            profile.updatedAt = nowIso();
+        }
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'remove_mentee_from_mentor', 'mentor_profile', mentor.userId || mentor.id, 'Removed mentee from mentor', { studentUserId });
+        return mentor;
+    },
+    /** Одна ученица — один ментор: синхронизирует mentorProfiles.menteeIds и studentProfiles.mentorId */
+    assignStudentMentor(studentUserId, mentorUserId) {
+        const profile = db.studentProfiles.find((p) => p.userId === studentUserId);
+        if (!profile) return null;
+        for (const m of db.mentorProfiles || []) {
+            if (!Array.isArray(m.menteeIds)) continue;
+            if (!m.menteeIds.includes(studentUserId)) continue;
+            m.menteeIds = m.menteeIds.filter((id) => id !== studentUserId);
+            m.updatedAt = nowIso();
+        }
+        if (!mentorUserId) {
+            profile.mentorId = null;
+            profile.updatedAt = nowIso();
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'clear_student_mentor', 'student_profile', studentUserId, 'Cleared mentor assignment', {});
+            return profile;
+        }
+        const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
+        if (!mentor) return null;
+        const next = new Set(mentor.menteeIds || []);
+        next.add(studentUserId);
+        mentor.menteeIds = Array.from(next);
+        mentor.updatedAt = nowIso();
+        profile.mentorId = mentor.userId || mentorUserId;
+        profile.updatedAt = nowIso();
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_student_mentor', 'student_profile', studentUserId, 'Assigned mentor', { mentorUserId: profile.mentorId });
+        return profile;
     },
     getAdminCohorts() {
         return db.cohorts;
@@ -1319,8 +2017,47 @@ export const adminApi = {
             methodQuestions: [SCORING_METHOD_QUESTION],
         };
     },
+    getAdminFaq() {
+        return [...db.faqItems].sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0));
+    },
+    upsertFaqItem(payload = {}) {
+        const id = payload.id || uid('faq');
+        const row = {
+            id,
+            title: payload.title || payload.question || 'Новый вопрос',
+            question: payload.question || payload.title || 'Новый вопрос',
+            answer: payload.answer || payload.answerHtml || '',
+            answerHtml: payload.answerHtml || payload.answer || '',
+            targetRole: payload.targetRole || 'all',
+            isPublished: payload.isPublished !== false,
+            orderIndex: Number(payload.orderIndex ?? 0),
+        };
+        const idx = db.faqItems.findIndex((x) => x.id === id);
+        if (idx >= 0) db.faqItems[idx] = { ...db.faqItems[idx], ...row };
+        else db.faqItems.push(row);
+        fireAndForget(() => pvlPostgrestApi.upsertFaqItem({
+            id: row.id,
+            question: row.question,
+            answer: row.answerHtml || row.answer || '',
+            target_role: row.targetRole || 'all',
+            is_published: row.isPublished !== false,
+            order_index: Number(row.orderIndex ?? 0),
+            created_at: nowIso(),
+            updated_at: nowIso(),
+        }), { table: 'pvl_faq_items', endpoint: '/public.pvl_faq_items', id: row.id });
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'upsert_faq_item', 'faq_item', row.id, 'Upsert FAQ item', row);
+        return row;
+    },
+    deleteFaqItem(faqId) {
+        const idx = db.faqItems.findIndex((x) => x.id === faqId);
+        if (idx < 0) return false;
+        db.faqItems.splice(idx, 1);
+        fireAndForget(() => pvlPostgrestApi.deleteFaqItem(faqId), { table: 'pvl_faq_items', endpoint: '/public.pvl_faq_items', id: faqId });
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'delete_faq_item', 'faq_item', faqId, 'Deleted FAQ item', {});
+        return true;
+    },
     createCalendarEvent(payload = {}) {
-        const et = payload.eventType || 'mentor_meeting';
+        const et = normalizeCalendarEventTypeForDb(payload.eventType || 'mentor_meeting');
         const row = {
             id: uid('pvl-cal'),
             title: 'Новое событие',
@@ -1341,13 +2078,51 @@ export const adminApi = {
         };
         db.calendarEvents.push(row);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_calendar_event', 'calendar_event', row.id, row.title, {});
+        fireAndForget(() => pvlPostgrestApi.createCalendarEvent({
+            id: row.id,
+            title: row.title || 'Новое событие',
+            description: row.description || '',
+            event_type: normalizeCalendarEventTypeForDb(row.eventType || 'other'),
+            visibility_role: row.visibilityRole || 'all',
+            cohort_id: row.cohortId || 'cohort-2026-1',
+            module_number: Number(row.moduleNumber ?? row.weekNumber ?? 0),
+            week_number: Number(row.weekNumber ?? row.moduleNumber ?? 0),
+            linked_lesson_id: row.linkedLessonId || null,
+            linked_practicum_id: row.linkedPracticumId || null,
+            start_at: row.startAt || nowIso(),
+            end_at: row.endAt || nowIso(),
+            color_token: row.colorToken || row.eventType || 'other',
+            is_published: row.isPublished !== false,
+            created_at: row.createdAt,
+            updated_at: row.updatedAt,
+        }), { table: 'pvl_calendar_events', endpoint: '/public.pvl_calendar_events', id: row.id });
         return row;
     },
     updateCalendarEvent(eventId, payload) {
         const e = db.calendarEvents.find((x) => x.id === eventId);
         if (!e) return null;
-        Object.assign(e, payload, { updatedAt: nowIso() });
+        const nextPatch = { ...payload };
+        if (Object.prototype.hasOwnProperty.call(nextPatch, 'eventType')) {
+            nextPatch.eventType = normalizeCalendarEventTypeForDb(nextPatch.eventType);
+        }
+        Object.assign(e, nextPatch, { updatedAt: nowIso() });
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_calendar_event', 'calendar_event', eventId, e.title, payload);
+        fireAndForget(() => pvlPostgrestApi.updateCalendarEvent(eventId, {
+            title: e.title || 'Событие',
+            description: e.description || '',
+            event_type: normalizeCalendarEventTypeForDb(e.eventType || 'other'),
+            visibility_role: e.visibilityRole || 'all',
+            cohort_id: e.cohortId || 'cohort-2026-1',
+            module_number: Number(e.moduleNumber ?? e.weekNumber ?? 0),
+            week_number: Number(e.weekNumber ?? e.moduleNumber ?? 0),
+            linked_lesson_id: e.linkedLessonId || null,
+            linked_practicum_id: e.linkedPracticumId || null,
+            start_at: e.startAt || nowIso(),
+            end_at: e.endAt || nowIso(),
+            color_token: e.colorToken || e.eventType || 'other',
+            is_published: e.isPublished !== false,
+            updated_at: e.updatedAt,
+        }), { table: 'pvl_calendar_events', endpoint: '/public.pvl_calendar_events', id: eventId });
         return e;
     },
     deleteCalendarEvent(eventId) {
@@ -1355,13 +2130,17 @@ export const adminApi = {
         if (idx < 0) return false;
         db.calendarEvents.splice(idx, 1);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'delete_calendar_event', 'calendar_event', eventId, 'deleted', {});
+        fireAndForget(() => pvlPostgrestApi.deleteCalendarEvent(eventId), { table: 'pvl_calendar_events', endpoint: '/public.pvl_calendar_events', id: eventId });
         return true;
     },
 };
 
 export const sharedApi = {
     getFaq(role) {
-        return db.faqItems.filter((f) => f.targetRole === role || f.targetRole === 'all');
+        return db.faqItems
+            .filter((f) => f.isPublished !== false)
+            .filter((f) => f.targetRole === role || f.targetRole === 'all' || f.targetRole === 'both')
+            .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0));
     },
     getGlossary() {
         return [
@@ -1377,6 +2156,69 @@ export const sharedApi = {
     },
     getNotifications(userId) {
         return getPendingNotifications(db, userId);
+    },
+    createStudentQuestion(studentId, question) {
+        const row = {
+            id: uid('qs'),
+            student_id: studentId,
+            question: String(question || '').trim(),
+            answer_html: null,
+            is_public: false,
+            status: 'new',
+            created_at: nowIso(),
+            updated_at: nowIso(),
+        };
+        if (!row.question) return null;
+        fireAndForget(() => pvlPostgrestApi.createStudentQuestion(row), { table: 'pvl_student_questions', endpoint: '/public.pvl_student_questions', id: row.id });
+        addAuditEvent(studentId, ROLES.STUDENT, 'create_student_question', 'student_question', row.id, 'Student created question', {});
+        return row;
+    },
+    getDirectMessages(mentorId, studentId) {
+        return (db.directMessages || [])
+            .filter((m) => m.mentorId === mentorId && m.studentId === studentId)
+            .slice()
+            .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    },
+    sendDirectMessage({ mentorId, studentId, authorUserId, text }) {
+        const body = String(text || '').trim();
+        if (!mentorId || !studentId || !authorUserId || !body) return null;
+        const row = {
+            id: uid('dm'),
+            mentorId,
+            studentId,
+            authorUserId,
+            text: body,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+        };
+        if (!Array.isArray(db.directMessages)) db.directMessages = [];
+        db.directMessages.push(row);
+        addAuditEvent(authorUserId, 'system', 'direct_message_send', 'direct_message', row.id, 'Direct message sent', { mentorId, studentId });
+        return row;
+    },
+    getStudentDirectDialog(studentId) {
+        const profile = db.studentProfiles.find((p) => p.userId === studentId);
+        const mentorId = profile?.mentorId || null;
+        if (!mentorId) return { mentorId: null, mentor: null, messages: [] };
+        const mentor = db.users.find((u) => u.id === mentorId) || null;
+        const messages = this.getDirectMessages(mentorId, studentId);
+        return { mentorId, mentor, messages };
+    },
+    getMentorDirectDialogs(mentorId) {
+        const menteeIds = getMentorMenteeIds(mentorId);
+        return menteeIds.map((studentId) => {
+            const student = db.users.find((u) => u.id === studentId) || null;
+            const messages = this.getDirectMessages(mentorId, studentId);
+            const last = messages.length ? messages[messages.length - 1] : null;
+            return {
+                mentorId,
+                studentId,
+                student,
+                lastMessageText: last?.text || '',
+                lastMessageAt: last?.createdAt || null,
+                totalMessages: messages.length,
+            };
+        }).sort((a, b) => String(b.lastMessageAt || '').localeCompare(String(a.lastMessageAt || '')));
     },
 };
 
@@ -1467,10 +2309,31 @@ export const pvlDomainApi = {
         getNotificationsForUser(userId) {
             return notifications.filter((n) => n.userId === userId || n.userId === 'all').slice(-100).reverse();
         },
+        async refreshFromDb(userId) {
+            if (!pvlPostgrestApi.isEnabled()) return this.getNotificationsForUser(userId);
+            try {
+                const rows = await pvlPostgrestApi.listNotifications(userId);
+                notifications = rows.map((r) => ({
+                    id: r.id,
+                    userId: r.user_id || userId,
+                    role: r.role || 'all',
+                    type: r.kind || 'notification',
+                    title: r.title || '',
+                    text: r.body || r.title || '',
+                    payload: r.payload || {},
+                    isRead: !!r.is_read,
+                    createdAt: r.created_at || nowIso(),
+                }));
+            } catch {
+                /* fallback to mock notifications */
+            }
+            return this.getNotificationsForUser(userId);
+        },
         markNotificationRead(notificationId) {
             const n = notifications.find((x) => x.id === notificationId);
             if (!n) return null;
             n.isRead = true;
+            fireAndForget(() => pvlPostgrestApi.markNotificationRead(notificationId), { table: 'pvl_notifications', endpoint: '/public.pvl_notifications', id: notificationId });
             return n;
         },
         markAllNotificationsRead(userId) {

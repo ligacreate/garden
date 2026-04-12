@@ -13,11 +13,13 @@ import {
     Languages,
     LayoutGrid,
     Library,
-    MessageCircleQuestion,
+    Menu,
+    MessageCircle,
     Route,
     Settings2,
     UserCog,
     Users,
+    X,
 } from 'lucide-react';
 import Button from '../components/Button';
 import RichEditor from '../components/RichEditor';
@@ -25,6 +27,7 @@ import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
 import PvlSzAssessmentFlow from './PvlSzAssessmentFlow';
+import { stripMaterialNumbering, buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
 import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
 import {
     PVL_CERT_CONDITIONS,
@@ -32,8 +35,8 @@ import {
     PVL_CERT_PROCESS_STEPS,
     PVL_CERT_RED_FLAGS,
     PVL_GLOSSARY_FILTERS,
-    PVL_TRACKER_FAQ,
     PVL_TRACKER_GLOSSARY,
+    PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS,
     PVL_TRACKER_RULES,
 } from '../data/pvlReferenceContent';
 import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
@@ -44,7 +47,7 @@ import {
     getUser,
     getStudentCertification,
 } from '../data/pvlMockData';
-import { mapStudentHomeworkDisplayStatus, mapTaskStatus, pvlDomainApi } from '../services/pvlMockApi';
+import { mapStudentHomeworkDisplayStatus, mapTaskStatus, pvlDomainApi, syncPvlActorsFromGarden, syncPvlRuntimeFromDb } from '../services/pvlMockApi';
 import { TASK_STATUS } from '../data/pvl/enums';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
@@ -58,6 +61,7 @@ import {
     validateRoleAccessMap,
     validateRouteMap,
 } from '../services/pvlAppKernel';
+import { logPvlRoleResolution, readGardenCurrentUserFromStorage, resolvePvlRoleFromGardenProfile } from '../services/pvlRoleResolver';
 import { api } from '../services/dataService';
 
 function pvlDevToolsEnabled() {
@@ -121,6 +125,14 @@ function resolvePvlMentorActorId(actingUserId) {
     return 'u-men-1';
 }
 
+function pvlPersonInitials(displayName) {
+    const s = String(displayName || '').trim();
+    if (!s) return '—';
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+    return s.slice(0, 2).toUpperCase();
+}
+
 function toRoute(name) {
     const map = {
         'О курсе': 'about',
@@ -134,15 +146,12 @@ function toRoute(name) {
         'Трекер курса': 'tracker',
         Практикумы: 'practicums',
         'Практикумы с менторами': 'practicums',
+        Коммуникации: 'messages',
         'Чек-лист': 'checklist',
         Результаты: 'results',
         Сертификация: 'certification',
         'Сертификация и самооценка': 'certification',
         Самооценка: 'self-assessment',
-        Вопросы: 'qa',
-        FAQ: 'qa',
-        'FAQ курса': 'qa',
-        'Вопросы и ответы': 'qa',
         'Культурный код Лиги': 'cultural-code',
     };
     return map[name] || 'dashboard';
@@ -155,9 +164,9 @@ const COURSE_MENU_LABELS = [
     'Библиотека',
     'Трекер',
     'Практикумы',
+    'Коммуникации',
     'Результаты',
     'Сертификация',
-    'FAQ',
 ];
 
 const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
@@ -175,16 +184,16 @@ const ADMIN_SIDEBAR_CONFIG = [
     { type: 'item', label: 'Материалы курса', path: '/admin/content' },
     { type: 'item', label: 'Календарь', path: '/admin/calendar' },
     { type: 'divider' },
-    ...COURSE_MENU_LABELS.map((label) => ({
+    ...COURSE_MENU_LABELS.filter((label) => label !== 'Коммуникации').map((label) => ({
         type: 'item',
         label,
-        path: label === 'FAQ' ? '/admin/questions' : `/admin/${toRoute(label)}`,
+        path: `/admin/${toRoute(label)}`,
     })),
     { type: 'divider' },
     { type: 'item', label: 'Настройки', path: '/admin/settings' },
 ];
 
-const ADMIN_COURSE_ROUTE_RE = /^\/admin\/(about|glossary|library|tracker|practicums|results|certification|self-assessment|qa)(\/|$)/;
+const ADMIN_COURSE_ROUTE_RE = /^\/admin\/(about|glossary|library|tracker|practicums|results|certification|self-assessment)(\/|$)/;
 
 function sidebarRoutePath(route) {
     const raw = String(route || '').split('?')[0] || '/';
@@ -195,15 +204,6 @@ function sidebarRoutePath(route) {
 function courseSidebarItemActive(currentRoute, prefix, label) {
     const routePath = sidebarRoutePath(currentRoute);
     const base = `${prefix}/${toRoute(label)}`;
-    if (label === 'FAQ') {
-        if (prefix === '/admin') {
-            return routePath === '/admin/questions'
-                || routePath.startsWith('/admin/questions/')
-                || routePath === '/admin/qa'
-                || routePath.startsWith('/admin/qa/');
-        }
-        return routePath === `${prefix}/qa` || routePath.startsWith(`${prefix}/qa/`);
-    }
     return routePath === base || routePath.startsWith(`${base}/`);
 }
 
@@ -229,7 +229,6 @@ function adminSectionForRoute(allowedRoute) {
     if (ap === '/admin/content' || /^\/admin\/content\//.test(ap)) return 'Материалы курса';
     if (ap === '/admin/calendar') return 'Календарь';
     if (ap === '/admin/settings') return 'Настройки';
-    if (ap === '/admin/qa' || ap === '/admin/questions') return 'FAQ';
     for (const label of COURSE_MENU_LABELS) {
         if (courseSidebarItemActive(allowedRoute, '/admin', label)) return label;
     }
@@ -268,8 +267,10 @@ const STATUS_TONE = (status) => {
     return 'bg-slate-100 text-slate-600 border-slate-300';
 };
 
-const StatusBadge = ({ children }) => (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${STATUS_TONE(children)}`}>
+const StatusBadge = ({ children, compact = false }) => (
+    <span
+        className={`inline-flex rounded-full border font-semibold uppercase ${compact ? 'px-2 py-0.5 text-[9px] tracking-[0.05em]' : 'px-2.5 py-1 text-[10px] tracking-[0.08em]'} ${STATUS_TONE(children)}`}
+    >
         {children}
     </span>
 );
@@ -334,11 +335,20 @@ function printMaterialSheet(title, bodyText) {
     const popup = window.open('', '_blank', 'width=900,height=700');
     if (!popup) return;
     const escapedTitle = safeTitle.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    const escapedBody = safeBody
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('\n', '<br/>');
+    const bodyLooksLikeHtml = /<\s*[a-z][^>]*>/i.test(safeBody);
+    const escapedBody = bodyLooksLikeHtml
+        ? (() => {
+            const doc = new DOMParser().parseFromString(`<div id="root">${safeBody}</div>`, 'text/html');
+            const root = doc.getElementById('root');
+            if (!root) return '';
+            root.querySelectorAll('script,style,iframe,object').forEach((n) => n.remove());
+            return root.innerHTML;
+        })()
+        : safeBody
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('\n', '<br/>');
     popup.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>${escapedTitle}</title>
         <style>
             body{font-family:Arial,sans-serif;padding:28px;line-height:1.55;color:#1f2937}
@@ -356,25 +366,6 @@ function printMaterialSheet(title, bodyText) {
 
 const RiskBadge = ({ level }) => <StatusBadge>{level}</StatusBadge>;
 const DeadlineBadge = ({ value }) => <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#9B8B80]">{value}</span>;
-const DashboardWidget = ({ title, value, hint }) => (
-    <article className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm shadow-slate-200/40">
-        <div className="text-xs font-medium text-slate-500">{title}</div>
-        <div className="font-display text-2xl md:text-3xl text-slate-800 mt-1 tabular-nums">{value}</div>
-        {hint ? <div className="text-xs text-slate-400 mt-1.5 leading-snug">{hint}</div> : null}
-    </article>
-);
-
-const ProgressWidget = ({ title, done, total }) => {
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    return (
-        <article className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm shadow-slate-200/40">
-            <div className="text-xs font-medium text-slate-500">{title}</div>
-            <div className="font-display text-2xl md:text-3xl text-emerald-800/95 mt-1 tabular-nums">{done}/{total}</div>
-            <div className="mt-3 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-emerald-500/80" style={{ width: `${pct}%` }} /></div>
-        </article>
-    );
-};
-
 const PointsProgressBar = ({ value, max, tone = 'bg-blue-600/80' }) => {
     const pct = max ? Math.max(0, Math.min(100, Math.round((value / max) * 100))) : 0;
     return <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} /></div>;
@@ -391,7 +382,7 @@ const PointsBreakdownList = ({ items }) => (
 );
 
 const CoursePointsCard = ({ points }) => (
-    <article className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm shadow-slate-200/40">
+    <article className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4">
         <div className="text-xs font-medium text-slate-500">Курсовые баллы</div>
         <div className="font-display text-2xl md:text-3xl text-slate-800 mt-1 tabular-nums">{points.coursePointsTotal}/400</div>
         <div className="mt-3"><PointsProgressBar value={points.coursePointsTotal} max={400} tone="bg-emerald-600/70" /></div>
@@ -409,7 +400,7 @@ const CoursePointsCard = ({ points }) => (
 const SzPointsCard = ({ points, redFlags = [] }) => (
     <article className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 shadow-sm shadow-slate-200/30">
         <div className="text-xs font-medium text-blue-800/90">Самооценка и сертификация (до 54 баллов)</div>
-        <div className="grid md:grid-cols-2 gap-3 mt-2 text-sm text-slate-700">
+        <div className="grid md:grid-cols-2 gap-4 mt-2 text-sm text-slate-700">
             <div>Ваша самооценка: <span className="font-medium tabular-nums">{points.szSelfAssessmentTotal}/54</span></div>
             <div>Оценка ментора: <span className="font-medium tabular-nums">{points.szMentorAssessmentTotal}/54</span></div>
         </div>
@@ -453,9 +444,9 @@ const COURSE_MENU_ICON = {
     Библиотека: Library,
     Трекер: Route,
     Практикумы: CalendarCheck2,
+    Коммуникации: MessageCircle,
     Результаты: BarChart3,
     Сертификация: BadgeCheck,
-    FAQ: MessageCircleQuestion,
 };
 
 const STUDENT_MENU_ICON = {
@@ -509,15 +500,32 @@ const SidebarMenu = ({
     setMentorSection,
     navigate,
     onGardenExit,
+    studentId = 'u-st-1',
+    actingUserId = 'u-st-1',
+    className = '',
 }) => {
     const routePath = sidebarRoutePath(currentRoute);
+    const sidebarActorName = useMemo(() => {
+        if (role === 'student') return getUser(studentId)?.fullName?.trim() || '';
+        if (role === 'mentor') return getUser(resolvePvlMentorActorId(actingUserId))?.fullName?.trim() || '';
+        return getUser(actingUserId)?.fullName?.trim() || '';
+    }, [role, studentId, actingUserId]);
+    const sidebarRoleLabel = role === 'student' ? 'Участница' : role === 'mentor' ? 'Ментор' : 'Учительская';
+    const sidebarTitle = sidebarActorName || sidebarRoleLabel;
+    const initials = useMemo(() => pvlPersonInitials(sidebarTitle), [sidebarTitle]);
     return (
-        <aside className="h-fit xl:sticky xl:top-6 rounded-3xl border border-slate-100/90 bg-white/85 backdrop-blur-sm p-3 shadow-sm shadow-slate-200/50">
-        <div className="px-2 pt-1 pb-3">
+        <aside className={`h-fit xl:sticky xl:top-6 rounded-3xl bg-white/95 p-3 shadow-[0_14px_44px_-14px_rgba(15,23,42,0.09)] ${className}`}>
+        <div className="px-1.5 pt-1 pb-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{PVL_COURSE_DISPLAY_NAME}</div>
-            <h3 className="font-display text-lg text-slate-800 mt-0.5 leading-tight">
-                {role === 'student' ? 'Участница' : role === 'mentor' ? 'Ментор' : 'Учительская'}
-            </h3>
+            <div className="mt-2 flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-50/90 to-emerald-50/35 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                <div className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center text-xs font-semibold text-emerald-900 tabular-nums">
+                    {initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="font-display text-[15px] leading-snug text-slate-900 truncate" title={sidebarTitle}>{sidebarTitle}</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 mt-0.5">{sidebarRoleLabel}</div>
+                </div>
+            </div>
         </div>
         {role === 'student' ? (
             <nav className="space-y-1 px-0.5 pb-2">
@@ -695,7 +703,7 @@ const BREADCRUMB_LABELS = {
     results: 'Результаты',
     certification: 'Сертификация',
     'self-assessment': 'Самооценка',
-    qa: 'FAQ',
+    messages: 'Коммуникации',
     'cultural-code': 'Культурный код',
     materials: 'Материалы',
     mentee: 'Ученица',
@@ -722,6 +730,15 @@ function breadcrumbSegmentLabel(seg) {
  */
 function adminRoutePath(route) {
     return String(route || '').split('?')[0];
+}
+
+function shouldShowSubtleTrail(route) {
+    const path = adminRoutePath(route);
+    if (!path || path.startsWith('/admin/')) return false;
+    // На экранах с собственными крошками/назад (карточки) не дублируем верхнюю строку.
+    if (/^\/(student|mentor)\/library\/.+/.test(path)) return false;
+    if (/^\/(student|mentor)\/results\/.+/.test(path)) return false;
+    return true;
 }
 
 function resolveAdminDrilldownNav(route) {
@@ -778,16 +795,6 @@ function resolveAdminDrilldownNav(route) {
             ],
         };
     }
-    if (path === '/admin/students') {
-        return {
-            backTo: '/admin/pvl',
-            backLabel: 'К дашборду учительской',
-            crumbs: [
-                { label: 'Дашборд', to: '/admin/pvl' },
-                { label: 'Ученицы', to: null },
-            ],
-        };
-    }
     if (/^\/admin\/library\/.+/.test(path)) {
         return {
             backTo: '/admin/library',
@@ -817,7 +824,7 @@ function AdminDrilldownNavBar({ route, navigate }) {
     return (
         <nav
             aria-label="Навигация внутри учительской"
-            className="rounded-2xl border border-slate-100/90 bg-white/95 px-4 py-3 shadow-sm shadow-slate-200/30 flex flex-wrap items-center gap-x-3 gap-y-2"
+            className="border-b border-slate-100/70 bg-white/40 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2"
         >
             <button
                 type="button"
@@ -828,26 +835,6 @@ function AdminDrilldownNavBar({ route, navigate }) {
                 {' '}
                 {ctx.backLabel}
             </button>
-            {ctx.crumbs?.length ? (
-                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 min-w-0">
-                    {ctx.crumbs.map((c, i) => (
-                        <span key={`${c.label}-${i}`} className="inline-flex items-center gap-1.5 min-w-0">
-                            {i > 0 ? <span className="text-slate-300 shrink-0" aria-hidden>·</span> : null}
-                            {c.to ? (
-                                <button
-                                    type="button"
-                                    onClick={() => navigate(c.to)}
-                                    className="text-slate-500 hover:text-slate-800 hover:underline truncate max-w-[12rem] sm:max-w-none"
-                                >
-                                    {c.label}
-                                </button>
-                            ) : (
-                                <span className="text-slate-700 font-medium truncate max-w-[14rem] sm:max-w-none">{c.label}</span>
-                            )}
-                        </span>
-                    ))}
-                </div>
-            ) : null}
         </nav>
     );
 }
@@ -855,12 +842,42 @@ function AdminDrilldownNavBar({ route, navigate }) {
 /** Тихая строка контекста: без цепочки кликабельных крошек */
 const SubtleTrail = ({ path }) => {
     const parts = path.split('/').filter(Boolean);
-    if (parts.length < 2) return null;
+    if (parts.length <= 2) return null;
     const cabinet = parts[0] === 'student' ? 'Участница' : parts[0] === 'mentor' ? 'Ментор' : 'Учительская';
     const tail = parts.slice(1).map(breadcrumbSegmentLabel).filter((l) => l && l !== '…').join(' · ');
     if (!tail) return <p className="text-xs text-slate-400 truncate">{cabinet}</p>;
     return <p className="text-xs text-slate-400 truncate">{cabinet} · {tail}</p>;
 };
+
+function exportMaterialMarkdown(title = '', html = '') {
+    const safeTitle = String(title || 'Материал').trim();
+    const source = String(html || '');
+    const doc = new DOMParser().parseFromString(`<div id="root">${source}</div>`, 'text/html');
+    const root = doc.getElementById('root');
+    if (!root) return;
+    root.querySelectorAll('script,style,iframe,object').forEach((n) => n.remove());
+    const blocks = [];
+    root.childNodes.forEach((node) => {
+        const name = String(node.nodeName || '').toLowerCase();
+        const text = String(node.textContent || '').replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        if (!text) return;
+        if (name === 'h1') blocks.push(`# ${text}`);
+        else if (name === 'h2') blocks.push(`## ${text}`);
+        else if (name === 'h3') blocks.push(`### ${text}`);
+        else if (name === 'li') blocks.push(`- ${text}`);
+        else blocks.push(text);
+    });
+    const md = `# ${safeTitle}\n\n${blocks.join('\n\n')}\n`;
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeTitle.toLowerCase().replace(/[^a-zа-я0-9]+/gi, '-').replace(/(^-|-$)/g, '') || 'material'}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
 
 /** Переключатель роли: всегда на виду при сборке; при смене — домашний маршрут и актуальное меню. */
 const CabinetSwitcher = ({ role, setRole, navigate, onEmbeddedDemoRoleChange }) => {
@@ -893,9 +910,9 @@ const CabinetSwitcher = ({ role, setRole, navigate, onEmbeddedDemoRoleChange }) 
 };
 
 const ScreenState = ({ loading, error, empty, children, emptyText = 'Пока ничего нет.' }) => {
-    if (loading) return <div className="rounded-2xl border border-slate-100 bg-white p-6 text-sm text-slate-500 shadow-sm">Загрузка…</div>;
+    if (loading) return <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-6 text-sm text-slate-500 shadow-sm">Загрузка…</div>;
     if (error) return <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-6 text-sm text-rose-800 shadow-sm">{error}</div>;
-    if (empty) return <div className="rounded-2xl border border-slate-100 bg-white p-6 text-sm text-slate-500 shadow-sm">{emptyText}</div>;
+    if (empty) return <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-6 text-sm text-slate-500 shadow-sm">{emptyText}</div>;
     return children;
 };
 
@@ -998,6 +1015,7 @@ const SECTION_ROUTE_TO_KEY = {
     '/student/lessons': 'lessons',
     '/student/tracker': 'checklist',
     '/student/practicums': 'practicums',
+    '/student/messages': 'messages',
     '/student/checklist': 'checklist',
     '/student/results': 'results',
     '/student/certification': 'certification',
@@ -1005,29 +1023,42 @@ const SECTION_ROUTE_TO_KEY = {
 };
 
 function getPublishedContentBySection(sectionKey, role = 'student', items = [], placements = [], cohortId = 'cohort-2026-1') {
-    const placementIds = new Set(
-        placements
-            .filter((p) => p.targetSection === sectionKey && (p.targetRole === role || p.targetRole === 'both'))
-            .map((p) => p.contentId || p.contentItemId)
-            .filter(Boolean)
-    );
-    return items.filter((i) => {
-        const roleAllowed = i.targetRole === role || i.targetRole === 'both';
-        const visibilityAllowed =
-            i.visibility === 'all'
-            || (i.visibility === 'by_role' && roleAllowed)
-            || ((i.visibility === 'by_cohort' || i.visibility === 'cohort') && (!i.targetCohort || i.targetCohort === cohortId));
-        const inSection = i.targetSection === sectionKey || placementIds.has(i.id);
-        return i.status === 'published' && roleAllowed && visibilityAllowed && inSection;
-    }).sort((a, b) => (a.orderIndex || 999) - (b.orderIndex || 999));
+    const relevantPlacements = placements
+        .filter((p) => p.targetSection === sectionKey)
+        .filter((p) => p.targetRole === role || p.targetRole === 'both')
+        .filter((p) => p.isPublished !== false)
+        .filter((p) => !p.cohortId || p.cohortId === cohortId);
+    const byItemId = new Map();
+    relevantPlacements.forEach((p) => {
+        const itemId = p.contentId || p.contentItemId;
+        if (!itemId) return;
+        const existing = byItemId.get(itemId);
+        const order = Number(p.orderIndex ?? p.sortOrder ?? p.sort_order ?? 999);
+        if (!existing || order < existing.order) byItemId.set(itemId, { order, placement: p });
+    });
+    const withPlacement = items
+        .map((item) => ({ item, placementMeta: byItemId.get(item.id) || null }))
+        .filter(({ item, placementMeta }) => {
+            const roleAllowed = item.targetRole === role || item.targetRole === 'both';
+            const visibilityAllowed =
+                item.visibility === 'all'
+                || (item.visibility === 'by_role' && roleAllowed)
+                || ((item.visibility === 'by_cohort' || item.visibility === 'cohort') && (!item.targetCohort || item.targetCohort === cohortId));
+            const hasPlacement = !!placementMeta;
+            const inSection = item.targetSection === sectionKey || hasPlacement;
+            return item.status === 'published' && visibilityAllowed && inSection;
+        });
+    return withPlacement
+        .sort((a, b) => (a.placementMeta?.order ?? a.item.orderIndex ?? 999) - (b.placementMeta?.order ?? b.item.orderIndex ?? 999))
+        .map((x) => x.item);
 }
 
 function GardenContentCards({ items }) {
-    if (!items.length) return <div className="rounded-2xl border border-slate-100 bg-white p-6 text-sm text-slate-500 shadow-sm">В этом разделе пока нет материалов.</div>;
+    if (!items.length) return <div className="rounded-3xl bg-white p-6 text-sm text-slate-500 shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)]">В этом разделе пока нет материалов.</div>;
     return (
         <div className="grid md:grid-cols-2 gap-4">
             {items.map((i) => (
-                <article key={i.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm shadow-slate-200/30">
+                <article key={i.id} className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                     <h4 className="text-sm font-medium text-slate-800">{i.title}</h4>
                     <p className="text-xs text-slate-500 mt-1.5 leading-relaxed whitespace-pre-line">{i.shortDescription || i.description || 'Описание появится позже.'}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1067,9 +1098,118 @@ function sortLibraryItems(items, sortBy = 'order') {
     return arr.sort((a, b) => (a.orderIndex || 999) - (b.orderIndex || 999));
 }
 
-function stripMaterialNumbering(title) {
-    const source = String(title || '').trim();
-    return source.replace(/^\s*\d+(?:[.)]\d+)*(?:[.)]|[\-:])?\s+/u, '');
+function escapeHtml(source = '') {
+    return String(source || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function formatInlineMarkdown(text = '') {
+    let s = escapeHtml(text);
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    s = s.replace(/_(.+?)_/g, '<em>$1</em>');
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    return s;
+}
+
+function markdownToPvlHtml(markdown = '') {
+    const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+    const out = [];
+    let listBuffer = [];
+    const flushList = () => {
+        if (!listBuffer.length) return;
+        out.push(`<ul>${listBuffer.map((x) => `<li>${x}</li>`).join('')}</ul>`);
+        listBuffer = [];
+    };
+    for (const raw of lines) {
+        const line = String(raw || '').trim();
+        if (!line) {
+            flushList();
+            continue;
+        }
+        const h = line.match(/^(#{1,4})\s+(.+)$/);
+        if (h) {
+            flushList();
+            const lvl = Math.min(4, h[1].length + 1);
+            out.push(`<h${lvl}>${formatInlineMarkdown(h[2])}</h${lvl}>`);
+            continue;
+        }
+        const li = line.match(/^[-*]\s+(.+)$/);
+        if (li) {
+            listBuffer.push(formatInlineMarkdown(li[1]));
+            continue;
+        }
+        flushList();
+        out.push(`<p>${formatInlineMarkdown(line)}</p>`);
+    }
+    flushList();
+    return out.join('\n');
+}
+
+function parseImportedPvlDoc(text = '') {
+    const src = String(text || '');
+    const lines = src.replace(/\r\n/g, '\n').split('\n');
+    let title = '';
+    const headingLine = lines
+        .map((x) => String(x || '').trim())
+        .find((x) => /^#{1,6}\s+/.test(x));
+    if (headingLine) {
+        title = headingLine.replace(/^#{1,6}\s*/, '').trim();
+    }
+    for (const raw of lines) {
+        if (title) break;
+        const line = String(raw || '').trim();
+        if (!line) continue;
+        title = line.replace(/^#\s*/, '').trim();
+        break;
+    }
+    const summaryLine = lines
+        .map((x) => String(x || '').trim())
+        .find((x) => x && !x.startsWith('#') && !x.startsWith('-') && !x.startsWith('*')) || '';
+    return {
+        title: title || 'Материал из документа',
+        summary: summaryLine.slice(0, 180),
+        html: markdownToPvlHtml(src),
+    };
+}
+
+function normalizeImportedTitle(raw = '') {
+    const cleared = String(raw || '')
+        .replace(/^#\s*/, '')
+        .replace(/\.[^.]+$/, '')
+        .replaceAll('_', ' ')
+        .replaceAll('—', '-')
+        .replaceAll('–', '-')
+        .replace(/^\s*\d+[\s.)_-]+/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return cleared;
+}
+
+function parseImportedPvlDocWithFileName(text = '', fileName = '') {
+    const parsed = parseImportedPvlDoc(text);
+    const fromFileName = normalizeImportedTitle(fileName);
+    const fromDoc = normalizeImportedTitle(parsed.title);
+    return {
+        ...parsed,
+        title: fromDoc || fromFileName || 'Материал из документа',
+    };
+}
+
+function buildCategoryIdFromTitle(title = '') {
+    const src = String(title || '').trim();
+    if (!src) return '';
+    const ascii = src
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return ascii || `cat-${Date.now()}`;
 }
 
 function clampPvlModule(value) {
@@ -1078,14 +1218,27 @@ function clampPvlModule(value) {
     return Math.max(0, Math.min(4, Math.round(n)));
 }
 
-function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student' }) {
+function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student', refresh = null, refreshKey = 0 }) {
     const [loading] = useState(false);
     const [error] = useState('');
     const [selectedCategoryId, setSelectedCategoryId] = useState('all');
+    const [activeCategoryId, setActiveCategoryId] = useState('');
+    const [libraryTick, setLibraryTick] = useState(0);
     const [query, setQuery] = useState('');
     const [contentType, setContentType] = useState('all');
     const [selectedItemId, setSelectedItemId] = useState(initialItemId || '');
 
+    useEffect(() => {
+        if (!selectedItemId || String(selectedItemId).startsWith('les-')) return;
+        const resolved = pvlDomainApi.studentApi.getPublishedLibraryItemById(studentId, selectedItemId);
+        if (resolved && PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS.includes(String(resolved.categoryId || '').trim())) {
+            setSelectedItemId('');
+            if (navigate) navigate(`${routePrefix}/library`);
+        }
+    }, [selectedItemId, studentId, navigate, routePrefix]);
+
+    void refreshKey;
+    void libraryTick;
     const progress = pvlDomainApi.studentApi.getStudentLibraryProgress(studentId);
     const categories = pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(studentId);
     const baseItems = pvlDomainApi.studentApi.getStudentLibrary(studentId, {});
@@ -1130,6 +1283,41 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
         attachments: [],
     } : null;
     const selectedItem = filteredItems.find((x) => x.id === selectedItemId) || baseItems.find((x) => x.id === selectedItemId) || selectedLessonMaterial || null;
+    const lessonVideoPlayerHtml = useMemo(
+        () => (selectedItem ? buildLessonVideoPlayerHtml(selectedItem) : ''),
+        [selectedItem?.id, selectedItem?.lessonVideoEmbed, selectedItem?.lessonVideoUrl],
+    );
+    const categoryCards = useMemo(() => {
+        const palette = [
+            'https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=900&q=80',
+            'https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=900&q=80',
+            'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
+        ];
+        return categories
+            .filter((c) => !PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS.includes(String(c.id || '')))
+            .filter((c) => Number(c.count || 0) > 0)
+            .map((c, index) => ({
+                ...c,
+                cover: palette[index % palette.length],
+                description: c.description || 'Материалы категории',
+            }));
+    }, [categories]);
+    const activeCategory = categoryCards.find((c) => c.id === activeCategoryId) || null;
+    const activeCategoryItems = useMemo(() => {
+        if (!activeCategoryId) return [];
+        return sortLibraryItems(
+            searchLibraryItems(
+                filterLibraryItems(baseItems, {
+                    categoryId: activeCategoryId,
+                    contentType,
+                    completion: 'all',
+                    flag: 'all',
+                }),
+                query,
+            ),
+            'order',
+        );
+    }, [activeCategoryId, baseItems, contentType, query]);
     useEffect(() => {
         if (!selectedItem || !selectedItem.categoryId) return;
         if (selectedCategoryId !== selectedItem.categoryId) {
@@ -1137,96 +1325,163 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
         }
     }, [selectedItem, selectedCategoryId]);
 
+    useEffect(() => {
+        if (selectedItem?.categoryId) {
+            setActiveCategoryId(selectedItem.categoryId);
+        }
+    }, [selectedItem?.categoryId, selectedItem?.id]);
+
+    const goLibraryRoot = () => {
+        setActiveCategoryId('');
+        setSelectedItemId('');
+        if (navigate) navigate(`${routePrefix}/library`);
+    };
+    const goLibraryCategory = () => {
+        setSelectedItemId('');
+        if (navigate) navigate(`${routePrefix}/library`);
+    };
+    const categoryTitleForCrumb = activeCategory?.title || selectedItem?.categoryTitle || '';
+
     return (
         <ScreenState loading={loading} error={error} empty={false}>
-            <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+            <div className="space-y-6">
+                <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                     <h2 className="font-display text-2xl text-slate-800">Библиотека курса</h2>
-                    <p className="text-sm text-slate-500 mt-1">Материалы в стиле библиотеки сада: удобно изучать и распечатывать.</p>
-                    <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-slate-600">
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Пройдено: <span className="font-medium tabular-nums text-slate-800">{progress.completed}</span></div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Всего: <span className="font-medium tabular-nums text-slate-800">{progress.total}</span></div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Прогресс: <span className="font-medium tabular-nums text-slate-800">{progress.progressPercent}%</span></div>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">Дальше: {progress.recommendedNextMaterial?.title || '—'}</div>
+                    <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="rounded-xl bg-slate-50/90 shadow-sm p-3">
+                            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Закрыто полностью</div>
+                            <div className="mt-1 font-display text-xl font-semibold tabular-nums text-slate-800">{progress.completed}</div>
+                            <p className="mt-1 text-[11px] text-slate-500 leading-snug">Материалов с отметкой «пройдено»</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50/90 shadow-sm p-3">
+                            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Всего материалов</div>
+                            <div className="mt-1 font-display text-xl font-semibold tabular-nums text-slate-800">{progress.total}</div>
+                            <p className="mt-1 text-[11px] text-slate-500 leading-snug">Опубликовано в вашей библиотеке</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50/90 shadow-sm p-3">
+                            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Средний прогресс</div>
+                            <div className="mt-1 font-display text-xl font-semibold tabular-nums text-slate-800">{progress.progressPercent}%</div>
+                            <p className="mt-1 text-[11px] text-slate-500 leading-snug">По всем материалам (включая частичное изучение)</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50/90 shadow-sm p-3 min-w-0">
+                            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Рекомендуем открыть</div>
+                            <div className="mt-1 text-sm font-semibold text-slate-800 leading-snug line-clamp-3" title={progress.recommendedNextMaterial?.title || ''}>
+                                {progress.recommendedNextMaterial?.title || '—'}
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-500 leading-snug">Следующий шаг по курсу</p>
+                        </div>
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 grid md:grid-cols-2 gap-2 shadow-sm">
-                    <input value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Поиск по названию, описанию, тегам" />
-                    <select value={contentType} onChange={(e) => setContentType(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
-                        <option value="all">Все типы</option>
-                        {Object.entries(CONTENT_TYPE_LABEL).map(([k, lab]) => <option key={k} value={k}>{lab}</option>)}
-                    </select>
-                </div>
-
-                <div className="grid xl:grid-cols-[240px_1fr] gap-3 items-start">
-                    <aside className="rounded-2xl border border-slate-100/90 bg-white p-3 shadow-sm">
-                        <h3 className="text-sm font-medium text-slate-700 mb-2">Категории</h3>
-                        <div className="grid gap-2">
-                            <button type="button" onClick={() => setSelectedCategoryId('all')} className={`text-left rounded-2xl border px-3 py-2.5 text-sm transition-all ${selectedCategoryId === 'all' ? 'border-emerald-200 bg-emerald-50/80 text-emerald-900 shadow-sm' : 'border-slate-200/80 bg-slate-50/60 text-slate-700 hover:bg-slate-50'}`}>
-                                <div className="flex items-center justify-between gap-2">
-                                    <span>Все</span>
-                                    <span className="rounded-full border border-white/80 bg-white/80 px-2 py-0.5 text-[10px] text-slate-500">{baseItems.length}</span>
-                                </div>
-                            </button>
-                            {categories.map((c) => (
-                                <button type="button" key={c.id} onClick={() => setSelectedCategoryId(c.id)} className={`text-left rounded-2xl border px-3 py-2.5 transition-all ${selectedCategoryId === c.id ? 'border-emerald-200 bg-emerald-50/80 text-emerald-900 shadow-sm' : 'border-slate-200/80 bg-slate-50/60 text-slate-700 hover:bg-slate-50'}`}>
-                                    <div className="text-sm">{c.title}</div>
-                                    <div className="text-[11px] text-slate-500 mt-0.5">{c.count} · {c.progressPercent}%</div>
+                <section className="rounded-3xl bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-5">
+                        <nav className="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-slate-500" aria-label="Навигация по библиотеке">
+                            {!activeCategory && !selectedItem ? (
+                                <span className="font-medium text-slate-800">Библиотека курса</span>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={goLibraryRoot}
+                                    className="rounded-md px-0.5 font-medium text-emerald-800/90 transition-colors hover:text-emerald-900 hover:underline"
+                                >
+                                    Библиотека курса
                                 </button>
-                            ))}
-                        </div>
-                    </aside>
-
-                    <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                            )}
+                            {(activeCategory || selectedItem) && categoryTitleForCrumb ? (
+                                <>
+                                    <span className="text-slate-300" aria-hidden>/</span>
+                                    {!selectedItem ? (
+                                        <span className="font-medium text-slate-800">{categoryTitleForCrumb}</span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={goLibraryCategory}
+                                            className="rounded-md px-0.5 font-medium text-emerald-800/90 hover:text-emerald-900 hover:underline"
+                                        >
+                                            {categoryTitleForCrumb}
+                                        </button>
+                                    )}
+                                </>
+                            ) : null}
+                            {selectedItem ? (
+                                <>
+                                    <span className="text-slate-300" aria-hidden>/</span>
+                                    <span className="max-w-[min(100%,28rem)] truncate font-medium text-slate-800">{stripMaterialNumbering(selectedItem.title)}</span>
+                                </>
+                            ) : null}
+                        </nav>
                         {!selectedItem ? (
                             <>
-                                <h3 className="font-display text-lg text-slate-800 mb-2">Уроки и материалы темы</h3>
-                                {lessonGroups.length === 0 ? (
-                                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-500">
-                                        Нет материалов по выбранным фильтрам или категории.
-                                    </div>
-                                ) : (
-                                    <div className="grid gap-3">
-                                        {lessonGroups.map((group) => (
-                                            <article key={group.lessonTitle} className="rounded-3xl border border-slate-100 bg-gradient-to-br from-slate-50/80 to-white p-3.5">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <h4 className="font-medium text-slate-800">{stripMaterialNumbering(group.lessonTitle)}</h4>
-                                                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">{group.materials.length} {group.materials.length === 1 ? 'материал' : 'материала'}</span>
-                                                </div>
-                                                <div className="mt-2 grid gap-2">
-                                                    {group.materials.map((i) => (
+                                {!activeCategory ? (
+                                    <>
+                                        <h3 className="font-display text-lg text-slate-800 mb-3">Категории библиотеки</h3>
+                                        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                            {categoryCards.map((c) => (
+                                                <article key={c.id} className="overflow-hidden rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                                                    <img src={c.cover} alt={c.title} className="h-36 w-full object-cover" />
+                                                    <div className="p-4">
+                                                        <h4 className="font-medium text-slate-800">{c.title}</h4>
+                                                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.description}</p>
+                                                        <div className="mt-2 text-[11px] text-slate-500">Материалов: {c.count}</div>
                                                         <button
-                                                            key={i.id}
                                                             type="button"
                                                             onClick={() => {
-                                                                setSelectedItemId(i.id);
-                                                                pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
-                                                                if (navigate) navigate(`${routePrefix}/library/${i.id}`);
+                                                                setActiveCategoryId(c.id);
+                                                                setSelectedCategoryId(c.id);
+                                                                if (navigate) navigate(`${routePrefix}/library`);
                                                             }}
-                                                            className="w-full text-left rounded-2xl border border-slate-100 bg-white px-3 py-2.5 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] hover:border-emerald-200 hover:bg-emerald-50/20 transition-colors flex flex-wrap items-center justify-between gap-2"
+                                                            className="mt-3 rounded-full bg-emerald-700 text-white text-xs px-4 py-1.5 hover:bg-emerald-800"
                                                         >
-                                                            <div className="min-w-0">
-                                                                <div className="text-sm text-slate-800">{stripMaterialNumbering(i.title)}</div>
-                                                                <div className="text-[11px] text-slate-500 mt-0.5">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType} · {i.estimatedDuration || '—'}</div>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 shrink-0">
-                                                                <span className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700">Открыть</span>
-                                                            </div>
+                                                            Открыть
                                                         </button>
-                                                    ))}
-                                                </div>
-                                            </article>
-                                        ))}
+                                                    </div>
+                                                </article>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="grid lg:grid-cols-[minmax(260px,340px)_1fr] gap-4 items-start">
+                                        <article className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4">
+                                            <img src={activeCategory.cover} alt={activeCategory.title} className="h-36 w-full object-cover rounded-2xl" />
+                                            <h4 className="mt-3 font-display text-xl text-slate-800">{activeCategory.title}</h4>
+                                            <p className="text-sm text-slate-600 mt-2 leading-relaxed">{activeCategory.description}</p>
+                                            <div className="mt-3 text-xs text-slate-500">Материалов в категории: {activeCategory.count}</div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveCategoryId('')}
+                                                className="mt-3 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Назад к категориям
+                                            </button>
+                                        </article>
+                                        <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3 max-h-[520px] overflow-auto">
+                                            {activeCategoryItems.length === 0 ? (
+                                                <div className="rounded-xl bg-slate-50/90 shadow-sm p-4 text-sm text-slate-500">В этой категории пока нет материалов.</div>
+                                            ) : activeCategoryItems.map((i) => (
+                                                <button
+                                                    key={i.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedItemId(i.id);
+                                                        pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
+                                                        setLibraryTick((v) => v + 1);
+                                                        refresh?.();
+                                                        if (navigate) navigate(`${routePrefix}/library/${i.id}`);
+                                                    }}
+                                                    className="mb-2 w-full rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md"
+                                                >
+                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                    {i.estimatedDuration ? (
+                                                        <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
+                                                    ) : null}
+                                                </button>
+                                            ))
+                                            }
+                                        </div>
                                     </div>
                                 )}
                             </>
                         ) : (
                             <section>
-                                <div className="mb-2 flex flex-wrap gap-2 text-[11px]">
-                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-800">Библиотека</span>
-                                    <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-teal-800">{selectedItem.categoryTitle || 'Материал'}</span>
-                                </div>
                                 <div className="flex items-center justify-between gap-2">
                                     <h3 className="font-display text-xl text-slate-800">{stripMaterialNumbering(selectedItem.title)}</h3>
                                     <div className="flex items-center gap-2">
@@ -1237,18 +1492,32 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                         >
                                             Распечатать
                                         </button>
-                                        <button type="button" onClick={() => pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Отметить как просмотрено</button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id);
+                                                setLibraryTick((v) => v + 1);
+                                                refresh?.();
+                                            }}
+                                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                        >
+                                            Отметить как изученное
+                                        </button>
                                         <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Назад к списку</button>
                                     </div>
                                 </div>
-                                <p className="text-sm text-slate-600 mt-2">{selectedItem.fullDescription || selectedItem.shortDescription}</p>
-                                <div className="mt-2 text-xs text-slate-500">{CONTENT_TYPE_LABEL[selectedItem.contentType] || selectedItem.contentType} · {selectedItem.estimatedDuration || '—'}</div>
-                                {(selectedItem.externalLinks || []).length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {(selectedItem.externalLinks || []).join(', ')}</p> : null}
-                                {(selectedItem.attachments || []).length ? <p className="text-xs text-slate-500 mt-1">Вложения: {(selectedItem.attachments || []).join(', ')}</p> : null}
+                                <PvlLibraryMaterialBody
+                                    selectedItem={selectedItem}
+                                    lessonVideoPlayerHtml={lessonVideoPlayerHtml}
+                                    onQuizPassed={() => {
+                                        pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id);
+                                        setLibraryTick((v) => v + 1);
+                                        refresh?.();
+                                    }}
+                                />
                             </section>
                         )}
                     </section>
-                </div>
             </div>
         </ScreenState>
     );
@@ -1353,6 +1622,7 @@ const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлен�
 function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
     const points = pvlDomainApi.helpers.getStudentPointsSummary(studentId);
+    const libraryProgress = pvlDomainApi.studentApi.getStudentLibraryProgress(studentId);
     const w = snapshot.compulsoryWidgets;
     const { checked } = usePlatformStepChecklist(studentId);
     const tr = useMemo(() => computePvlTrackerDashboardStats(checked), [checked]);
@@ -1367,86 +1637,74 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
 
     const fmtDeadline = (ymd) => (ymd ? formatPvlDateTime(`${String(ymd).slice(0, 10)}T12:00:00`) : '—');
 
+    const lessonPct = tr.lessonsTotal ? Math.round((tr.lessonsDone / tr.lessonsTotal) * 100) : 0;
+    const homeworkPct = tr.homeworkTotal ? Math.round((tr.homeworkDone / tr.homeworkTotal) * 100) : 0;
+
     return (
-        <div className="space-y-6">
-            <div className="grid lg:grid-cols-[1fr_min(100%,320px)] gap-4 lg:gap-5 items-stretch">
-                <section className="rounded-[1.35rem] bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 text-white p-6 md:p-8 shadow-lg shadow-emerald-900/15 flex flex-col justify-between min-h-[220px]">
-                    <div>
+        <div className="space-y-8">
+            <section className="rounded-[1.35rem] bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 text-white p-5 md:p-7 shadow-lg shadow-emerald-900/15">
+                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-6">
+                    <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/65">{PVL_COURSE_DISPLAY_NAME}</p>
                         <h2 className="font-display text-2xl md:text-3xl mt-2 tracking-tight">{user?.fullName || 'Участница'}</h2>
-                        <p className="text-sm text-white/88 mt-2 max-w-lg leading-relaxed">
-                            Прогресс по шагам трекера: <span className="font-semibold tabular-nums">{tr.pct}%</span>
-                            . Отметки здесь и в разделе «Трекер» совпадают.
+                        <button
+                            type="button"
+                            onClick={() => navigate?.(`${routePrefix}/lessons`)}
+                            className="mt-3 inline-flex max-w-full text-left rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+                        >
+                            Текущий фокус: {tr.currentModuleTitle || 'Модуль курса'}
+                        </button>
+                        <p className="mt-3 text-xs text-white/75 line-clamp-2">
+                            Последний урок: <span className="text-white/95">{libraryProgress.lastOpenedMaterial?.title || '—'}</span>
                         </p>
                     </div>
-                    <div className="mt-6 flex flex-wrap items-end gap-5">
+                    <div className="w-full lg:max-w-[min(100%,300px)] shrink-0 space-y-4 lg:text-right">
                         <div>
-                            <div className="font-display text-4xl md:text-5xl tabular-nums leading-none">{tr.doneSteps}<span className="text-white/50 text-2xl md:text-3xl">/{tr.totalSteps}</span></div>
-                            <div className="text-xs text-white/70 mt-1.5">шагов платформы</div>
+                            <div className="flex justify-between gap-4 items-baseline text-white/85">
+                                <span className="text-sm">Уроки</span>
+                                <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{tr.lessonsDone}/{tr.lessonsTotal}</span>
+                            </div>
+                            <div className="mt-1.5 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                                <div className="h-full rounded-full bg-white/90" style={{ width: `${lessonPct}%` }} />
+                            </div>
+                        </div>
+                        <div>
+                            <div className="flex justify-between gap-4 items-baseline text-white/85">
+                                <span className="text-sm">Домашки</span>
+                                <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{tr.homeworkDone}/{tr.homeworkTotal}</span>
+                            </div>
+                            <div className="mt-1.5 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                                <div className="h-full rounded-full bg-white/90" style={{ width: `${homeworkPct}%` }} />
+                            </div>
+                        </div>
+                        <div className="flex justify-between gap-4 items-baseline border-t border-white/15 pt-3 text-white/85">
+                            <span className="text-sm">Дней до модуля</span>
+                            <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{w?.daysToModuleEnd ?? '—'}</span>
+                        </div>
+                        <div className="flex justify-between gap-4 items-baseline text-white/85">
+                            <span className="text-sm">Курсовые баллы</span>
+                            <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{points.coursePointsTotal}/400</span>
+                        </div>
+                        <div className="flex justify-between gap-4 items-baseline text-white/85">
+                            <span className="text-sm">До конца курса</span>
+                            <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{w?.daysToCourseEnd ?? '—'} дн.</span>
                         </div>
                         {navigate ? (
-                            <button
-                                type="button"
-                                onClick={() => navigate(`${routePrefix}/tracker`)}
-                                className="rounded-full bg-white/15 hover:bg-white/25 px-5 py-2.5 text-sm font-medium border border-white/25 transition-colors"
-                            >
-                                Открыть трекер
-                            </button>
+                            <div className="pt-2 lg:text-right">
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(`${routePrefix}/tracker`)}
+                                    className="rounded-full bg-white/15 hover:bg-white/25 px-5 py-2.5 text-sm font-medium border border-white/25 transition-colors"
+                                >
+                                    Открыть трекер
+                                </button>
+                            </div>
                         ) : null}
                     </div>
-                </section>
-                <aside className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30 flex flex-col justify-between">
-                    <div>
-                        <h3 className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Текущий фокус</h3>
-                        <p className="text-sm text-slate-800 mt-2 font-medium leading-snug line-clamp-4">{tr.currentModuleTitle}</p>
-                    </div>
-                    <dl className="mt-5 space-y-2.5 text-sm border-t border-slate-100 pt-5 text-slate-600">
-                        <div className="flex justify-between gap-2"><dt className="text-slate-500">До конца модуля</dt><dd className="tabular-nums font-medium text-slate-800">{w?.daysToModuleEnd ?? '—'} дн.</dd></div>
-                        <div className="flex justify-between gap-2"><dt className="text-slate-500">До конца курса</dt><dd className="tabular-nums font-medium text-slate-800">{w?.daysToCourseEnd ?? '—'} дн.</dd></div>
-                        <div className="flex justify-between gap-2"><dt className="text-slate-500">До записи СЗ</dt><dd className="tabular-nums font-medium text-slate-800">{w?.daysToSzSubmission ?? '—'} дн.</dd></div>
-                        <div className="flex justify-between gap-2"><dt className="text-slate-500">Курсовые баллы</dt><dd className="tabular-nums font-medium text-slate-800">{points.coursePointsTotal}/400</dd></div>
-                        <div className="flex justify-between gap-2"><dt className="text-slate-500">СЗ (самооценка)</dt><dd className="tabular-nums font-medium text-slate-800">{points.szSelfAssessmentTotal}/54</dd></div>
-                    </dl>
-                </aside>
-            </div>
-
-            <section className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-                <article className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm shadow-slate-200/30">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Модуль · трекер</div>
-                    <p className="text-sm font-medium text-slate-800 mt-2 leading-snug line-clamp-3">{tr.currentModuleTitle}</p>
-                </article>
-                <ProgressWidget title="Уроки · трекер" done={tr.lessonsDone} total={tr.lessonsTotal} />
-                <ProgressWidget title="Домашки · трекер" done={tr.homeworkDone} total={tr.homeworkTotal} />
-                <DashboardWidget title="Дней до модуля" value={`${w?.daysToModuleEnd ?? '—'}`} />
-                <DashboardWidget title="Курсовые баллы" value={`${points.coursePointsTotal}/400`} />
-                <DashboardWidget title="СЗ (баллы)" value={`${points.szSelfAssessmentTotal}/54`} />
-            </section>
-
-            <section className="space-y-3">
-                <h3 className="font-display text-lg text-slate-800">Быстрые переходы</h3>
-                <div className="grid sm:grid-cols-3 gap-3">
-                    {[
-                        { label: `Результаты (${apiTasks.length})`, to: `${routePrefix}/results` },
-                        { label: 'Практикумы', to: `${routePrefix}/practicums` },
-                        { label: 'Библиотека', to: `${routePrefix}/library` },
-                    ].map((x) => (
-                        <button
-                            key={x.to}
-                            type="button"
-                            onClick={() => navigate(x.to)}
-                            className="text-left rounded-2xl border border-slate-100/90 bg-white px-4 py-3.5 text-sm font-medium text-slate-800 shadow-sm hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors"
-                        >
-                            {x.label}
-                        </button>
-                    ))}
                 </div>
             </section>
 
-            <section className="space-y-3">
-                <div>
-                    <h3 className="font-display text-lg text-slate-800">Календарь курса</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Те же события, что в общем календаре потока.</p>
-                </div>
+            <section>
                 <PvlDashboardCalendarBlock
                     viewerRole="student"
                     cohortId={cohortId}
@@ -1455,11 +1713,10 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                 />
             </section>
 
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30">
+            <section className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
                 <div className="flex flex-wrap items-end justify-between gap-2">
                     <div>
                         <h3 className="font-display text-xl text-slate-800">Домашние работы</h3>
-                        <p className="text-xs text-slate-500 mt-1">Срез из «Результаты» — только актуальные статусы.</p>
                     </div>
                     {navigate ? (
                         <button
@@ -1474,38 +1731,38 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                 {homeworkShortlist.length === 0 ? (
                     <p className="text-sm text-slate-500 mt-4">Нет заданий в фокусе — откройте «Результаты».</p>
                 ) : (
-                    <div className="mt-4 grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="mt-4 grid lg:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
                         {homeworkShortlist.map((t) => (
                             <button
                                 key={t.id}
                                 type="button"
                                 onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                className="text-left rounded-2xl border border-slate-100 bg-white p-4 hover:border-emerald-200 hover:bg-emerald-50/10 transition-colors shadow-sm min-h-[214px] grid grid-rows-[auto_auto_auto_auto_1fr_auto] gap-1"
+                                className="grid h-full min-h-[214px] grid-rows-[auto_auto_auto_auto_1fr_auto] gap-1 rounded-2xl bg-white p-4 text-left shadow-[0_8px_28px_-10px_rgba(15,23,42,0.07)] transition-colors hover:bg-emerald-50/15 hover:shadow-[0_12px_36px_-10px_rgba(16,100,70,0.12)]"
                             >
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px] pr-1">{t.title}</div>
-                                    <div className="flex flex-col items-end gap-1">
-                                        <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
-                                        {Number(t.maxScore) > 0 ? <span className="text-[11px] tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore}</span> : null}
+                                    <div className="flex flex-col items-end gap-0.5">
+                                        <StatusBadge compact>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
+                                        {Number(t.maxScore) > 0 ? <span className="text-[10px] tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore}</span> : null}
                                     </div>
                                 </div>
                                 <div className="text-[11px] text-slate-500">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)}</div>
                                 <div className="text-[11px]">
                                     {!hideDeadlineForAcceptedWithScore(t) ? (
-                                        <span className={`inline-flex rounded-full border px-2 py-0.5 ${deadlineUrgencyTone(t.deadlineAt)}`}>
+                                        <span className={`inline-flex rounded-full border px-1.5 py-px text-[10px] leading-tight ${deadlineUrgencyTone(t.deadlineAt)}`}>
                                             Дедлайн: {fmtDeadline(t.deadlineAt)}
                                         </span>
-                                    ) : <span className="inline-block h-[20px]" />}
+                                    ) : <span className="inline-block h-[18px]" />}
                                 </div>
                                 <div className="text-[11px] text-slate-500">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
                                 <div className="text-[11px]">
                                     {Number(t.revisionCycles || 0) > 0 ? (
-                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">Доработок: {t.revisionCycles}</span>
-                                    ) : <span className="inline-block h-[20px]" />}
+                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[10px] leading-tight text-amber-900">Доработок: {t.revisionCycles}</span>
+                                    ) : <span className="inline-block h-[18px]" />}
                                 </div>
                                 <div className="text-[11px] text-slate-500 line-clamp-1 self-end">{t.mentorCommentPreview || 'Без комментария'}</div>
                                 <div className="pt-2">
-                                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-700">Открыть задание</span>
+                                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] leading-tight text-slate-700">Открыть задание</span>
                                 </div>
                             </button>
                         ))}
@@ -1513,9 +1770,8 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                 )}
             </section>
 
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm">
+            <section className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
                 <h3 className="font-display text-xl text-slate-800">Новости</h3>
-                <p className="text-xs text-slate-500 mt-1">Короткая лента по курсу.</p>
                 <ul className="mt-4 space-y-2 text-sm text-slate-600">
                     {feed.length === 0 ? <li className="text-slate-400">Пока нет событий.</li> : null}
                     {feed.map((item) => {
@@ -1558,14 +1814,13 @@ function StudentLessonsLive({ studentId, navigate }) {
     const { stats } = usePlatformStepChecklist(studentId);
     const { doneSteps, totalSteps, pct } = stats;
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Уроки и шаги курса</h2>
-                <p className="text-sm text-slate-500 mt-1">Методический путь по модулям — как в трекере. Отметки здесь и в «Трекере курса» общие.</p>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 text-sm text-slate-600">
-                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Шаги: <span className="font-medium tabular-nums text-slate-800">{doneSteps}/{totalSteps}</span></div>
-                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">Прогресс: <span className="font-medium tabular-nums text-slate-800">{pct}%</span></div>
-                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 flex items-center">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4 text-sm text-slate-600">
+                    <div className="rounded-xl bg-slate-50/90 shadow-sm px-3 py-2">Шаги: <span className="font-medium tabular-nums text-slate-800">{doneSteps}/{totalSteps}</span></div>
+                    <div className="rounded-xl bg-slate-50/90 shadow-sm px-3 py-2">Прогресс: <span className="font-medium tabular-nums text-slate-800">{pct}%</span></div>
+                    <div className="rounded-xl bg-slate-50/90 shadow-sm px-3 py-2 flex items-center">
                         <button type="button" onClick={() => navigate('/student/tracker')} className="text-sm text-slate-700 font-medium hover:underline">Полный трекер с заданиями</button>
                     </div>
                 </div>
@@ -1599,17 +1854,16 @@ function StudentPracticumsCalendar({ studentId }) {
     const events = pvlDomainApi.studentApi.getStudentPracticumEvents(studentId);
     const byDay = groupPracticumEventsByCalendarDay(events);
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Практикумы</h2>
-                <p className="text-sm text-slate-500 mt-1">Встречи и ключевые даты по календарю.</p>
             </div>
             {events.length === 0 ? (
-                <div className="rounded-2xl border border-slate-100 bg-white p-6 text-sm text-slate-500 shadow-sm">Запланированных событий пока нет.</div>
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-6 text-sm text-slate-500 shadow-sm">Запланированных событий пока нет.</div>
             ) : (
                 <div className="space-y-5">
                     {byDay.map(([dayKey, dayEvents]) => (
-                        <section key={dayKey} className="rounded-2xl border border-slate-100/90 overflow-hidden bg-white shadow-sm">
+                        <section key={dayKey} className="overflow-hidden rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)]">
                             <div className="bg-slate-50/90 px-4 py-3 border-b border-slate-100">
                                 <h3 className="font-display text-lg text-slate-800">
                                     {dayKey === 'unknown' ? 'Без даты' : formatPvlDateTime(`${dayKey}T12:00:00`)}
@@ -1618,7 +1872,7 @@ function StudentPracticumsCalendar({ studentId }) {
                             </div>
                             <ul className="divide-y divide-slate-100">
                                 {dayEvents.map((ev) => (
-                                    <li key={ev.id} className="px-4 py-3 flex flex-wrap items-start justify-between gap-3">
+                                    <li key={ev.id} className="px-4 py-3 flex flex-wrap items-start justify-between gap-4">
                                         <div className="min-w-0">
                                             <div className="text-[11px] font-medium text-slate-400">{practicumEventTypeRu(ev.eventType)}</div>
                                             <div className="text-sm font-medium text-slate-800 mt-0.5">{ev.title}</div>
@@ -1650,7 +1904,7 @@ const ABOUT_COURSE_MATERIALS = [
     },
     {
         id: 'structure',
-        tag: 'Курс',
+        tag: 'Обзор',
         kind: 'документ',
         title: 'Как устроен курс',
         summary: 'Модули 0-4, шаги в трекере, домашние задания со статусами и обратной связью ментора. Сертификационный завтрак и самооценка — в конце пути.',
@@ -1702,23 +1956,22 @@ const ABOUT_COURSE_MATERIALS = [
 function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
     const [activeId, setActiveId] = useState(ABOUT_COURSE_MATERIALS[0]?.id || 'intro');
     const active = ABOUT_COURSE_MATERIALS.find((m) => m.id === activeId) || ABOUT_COURSE_MATERIALS[0];
-    const tags = ['Все', 'Старт', 'Курс', 'Платформа', 'Безопасность', 'Баллы', 'Команда', 'Трекер'];
+    const tags = ['Все', 'Обзор', 'Старт', 'Платформа', 'Безопасность', 'Баллы', 'Команда', 'Трекер'];
     const [tagFilter, setTagFilter] = useState('Все');
     const filtered = ABOUT_COURSE_MATERIALS.filter((m) => tagFilter === 'Все' || m.tag === tagFilter);
     const goTracker = () => navigate(`${routePrefix}/tracker`);
 
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы курса</p>
                 <h2 className="font-display text-2xl md:text-3xl text-slate-800 mt-1">О курсе</h2>
-                <p className="text-sm text-slate-500 mt-2 max-w-2xl">Те же карточки, что в библиотеке: слева выбранный материал, справа список разделов.</p>
             </div>
 
-            <div className="grid lg:grid-cols-[1fr_1.05fr] gap-4 lg:gap-6 items-start">
-                <div className="rounded-2xl border border-slate-100/90 bg-white shadow-sm overflow-hidden flex flex-col min-h-[280px]">
-                    <div className="h-36 md:h-44 bg-gradient-to-br from-[#FAF6F2] via-emerald-50/80 to-teal-100/60 border-b border-slate-100" aria-hidden />
-                    <div className="p-5 md:p-6 flex-1 flex flex-col">
+            <div className="grid lg:grid-cols-2 gap-5 lg:gap-6 items-stretch min-h-0">
+                <div className="flex min-h-[280px] flex-col overflow-hidden rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] lg:h-[min(70vh,640px)]">
+                    <div className="h-36 md:h-44 shrink-0 bg-gradient-to-br from-[#FAF6F2] via-emerald-50/80 to-teal-100/60 border-b border-slate-100" aria-hidden />
+                    <div className="p-5 md:p-6 flex-1 flex flex-col min-h-0 overflow-y-auto">
                         <div className="flex flex-wrap gap-2 mb-3">
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 border border-slate-200 rounded-full px-2.5 py-1">{active?.tag}</span>
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/80 border border-emerald-100 bg-emerald-50/50 rounded-full px-2.5 py-1">{active?.kind}</span>
@@ -1755,17 +2008,17 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-100/90 bg-white shadow-sm flex flex-col max-h-[min(70vh,640px)]">
+                <div className="flex min-h-[280px] flex-col rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] lg:h-[min(70vh,640px)]">
                     <div className="px-5 py-4 border-b border-slate-100 shrink-0">
                         <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы</h3>
                     </div>
-                    <ul className="divide-y divide-slate-100 overflow-y-auto flex-1">
+                    <ul className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
                         {ABOUT_COURSE_MATERIALS.map((m) => (
                             <li key={m.id}>
                                 <button
                                     type="button"
                                     onClick={() => { setActiveId(m.id); setTagFilter('Все'); }}
-                                    className={`w-full text-left px-5 py-4 flex gap-3 transition-colors ${activeId === m.id ? 'bg-emerald-50/40 border-l-4 border-l-emerald-500 pl-4' : 'hover:bg-slate-50/80 border-l-4 border-l-transparent pl-4'}`}
+                                    className={`w-full text-left px-5 py-4 flex gap-4 transition-colors ${activeId === m.id ? 'bg-emerald-50/40 border-l-4 border-l-emerald-500 pl-4' : 'hover:bg-slate-50/80 border-l-4 border-l-transparent pl-4'}`}
                                 >
                                     <span className="text-lg shrink-0" aria-hidden>{m.kind === 'действие' ? '→' : '📄'}</span>
                                     <div className="min-w-0">
@@ -1780,7 +2033,7 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                 </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                 <h4 className="font-display text-lg text-slate-800 mb-3">Правила траектории</h4>
                 <ul className="space-y-2 text-sm text-slate-600 list-disc pl-5">
                     {PVL_TRACKER_RULES.map((line) => (
@@ -1788,66 +2041,111 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                     ))}
                 </ul>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h4 className="font-display text-lg text-slate-800 mb-3">FAQ</h4>
-                <div className="space-y-3">
-                    {PVL_TRACKER_FAQ.map((row) => (
-                        <div key={row.q} className="border-b border-slate-50 pb-3 last:border-0 last:pb-0">
-                            <div className="text-sm font-medium text-slate-800">{row.q}</div>
-                            <p className="text-sm text-slate-600 mt-1 leading-relaxed">{row.a}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
         </div>
     );
 }
 
 function StudentGlossarySearch() {
     const [q, setQuery] = useState('');
-    const [cat, setCat] = useState('all');
     const [letter, setLetter] = useState('all');
     const [expandedId, setExpandedId] = useState('');
     const alphabet = useMemo(() => 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЭЮЯ'.split(''), []);
-    const seen = new Set();
-    const apiExtra = [...pvlDomainApi.sharedApi.getGlossary(), ...pvlMockData.glossaryItems.map((g) => ({ id: g.id, term: g.term, definition: g.definition }))].filter((g) => {
-        const k = String(g.term || g.id).toLowerCase();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-    });
-    const refTerms = new Set(PVL_TRACKER_GLOSSARY.map((t) => String(t.term).toLowerCase()));
-    const mergedExtra = apiExtra.filter((g) => !refTerms.has(String(g.term).toLowerCase()));
-    const base = [
-        ...PVL_TRACKER_GLOSSARY.map((t, i) => ({
-            id: `ref-${i}`,
-            term: t.term,
-            abbr: t.abbr,
-            cat: t.cat,
-            catLabel: t.catLabel,
-            definition: t.def,
-            fromRef: true,
-        })),
-        ...mergedExtra.map((g) => ({
-            id: g.id,
-            term: g.term,
-            abbr: null,
-            cat: 'all',
-            catLabel: null,
-            definition: g.definition,
-            fromRef: false,
-        })),
-    ];
+    const glossaryItems = useMemo(() => {
+        const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const cleanTerm = (value = '') => String(value)
+            .replace(/\s+/g, ' ')
+            .replace(/^[\s"'«»()]+|[\s"'«»()]+$/g, '')
+            .replace(/[:\-–—]\s*$/u, '')
+            .trim();
+        const studentId = 'u-st-1';
+        const byPlacement = pvlDomainApi.selectors.getPublishedContentForStudent(studentId, 'glossary') || [];
+        const htmlSources = byPlacement
+            .map((x) => ({
+                title: String(x.title || '').trim(),
+                html: String(x.fullDescription || x.description || x.bodyHtml || '').trim(),
+            }))
+            .filter((x) => x.title || x.html);
+        const parsed = [];
+        htmlSources.forEach(({ title, html }, blockIdx) => {
+            try {
+                const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html');
+                const root = doc.getElementById('root');
+                if (!root) return;
+
+                // 1) table format: <tr><td>Термин</td><td>Расшифровка</td></tr>
+                const rows = Array.from(root.querySelectorAll('tr'));
+                rows.forEach((tr, idx) => {
+                    const cells = Array.from(tr.querySelectorAll('th,td')).map((c) => String(c.textContent || '').trim());
+                    if (cells.length < 2) return;
+                    const term = cleanTerm(cells[0]);
+                    const definition = String(cells.slice(1).join(' ').trim());
+                    if (!term || !definition) return;
+                    const lower = term.toLowerCase();
+                    if (lower === 'термин' || lower === 'понятие') return;
+                    parsed.push({ id: `g-t-${blockIdx}-${idx}`, term, definition });
+                });
+
+                // 2) list format: <li><strong>Термин</strong> — расшифровка</li>
+                const liNodes = Array.from(root.querySelectorAll('li'));
+                liNodes.forEach((li, idx) => {
+                    const strong = li.querySelector('strong');
+                    const term = cleanTerm(strong?.textContent || '');
+                    const raw = String(li.textContent || '').trim();
+                    const definition = term ? raw.replace(new RegExp(`^${escapeRegExp(term)}\\s*[:\\-–—]?\\s*`), '').trim() : raw;
+                    if (term && definition) {
+                        parsed.push({ id: `g-l-${blockIdx}-${idx}`, term, definition });
+                    }
+                });
+
+                // 3) markdown-table/plain lines: "Термин | Расшифровка"
+                const plainLines = String(root.textContent || '')
+                    .split('\n')
+                    .map((line) => String(line || '').trim())
+                    .filter(Boolean);
+                plainLines.forEach((line, idx) => {
+                    if (!line.includes('|')) return;
+                    if (/^\|?[\s:\-]+\|[\s:\-|]+$/u.test(line)) return; // markdown separator
+                    const parts = line.split('|').map((x) => String(x || '').trim()).filter(Boolean);
+                    if (parts.length < 2) return;
+                    const term = cleanTerm(parts[0]);
+                    const definition = String(parts.slice(1).join(' ').trim());
+                    if (!term || !definition) return;
+                    const lower = term.toLowerCase();
+                    if (lower === 'термин' || lower === 'понятие') return;
+                    parsed.push({ id: `g-p-${blockIdx}-${idx}`, term, definition });
+                });
+
+                if (!parsed.some((row) => String(row.id || '').startsWith(`g-t-${blockIdx}-`) || String(row.id || '').startsWith(`g-l-${blockIdx}-`) || String(row.id || '').startsWith(`g-p-${blockIdx}-`))) {
+                    const fallbackDefinition = String(root.textContent || '').replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+                    if (title && fallbackDefinition) parsed.push({ id: `g-f-${blockIdx}`, term: cleanTerm(title), definition: fallbackDefinition });
+                }
+            } catch {
+                /* ignore malformed html */
+            }
+        });
+        const uniq = [];
+        const seen = new Set();
+        parsed.forEach((row) => {
+            const k = String(row.term || '').toLowerCase();
+            if (!k || seen.has(k)) return;
+            seen.add(k);
+            uniq.push(row);
+        });
+        return uniq;
+    }, []);
+    const base = glossaryItems.map((g) => ({
+        id: g.id,
+        term: g.term,
+        abbr: null,
+        catLabel: null,
+        definition: g.definition,
+    }));
     const qlow = q.trim().toLowerCase();
     const termFirstLetter = (term) => {
         const t = String(term || '').trim().replace(/^["«(]+/, '');
         return t.charAt(0).toUpperCase().replace('Ё', 'Е');
     };
     const afterCategoryAndSearch = base.filter((g) => {
-        if (cat === 'all') return true;
-        if (!g.fromRef) return false;
-        return g.cat === cat;
-    }).filter((g) => {
         if (!qlow) return true;
         const def = String(g.definition || '');
         return String(g.term).toLowerCase().includes(qlow) || def.toLowerCase().includes(qlow);
@@ -1871,26 +2169,32 @@ function StudentGlossarySearch() {
         doc.text('Все термины курса, распечатайте и держите рядом.', 14, 22);
         let y = 30;
         filtered.forEach((item, idx) => {
-            if (y > 270) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            if (y > 272) {
                 doc.addPage();
                 y = 16;
             }
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
             doc.text(`${idx + 1}. ${item.term}`, 14, y);
             y += 5;
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(10);
             const lines = doc.splitTextToSize(String(item.definition || ''), 180);
+            const blockHeight = (lines.length * 4) + 3;
+            if (y + blockHeight > 286) {
+                doc.addPage();
+                y = 16;
+            }
             doc.text(lines, 14, y);
-            y += (lines.length * 4) + 3;
+            y += blockHeight;
         });
         doc.save('pvl-glossary.pdf');
     };
     return (
-        <div className="space-y-4">
-            <div className="flex justify-end">
-                <button type="button" onClick={exportGlossaryPdf} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">Скачать PDF</button>
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5 flex flex-wrap items-center justify-between gap-4">
+                <h2 className="font-display text-2xl text-slate-800">Глоссарий курса</h2>
+                <button type="button" onClick={exportGlossaryPdf} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100 shrink-0">Скачать PDF</button>
             </div>
             <input
                 value={q}
@@ -1898,19 +2202,7 @@ function StudentGlossarySearch() {
                 className="w-full rounded-full border border-[#E8D5C4] bg-white px-4 py-2.5 text-sm"
                 placeholder="Поиск по термину или определению..."
             />
-            <div className="flex flex-wrap gap-2">
-                {PVL_GLOSSARY_FILTERS.map((f) => (
-                    <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setCat(f.id)}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${cat === f.id ? 'border-[#C8855A] bg-[#FAF6F2] text-[#4A3728]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >
-                        {f.label}
-                    </button>
-                ))}
-            </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-3 shadow-sm">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3">
                 <p className="text-[11px] font-medium text-slate-500 mb-2">Быстрый фильтр по первой букве</p>
                 <div className="flex flex-wrap gap-1.5">
                     <button
@@ -1942,35 +2234,37 @@ function StudentGlossarySearch() {
                     })}
                 </div>
             </div>
-            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 auto-rows-[220px]">
-                {filtered.map((g) => (
-                    <article key={g.id} className={`h-full rounded-2xl border bg-white p-3.5 shadow-sm flex flex-col ${g.fromRef ? 'border-[#E8D5C4]' : 'border-slate-100'}`}>
-                        {/*
-                         * "Подробнее" показываем только когда текст почти точно не помещается в карточку.
-                         * Порог выше прежнего, чтобы короткие и средние определения не сворачивались.
-                         */}
-                        {(() => {
-                            const defText = String(g.definition || '');
-                            const shouldCollapse = defText.length > 230;
-                            return (
-                                <>
-                        <div className="flex flex-wrap items-baseline gap-2">
-                            <h4 className="font-display text-base text-[#4A3728] leading-tight">{g.term}</h4>
-                        </div>
-                        {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80] mt-1">{g.catLabel}</div> : null}
-                        <p className="text-xs text-[#2C1810] mt-2 leading-relaxed flex-1 overflow-hidden">
-                            {shouldCollapse && expandedId !== g.id ? `${defText.slice(0, 180)}…` : defText}
-                        </p>
-                        {shouldCollapse ? (
-                            <button type="button" onClick={() => setExpandedId((prev) => (prev === g.id ? '' : g.id))} className="mt-2 text-[11px] text-emerald-700 hover:underline self-start">
-                                {expandedId === g.id ? 'Свернуть' : 'Подробнее'}
-                            </button>
-                        ) : null}
-                                </>
-                            );
-                        })()}
-                    </article>
-                ))}
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
+                {filtered.map((g) => {
+                    const defText = String(g.definition || '');
+                    const shouldCollapse = defText.length > 230;
+                    const isOpen = expandedId === g.id;
+                    return (
+                        <article
+                            key={g.id}
+                            className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-3.5 shadow-sm flex flex-col h-full min-h-[260px]"
+                        >
+                            <div className="flex flex-wrap items-baseline gap-2 shrink-0">
+                                <h4 className="font-display text-base text-[#4A3728] leading-tight">{g.term}</h4>
+                            </div>
+                            {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80] mt-1 shrink-0">{g.catLabel}</div> : null}
+                            <div className="mt-2 flex-1 flex flex-col min-h-0">
+                                <div className={isOpen ? 'min-h-0' : 'h-[8rem] overflow-hidden'}>
+                                    <p className={`text-xs text-[#2C1810] leading-relaxed ${!isOpen ? 'line-clamp-6' : ''}`}>{defText}</p>
+                                </div>
+                                {shouldCollapse ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpandedId((prev) => (prev === g.id ? '' : g.id))}
+                                        className="mt-2 text-[11px] text-emerald-700 hover:underline self-start shrink-0"
+                                    >
+                                        {isOpen ? 'Свернуть' : 'Подробнее'}
+                                    </button>
+                                ) : null}
+                            </div>
+                        </article>
+                    );
+                })}
             </div>
         </div>
     );
@@ -1981,9 +2275,9 @@ function StudentCertificationReference({ navigate }) {
         <div className="space-y-6 text-sm text-slate-700">
             <div>
                 <h3 className="font-display text-lg text-slate-800 mb-3">Условия проведения СЗ</h3>
-                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-0 divide-y divide-slate-50">
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-0 divide-y divide-slate-50">
                     {PVL_CERT_CONDITIONS.map((row) => (
-                        <div key={row.strong} className="flex gap-3 py-3 first:pt-0">
+                        <div key={row.strong} className="flex gap-4 py-3 first:pt-0">
                             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#C8855A]" />
                             <p>
                                 <span className="font-medium text-[#4A3728]">{row.strong}</span>
@@ -1997,7 +2291,7 @@ function StudentCertificationReference({ navigate }) {
 
             <div>
                 <h3 className="font-display text-lg text-slate-800 mb-3">Критерии оценки (1–3 балла)</h3>
-                <div className="grid sm:grid-cols-2 gap-3">
+                <div className="grid sm:grid-cols-2 gap-4">
                     {PVL_CERT_CRITERIA_GROUPS.map((g) => (
                         <div key={g.letter} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
                             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
@@ -2029,7 +2323,7 @@ function StudentCertificationReference({ navigate }) {
 
             <div>
                 <h3 className="font-display text-lg text-slate-800 mb-3">Процесс сертификации</h3>
-                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-0 divide-y divide-slate-50">
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-0 divide-y divide-slate-50">
                     {PVL_CERT_PROCESS_STEPS.map((text, idx) => (
                         <div key={text} className="flex gap-4 py-3 first:pt-0">
                             <span className="font-display text-xl text-[#C8855A] w-7 shrink-0 tabular-nums">{idx + 1}</span>
@@ -2096,10 +2390,10 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
         saveViewPreferences('student.results', { filter });
     }, [filter]);
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-5">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-display text-2xl text-slate-800">Результаты</h2>
-                <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white p-2 text-sm text-slate-700">
+                <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700">
                     <option value="все">Все задания</option>
                     <option value="Принято">Принято</option>
                     <option value="На проверке">На проверке</option>
@@ -2108,39 +2402,39 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                     <option value="Просрочено">Просрочено</option>
                 </select>
             </div>
-            <section className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
-                <article className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+            <section className="grid md:grid-cols-2 xl:grid-cols-4 gap-2">
+                <article className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-3 shadow-sm">
                     <div className="text-xs text-slate-500">Курсовые баллы</div>
-                    <div className="font-display text-3xl text-slate-800 tabular-nums mt-1">{summary.coursePoints}</div>
+                    <div className="font-display text-2xl text-slate-800 tabular-nums mt-0.5">{summary.coursePoints}</div>
                 </article>
-                <article className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm">
+                <article className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3 shadow-sm">
                     <div className="text-xs text-emerald-700">Принято</div>
-                    <div className="font-display text-3xl text-emerald-800 tabular-nums mt-1">{summary.accepted}</div>
+                    <div className="font-display text-2xl text-emerald-800 tabular-nums mt-0.5">{summary.accepted}</div>
                 </article>
-                <article className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4 shadow-sm">
+                <article className="rounded-2xl border border-sky-100 bg-sky-50/40 p-3 shadow-sm">
                     <div className="text-xs text-sky-700">На проверке</div>
-                    <div className="font-display text-3xl text-sky-800 tabular-nums mt-1">{summary.inReview}</div>
+                    <div className="font-display text-2xl text-sky-800 tabular-nums mt-0.5">{summary.inReview}</div>
                 </article>
-                <article className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 shadow-sm">
+                <article className="rounded-2xl border border-amber-100 bg-amber-50/40 p-3 shadow-sm">
                     <div className="text-xs text-amber-700">На доработке</div>
-                    <div className="font-display text-3xl text-amber-800 tabular-nums mt-1">{summary.inRevision}</div>
+                    <div className="font-display text-2xl text-amber-800 tabular-nums mt-0.5">{summary.inRevision}</div>
                 </article>
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-2">
                 {tasks.map((t) => (
-                    <article key={t.id} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
+                    <article key={t.id} className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3.5">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <h3 className="text-sm font-semibold text-slate-800">{t.title}</h3>
-                                <p className="text-xs text-slate-500 mt-1">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)} · {t.typeLabel || t.type}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)} · {t.typeLabel || t.type}</p>
                             </div>
                             <div className="shrink-0 text-right">
                                 <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
-                                <div className="text-xs tabular-nums text-slate-500 mt-1">Оценка: {t.score ?? 0}/{t.maxScore ?? 0}</div>
+                                <div className="text-xs tabular-nums text-slate-500 mt-0.5">Оценка: {t.score ?? 0}/{t.maxScore ?? 0}</div>
                             </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                             {!hideDeadlineForAcceptedWithScore(t) ? (
                                 <span className={`inline-flex min-w-[148px] items-center rounded-full border px-2 py-0.5 ${deadlineUrgencyTone(t.deadlineAt)}`}>
                                     Дедлайн: {formatPvlDateTime(t.deadlineAt)}
@@ -2150,14 +2444,14 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                                 Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}
                             </span>
                         </div>
-                        <div className="mt-3 text-xs">
+                        <div className="mt-2 text-xs">
                             {t.mentorCommentPreview ? (
                                 <p className="text-slate-700">Комментарий ментора: {t.mentorCommentPreview}</p>
                             ) : (
                                 <p className="text-slate-400">Комментарий пока отсутствует</p>
                             )}
                         </div>
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                             {(t.revisionCycles ?? 0) > 0 ? (
                                 <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 tabular-nums">
                                     Доработок: {t.revisionCycles ?? 0}
@@ -2166,7 +2460,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                             <button
                                 type="button"
                                 onClick={() => navigate(`${routePrefix}/results/${t.id}`)}
-                                className="text-xs rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-slate-700 hover:bg-slate-50"
+                                className="text-xs rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
                             >
                                 Открыть задание
                             </button>
@@ -2174,11 +2468,11 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                     </article>
                 ))}
             </section>
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+            <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4">
                 <details>
                     <summary className="font-display text-base text-slate-800 cursor-pointer">История баллов</summary>
                     <p className="text-xs text-slate-500 mt-2">Вторичный блок: начисления сгруппированы по смыслу.</p>
-                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                    <div className="mt-3 grid gap-4 lg:grid-cols-3">
                         {[
                             { key: 'homework', title: 'За домашки', tone: 'border-emerald-100 bg-emerald-50/40' },
                             { key: 'marks', title: 'За отметки', tone: 'border-sky-100 bg-sky-50/40' },
@@ -2208,73 +2502,146 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
     );
 }
 
-function StudentFaqBank() {
-    const faq = pvlDomainApi.sharedApi.getFaq('student') || [];
-    const [isOpen, setIsOpen] = useState(false);
-    const [draftQuestion, setDraftQuestion] = useState('');
-    const [sent, setSent] = useState(false);
+function DirectMessageThread({ messages, actorId }) {
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h2 className="font-display text-2xl text-slate-800">FAQ</h2>
-                    <p className="text-sm text-slate-500 mt-1">Единый банк вопросов и ответов по курсу.</p>
-                </div>
-                <button type="button" onClick={() => { setIsOpen(true); setSent(false); }} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100">
-                    Оставить вопрос
-                </button>
-            </div>
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <ul className="space-y-3">
-                    {faq.map((item) => (
-                        <li key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                            <div className="text-sm font-medium text-slate-800">{item.title}</div>
-                            <p className="text-sm text-slate-600 mt-1">{item.answer}</p>
-                        </li>
-                    ))}
-                    {faq.length === 0 ? <li className="text-sm text-slate-500">Пока нет опубликованных ответов.</li> : null}
-                </ul>
-            </section>
-            {isOpen ? (
-                <div className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4">
-                    <div className="w-full max-w-xl rounded-2xl border border-slate-100 bg-white p-5 shadow-xl">
-                        <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-display text-xl text-slate-800">Оставить вопрос</h3>
-                            <button type="button" onClick={() => setIsOpen(false)} className="text-sm text-slate-500 hover:text-slate-700">Закрыть</button>
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1">Напишите вопрос для учительской, он появится в очереди FAQ.</p>
-                        <textarea
-                            value={draftQuestion}
-                            onChange={(e) => setDraftQuestion(e.target.value)}
-                            className="mt-3 w-full min-h-[140px] rounded-xl border border-slate-200 p-3 text-sm"
-                            placeholder="Например: как лучше распределить шаги модуля, если есть отставание?"
-                        />
-                        {sent ? <p className="text-xs text-emerald-700 mt-2">Вопрос отправлен.</p> : null}
-                        <div className="mt-3 flex items-center justify-end gap-2">
-                            <button type="button" onClick={() => setIsOpen(false)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50">Отмена</button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (!draftQuestion.trim()) return;
-                                    setSent(true);
-                                    setDraftQuestion('');
-                                }}
-                                className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-800 hover:bg-emerald-100"
-                            >
-                                Отправить вопрос
-                            </button>
-                        </div>
-                    </div>
+        <div className="space-y-2 max-h-[56vh] overflow-y-auto pr-1">
+            {(messages || []).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm text-slate-500">
+                    Диалог пока пуст. Напишите первое сообщение.
                 </div>
             ) : null}
+            {(messages || []).map((m) => {
+                const isOwn = String(m.authorUserId || '') === String(actorId || '');
+                const author = pvlDomainApi.db.users.find((u) => u.id === m.authorUserId);
+                return (
+                    <div key={m.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                        <article className={`max-w-[86%] rounded-2xl border px-3 py-2 ${isOwn ? 'bg-emerald-50 border-emerald-100' : 'bg-white border-slate-200'}`}>
+                            <div className="text-[10px] text-slate-500">
+                                {author?.fullName || m.authorUserId} · {formatPvlDateTime(m.createdAt)}
+                            </div>
+                            <p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words">{m.text}</p>
+                        </article>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function StudentDirectMessages({ studentId = 'u-st-1' }) {
+    const [text, setText] = useState('');
+    const [tick, setTick] = useState(0);
+    const dialog = useMemo(() => {
+        void tick;
+        return pvlDomainApi.sharedApi.getStudentDirectDialog(studentId);
+    }, [studentId, tick]);
+    const onSend = () => {
+        const body = String(text || '').trim();
+        if (!body || !dialog.mentorId) return;
+        pvlDomainApi.sharedApi.sendDirectMessage({
+            mentorId: dialog.mentorId,
+            studentId,
+            authorUserId: studentId,
+            text: body,
+        });
+        setText('');
+        setTick((v) => v + 1);
+    };
+    return (
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
+                <h2 className="font-display text-2xl text-slate-800">Коммуникации с ментором</h2>
+            </div>
+            <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 space-y-5">
+                <div className="text-xs text-slate-500">Ментор: <span className="font-medium text-slate-700">{dialog.mentor?.fullName || 'не назначен'}</span></div>
+                <DirectMessageThread messages={dialog.messages} actorId={studentId} />
+                <div className="flex items-end gap-2">
+                    <textarea
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        rows={3}
+                        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+                        placeholder="Напишите сообщение ментору..."
+                    />
+                    <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
+                        Отправить
+                    </button>
+                </div>
+            </section>
+        </div>
+    );
+}
+
+function MentorDirectMessages({ mentorId = 'u-men-1' }) {
+    const [activeStudentId, setActiveStudentId] = useState('');
+    const [text, setText] = useState('');
+    const [tick, setTick] = useState(0);
+    const dialogs = useMemo(() => {
+        void tick;
+        return pvlDomainApi.sharedApi.getMentorDirectDialogs(mentorId);
+    }, [mentorId, tick]);
+    const selectedStudentId = activeStudentId || dialogs[0]?.studentId || '';
+    const selectedDialog = useMemo(() => dialogs.find((d) => d.studentId === selectedStudentId) || null, [dialogs, selectedStudentId]);
+    const messages = useMemo(() => {
+        if (!selectedStudentId) return [];
+        return pvlDomainApi.sharedApi.getDirectMessages(mentorId, selectedStudentId);
+    }, [mentorId, selectedStudentId, tick]);
+    const onSend = () => {
+        const body = String(text || '').trim();
+        if (!body || !selectedStudentId) return;
+        pvlDomainApi.sharedApi.sendDirectMessage({
+            mentorId,
+            studentId: selectedStudentId,
+            authorUserId: mentorId,
+            text: body,
+        });
+        setText('');
+        setTick((v) => v + 1);
+    };
+    return (
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
+                <h2 className="font-display text-2xl text-slate-800">Коммуникации с менти</h2>
+            </div>
+            <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 grid lg:grid-cols-[280px_1fr] gap-4">
+                <aside className="rounded-xl border border-slate-100 bg-slate-50/70 p-2 space-y-1 max-h-[56vh] overflow-y-auto">
+                    {dialogs.map((d) => (
+                        <button
+                            key={d.studentId}
+                            type="button"
+                            onClick={() => setActiveStudentId(d.studentId)}
+                            className={`w-full text-left rounded-xl border px-3 py-2 ${d.studentId === selectedStudentId ? 'border-emerald-200 bg-emerald-50/50' : 'border-transparent hover:bg-white'}`}
+                        >
+                            <div className="text-sm font-medium text-slate-800">{d.student?.fullName || d.studentId}</div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 truncate">{d.lastMessageText || 'Нет сообщений'}</div>
+                        </button>
+                    ))}
+                </aside>
+                <div className="space-y-5 min-w-0">
+                    <div className="text-xs text-slate-500">Диалог: <span className="font-medium text-slate-700">{selectedDialog?.student?.fullName || '—'}</span></div>
+                    <DirectMessageThread messages={messages} actorId={mentorId} />
+                    <div className="flex items-end gap-2">
+                        <textarea
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            rows={3}
+                            className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+                            placeholder="Ответить ученице..."
+                        />
+                        <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
+                            Отправить
+                        </button>
+                    </div>
+                </div>
+            </section>
         </div>
     );
 }
 
 function StudentGeneric({ title, children }) {
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm"><h2 className="font-display text-xl text-slate-800">{title}</h2></div>
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5"><h2 className="font-display text-xl text-slate-800">{title}</h2></div>
             {children}
         </div>
     );
@@ -2282,7 +2649,7 @@ function StudentGeneric({ title, children }) {
 
 function PvlContentStub({ title, hint }) {
     return (
-        <div className="rounded-2xl border border-slate-100/90 bg-white p-8 shadow-sm">
+        <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-8">
             <h2 className="font-display text-2xl text-slate-800">{title}</h2>
             <p className="text-sm text-slate-500 mt-2">{hint}</p>
         </div>
@@ -2291,7 +2658,7 @@ function PvlContentStub({ title, hint }) {
 
 function PvlCabinetSettingsStub() {
     return (
-        <div className="rounded-2xl border border-slate-100/90 bg-white p-6 md:p-8 shadow-sm">
+        <div className="rounded-3xl bg-white p-6 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-8">
             <h2 className="font-display text-2xl text-slate-800">Настройки</h2>
             <p className="text-sm text-slate-500 mt-2">Уведомления и отображение кабинета настраиваются здесь по мере готовности продукта.</p>
         </div>
@@ -2303,7 +2670,7 @@ function PvlMergeOnboardingRedirect({ navigate, to }) {
         navigate(to);
     }, [navigate, to]);
     return (
-        <div className="rounded-2xl border border-slate-100/90 bg-white p-6 text-sm text-slate-500 shadow-sm">
+        <div className="rounded-3xl bg-white p-6 text-sm text-slate-500 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
             Открываем «О курсе»…
         </div>
     );
@@ -2315,7 +2682,6 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     }
     if (route === '/student/settings') return <PvlCabinetSettingsStub />;
     if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
-    if (route === '/student/qa') return <StudentFaqBank />;
     if (route === '/student/results') return <StudentResults studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];
@@ -2337,41 +2703,33 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/about') return (
-        <div className="space-y-3">
+        <div className="space-y-5">
             <StudentAboutEnriched navigate={navigate} routePrefix={routePrefix} />
         </div>
     );
-    if (route === '/student/glossary') return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h2 className="font-display text-2xl text-slate-800">Глоссарий курса</h2>
-                <p className="text-sm text-slate-500 mt-1">Все термины курса — распечатайте и держите рядом</p>
-            </div>
-            <StudentGlossarySearch />
-        </div>
-    );
-    if (route === '/student/library') return <LibraryPage studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
+    if (route === '/student/glossary') return <StudentGlossarySearch />;
+    if (route === '/student/library') return <LibraryPage studentId={studentId} navigate={navigate} routePrefix={routePrefix} refresh={refresh} refreshKey={refreshKey} />;
     if (route.startsWith('/student/library/')) {
         const itemId = route.split('/')[3] || '';
-        return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} routePrefix={routePrefix} />;
+        return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} routePrefix={routePrefix} refresh={refresh} refreshKey={refreshKey} />;
     }
     if (route === '/student/lessons' || route === '/student/checklist') {
-        return <StudentCourseTracker studentId={studentId} navigate={navigate} />;
+        return <StudentCourseTracker studentId={studentId} />;
     }
     if (route === '/student/practicums') return <PvlDashboardCalendarBlock viewerRole="student" cohortId="cohort-2026-1" navigate={navigate} routePrefix={routePrefix} title="Практикумы с менторами" eventTypeFilter={['mentor_meeting']} />;
-    if (route === '/student/tracker') return <StudentCourseTracker studentId={studentId} navigate={navigate} />;
+    if (route === '/student/messages') return <StudentDirectMessages studentId={studentId} />;
+    if (route === '/student/tracker') return <StudentCourseTracker studentId={studentId} />;
     if (route === '/student/certification' || route === '/student/self-assessment') {
         const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
         return (
             <div className="space-y-6">
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                     <h2 className="font-display text-xl text-slate-800">Сертификация и самооценка</h2>
-                    <p className="text-sm text-slate-500 mt-1">Всё, что нужно знать о сертификационном завтраке, и бланк самооценки на одной странице.</p>
                 </div>
                 <SzPointsCard points={cert.points} redFlags={cert.redFlags || []} />
                 <AssessmentComparisonCard selfPoints={cert.points.szSelfAssessmentTotal} mentorPoints={cert.points.szMentorAssessmentTotal} />
                 {cert.szScores ? (
-                    <div className="rounded-2xl border border-slate-100/90 bg-white p-5 text-sm text-slate-600 shadow-sm tabular-nums">
+                    <div className="rounded-3xl bg-white p-5 text-sm tabular-nums text-slate-600 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
                         <div className="text-xs font-medium text-slate-500 mb-2">Данные из бланка самооценки и контура сертификации</div>
                         <div>Самооценка (всего): <span className="font-medium text-slate-800">{cert.szScores.self_score_total}/54</span></div>
                         <div>Оценка ментора (всего): <span className="font-medium text-slate-800">{cert.szScores.mentor_score_total}/54</span></div>
@@ -2382,7 +2740,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                         <div className="mt-2">Статус контура СЗ: <span className="font-medium text-slate-800">{szPipelineStatusRu(cert.szScores.certification_status)}</span></div>
                     </div>
                 ) : null}
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-5 text-sm text-slate-600 shadow-sm">
+                <div className="rounded-3xl bg-white p-5 text-sm text-slate-600 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
                     Курсовые баллы:
                     {' '}
                     <span className="font-medium text-slate-800 tabular-nums">{cert.points.coursePointsTotal}/400</span>
@@ -2392,7 +2750,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                     {formatPvlDateTime(cert?.deadlineAt || '2026-06-30')}
                 </div>
                 <StudentCertificationReference navigate={navigate} />
-                <div id="pvl-sz-flow" className="scroll-mt-4 rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <div id="pvl-sz-flow" className="scroll-mt-4 rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                     <h3 className="font-display text-lg text-slate-800 mb-4">Бланк самооценки</h3>
                     <PvlSzAssessmentFlow
                         key={studentId}
@@ -2421,10 +2779,9 @@ function MentorMaterialsPage({ cmsItems, cmsPlacements }) {
     const checklist = getPublishedContentBySection('checklist', 'mentor', cmsItems, cmsPlacements, cohortId);
     const combined = [...lessons, ...practicums, ...cert, ...checklist];
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Материалы для ментора</h2>
-                <p className="text-sm text-slate-500 mt-1">Уроки, практикумы, сертификация и чек-листы, доступные в вашей роли.</p>
             </div>
             <GardenContentCards items={combined} />
         </div>
@@ -2440,6 +2797,8 @@ function buildTeacherStudentRows() {
     return pvlDomainApi.adminApi.getAdminStudents({}).map((sp) => {
         const userId = sp.userId;
         const user = getUser(userId);
+        const mentorUserId = sp.mentorId || '';
+        const mentorLine = mentorUserId ? (getUser(mentorUserId)?.fullName || mentorUserId) : '—';
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
         const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
@@ -2456,11 +2815,13 @@ function buildTeacherStudentRows() {
         return {
             userId,
             user,
+            mentorUserId,
             courseLine,
             closedPct,
             coursePoints: pts.coursePointsTotal ?? 0,
             hwSummary,
             lastAct,
+            mentorLine,
         };
     });
 }
@@ -2490,7 +2851,6 @@ function buildMentorMenteeRows(mentorId) {
         else if (pendingReview > 0 || inRevision > 0) stateLine = 'нужна проверка';
         const cohortLine = `ПВЛ 2026 · ${cohortTitle}`;
         const moduleWeekLine = `Модуль ${clampPvlModule(profile?.currentModule ?? profile?.currentWeek ?? 0)}`;
-        const lastAct = profile?.lastActivityAt ? formatPvlDateTime(profile.lastActivityAt) : '—';
         const city = profile?.city || '';
         return {
             user,
@@ -2504,7 +2864,6 @@ function buildMentorMenteeRows(mentorId) {
             pendingReview,
             inRevision,
             lastDone,
-            lastAct,
             stateLine,
             overdueN,
             revisionCyclesTotal,
@@ -2523,19 +2882,19 @@ function mentorMenteeInitials(fullName) {
 }
 
 function menteeStatusSurface(stateLine) {
-    if (stateLine === 'есть долги') return 'bg-rose-50/90 text-rose-900 border-rose-100';
-    if (stateLine === 'нужна проверка') return 'bg-amber-50/90 text-amber-950 border-amber-100';
-    if (stateLine === 'есть доработки') return 'bg-orange-50/90 text-orange-950 border-orange-100';
-    return 'bg-emerald-50/90 text-emerald-900 border-emerald-100';
+    if (stateLine === 'есть долги') return 'bg-rose-50/90 text-rose-900';
+    if (stateLine === 'нужна проверка') return 'bg-amber-50/90 text-amber-950';
+    if (stateLine === 'есть доработки') return 'bg-orange-50/90 text-orange-950';
+    return 'bg-emerald-50/90 text-emerald-900';
 }
 
 function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
     const ptsMax = SCORING_RULES.COURSE_POINTS_MAX;
     return (
-        <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/30">
-            {heading ? <h3 className="font-display text-xl text-slate-800 mb-4">{heading}</h3> : null}
+        <section className="rounded-[1.75rem] bg-white p-4 md:p-6 shadow-[0_16px_48px_-14px_rgba(15,23,42,0.09)]">
+            {heading ? <h3 className="font-display text-lg text-slate-800 mb-3">{heading}</h3> : null}
             {menteeRows.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-600">
+                <div className="rounded-lg bg-slate-50/90 px-3 py-6 text-center text-sm text-slate-600">
                     Список менти пуст. Если вы только что переключили роль, обновите страницу или откройте «Мои менти» — демо-данные подгружаются по профилю ментора.
                 </div>
             ) : null}
@@ -2552,10 +2911,10 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                                 navigate(`/mentor/mentee/${row.userId}`);
                             }
                         }}
-                        className="rounded-2xl border border-emerald-100/50 bg-gradient-to-b from-white to-slate-50/70 p-4 md:p-5 text-left shadow-sm shadow-slate-200/20 hover:border-emerald-200/80 hover:shadow-md transition-all cursor-pointer flex flex-col gap-3"
+                        className="flex cursor-pointer flex-col gap-2 rounded-2xl bg-white p-3 text-left shadow-[0_8px_28px_-10px_rgba(15,23,42,0.07)] transition-all hover:shadow-[0_14px_40px_-12px_rgba(45,90,67,0.14)]"
                     >
-                        <div className="flex gap-3">
-                            <div className="h-14 w-14 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 border border-emerald-100/80 flex items-center justify-center text-sm font-semibold text-emerald-900 shrink-0 ring-2 ring-white">
+                        <div className="flex gap-2.5">
+                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center text-xs font-semibold text-emerald-900 shrink-0">
                                 {mentorMenteeInitials(row.user?.fullName)}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -2572,10 +2931,10 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                                 {row.city ? <p className="text-[11px] text-slate-400 mt-0.5">{row.city}</p> : null}
                             </div>
                         </div>
-                        <p className="text-[10px] uppercase tracking-wide text-slate-400">{row.cohortLine}</p>
-                        <p className="text-xs text-slate-600 leading-snug">{row.moduleWeekLine}</p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-400 leading-tight">{row.cohortLine}</p>
+                        <p className="text-[11px] text-slate-600 leading-snug">{row.moduleWeekLine}</p>
                         <div>
-                            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 mb-1.5">
+                            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-600 mb-1">
                                 <span>
                                     Прогресс модуля:{' '}
                                     <span className="tabular-nums font-medium text-slate-800">
@@ -2585,32 +2944,28 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                                 </span>
                                 <span className="tabular-nums text-slate-500">{row.closedPct}%</span>
                             </div>
-                            <div className="h-2 rounded-full bg-slate-100 overflow-hidden border border-slate-100/80">
+                            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                 <div
                                     className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-[width]"
                                     style={{ width: `${Math.min(100, Math.max(0, row.closedPct))}%` }}
                                 />
                             </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            <span className="text-[10px] rounded-full bg-white/90 border border-slate-200/90 px-2.5 py-1 text-slate-700 tabular-nums shadow-sm">
+                        <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] rounded-full bg-slate-50 px-2 py-0.5 text-slate-700 tabular-nums">
                                 Баллы {row.coursePoints}/{row.coursePointsMax ?? ptsMax}
                             </span>
-                            {row.overdueN > 0 ? (
-                                <span className="text-[10px] rounded-full bg-rose-50 border border-rose-100 px-2.5 py-1 text-rose-900">
+                            {row.overdueN > 0 && row.stateLine !== 'есть долги' ? (
+                                <span className="text-[10px] rounded-full bg-rose-50 px-2 py-0.5 text-rose-900">
                                     Просрочки: {row.overdueN}
                                 </span>
                             ) : null}
                         </div>
-                        <div className="text-[11px] text-slate-500 border-t border-slate-100/80 pt-3 mt-auto flex flex-wrap items-center gap-2">
+                        <div className="text-[10px] text-slate-500 pt-1.5 mt-auto flex flex-wrap items-center gap-1.5">
                             <span
-                                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${menteeStatusSurface(row.stateLine)}`}
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${menteeStatusSurface(row.stateLine)}`}
                             >
                                 {row.stateLine}
-                            </span>
-                            <span className="text-slate-400">·</span>
-                            <span>
-                                последнее действие: <span className="text-slate-600">{row.lastAct}</span>
                             </span>
                         </div>
                         {row.riskCount > 0 ? <p className="text-[10px] text-amber-800">Рисков в карточке: {row.riskCount}</p> : null}
@@ -2630,6 +2985,14 @@ function kanbanColumnToStatus(col) {
 
 function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) {
     const lastDragEndRef = useRef(0);
+    const [mobileTab, setMobileTab] = useState('unchecked');
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const update = () => setIsMobile(window.innerWidth <= 767);
+        update();
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, []);
     const board = useMemo(() => {
         void refreshKey;
         return pvlDomainApi.mentorApi.getMentorReviewBoard(mentorId);
@@ -2648,6 +3011,11 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
             /* ignore */
         }
     };
+    const moveCardTo = (studentId, taskId, col) => {
+        const next = kanbanColumnToStatus(col);
+        pvlDomainApi.actions.setTaskStatus(studentId, taskId, next, mentorId, 'kanban_mobile');
+        onStatusChanged?.();
+    };
 
     const renderCard = (q, col) => {
         const dl = q.deadlineAt ? formatPvlDateTime(`${String(q.deadlineAt).slice(0, 10)}T12:00:00`) : '—';
@@ -2659,8 +3027,9 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                 key={`${q.studentId}-${q.taskId}-${col}`}
                 role="button"
                 tabIndex={0}
-                draggable
+                draggable={!isMobile}
                 onDragStart={(e) => {
+                    if (isMobile) return;
                     e.dataTransfer.setData('application/json', JSON.stringify({ studentId: q.studentId, taskId: q.taskId }));
                     e.dataTransfer.effectAllowed = 'move';
                 }}
@@ -2677,7 +3046,7 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                         navigate(`/mentor/mentee/${q.studentId}/task/${q.taskId}?from=kanban`);
                     }
                 }}
-                className="w-full text-left rounded-xl border border-white bg-white p-3 shadow-sm text-sm transition-colors hover:border-emerald-100 hover:bg-emerald-50/20 cursor-grab active:cursor-grabbing"
+                className="w-full text-left rounded-lg bg-white/95 p-2 shadow-sm text-sm transition-colors hover:bg-emerald-50/30 cursor-grab active:cursor-grabbing"
             >
                 <div className="font-medium text-slate-800 line-clamp-2">{q.taskTitle}</div>
                 <button
@@ -2698,71 +3067,77 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                         </span>
                     ) : null}
                     {(q.revisionCycles ?? 0) > 0 ? (
-                        <span className="text-[10px] rounded-full bg-amber-50 text-amber-950 border border-amber-100 px-2 py-0.5">Доработок: {q.revisionCycles}</span>
+                        <span className="text-[10px] rounded-full bg-amber-50 text-amber-950 px-2 py-0.5">Доработок: {q.revisionCycles}</span>
                     ) : null}
+                </div>
+                <div className="mt-2 md:hidden">
+                    <label className="text-[10px] text-slate-500">Сменить статус</label>
+                    <select
+                        value={col}
+                        onChange={(e) => moveCardTo(q.studentId, q.taskId, e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                    >
+                        <option value="unchecked">На проверке</option>
+                        <option value="revision">На доработке</option>
+                        <option value="done">Проверено</option>
+                    </select>
                 </div>
             </div>
         );
     };
 
     const emptyColumn = (title, body) => (
-        <div className="rounded-xl border border-dashed border-slate-200/90 bg-white/70 px-3 py-8 text-center flex flex-col justify-center min-h-[140px]">
+        <div className="rounded-lg bg-slate-50/80 px-3 py-6 text-center flex flex-col justify-center min-h-[120px]">
             <p className="text-sm font-medium text-slate-600">{title}</p>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-[16rem] mx-auto">{body}</p>
+            <p className="text-xs text-slate-500 mt-1 leading-snug max-w-[16rem] mx-auto">{body}</p>
         </div>
     );
 
     const col = (key, title, hint, items, emptyTitle, emptyBody) => (
         <div
             key={key}
-            className="rounded-2xl border border-dashed border-slate-200/90 bg-slate-50/40 p-4 min-h-[220px] flex flex-col"
+            className="rounded-xl bg-slate-50/50 p-3 min-h-[200px] flex flex-col"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => handleDrop(key, e)}
         >
-            <div className="mb-3">
-                <h4 className="font-display text-base text-slate-800">{title}</h4>
-                {hint ? <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p> : null}
+            <div className="mb-2">
+                <h4 className="font-display text-sm text-slate-800">{title}</h4>
+                {hint ? <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">{hint}</p> : null}
             </div>
-            <div className="space-y-2 flex-1">
+            <div className="space-y-1.5 flex-1">
                 {items.length === 0 ? emptyColumn(emptyTitle, emptyBody) : items.map((q) => renderCard(q, key))}
             </div>
         </div>
     );
 
+    const mobileColumns = [
+        { key: 'unchecked', title: 'На проверке', hint: 'Отправлено, ждёт проверки', items: board.unchecked, emptyTitle: 'Пока тихо', emptyBody: 'Когда ученица отправит работу на проверку, карточка появится здесь автоматически.' },
+        { key: 'revision', title: 'На доработке', hint: 'Нужен ответ или новая версия', items: board.revision, emptyTitle: 'Нет активных доработок', emptyBody: 'Карточки с запросом правок показываются в этом списке.' },
+        { key: 'done', title: 'Проверено', hint: 'Принято, закрыто (первые 24 часа)', items: board.done, emptyTitle: 'Пока пусто', emptyBody: 'Принятые работы попадают сюда после проверки.' },
+        { key: 'archive', title: 'Архив', hint: 'Принятые более 24 часов назад', items: board.archive || [], emptyTitle: 'Архив пока пуст', emptyBody: 'Карточки из «Проверено» переходят сюда автоматически через 24 часа.' },
+    ];
+    const mobileActive = mobileColumns.find((c) => c.key === mobileTab) || mobileColumns[0];
+
     return (
-        <div className="grid lg:grid-cols-4 gap-4">
-            {col(
-                'unchecked',
-                'Не проверено',
-                'Отправлено, ждёт проверки',
-                board.unchecked,
-                'Пока тихо',
-                'Когда ученица отправит работу на проверку, карточка появится здесь автоматически.',
-            )}
-            {col(
-                'revision',
-                'На доработке',
-                'Нужен ответ или новая версия',
-                board.revision,
-                'Нет активных доработок',
-                'Задания с запросом правок от ментора отображаются в этой колонке. Перетащите сюда карточку, если вернули работу на доработку.',
-            )}
-            {col(
-                'done',
-                'Проверено',
-                'Принято, закрыто (первые 24 часа)',
-                board.done,
-                'Пока пусто в этом списке',
-                'Принятые работы окажутся здесь. Можно перетащить карточку из «Не проверено», чтобы отметить задание закрытым.',
-            )}
-            {col(
-                'archive',
-                'Архив',
-                'Принятые более 24 часов назад',
-                board.archive || [],
-                'Архив пока пуст',
-                'Карточки из «Проверено» автоматически переходят сюда через 24 часа.',
-            )}
+        <div className="space-y-5">
+            <div className="md:hidden flex flex-wrap gap-2">
+                {mobileColumns.map((c) => (
+                    <button
+                        key={c.key}
+                        type="button"
+                        onClick={() => setMobileTab(c.key)}
+                        className={`rounded-full border px-3 py-1.5 text-xs ${mobileTab === c.key ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                    >
+                        {c.title} ({c.items.length})
+                    </button>
+                ))}
+            </div>
+            <div className="md:hidden">
+                {col(mobileActive.key, mobileActive.title, mobileActive.hint, mobileActive.items, mobileActive.emptyTitle, mobileActive.emptyBody)}
+            </div>
+            <div className="hidden md:grid lg:grid-cols-4 gap-4">
+                {mobileColumns.map((c) => col(c.key, c.title, c.hint, c.items, c.emptyTitle, c.emptyBody))}
+            </div>
         </div>
     );
 }
@@ -2770,9 +3145,8 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
 function MentorMenteesPanel({ navigate, mentorId, refreshKey = 0 }) {
     const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <h2 className="font-display text-2xl text-slate-800">Мои менти</h2>
-            <p className="text-sm text-slate-500 -mt-2">Карточки строятся из результатов и профиля потока — те же данные, что в карточке менти.</p>
             <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading={null} />
         </div>
     );
@@ -2780,11 +3154,8 @@ function MentorMenteesPanel({ navigate, mentorId, refreshKey = 0 }) {
 
 function MentorReviewQueuePanel({ navigate, mentorId, refresh, refreshKey = 0 }) {
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <h2 className="font-display text-2xl text-slate-800">Очередь проверок</h2>
-            <p className="text-sm text-slate-500 -mt-2">
-                Те же задания, что на дашборде. Перетаскивание между колонками сохраняет статус в данных курса и обновляет результаты.
-            </p>
             <MentorKanbanBoard mentorId={mentorId} navigate={navigate} refreshKey={refreshKey} onStatusChanged={refresh} />
         </div>
     );
@@ -2794,12 +3165,9 @@ function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
     const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     const mentorCohortId = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId)?.cohortIds?.[0] || 'cohort-2026-1';
     return (
-        <div className="space-y-6">
-            <header className="border-b border-slate-100 pb-4">
+        <div className="space-y-5">
+            <header className="pb-1">
                 <h2 className="font-display text-2xl text-slate-800">Дашборд ментора</h2>
-                <p className="text-xs text-slate-500 mt-1.5">
-                    Сначала люди и прогресс, затем календарь потока и очередь проверок — без отдельной «витрины», всё из тех же источников данных.
-                </p>
             </header>
             <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading="Мои менти" />
             <section>
@@ -2813,7 +3181,6 @@ function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
             </section>
             <section className="space-y-2">
                 <h3 className="font-display text-lg text-slate-800">Канбан проверок</h3>
-                <p className="text-xs text-slate-500">Перетащите карточку в другую колонку — вызовется сохранение статуса в mock API; списки и карточки обновятся после перерисовки.</p>
                 <MentorKanbanBoard mentorId={mentorId} navigate={navigate} refreshKey={refreshKey} onStatusChanged={refresh} />
             </section>
         </div>
@@ -2830,16 +3197,14 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
     if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} mentorId={mentorId} refreshKey={refreshKey} />;
     if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
+    if (route === '/mentor/messages') return <MentorDirectMessages mentorId={mentorId} />;
     if (route === '/mentor/tracker') {
-        return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} routePrefix="/mentor" />;
-    }
-    if (route === '/mentor/qa') {
-        return <PvlContentStub title="FAQ" hint="Общий Q&A и модерация публикаций — в разработке." />;
+        return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} />;
     }
     if (route === '/mentor/materials') return <MentorMaterialsPage cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (route === '/mentor/library' || route.startsWith('/mentor/library/')) {
         const itemId = route === '/mentor/library' ? '' : route.slice('/mentor/library/'.length).split('/')[0] || '';
-        return <LibraryPage studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" />;
+        return <LibraryPage studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" refresh={refresh} refreshKey={refreshKey} />;
     }
     if (/^\/mentor\/mentee\/[^/]+\/task\/[^/]+$/.test(pathOnly)) {
         const [, , , menteeId, , taskId] = pathOnly.split('/');
@@ -2911,7 +3276,6 @@ function TeacherPvlHome({ navigate }) {
         { title: 'Менторы', desc: 'Нагрузка, очередь проверок и статус сопровождения.', to: '/admin/mentors' },
         { title: 'Материалы курса', desc: 'Уроки, библиотека и глоссарий (данные ПВЛ отдельно от сада).', to: '/admin/content' },
         { title: 'Календарь', desc: 'Встречи с менторами, эфиры и выход уроков.', to: '/admin/calendar' },
-        { title: 'Настройки', desc: 'Правила баллов и журнал действий.', to: '/admin/settings' },
     ];
     const rows = [
         { area: 'Материалы курса', state: 'Работает', note: 'CRUD в памяти; стартовый контент подмешивается при запуске.' },
@@ -2923,24 +3287,19 @@ function TeacherPvlHome({ navigate }) {
     ];
     return (
         <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 md:p-8 shadow-sm">
+            <div className="pb-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-1">{PVL_COURSE_DISPLAY_NAME} · учительская</p>
                 <h2 className="font-display text-2xl md:text-3xl text-slate-800">Дашборд</h2>
-                <p className="text-sm text-slate-500 mt-2 max-w-2xl leading-relaxed">
-                    Управление потоком: ученицы, менторы, материалы (уроки / библиотека / глоссарий), общий календарь.
-                    Учениц в учёте: {overview.activeStudents}, менторов: {overview.activeMentors}, в очереди проверок: {overview.reviewQueue}.
-                </p>
             </div>
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
                 {cards.map((c) => (
                     <button
                         key={c.to}
                         type="button"
                         onClick={() => navigate(c.to)}
-                        className="rounded-2xl border border-slate-100/90 bg-white p-5 text-left shadow-sm hover:border-blue-100 hover:shadow-md transition-all"
+                        className="rounded-xl bg-slate-50/90 p-4 text-left transition-colors hover:bg-slate-100/90"
                     >
                         <div className="font-display text-base text-slate-800">{c.title}</div>
-                        <p className="text-xs text-slate-500 mt-2 leading-snug">{c.desc}</p>
                         <span className="text-xs text-blue-700/80 mt-4 inline-block font-medium">Перейти</span>
                     </button>
                 ))}
@@ -2952,7 +3311,7 @@ function TeacherPvlHome({ navigate }) {
                 routePrefix="/admin"
                 title="Календарь курса"
                 onOpenFullCalendar={() => navigate('/admin/calendar')}
-                fullCalendarLabel="Полный календарь →"
+                scheduleCtaLabel="+ Запланировать"
             />
             {pvlDevToolsEnabled() ? (
                 <>
@@ -3066,7 +3425,7 @@ function createQuizQuestion(type = 'single') {
 
 function createDefaultLessonQuiz() {
     return {
-        settings: { attempts: 1, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
+        settings: { attempts: 2, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
         instruction: '',
         questions: [createQuizQuestion('single')],
     };
@@ -3096,7 +3455,7 @@ function normalizeLessonQuiz(raw) {
         : base.questions;
     return {
         settings: {
-            attempts: Math.max(1, Number(settings.attempts) || 1),
+            attempts: 2,
             passPercent: Math.max(1, Math.min(100, Number(settings.passPercent) || 70)),
             showCorrectAfterSubmit: !!settings.showCorrectAfterSubmit,
             showResultImmediately: !!settings.showResultImmediately,
@@ -3125,6 +3484,7 @@ function validateLessonQuiz(quiz) {
 
 function LessonQuizBuilder({ value, onChange, validation = {} }) {
     const quiz = normalizeLessonQuiz(value);
+    const [editingPassPercent, setEditingPassPercent] = useState(false);
     const setQuiz = (updater) => {
         const next = typeof updater === 'function' ? updater(quiz) : updater;
         onChange(normalizeLessonQuiz(next));
@@ -3171,18 +3531,42 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             <section className="rounded-xl border border-slate-200 bg-white p-4">
                 <div className="text-sm font-medium text-slate-800 mb-3">Настройки теста</div>
-                <div className="grid md:grid-cols-3 gap-3">
-                    <input type="number" min={1} value={quiz.settings.attempts} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, attempts: Math.max(1, Number(e.target.value) || 1) } }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Сколько попыток дать ученице (например: 1)" />
-                    <input type="number" min={1} max={100} value={quiz.settings.passPercent} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, passPercent: Math.max(1, Math.min(100, Number(e.target.value) || 1)) } }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Проходной порог в процентах (например: 70)" />
-                    <div className="rounded-xl border border-slate-200 p-2 text-sm text-slate-600">Вопросов: <span className="font-medium">{quiz.questions.length}</span></div>
+                <div className="grid md:grid-cols-3 gap-4">
                     <label className="rounded-xl border border-slate-200 p-2 text-xs text-slate-700 flex items-center justify-between">Показывать правильные<input type="checkbox" checked={quiz.settings.showCorrectAfterSubmit} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, showCorrectAfterSubmit: e.target.checked } }))} /></label>
                     <label className="rounded-xl border border-slate-200 p-2 text-xs text-slate-700 flex items-center justify-between">Показывать итог сразу<input type="checkbox" checked={quiz.settings.showResultImmediately} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, showResultImmediately: e.target.checked } }))} /></label>
                     <label className="rounded-xl border border-slate-200 p-2 text-xs text-slate-700 flex items-center justify-between">Перемешивать варианты<input type="checkbox" checked={quiz.settings.shuffleOptions} onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, shuffleOptions: e.target.checked } }))} /></label>
                 </div>
-                <textarea value={quiz.instruction} onChange={(e) => setQuiz((prev) => ({ ...prev, instruction: e.target.value }))} className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm min-h-[84px]" placeholder="Что увидит ученица перед стартом теста: правила, время, как считается результат" />
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>
+                        Вопросов: {quiz.questions.length} · Проходной порог: {quiz.settings.passPercent}% · Попыток: 2
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setEditingPassPercent((v) => !v)}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50"
+                    >
+                        Изменить
+                    </button>
+                </div>
+                {editingPassPercent ? (
+                    <div className="mt-2 grid md:grid-cols-[220px_1fr] gap-2 items-center">
+                        <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={quiz.settings.passPercent}
+                            onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, passPercent: Math.max(1, Math.min(100, Number(e.target.value) || 70)) } }))}
+                            className="rounded-xl border border-slate-200 p-2 text-sm"
+                            placeholder="Проходной %"
+                        />
+                        <div className="text-xs text-slate-400">Первая попытка допускает результат ниже 70%, вторая — финальная пересдача.</div>
+                    </div>
+                ) : (
+                    <div className="mt-2 text-xs text-slate-400">Первая попытка допускает результат ниже 70%, вторая — финальная пересдача.</div>
+                )}
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -3191,7 +3575,7 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
                     <button type="button" onClick={() => setQuiz((prev) => ({ ...prev, questions: [...prev.questions, createQuizQuestion('single')] }))} className="text-xs rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50">Добавить вопрос</button>
                 </div>
                 {validation.global ? <div className="mb-2 text-xs text-rose-700">{validation.global}</div> : null}
-                <div className="space-y-3">
+                <div className="space-y-5">
                     {quiz.questions.map((q, idx) => {
                         const qErrors = validation[q.id] || [];
                         return (
@@ -3217,12 +3601,10 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
                                             <select value={q.type} onChange={(e) => updateQuestion(q.id, (row) => ({ ...createQuizQuestion(e.target.value), id: row.id, text: row.text, points: row.points, required: row.required, hint: row.hint, feedback: row.feedback }))} className="rounded-lg border border-slate-200 p-2 text-sm bg-white">
                                                 {QUIZ_Q_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                                             </select>
-                                            <input type="number" min={0} value={q.points} onChange={(e) => updateQuestion(q.id, { points: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Сколько баллов за этот вопрос" />
+                                            <input type="number" min={0} value={q.points} onChange={(e) => updateQuestion(q.id, { points: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-200 p-2 text-sm bg-white placeholder:text-slate-400" placeholder="Баллы за вопрос (серым: например 1)" />
                                             <label className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700 flex items-center justify-between">Обязательный<input type="checkbox" checked={q.required !== false} onChange={(e) => updateQuestion(q.id, { required: e.target.checked })} /></label>
                                         </div>
                                         <textarea value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white min-h-[70px]" placeholder="Сформулируйте вопрос для ученицы" />
-                                        <input value={q.hint || ''} onChange={(e) => updateQuestion(q.id, { hint: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Подсказка к вопросу (необязательно)" />
-                                        <input value={q.feedback || ''} onChange={(e) => updateQuestion(q.id, { feedback: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Что показать после ответа (необязательно)" />
                                         {q.type === 'open' ? (
                                             <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600">Режим проверки: <span className="font-medium">ручная проверка</span></div>
                                         ) : (
@@ -3306,7 +3688,7 @@ function normalizeLessonHomework(raw) {
         revisions: {
             limitMode: revisions.limitMode === 'unlimited' ? 'unlimited' : 'limit',
             limit: Math.max(0, Number(revisions.limit) || 0),
-            allowResubmitAfterRevision: !!revisions.allowResubmitAfterRevision,
+            allowResubmitAfterRevision: true,
             showCounterToStudent: !!revisions.showCounterToStudent,
             limitReachedNote: revisions.limitReachedNote || '',
         },
@@ -3355,32 +3737,79 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
         });
     };
 
+    const deadlineValue =
+        hw.deadline.type === 'fixed_date' ? (
+            <input
+                type="date"
+                value={hw.deadline.at}
+                onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, at: e.target.value } }))}
+                className="w-full min-h-[38px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+            />
+        ) : hw.deadline.type === 'week_based' ? (
+            <input
+                value={hw.deadline.weekBasedLabel}
+                onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, weekBasedLabel: e.target.value } }))}
+                className="w-full min-h-[38px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                placeholder="Правило по модулю"
+            />
+        ) : (
+            <div className="min-h-[38px] rounded-lg border border-dashed border-slate-200/80 bg-slate-50/50 px-2 py-1.5 text-xs text-slate-400">Без даты</div>
+        );
+
     return (
-        <div className="space-y-4">
+        <div className="space-y-3">
             <input type="hidden" value={hw.responseFormat.artifactType} readOnly />
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <div className="text-sm font-medium text-slate-800">Настройки дедлайна и доработок</div>
-                <div className="grid md:grid-cols-2 gap-3">
-                    <select value={hw.deadline.type} onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, type: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm">
-                        <option value="fixed_date">Жесткая дата</option>
-                        <option value="week_based">Дата по модулю</option>
-                        <option value="none">Без дедлайна</option>
-                    </select>
-                    {hw.deadline.type === 'fixed_date' ? (
-                        <input type="date" value={hw.deadline.at} onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, at: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm" />
-                    ) : (
-                        <input value={hw.deadline.weekBasedLabel} onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, weekBasedLabel: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm" placeholder="Правило дедлайна по модулю" />
-                    )}
-                    <select value={hw.revisions.limitMode} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limitMode: e.target.value } }))} className="rounded-xl border border-slate-200 p-2 text-sm">
+            <section className="space-y-2.5 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Настройки дедлайна и доработок</div>
+                <div className="grid gap-2 sm:grid-cols-2 sm:items-end">
+                    <label className="flex min-w-0 flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Режим</span>
+                        <select
+                            value={hw.deadline.type}
+                            onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, type: e.target.value } }))}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                        >
+                            <option value="fixed_date">Жесткая дата</option>
+                            <option value="week_based">Дата по модулю</option>
+                            <option value="none">Без дедлайна</option>
+                        </select>
+                    </label>
+                    <div className="flex min-w-0 flex-col gap-1">
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                            {hw.deadline.type === 'fixed_date' ? 'Дата' : hw.deadline.type === 'week_based' ? 'Условие' : 'Значение'}
+                        </span>
+                        {deadlineValue}
+                    </div>
+                </div>
+                <div className="flex flex-col gap-2 border-t border-slate-100 pt-2.5 sm:flex-row sm:flex-wrap sm:items-stretch">
+                    <select
+                        value={hw.revisions.limitMode}
+                        onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limitMode: e.target.value } }))}
+                        className="min-w-[12rem] flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    >
                         <option value="limit">Лимит доработок</option>
                         <option value="unlimited">Без лимита</option>
                     </select>
-                    <input type="number" min={0} disabled={hw.revisions.limitMode !== 'limit'} value={hw.revisions.limit} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limit: Number(e.target.value) || 0 } }))} className="rounded-xl border border-slate-200 p-2 text-sm disabled:bg-slate-50" placeholder="Лимит доработок" />
-                    <label className="rounded-xl border border-slate-200 p-2 text-xs flex items-center justify-between">Разрешить повторную отправку<input type="checkbox" checked={hw.revisions.allowResubmitAfterRevision} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, allowResubmitAfterRevision: e.target.checked } }))} /></label>
-                    <label className="rounded-xl border border-slate-200 p-2 text-xs flex items-center justify-between">Показывать счетчик ученице<input type="checkbox" checked={hw.revisions.showCounterToStudent} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, showCounterToStudent: e.target.checked } }))} /></label>
+                    <input
+                        type="number"
+                        min={0}
+                        disabled={hw.revisions.limitMode !== 'limit'}
+                        value={hw.revisions.limit}
+                        onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limit: Number(e.target.value) || 0 } }))}
+                        className="w-full min-w-[4.5rem] max-w-[5.5rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-sm tabular-nums disabled:bg-slate-50 sm:w-[5rem]"
+                        title="Число доработок"
+                    />
+                    <label className="flex min-h-[38px] flex-1 cursor-pointer items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 sm:min-w-[12rem]">
+                        <span className="leading-tight">Счётчик ученице</span>
+                        <input
+                            type="checkbox"
+                            className="h-4 w-4 shrink-0 rounded border-slate-300"
+                            checked={hw.revisions.showCounterToStudent}
+                            onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, showCounterToStudent: e.target.checked } }))}
+                        />
+                    </label>
                 </div>
-                <input value={hw.revisions.limitReachedNote} onChange={(e) => setHw((prev) => ({ ...prev, revisions: { ...prev.revisions, limitReachedNote: e.target.value } }))} className="w-full rounded-xl border border-slate-200 p-2 text-sm" placeholder="Комментарий при достижении лимита" />
                 {validation.deadline ? <div className="text-xs text-rose-700">{validation.deadline}</div> : null}
                 {validation.revisions ? <div className="text-xs text-rose-700">{validation.revisions}</div> : null}
             </section>
@@ -3439,6 +3868,9 @@ function AdminContentItemScreen({
             lessonKind: item.lessonKind || (item.targetSection === 'lessons' && item.contentType === 'checklist' ? 'quiz' : 'text_video'),
             lessonQuiz: normalizeLessonQuiz(item.lessonQuiz),
             lessonHomework: normalizeLessonHomework(item.lessonHomework),
+            lessonVideoUrl: item.lessonVideoUrl || '',
+            lessonVideoEmbed: item.lessonVideoEmbed || '',
+            lessonRutubeUrl: item.lessonRutubeUrl || '',
             libraryCategoryId: item.libraryCategoryId || item.categoryId || 'all',
             targetRole: item.targetRole || 'both',
             targetCohort: item.targetCohort || 'cohort-2026-1',
@@ -3464,6 +3896,8 @@ function AdminContentItemScreen({
         if (!editForm) return;
         const tags = String(editForm.tagsText || '').split(',').map((t) => t.trim()).filter(Boolean);
         const normalizedQuiz = normalizeLessonQuiz(editForm.lessonQuiz);
+        const videoSummaryMode = (editForm.targetSection === 'lessons' && editForm.lessonKind === 'text_video')
+            || (editForm.targetSection === 'library' && editForm.contentType === 'video');
         const payload = {
             title: editForm.title.trim(),
             shortDescription: editForm.shortDescription,
@@ -3484,6 +3918,9 @@ function AdminContentItemScreen({
             moduleNumber: clampPvlModule(editForm.moduleNumber),
             estimatedDuration: editForm.estimatedDuration,
             tags,
+            lessonVideoUrl: videoSummaryMode ? editForm.lessonVideoUrl : undefined,
+            lessonVideoEmbed: videoSummaryMode ? editForm.lessonVideoEmbed : undefined,
+            lessonRutubeUrl: videoSummaryMode ? editForm.lessonRutubeUrl : undefined,
         };
         pvlDomainApi.adminApi.updateContentItem(contentId, payload);
         applyPatchToState(payload);
@@ -3603,7 +4040,7 @@ function AdminContentItemScreen({
 
     if (!item) {
         return (
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-8 shadow-sm text-center space-y-4">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-8 text-center space-y-6">
                 <p className="text-slate-600">Материал не найден или удалён.</p>
                 <Button variant="secondary" onClick={() => navigate('/admin/content')}>К списку материалов</Button>
             </div>
@@ -3617,26 +4054,32 @@ function AdminContentItemScreen({
             fullDescription: editForm.fullDescriptionHtml,
             description: editForm.fullDescriptionHtml,
             targetRole: editForm.targetRole,
+            lessonVideoEmbed: editForm.lessonVideoEmbed,
+            lessonVideoUrl: editForm.lessonVideoUrl,
         }
         : item;
+    const videoSummaryEditor = !!editForm && (
+        (editForm.targetSection === 'lessons' && editForm.lessonKind === 'text_video')
+        || (editForm.targetSection === 'library' && editForm.contentType === 'video')
+    );
     const prevStudentSees = previewSource.targetRole === 'student' || previewSource.targetRole === 'both';
     const prevMentorSees = previewSource.targetRole === 'mentor' || previewSource.targetRole === 'both';
 
     const publishedPlacements = itemPlacements.filter((p) => p.isPublished !== false);
     const unpublishedPlacements = itemPlacements.filter((p) => p.isPublished === false);
     const cohortsForPlacement = pvlDomainApi.adminApi.getAdminCohorts() || [];
-    const softBtn = 'text-sm rounded-xl border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50';
-    const primaryBtn = 'text-sm rounded-xl border border-emerald-700 bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800';
+    const softBtn = 'text-sm rounded-xl border border-emerald-200/90 bg-white px-4 py-2 text-emerald-900 hover:bg-emerald-50/90';
+    const primaryBtn = 'text-sm rounded-xl border border-emerald-700 bg-emerald-700 px-4 py-2 text-white shadow-sm shadow-emerald-900/15 hover:bg-emerald-800';
     const dangerBtn = 'text-sm rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-rose-800 hover:bg-rose-100';
     const openPublishedCardPreview = () => {
         previewCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-6">
+            <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 via-white to-white p-5 md:p-6 shadow-sm shadow-emerald-900/5 flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Материалы курса</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-emerald-700/90">Материалы курса</p>
                     <h2 className="font-display text-2xl text-slate-800 mt-1 break-words">{item.title}</h2>
                     <div className="flex flex-wrap gap-2 mt-3">
                         <StatusBadge>{CONTENT_STATUS_LABEL[item.status] || item.status}</StatusBadge>
@@ -3652,8 +4095,8 @@ function AdminContentItemScreen({
             </div>
 
             {panelMode === 'view' ? (
-                <div className="space-y-4">
-                    <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/50 p-5 shadow-sm space-y-3">
+                <div className="space-y-6">
+                    <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/50 p-5 shadow-sm space-y-5">
                         <h3 className="font-display text-lg text-slate-800">Где материал сейчас в потоке</h3>
                         <ul className="text-sm text-slate-700 space-y-2 list-disc list-inside leading-relaxed">
                             <li>
@@ -3700,27 +4143,19 @@ function AdminContentItemScreen({
                     </div>
                 </div>
             ) : (
-                <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5 md:p-6 shadow-sm space-y-4">
+                <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/45 p-5 md:p-6 shadow-sm shadow-emerald-900/5 space-y-6">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <h3 className="font-display text-lg text-slate-800">Редактирование материала</h3>
-                        <span className="text-xs font-medium text-blue-800/90 uppercase tracking-wide">Режим правки</span>
+                        <span className="text-xs font-medium text-emerald-900 uppercase tracking-wide">Режим правки</span>
                     </div>
                     {editForm ? (
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             <div className="space-y-1">
                                 <label className="text-xs text-slate-500 ml-0.5">Название</label>
                                 <input
                                     value={editForm.title}
                                     onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
-                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs text-slate-500 ml-0.5">Краткое описание</label>
-                                <input
-                                    value={editForm.shortDescription}
-                                    onChange={(e) => setEditForm((f) => ({ ...f, shortDescription: e.target.value }))}
-                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                                    className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                 />
                             </div>
                             <div className="grid md:grid-cols-2 gap-4">
@@ -3729,7 +4164,7 @@ function AdminContentItemScreen({
                                     <select
                                         value={editForm.targetSection}
                                         onChange={(e) => setEditForm((f) => ({ ...f, targetSection: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                     >
                                         {sections.map((s) => <option key={s} value={s}>{labelTargetSection(s)}</option>)}
                                     </select>
@@ -3739,7 +4174,7 @@ function AdminContentItemScreen({
                                     <select
                                         value={editForm.contentType}
                                         onChange={(e) => setEditForm((f) => ({ ...f, contentType: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                     >
                                         {types.map((s) => <option key={s} value={s}>{CONTENT_TYPE_LABEL[s] || s}</option>)}
                                     </select>
@@ -3757,7 +4192,7 @@ function AdminContentItemScreen({
                                                     contentType: lk === 'quiz' ? 'checklist' : lk === 'homework' ? 'template' : 'video',
                                                 }));
                                             }}
-                                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                         >
                                             <option value="text_video">Текстовый урок + видеоурок</option>
                                             <option value="quiz">Тест</option>
@@ -3767,7 +4202,7 @@ function AdminContentItemScreen({
                                 ) : null}
                                 <div className="space-y-1">
                                     <label className="text-xs text-slate-500 ml-0.5">Кто видит материал</label>
-                                    <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-700">
+                                    <div className="w-full bg-emerald-50/50 border border-emerald-100 rounded-xl p-3 text-sm text-emerald-900/90">
                                         {TARGET_ROLE_LABELS.both}
                                     </div>
                                 </div>
@@ -3776,7 +4211,7 @@ function AdminContentItemScreen({
                                     <select
                                         value={editForm.targetCohort}
                                         onChange={(e) => setEditForm((f) => ({ ...f, targetCohort: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                     >
                                         {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => (
                                             <option key={c.id} value={c.id}>{c.title}</option>
@@ -3788,7 +4223,7 @@ function AdminContentItemScreen({
                                     <select
                                         value={clampPvlModule(editForm.moduleNumber)}
                                         onChange={(e) => setEditForm((f) => ({ ...f, moduleNumber: e.target.value, weekNumber: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800"
+                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                     >
                                         {[0, 1, 2, 3, 4].map((m) => <option key={m} value={m}>Модуль {m}</option>)}
                                     </select>
@@ -3798,7 +4233,7 @@ function AdminContentItemScreen({
                                     <input
                                         value={editForm.estimatedDuration}
                                         onChange={(e) => setEditForm((f) => ({ ...f, estimatedDuration: e.target.value }))}
-                                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm"
+                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                         placeholder="например 20 мин"
                                     />
                                 </div>
@@ -3808,7 +4243,7 @@ function AdminContentItemScreen({
                                 <input
                                     value={editForm.tagsText}
                                     onChange={(e) => setEditForm((f) => ({ ...f, tagsText: e.target.value }))}
-                                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm"
+                                    className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                 />
                             </div>
                             {editForm.targetSection === 'lessons' && editForm.lessonKind === 'quiz' ? (
@@ -3818,17 +4253,22 @@ function AdminContentItemScreen({
                                         onChange={(next) => setEditForm((f) => ({ ...f, lessonQuiz: next }))}
                                         validation={validateLessonQuiz(editForm.lessonQuiz)}
                                     />
-                                    <section className="rounded-xl border border-slate-200 bg-white p-4">
-                                        <div className="text-sm font-medium text-slate-800 mb-1">Предпросмотр для ученицы</div>
+                                    <section className="overflow-hidden rounded-3xl border border-emerald-200/80 bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                                        <div className="text-sm font-medium text-emerald-900 mb-1">Предпросмотр теста (как карточка в трекере)</div>
                                         <p className="text-xs text-slate-500 mb-2">{editForm.shortDescription || 'Без описания'}</p>
                                         <div className="text-xs text-slate-600">Вопросов: {normalizeLessonQuiz(editForm.lessonQuiz).questions.length} · Проходной порог: {normalizeLessonQuiz(editForm.lessonQuiz).settings.passPercent}% · Попыток: {normalizeLessonQuiz(editForm.lessonQuiz).settings.attempts}</div>
-                                        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                                        <div className="mt-2 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white p-3 text-xs text-slate-700">
                                             {normalizeLessonQuiz(editForm.lessonQuiz).instruction || 'Инструкция перед тестом не заполнена.'}
                                         </div>
                                     </section>
                                 </>
                             ) : editForm.targetSection === 'lessons' && editForm.lessonKind === 'homework' ? (
                                 <>
+                                    <LessonHomeworkBuilder
+                                        value={editForm.lessonHomework}
+                                        onChange={(next) => setEditForm((f) => ({ ...f, lessonHomework: next }))}
+                                        validation={validateLessonHomework(editForm.lessonHomework, { requireCriteria: false })}
+                                    />
                                     <div className="space-y-2">
                                         <label className="text-xs text-slate-500 ml-0.5">Полный текст задания</label>
                                         <RichEditor
@@ -3839,13 +4279,8 @@ function AdminContentItemScreen({
                                             placeholder="Опишите домашнее задание..."
                                         />
                                     </div>
-                                    <LessonHomeworkBuilder
-                                        value={editForm.lessonHomework}
-                                        onChange={(next) => setEditForm((f) => ({ ...f, lessonHomework: next }))}
-                                        validation={validateLessonHomework(editForm.lessonHomework, { requireCriteria: false })}
-                                    />
-                                    <section className="rounded-xl border border-slate-200 bg-white p-4">
-                                        <div className="text-sm font-medium text-slate-800 mb-2">Предпросмотр для ученицы</div>
+                                    <section className="rounded-xl border border-emerald-100 bg-white p-4">
+                                        <div className="text-sm font-medium text-emerald-900 mb-2">Предпросмотр для ученицы</div>
                                         <div className="text-xs text-slate-600">Модуль {clampPvlModule(editForm.moduleNumber)}</div>
                                         <div className="mt-1 text-xs text-slate-600">
                                             Дедлайн: {normalizeLessonHomework(editForm.lessonHomework).deadline.type === 'fixed_date'
@@ -3859,6 +4294,53 @@ function AdminContentItemScreen({
                                         </div>
                                     </section>
                                 </>
+                            ) : videoSummaryEditor ? (
+                                <div className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-0.5">Короткий текст над видео</label>
+                                        <textarea
+                                            value={editForm.shortDescription || ''}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, shortDescription: e.target.value }))}
+                                            rows={2}
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            placeholder="Необязательно: вводная строка над плеером"
+                                        />
+                                    </div>
+                                    <div className="grid md:grid-cols-2 gap-2">
+                                        <input
+                                            value={editForm.lessonVideoUrl || ''}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, lessonVideoUrl: e.target.value }))}
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            placeholder="Ссылка на видео (опционально)"
+                                        />
+                                        <input
+                                            value={editForm.lessonRutubeUrl || ''}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, lessonRutubeUrl: e.target.value }))}
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            placeholder="RuTube (опционально)"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-0.5">Код встраивания Kinescope (iframe)</label>
+                                        <textarea
+                                            value={editForm.lessonVideoEmbed || ''}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, lessonVideoEmbed: e.target.value }))}
+                                            rows={4}
+                                            className="w-full font-mono text-[12px] bg-white border border-emerald-200/70 rounded-xl p-3 text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            placeholder='<iframe src="https://kinescope.io/embed/..." ...></iframe>'
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-0.5">Конспект урока</label>
+                                        <RichEditor
+                                            key={`pvl-lesson-body-${contentId}`}
+                                            value={editForm.fullDescriptionHtml}
+                                            onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
+                                            onUploadImage={pvlRichEditorUploadImage}
+                                            placeholder="Текст конспекта под видео..."
+                                        />
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="space-y-2">
                                     <label className="text-xs text-slate-500 ml-0.5">Текст материала</label>
@@ -3876,9 +4358,8 @@ function AdminContentItemScreen({
                 </div>
             )}
 
-            <div ref={previewCardRef} className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
-                <h3 className="font-display text-lg text-slate-800">Предпросмотр карточки</h3>
-                <p className="text-xs text-slate-500">Так материал может выглядеть в библиотеке курса у разных ролей (по целевой роли).</p>
+            <div ref={previewCardRef} className="rounded-2xl border border-emerald-100/90 bg-white p-5 shadow-sm shadow-emerald-900/5 space-y-5">
+                <h3 className="font-display text-lg text-emerald-950">Предпросмотр карточки</h3>
                 <div className="grid md:grid-cols-2 gap-4">
                     <ParticipantMaterialPreviewCard
                         roleTitle="Участница"
@@ -3894,7 +4375,7 @@ function AdminContentItemScreen({
                     />
                 </div>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/30 p-4 shadow-sm shadow-emerald-900/5">
                 <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => navigate('/admin/content')} className={softBtn}>К списку материалов</button>
                     {panelMode === 'view' ? (
@@ -3927,6 +4408,12 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const setPlacements = setCmsPlacements;
     const [filters, setFilters] = useState({ section: 'all', status: 'all', role: 'all', type: 'all', cohort: 'all', module: 'all', query: '' });
     const [isCoverUploading, setIsCoverUploading] = useState(false);
+    const [importedDocName, setImportedDocName] = useState('');
+    const [docImportError, setDocImportError] = useState('');
+    const [customLibraryCategories, setCustomLibraryCategories] = useState([]);
+    const [showNewLibraryCategoryInput, setShowNewLibraryCategoryInput] = useState(false);
+    const [showLibraryAdvanced, setShowLibraryAdvanced] = useState(false);
+    const [showLessonPreview, setShowLessonPreview] = useState(false);
     const [draft, setDraft] = useState({
         title: '',
         shortDescription: '',
@@ -3934,6 +4421,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         contentType: 'text',
         targetSection: 'library',
         libraryCategoryId: 'all',
+        libraryCategoryCustomTitle: '',
         lessonKind: 'text_video',
         lessonVideoUrl: '',
         lessonVideoEmbed: '',
@@ -3961,21 +4449,64 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     });
     const sections = ['lessons', 'library', 'glossary'];
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
-    const libraryCategories = useMemo(() => {
+    const baseLibraryCategories = useMemo(() => {
         try {
             return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(MENTOR_COURSE_MIRROR_STUDENT_ID) || [];
         } catch {
             return [];
         }
     }, []);
+    const libraryCategories = useMemo(() => {
+        const byId = new Map();
+        [...baseLibraryCategories, ...customLibraryCategories].forEach((c) => {
+            const id = String(c?.id || '').trim();
+            const title = String(c?.title || '').trim();
+            if (!id || !title) return;
+            byId.set(id, { id, title });
+        });
+        return Array.from(byId.values());
+    }, [baseLibraryCategories, customLibraryCategories]);
     const moduleOptions = useMemo(() => [0, 1, 2, 3, 4], []);
+    const createLibraryCategoryId = useCallback((title) => buildCategoryIdFromTitle(title), []);
+    const addOrSelectCustomLibraryCategory = useCallback((title) => {
+        const normalizedTitle = String(title || '').trim();
+        if (!normalizedTitle) return null;
+        const existing = libraryCategories.find((c) => String(c.title || '').toLowerCase() === normalizedTitle.toLowerCase());
+        if (existing) return existing;
+        const idBase = buildCategoryIdFromTitle(normalizedTitle);
+        let id = idBase;
+        let suffix = 1;
+        const existingIds = new Set(libraryCategories.map((c) => String(c.id || '').toLowerCase()));
+        while (existingIds.has(String(id).toLowerCase())) {
+            suffix += 1;
+            id = `${idBase}_${suffix}`;
+        }
+        const created = { id, title: normalizedTitle };
+        setCustomLibraryCategories((prev) => [created, ...prev]);
+        return created;
+    }, [libraryCategories]);
+    const renameSelectedLibraryCategory = useCallback(() => {
+        const selectedId = String(draft.libraryCategoryId || '');
+        const nextTitle = String(draft.libraryCategoryCustomTitle || '').trim();
+        if (!selectedId || selectedId === 'all' || !nextTitle) return;
+        const baseTarget = baseLibraryCategories.find((c) => c.id === selectedId);
+        if (baseTarget) {
+            setCustomLibraryCategories((prev) => {
+                const without = prev.filter((c) => c.id !== selectedId);
+                return [{ id: selectedId, title: nextTitle }, ...without];
+            });
+        } else {
+            setCustomLibraryCategories((prev) => prev.map((c) => (c.id === selectedId ? { ...c, title: nextTitle } : c)));
+        }
+    }, [baseLibraryCategories, draft.libraryCategoryCustomTitle, draft.libraryCategoryId]);
     const filtered = filterContentItems(items, filters)
         .filter((i) => sections.includes(i.targetSection))
         .filter((i) => (filters.cohort === 'all' ? true : i.targetCohort === filters.cohort))
         .filter((i) => (filters.module === 'all' ? true : String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(filters.module)));
     const handleCreate = () => {
         if (!draft.title.trim()) return;
-        if (draft.targetSection === 'library' && (!draft.libraryCategoryId || draft.libraryCategoryId === 'all')) {
+        const customLibraryTitle = String(draft.libraryCategoryCustomTitle || '').trim();
+        if (draft.targetSection === 'library' && (!draft.libraryCategoryId || draft.libraryCategoryId === 'all') && !customLibraryTitle) {
             window.alert('Для библиотечного материала выберите категорию.');
             return;
         }
@@ -4002,8 +4533,19 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         } else if (draft.targetSection === 'glossary') {
             normalizedContentType = 'text';
         }
+        const resolvedCategoryId = draft.targetSection === 'library'
+            ? (
+                draft.libraryCategoryId && draft.libraryCategoryId !== 'all'
+                    ? draft.libraryCategoryId
+                    : createLibraryCategoryId(customLibraryTitle)
+            )
+            : '';
         const resolvedCategoryTitle = draft.targetSection === 'library'
-            ? (libraryCategories.find((c) => c.id === draft.libraryCategoryId)?.title || '')
+            ? (
+                customLibraryTitle
+                    || libraryCategories.find((c) => c.id === draft.libraryCategoryId)?.title
+                    || ''
+            )
             : '';
         const normalizedDescription = String(draft.fullDescriptionHtml || draft.lessonTextBody || draft.shortDescription || '');
         const record = {
@@ -4012,9 +4554,9 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             tags: String(tagsText || '').split(',').map((x) => x.trim()).filter(Boolean),
             description: normalizedDescription,
             fullDescription: normalizedDescription,
-            libraryCategoryId: draft.targetSection === 'library' ? draft.libraryCategoryId : undefined,
+            libraryCategoryId: draft.targetSection === 'library' ? resolvedCategoryId : undefined,
             libraryCategoryTitle: draft.targetSection === 'library' ? resolvedCategoryTitle : undefined,
-            categoryId: draft.targetSection === 'library' ? draft.libraryCategoryId : undefined,
+            categoryId: draft.targetSection === 'library' ? resolvedCategoryId : undefined,
             categoryTitle: draft.targetSection === 'library' ? resolvedCategoryTitle : undefined,
             lessonKind: draft.targetSection === 'lessons' ? draft.lessonKind : undefined,
             lessonVideoUrl: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonVideoUrl : undefined,
@@ -4052,6 +4594,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             coverImage: '',
             fileUrl: '',
             externalUrl: '',
+            libraryCategoryCustomTitle: '',
         }));
         navigate(`/admin/content/${created.id}`);
     };
@@ -4075,6 +4618,33 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             e.target.value = '';
         }
     };
+    const handleImportContentDocument = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setDocImportError('');
+        try {
+            const ext = String(file.name || '').toLowerCase();
+            const supported = ext.endsWith('.md') || ext.endsWith('.markdown') || ext.endsWith('.txt');
+            if (!supported) {
+                setDocImportError('Поддерживаются только .md, .markdown и .txt для автоформатирования.');
+                return;
+            }
+            const text = await file.text();
+            const parsed = parseImportedPvlDocWithFileName(text, file.name);
+            setDraft((d) => ({
+                ...d,
+                title: d.title || parsed.title,
+                fullDescriptionHtml: parsed.html,
+                lessonTextBody: d.targetSection === 'lessons' && d.lessonKind === 'text_video' ? parsed.html : d.lessonTextBody,
+                lessonHomeworkPrompt: d.targetSection === 'lessons' && d.lessonKind === 'homework' ? parsed.html : d.lessonHomeworkPrompt,
+            }));
+            setImportedDocName(file.name);
+        } catch {
+            setDocImportError('Не удалось прочитать файл. Проверьте кодировку и формат.');
+        } finally {
+            e.target.value = '';
+        }
+    };
     const handleDeleteItem = (i) => {
         if (!window.confirm(`Удалить материал «${i.title}»? Связанные размещения в разделах тоже будут убраны.`)) return;
         pvlDomainApi.adminApi.deleteContentItem(i.id);
@@ -4092,19 +4662,21 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         }
         return true;
     };
+    const cmsIn = 'mt-1 rounded-xl border border-emerald-200/70 bg-white p-2 text-sm text-slate-800 shadow-sm shadow-emerald-900/[0.03] outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25';
+    const cmsLbl = 'text-xs font-medium text-emerald-900/75';
+    const cmsFormTitle = 'text-xs font-semibold uppercase tracking-wide text-emerald-800 border-l-4 border-emerald-500 pl-3';
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/90 via-white to-white p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm shadow-emerald-900/5">
                 <div>
                     <h2 className="font-display text-2xl text-slate-800">Материалы курса</h2>
-                    <p className="text-sm text-slate-500 mt-1">Только размещение в уроках, библиотеке и глоссарии ПВЛ (отдельно от библиотеки сада).</p>
                     {pvlDevToolsEnabled() ? <p className="text-[11px] text-amber-800 mt-1">Dev: данные в памяти сессии.</p> : null}
                 </div>
-                <button type="button" onClick={handleCreate} className="text-sm rounded-xl border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 shrink-0">Добавить материал</button>
+                <button type="button" onClick={handleCreate} className="text-sm rounded-xl bg-emerald-700 px-4 py-2.5 font-medium text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-800 shrink-0">Добавить материал</button>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm space-y-4">
-                <div className="grid md:grid-cols-3 gap-3">
-                    <label className="text-xs text-slate-500">Раздел
+            <div className="rounded-2xl border border-emerald-100/90 bg-white p-3 md:p-4 shadow-sm shadow-emerald-900/5 space-y-5">
+                <div className="grid md:grid-cols-2 gap-2">
+                    <label className={cmsLbl}>Раздел
                         <select
                             value={draft.targetSection}
                             onChange={(e) => {
@@ -4117,13 +4689,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         : nextSection === 'glossary' ? 'text' : d.contentType,
                                 }));
                             }}
-                            className="mt-1 rounded-xl border border-slate-200 p-2 text-sm w-full"
+                            className={`${cmsIn} w-full`}
                         >
                             {sections.map((s) => <option key={s} value={s}>{labelTargetSection(s)}</option>)}
                         </select>
                     </label>
                     {draft.targetSection === 'lessons' ? (
-                        <label className="text-xs text-slate-500">Тип материала в уроках
+                        <label className={cmsLbl}>Тип материала в уроках
                             <select
                                 value={draft.lessonKind}
                                 onChange={(e) => {
@@ -4134,7 +4706,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         contentType: lessonKind === 'quiz' ? 'checklist' : lessonKind === 'homework' ? 'template' : 'video',
                                     }));
                                 }}
-                                className="mt-1 rounded-xl border border-slate-200 p-2 text-sm w-full"
+                                className={`${cmsIn} w-full`}
                             >
                                 <option value="text_video">Текстовый урок + видеоурок</option>
                                 <option value="quiz">Тест</option>
@@ -4143,37 +4715,115 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         </label>
                     ) : <div />}
                 </div>
+                <section className="rounded-xl border border-emerald-200/60 bg-emerald-50/50 p-2.5 flex flex-wrap items-center gap-2">
+                    <label className="text-xs rounded-lg border border-emerald-300/80 bg-white px-2.5 py-1.5 text-emerald-900 cursor-pointer whitespace-nowrap shadow-sm hover:bg-emerald-50">
+                        Загрузить документ (.md/.txt)
+                        <input
+                            type="file"
+                            accept=".md,.markdown,.txt,text/markdown,text/plain"
+                            className="hidden"
+                            onChange={handleImportContentDocument}
+                        />
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                        Документ автоматически форматируется в единый стиль ПВЛ и подставляется в текст материала.
+                    </span>
+                    {importedDocName ? <span className="text-xs text-emerald-700">Загружен: {importedDocName}</span> : null}
+                    {docImportError ? <span className="text-xs text-rose-700">{docImportError}</span> : null}
+                </section>
 
                 {draft.targetSection === 'library' ? (
-                    <section className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
-                        <div className="text-sm font-medium text-emerald-900">Форма библиотечного материала</div>
-                        <div className="grid md:grid-cols-2 gap-3">
-                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Название" />
-                            <select value={draft.libraryCategoryId} onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryId: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white">
-                                <option value="all">Категория библиотеки (обязательно)</option>
-                                {libraryCategories.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-                            </select>
-                            <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Краткое описание" />
-                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Теги через запятую" />
-                            <div className="rounded-xl border border-slate-200 p-2 bg-white space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <input value={draft.coverImage} onChange={(e) => setDraft((d) => ({ ...d, coverImage: e.target.value }))} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Ссылка на обложку / изображение" />
-                                    <label className="text-xs rounded-lg border border-slate-200 px-3 py-2 bg-white cursor-pointer whitespace-nowrap">
-                                        {isCoverUploading ? 'Загрузка…' : 'Загрузить'}
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-                                    </label>
-                                </div>
-                                {draft.coverImage ? (
-                                    <div className="h-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                        <img src={draft.coverImage} alt="Обложка" className="w-full h-full object-cover" />
-                                    </div>
-                                ) : null}
+                    <section className="space-y-2 rounded-xl border border-emerald-100/90 bg-emerald-50/30 p-2.5 md:p-3">
+                        <div className={cmsFormTitle}>Форма библиотечного материала</div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                            <div className="space-y-1 md:col-span-2">
+                                <label className={cmsLbl}>Название</label>
+                                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Название" />
                             </div>
-                            <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Ссылка на документ (опционально)" />
-                            <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white md:col-span-2" placeholder="Внешняя ссылка / видео (опционально)" />
+                            <div className="min-w-0 space-y-1">
+                                <label className={cmsLbl}>Категория</label>
+                                <select value={draft.libraryCategoryId} onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryId: e.target.value }))} className={`w-full ${cmsIn}`}>
+                                    <option value="all">Выберите категорию</option>
+                                    {libraryCategories.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                </select>
+                            </div>
+                            <div className="min-w-0 space-y-1">
+                                <label className={cmsLbl}>Теги</label>
+                                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Теги через запятую" />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5 md:col-span-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowLibraryAdvanced((v) => !v)}
+                                    className="text-xs rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-emerald-900 hover:bg-emerald-50/80"
+                                >
+                                    {showLibraryAdvanced ? 'Скрыть доп. поля' : 'Показать доп. поля'}
+                                </button>
+                                <span className="text-[11px] text-slate-400">Категории, обложка и ссылки</span>
+                            </div>
+                            {showLibraryAdvanced ? (
+                                <>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 opacity-0">Действия</label>
+                                        <button
+                                            type="button"
+                                            className="w-full text-xs rounded-xl border border-emerald-200 px-3 py-2 text-emerald-900 bg-white hover:bg-emerald-50/80"
+                                            onClick={() => setShowNewLibraryCategoryInput((v) => !v)}
+                                        >
+                                            {showNewLibraryCategoryInput ? 'Скрыть поле категории' : 'Добавить категорию'}
+                                        </button>
+                                    </div>
+                                    {showNewLibraryCategoryInput ? (
+                                        <>
+                                            <input
+                                                value={draft.libraryCategoryCustomTitle}
+                                                onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryCustomTitle: e.target.value }))}
+                                                className={cmsIn}
+                                                placeholder="Новая категория"
+                                            />
+                                            <button
+                                                type="button"
+                                                className="text-xs rounded-xl border border-emerald-600 bg-emerald-700 px-3 py-2 text-white hover:bg-emerald-800"
+                                                onClick={() => {
+                                                    const created = addOrSelectCustomLibraryCategory(draft.libraryCategoryCustomTitle);
+                                                    if (!created) return;
+                                                    setDraft((d) => ({ ...d, libraryCategoryId: created.id, libraryCategoryCustomTitle: '' }));
+                                                    setShowNewLibraryCategoryInput(false);
+                                                }}
+                                            >
+                                                Добавить в список категорий
+                                            </button>
+                                        </>
+                                    ) : null}
+                                    <div className="rounded-xl border border-emerald-100 bg-white p-3 space-y-2 md:col-span-2">
+                                        <div className="text-xs font-medium text-emerald-900/80">Загрузить обложку</div>
+                                        <div className="flex items-center gap-2">
+                                            <input value={draft.coverImage} onChange={(e) => setDraft((d) => ({ ...d, coverImage: e.target.value }))} className="w-full rounded-lg border border-emerald-200/70 bg-white p-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25" placeholder="Ссылка на обложку / изображение" />
+                                            <label className="text-xs rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-900 cursor-pointer whitespace-nowrap hover:bg-emerald-100/80">
+                                                {isCoverUploading ? 'Загрузка…' : 'Загрузить'}
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
+                                            </label>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400">Рекомендуемый размер: 1200x630px</p>
+                                        {draft.coverImage ? (
+                                            <div className="h-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                                                <img src={draft.coverImage} alt="Обложка" className="w-full h-full object-cover" />
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className={cmsLbl}>Ссылка на документ</label>
+                                        <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на документ" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className={cmsLbl}>Ссылка на видео</label>
+                                        <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на видео" />
+                                    </div>
+                                </>
+                            ) : null}
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs text-slate-500">Текст материала</label>
+                            <label className={cmsLbl}>Текст материала</label>
                             <RichEditor
                                 key="create-library"
                                 value={draft.fullDescriptionHtml}
@@ -4186,38 +4836,33 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 ) : null}
 
                 {draft.targetSection === 'glossary' ? (
-                    <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
-                        <div className="text-sm font-medium text-indigo-900">Форма термина глоссария</div>
-                        <div className="grid md:grid-cols-2 gap-3">
-                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Термин" />
-                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Теги (опционально)" />
-                            <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white md:col-span-2" placeholder="Короткое пояснение (опционально)" />
-                        </div>
+                    <section className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-4 space-y-5">
+                        <div className={cmsFormTitle}>Форма термина глоссария</div>
+                        <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Термин" />
                         <textarea
                             value={draft.fullDescriptionHtml}
                             onChange={(e) => setDraft((d) => ({ ...d, fullDescriptionHtml: e.target.value }))}
-                            className="w-full rounded-xl border border-slate-200 p-3 text-sm min-h-[110px] bg-white"
+                            className={`w-full min-h-[110px] ${cmsIn}`}
                             placeholder="Определение / описание термина"
                         />
                     </section>
                 ) : null}
 
                 {draft.targetSection === 'lessons' ? (
-                    <section className="rounded-xl border border-sky-100 bg-sky-50/40 p-4 space-y-3">
-                        <div className="text-sm font-medium text-sky-900">Форма урока</div>
-                        <div className="grid md:grid-cols-2 gap-3">
-                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Название" />
-                            <input value={draft.shortDescription} onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Краткое описание" />
-                            <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Длительность (например 20 мин)" />
-                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Теги через запятую" />
+                    <section className="rounded-xl border border-emerald-100/90 bg-emerald-50/25 p-3 space-y-2.5">
+                        <div className={cmsFormTitle}>Форма урока</div>
+                        <div className="grid md:grid-cols-2 gap-2">
+                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={cmsIn} placeholder="Название" />
+                            <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className={cmsIn} placeholder="Длительность (например 20 мин)" />
+                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={cmsIn} placeholder="Теги через запятую" />
                         </div>
-                        <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-                            <div className="text-xs font-medium text-slate-700">Куда публиковать в курсе</div>
+                        <div className="space-y-1.5">
+                            <div className="text-xs font-medium text-emerald-900/80">Куда публиковать в курсе</div>
                             <div className="grid md:grid-cols-2 gap-2">
                                 <select
                                     value={draft.moduleNumber}
                                     onChange={(e) => setDraft((d) => ({ ...d, moduleNumber: e.target.value, weekNumber: e.target.value }))}
-                                    className="rounded-xl border border-slate-200 p-2 text-sm bg-white"
+                                    className={cmsIn}
                                 >
                                     {moduleOptions.map((m) => (
                                         <option key={m} value={m}>Модуль {m}</option>
@@ -4226,21 +4871,21 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 <select
                                     value={draft.targetCohort}
                                     onChange={(e) => setDraft((d) => ({ ...d, targetCohort: e.target.value }))}
-                                    className="rounded-xl border border-slate-200 p-2 text-sm bg-white"
+                                    className={cmsIn}
                                 >
                                     {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
                                 </select>
                             </div>
                         </div>
                         {draft.lessonKind === 'text_video' ? (
-                            <div className="space-y-3">
-                                <div className="grid md:grid-cols-2 gap-3">
-                                    <input value={draft.lessonVideoUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Ссылка на видео (YouTube/Kinescope)" />
-                                    <input value={draft.lessonRutubeUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white" placeholder="Приватный RuTube URL" />
-                                    <input value={draft.lessonVideoEmbed} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))} className="rounded-xl border border-slate-200 p-2 text-sm bg-white md:col-span-2" placeholder="Embed-код/iframe (Kinescope)" />
+                            <div className="space-y-2">
+                                <div className="grid md:grid-cols-2 gap-2">
+                                    <input value={draft.lessonVideoUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))} className={cmsIn} placeholder="Ссылка на видео (YouTube/Kinescope)" />
+                                    <input value={draft.lessonRutubeUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))} className={cmsIn} placeholder="Приватный RuTube URL" />
+                                    <input value={draft.lessonVideoEmbed} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="Embed-код/iframe (Kinescope)" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs text-slate-500">Текст урока</label>
+                                    <label className={cmsLbl}>Текст урока</label>
                                     <RichEditor
                                         key="create-lesson"
                                         value={draft.fullDescriptionHtml}
@@ -4258,26 +4903,42 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     onChange={(next) => setDraft((d) => ({ ...d, lessonQuiz: next }))}
                                     validation={validateLessonQuiz(draft.lessonQuiz)}
                                 />
-                                <section className="rounded-xl border border-slate-200 bg-white p-4">
-                                    <div className="text-sm font-medium text-slate-800 mb-1">Предпросмотр для ученицы</div>
-                                    <p className="text-xs text-slate-500 mb-2">{draft.shortDescription || 'Без описания'}</p>
-                                    <div className="text-xs text-slate-600">
-                                        Вопросов: {normalizeLessonQuiz(draft.lessonQuiz).questions.length}
-                                        {' · '}
-                                        Проходной порог: {normalizeLessonQuiz(draft.lessonQuiz).settings.passPercent}%
-                                        {' · '}
-                                        Попыток: {normalizeLessonQuiz(draft.lessonQuiz).settings.attempts}
-                                    </div>
-                                    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
-                                        {normalizeLessonQuiz(draft.lessonQuiz).instruction || 'Инструкция перед тестом не заполнена.'}
-                                    </div>
-                                </section>
+                                <div className="flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowLessonPreview((v) => !v)}
+                                        className="text-xs rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-emerald-900 hover:bg-emerald-50/90"
+                                    >
+                                        {showLessonPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}
+                                    </button>
+                                </div>
+                                {showLessonPreview ? (
+                                    <section className="overflow-hidden rounded-3xl border border-emerald-200/80 bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                                        <div className="text-sm font-medium text-emerald-900 mb-1">Предпросмотр теста (как карточка в трекере)</div>
+                                        <p className="text-xs text-slate-500 mb-2">{draft.shortDescription || 'Без описания'}</p>
+                                        <div className="text-xs text-slate-600">
+                                            Вопросов: {normalizeLessonQuiz(draft.lessonQuiz).questions.length}
+                                            {' · '}
+                                            Проходной порог: {normalizeLessonQuiz(draft.lessonQuiz).settings.passPercent}%
+                                            {' · '}
+                                            Попыток: {normalizeLessonQuiz(draft.lessonQuiz).settings.attempts}
+                                        </div>
+                                        <div className="mt-2 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/90 to-white p-3 text-xs text-slate-700">
+                                            {normalizeLessonQuiz(draft.lessonQuiz).instruction || 'Инструкция перед тестом не заполнена.'}
+                                        </div>
+                                    </section>
+                                ) : null}
                             </>
                         ) : null}
                         {draft.lessonKind === 'homework' ? (
                             <>
+                                <LessonHomeworkBuilder
+                                    value={draft.lessonHomework}
+                                    onChange={(next) => setDraft((d) => ({ ...d, lessonHomework: next }))}
+                                    validation={validateLessonHomework(draft.lessonHomework, { requireCriteria: false })}
+                                />
                                 <div className="space-y-1">
-                                    <label className="text-xs text-slate-500">Полный текст задания</label>
+                                    <label className={cmsLbl}>Полный текст задания</label>
                                     <RichEditor
                                         key="create-homework"
                                         value={draft.fullDescriptionHtml}
@@ -4286,38 +4947,44 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         placeholder="Опишите домашнее задание..."
                                     />
                                 </div>
-                                <LessonHomeworkBuilder
-                                    value={draft.lessonHomework}
-                                    onChange={(next) => setDraft((d) => ({ ...d, lessonHomework: next }))}
-                                    validation={validateLessonHomework(draft.lessonHomework, { requireCriteria: false })}
-                                />
-                                <section className="rounded-xl border border-slate-200 bg-white p-4">
-                                    <div className="text-sm font-medium text-slate-800 mb-2">Предпросмотр для ученицы</div>
-                                    <div className="text-xs text-slate-600">Модуль {clampPvlModule(draft.moduleNumber)}</div>
-                                    <div className="mt-1 text-xs text-slate-600">
-                                        Дедлайн: {normalizeLessonHomework(draft.lessonHomework).deadline.type === 'fixed_date'
-                                            ? (normalizeLessonHomework(draft.lessonHomework).deadline.at || 'не задан')
-                                            : normalizeLessonHomework(draft.lessonHomework).deadline.type === 'week_based'
-                                                ? (normalizeLessonHomework(draft.lessonHomework).deadline.weekBasedLabel || 'по модулю')
-                                                : 'без дедлайна'}
-                                    </div>
-                                    <div className="mt-2 text-xs text-slate-700">
-                                        Формат ответа: {normalizeLessonHomework(draft.lessonHomework).responseFormat.artifactType} ·
-                                        {' '}разрешено: {normalizeLessonHomework(draft.lessonHomework).responseFormat.allowText ? 'текст ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowFile ? 'файл ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowLink ? 'ссылка' : ''}
-                                    </div>
-                                    <div className="mt-2 text-xs text-slate-700">
-                                        Лимит доработок: {normalizeLessonHomework(draft.lessonHomework).revisions.limitMode === 'unlimited' ? 'без лимита' : normalizeLessonHomework(draft.lessonHomework).revisions.limit}
-                                    </div>
-                                </section>
+                                <div className="flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowLessonPreview((v) => !v)}
+                                        className="text-xs rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-emerald-900 hover:bg-emerald-50/90"
+                                    >
+                                        {showLessonPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}
+                                    </button>
+                                </div>
+                                {showLessonPreview ? (
+                                    <section className="rounded-xl border border-emerald-100 bg-white p-3">
+                                        <div className="text-sm font-medium text-emerald-900 mb-2">Предпросмотр для ученицы</div>
+                                        <div className="text-xs text-slate-600">Модуль {clampPvlModule(draft.moduleNumber)}</div>
+                                        <div className="mt-1 text-xs text-slate-600">
+                                            Дедлайн: {normalizeLessonHomework(draft.lessonHomework).deadline.type === 'fixed_date'
+                                                ? (normalizeLessonHomework(draft.lessonHomework).deadline.at || 'не задан')
+                                                : normalizeLessonHomework(draft.lessonHomework).deadline.type === 'week_based'
+                                                    ? (normalizeLessonHomework(draft.lessonHomework).deadline.weekBasedLabel || 'по модулю')
+                                                    : 'без дедлайна'}
+                                        </div>
+                                        <div className="mt-2 text-xs text-slate-700">
+                                            Формат ответа: {normalizeLessonHomework(draft.lessonHomework).responseFormat.artifactType} ·
+                                            {' '}разрешено: {normalizeLessonHomework(draft.lessonHomework).responseFormat.allowText ? 'текст ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowFile ? 'файл ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowLink ? 'ссылка' : ''}
+                                        </div>
+                                        <div className="mt-2 text-xs text-slate-700">
+                                            Лимит доработок: {normalizeLessonHomework(draft.lessonHomework).revisions.limitMode === 'unlimited' ? 'без лимита' : normalizeLessonHomework(draft.lessonHomework).revisions.limit}
+                                        </div>
+                                    </section>
+                                ) : null}
                             </>
                         ) : null}
                     </section>
                 ) : null}
             </div>
             
-            <div className="grid gap-3">
+            <div className="grid gap-4">
                 {filtered.map((i) => (
-                    <article key={i.id} className="rounded-xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                    <article key={i.id} className="rounded-xl border border-emerald-100/90 bg-white p-4 shadow-sm shadow-emerald-900/5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <div className="text-sm font-medium text-slate-800">{i.title}</div>
@@ -4325,7 +4992,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <StatusBadge>{CONTENT_STATUS_LABEL[i.status] || i.status}</StatusBadge>
-                                <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50 font-medium">Открыть</button>
+                                <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1 font-medium text-emerald-900 hover:bg-emerald-100/80">Открыть</button>
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -4336,18 +5003,18 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         pvlDomainApi.adminApi.publishContentItem(i.id);
                                         setItems((prev) => publishContentItem(prev, i.id));
                                     }}
-                                    className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                    className="text-xs rounded-xl bg-emerald-700 px-3 py-1 font-medium text-white hover:bg-emerald-800"
                                 >
                                     Опубликовать
                                 </button>
-                                <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Снять с публикации</button>
+                                <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
                                 <button type="button" onClick={() => { pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
                                 <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
                                 <button type="button" onClick={() => {
                                     const normalizedModule = clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0);
                                     const pl = pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: normalizedModule, moduleNumber: normalizedModule, orderIndex: i.orderIndex || 999 });
                                     if (pl) setPlacements((prev) => [...prev, pl]);
-                                }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Разместить</button>
+                                }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Разместить</button>
                                 <button type="button" onClick={() => {
                                     const copy = pvlDomainApi.adminApi.createContentItem({
                                         ...i,
@@ -4359,16 +5026,16 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
                             </div>
                         </div>
-                        <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-                            <div className="text-xs font-medium text-slate-500 mb-2">Размещения в разделах</div>
+                        <div className="mt-3 rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-3">
+                            <div className="text-xs font-medium text-emerald-900/80 mb-2">Размещения в разделах</div>
                             <div className="grid gap-1">
                                 {placements.filter((p) => p.contentId === i.id || p.contentItemId === i.id).length === 0 ? (
                                     <div className="text-xs text-slate-500">Пока не привязано к разделам.</div>
                                 ) : placements.filter((p) => p.contentId === i.id || p.contentItemId === i.id).map((p) => (
-                                    <article key={p.id} className="rounded-lg border border-slate-100 bg-white p-2 flex flex-wrap items-center justify-between gap-2">
+                                    <article key={p.id} className="rounded-lg border border-emerald-100/90 bg-white p-2 flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-xs text-slate-600">{labelTargetSection(p.targetSection)} · {TARGET_ROLE_LABELS[p.targetRole] || p.targetRole} · {p.targetCohort || p.cohortId || 'все'} · порядок {p.orderIndex ?? '—'}</span>
                                         <div className="flex gap-1">
-                                            <button type="button" onClick={() => pvlDomainApi.adminApi.publishPlacement(p.id)} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-slate-700">Опубликовать</button>
+                                            <button type="button" onClick={() => pvlDomainApi.adminApi.publishPlacement(p.id)} className="text-[10px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-900">Опубликовать</button>
                                             <button type="button" onClick={() => pvlDomainApi.adminApi.unpublishPlacement(p.id)} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-slate-700">Снять</button>
                                             <button type="button" onClick={() => { pvlDomainApi.adminApi.deletePlacement(p.id); setPlacements((prev) => prev.filter((x) => x.id !== p.id)); }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-rose-700">Удалить</button>
                                         </div>
@@ -4385,67 +5052,133 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
 
 function AdminStudents({ navigate, route }) {
     const [cohortId, setCohortId] = useState('all');
+    const [listTick, setListTick] = useState(0);
     const cohorts = pvlDomainApi.adminApi.getAdminCohorts();
-    const rows = buildTeacherStudentRows().filter((r) => {
+    const mentorOptions = useMemo(() => (
+        pvlDomainApi.adminApi.getAdminMentors().map((mp) => ({
+            userId: mp.userId || mp.id,
+            label: getUser(mp.userId)?.fullName || mp.userId,
+        }))
+    ), [listTick]);
+    const rows = useMemo(() => buildTeacherStudentRows().filter((r) => {
         if (cohortId === 'all') return true;
         const sp = pvlDomainApi.db.studentProfiles.find((p) => p.userId === r.userId);
         return sp?.cohortId === cohortId;
-    });
+    }), [cohortId, listTick]);
+
+    const assignStudentMentor = (studentId, mentorUserId) => {
+        pvlDomainApi.adminApi.assignStudentMentor(studentId, mentorUserId || null);
+        setListTick((t) => t + 1);
+    };
+
+    const mentorSelectClass = 'w-full max-w-[16rem] rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-800 outline-none ring-1 ring-slate-200/80 focus:ring-emerald-400/80';
+
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <section className="space-y-5 rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
+            <div>
                 <h2 className="font-display text-2xl text-slate-800">Ученицы</h2>
-                <p className="text-sm text-slate-500 mt-1">Те же показатели, что у ментора: курс, прогресс закрытия, баллы, домашки. Строка или имя открывает карточку.</p>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                <select value={cohortId} onChange={(e) => setCohortId(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm w-full md:w-auto">
+            <div>
+                <label className="sr-only" htmlFor="pvl-admin-students-cohort">Поток</label>
+                <select
+                    id="pvl-admin-students-cohort"
+                    value={cohortId}
+                    onChange={(e) => setCohortId(e.target.value)}
+                    className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-slate-200/80 w-full md:w-auto"
+                >
                     <option value="all">Все потоки</option>
                     {cohorts.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
             </div>
-            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left min-w-[800px]">
-                        <thead>
-                            <tr className="text-xs text-slate-500 border-b border-slate-100">
-                                <th className="pb-2 pr-3 font-medium">Имя</th>
-                                <th className="pb-2 pr-3 font-medium">Сейчас по курсу</th>
-                                <th className="pb-2 pr-3 font-medium tabular-nums">Закрытие ДЗ</th>
-                                <th className="pb-2 pr-3 font-medium tabular-nums">Баллы</th>
-                                <th className="pb-2 pr-3 font-medium">Домашки</th>
-                                <th className="pb-2 font-medium">Последнее действие</th>
+            <div className="grid gap-4 md:hidden">
+                {rows.map((row) => (
+                    <article
+                        key={row.userId}
+                        className="rounded-xl bg-slate-50/80 p-3"
+                    >
+                        <button
+                            type="button"
+                            className="text-left w-full text-sm font-medium text-blue-700 hover:underline"
+                            onClick={() => navigate(`/admin/students/${row.userId}`)}
+                        >
+                            {row.user?.fullName || row.userId}
+                        </button>
+                        <div className="text-xs text-slate-600 mt-1">{row.courseLine}</div>
+                        <div className="mt-3">
+                            <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-1">Ментор</div>
+                            <select
+                                value={row.mentorUserId || ''}
+                                onChange={(e) => assignStudentMentor(row.userId, e.target.value)}
+                                className={mentorSelectClass}
+                                aria-label={`Ментор для ${row.user?.fullName || row.userId}`}
+                            >
+                                <option value="">Нет ментора — выберите</option>
+                                {mentorOptions.map((m) => (
+                                    <option key={m.userId} value={m.userId}>{m.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                            <div>Закрытие: <span className="font-medium text-slate-800 tabular-nums">{row.closedPct}%</span></div>
+                            <div>Баллы: <span className="font-medium text-slate-800 tabular-nums">{row.coursePoints}/400</span></div>
+                            <div className="col-span-2">Домашки: {row.hwSummary}</div>
+                            <div className="col-span-2">Последнее: {row.lastAct}</div>
+                        </div>
+                    </article>
+                ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto -mx-1 px-1">
+                <table className="w-full text-sm text-left min-w-[860px]">
+                    <thead>
+                        <tr className="text-xs text-slate-500 border-b border-slate-100">
+                            <th className="pb-2 pr-3 font-medium">Имя</th>
+                            <th className="pb-2 pr-3 font-medium">Сейчас по курсу</th>
+                            <th className="pb-2 pr-3 font-medium min-w-[12rem]">Ментор</th>
+                            <th className="pb-2 pr-3 font-medium tabular-nums">Закрытие ДЗ</th>
+                            <th className="pb-2 pr-3 font-medium tabular-nums">Баллы</th>
+                            <th className="pb-2 pr-3 font-medium">Домашки</th>
+                            <th className="pb-2 font-medium">Последнее действие</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((row) => (
+                            <tr
+                                key={row.userId}
+                                className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80"
+                            >
+                                <td className="py-3 pr-3 align-top">
+                                    <button
+                                        type="button"
+                                        className="font-medium text-blue-700 hover:underline text-left"
+                                        onClick={() => navigate(`/admin/students/${row.userId}`)}
+                                    >
+                                        {row.user?.fullName || row.userId}
+                                    </button>
+                                </td>
+                                <td className="py-3 pr-3 align-top text-slate-600 text-xs max-w-[14rem]">{row.courseLine}</td>
+                                <td className="py-3 pr-3 align-top" onClick={(e) => e.stopPropagation()}>
+                                    <select
+                                        value={row.mentorUserId || ''}
+                                        onChange={(e) => assignStudentMentor(row.userId, e.target.value)}
+                                        className={mentorSelectClass}
+                                        aria-label={`Ментор для ${row.user?.fullName || row.userId}`}
+                                    >
+                                        <option value="">Нет ментора — выберите</option>
+                                        {mentorOptions.map((m) => (
+                                            <option key={m.userId} value={m.userId}>{m.label}</option>
+                                        ))}
+                                    </select>
+                                </td>
+                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.closedPct}%</td>
+                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.coursePoints}/400</td>
+                                <td className="py-3 pr-3 align-top text-xs text-slate-600">{row.hwSummary}</td>
+                                <td className="py-3 align-top text-xs text-slate-500 tabular-nums">{row.lastAct}</td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {rows.map((row) => (
-                                <tr
-                                    key={row.userId}
-                                    className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 cursor-pointer"
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => navigate(`/admin/students/${row.userId}`)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                            e.preventDefault();
-                                            navigate(`/admin/students/${row.userId}`);
-                                        }
-                                    }}
-                                >
-                                    <td className="py-3 pr-3 align-top">
-                                        <span className="font-medium text-blue-700 hover:underline">{row.user?.fullName || row.userId}</span>
-                                    </td>
-                                    <td className="py-3 pr-3 align-top text-slate-600 text-xs max-w-[14rem]">{row.courseLine}</td>
-                                    <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.closedPct}%</td>
-                                    <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.coursePoints}/400</td>
-                                    <td className="py-3 pr-3 align-top text-xs text-slate-600">{row.hwSummary}</td>
-                                    <td className="py-3 align-top text-xs text-slate-500 tabular-nums">{row.lastAct}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        </div>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </section>
     );
 }
 
@@ -4483,25 +5216,136 @@ function buildAdminMentorWorkloadRows() {
 }
 
 function AdminMentors() {
-    const mentors = buildAdminMentorWorkloadRows();
+    const [refreshTick, setRefreshTick] = useState(0);
+    const [candidateByMentor, setCandidateByMentor] = useState({});
+    const mentors = useMemo(() => buildAdminMentorWorkloadRows(), [refreshTick]);
+    const allStudents = useMemo(() => pvlDomainApi.adminApi.getAdminStudents({}), [refreshTick]);
+    const displayNameByUserId = useMemo(
+        () => Object.fromEntries(allStudents.map((s) => [s.userId, getUser(s.userId)?.fullName || s.userId])),
+        [allStudents],
+    );
+    const handleAddMentee = (mentorUserId) => {
+        const studentUserId = candidateByMentor[mentorUserId];
+        if (!studentUserId) return;
+        pvlDomainApi.adminApi.assignStudentMentor(studentUserId, mentorUserId);
+        setCandidateByMentor((prev) => ({ ...prev, [mentorUserId]: '' }));
+        setRefreshTick((x) => x + 1);
+    };
+    const handleRemoveMentee = (mentorUserId, studentUserId) => {
+        pvlDomainApi.adminApi.removeMenteeFromMentor(mentorUserId, studentUserId);
+        setRefreshTick((x) => x + 1);
+    };
+    const totals = useMemo(() => {
+        const mentorCount = mentors.length;
+        const menteesTotal = mentors.reduce((acc, m) => acc + (m.menteeCount || 0), 0);
+        const pendingTotal = mentors.reduce((acc, m) => acc + (m.pendingReview || 0), 0);
+        const overdueTotal = mentors.reduce((acc, m) => acc + (m.overdueReview || 0), 0);
+        return { mentorCount, menteesTotal, pendingTotal, overdueTotal };
+    }, [mentors]);
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Менторы</h2>
-                <p className="text-sm text-slate-500 mt-1">Ключевые метрики по ментору: менти, незакрытые задачи, просроченные проверки и последний вход.</p>
             </div>
-            <div className="grid gap-3">
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <article className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Менторов</div>
+                    <div className="mt-2 text-2xl font-display tabular-nums text-slate-800">{totals.mentorCount}</div>
+                </article>
+                <article className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Учениц в закреплении</div>
+                    <div className="mt-2 text-2xl font-display tabular-nums text-slate-800">{totals.menteesTotal}</div>
+                </article>
+                <article className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">На проверке</div>
+                    <div className="mt-2 text-2xl font-display tabular-nums text-amber-900">{totals.pendingTotal}</div>
+                </article>
+                <article className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-rose-700">Просроченные проверки</div>
+                    <div className="mt-2 text-2xl font-display tabular-nums text-rose-900">{totals.overdueTotal}</div>
+                </article>
+            </section>
+            <div className="grid gap-4">
                 {mentors.map((m) => (
-                    <article key={m.id} className="rounded-xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-sm font-medium text-slate-800">{m.user?.fullName || m.mentorUserId}</div>
-                            <StatusBadge>{m.statusLabel}</StatusBadge>
+                    <article key={m.id} className="rounded-3xl bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-5">
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold text-slate-800">{m.user?.fullName || m.mentorUserId}</div>
+                                <StatusBadge>{m.statusLabel}</StatusBadge>
+                            </div>
+                            <div className="text-xs text-slate-500 mt-0.5">ID: {m.mentorUserId}</div>
                         </div>
-                        <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-                            <div>Менти: <span className="font-medium tabular-nums text-slate-800">{m.menteeCount}</span></div>
-                            <div>Незакрытых задач: <span className="font-medium tabular-nums text-slate-800">{m.unclosed}</span></div>
-                            <div>Просроченных проверок: <span className="font-medium tabular-nums text-rose-700">{m.overdueReview}</span></div>
-                            <div>Последний вход: <span className="text-slate-700">{m.lastActivity}</span></div>
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5 xl:items-stretch">
+                            <div className="flex min-h-[4.25rem] flex-col justify-center gap-1 rounded-xl bg-slate-50/90 px-3 py-2.5 shadow-sm">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Менти</span>
+                                <span className="text-lg font-semibold tabular-nums leading-none text-slate-800">{m.menteeCount}</span>
+                            </div>
+                            <div className="flex min-h-[4.25rem] flex-col justify-center gap-1 rounded-xl bg-slate-50/90 px-3 py-2.5 shadow-sm">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Незакрытых задач</span>
+                                <span className="text-lg font-semibold tabular-nums leading-none text-slate-800">{m.unclosed}</span>
+                            </div>
+                            <div className="flex min-h-[4.25rem] flex-col justify-center gap-1 rounded-xl bg-amber-50/80 px-3 py-2.5 shadow-sm">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-amber-800/90">На проверке</span>
+                                <span className="text-lg font-semibold tabular-nums leading-none text-amber-950">{m.pendingReview}</span>
+                            </div>
+                            <div className="flex min-h-[4.25rem] flex-col justify-center gap-1 rounded-xl bg-rose-50/80 px-3 py-2.5 shadow-sm">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-rose-800/90">Просрочено</span>
+                                <span className="text-lg font-semibold tabular-nums leading-none text-rose-950">{m.overdueReview}</span>
+                            </div>
+                            <div className="flex min-h-[4.25rem] min-w-0 flex-col justify-center gap-1 rounded-xl bg-slate-50/90 px-3 py-2.5 shadow-sm">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Последний вход</span>
+                                <span
+                                    className="min-w-0 truncate text-base font-semibold tabular-nums leading-none text-slate-800"
+                                    title={m.lastActivity}
+                                >
+                                    {m.lastActivity}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="mt-4 border-t border-slate-100 pt-4">
+                            <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Ученицы ментора</div>
+                            {(m.menteeIds || []).length ? (
+                                <ul className="mt-2 divide-y divide-slate-100/90">
+                                    {(m.menteeIds || []).map((sid) => (
+                                        <li key={`${m.mentorUserId}-${sid}`} className="flex items-center justify-between gap-4 py-2 text-sm text-slate-800 first:pt-0">
+                                            <span className="min-w-0 truncate">{displayNameByUserId[sid] || sid}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveMentee(m.mentorUserId, sid)}
+                                                className="shrink-0 text-[11px] text-slate-400 hover:text-rose-600"
+                                                title="Открепить ученицу"
+                                            >
+                                                Открепить
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="mt-2 text-sm text-slate-500">Пока нет назначенных учениц.</p>
+                            )}
+                            <div className="mt-3 flex flex-wrap items-stretch gap-2">
+                                <select
+                                    value={candidateByMentor[m.mentorUserId] || ''}
+                                    onChange={(e) => setCandidateByMentor((prev) => ({ ...prev, [m.mentorUserId]: e.target.value }))}
+                                    className="min-w-[12rem] max-w-full flex-1 rounded-lg bg-slate-50 px-2.5 py-2 text-xs text-slate-800 outline-none ring-1 ring-slate-200/80 focus:ring-slate-300"
+                                >
+                                    <option value="">Выберите ученицу…</option>
+                                    {allStudents
+                                        .filter((s) => !(m.menteeIds || []).includes(s.userId))
+                                        .map((s) => (
+                                            <option key={`${m.mentorUserId}-${s.userId}`} value={s.userId}>
+                                                {displayNameByUserId[s.userId] || s.userId}
+                                            </option>
+                                        ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => handleAddMentee(m.mentorUserId)}
+                                    className="rounded-lg bg-emerald-700/90 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-800"
+                                >
+                                    Добавить
+                                </button>
+                            </div>
                         </div>
                     </article>
                 ))}
@@ -4516,13 +5360,12 @@ function AdminCohorts() {
     const certs = pvlDomainApi.adminApi.getAdminCertification();
     const items = pvlDomainApi.adminApi.getAdminContent({});
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Потоки</h2>
-                <p className="text-sm text-slate-500 mt-1">Когорты и ключевые показатели.</p>
             </div>
             {cohorts.map((c) => (
-                <article key={c.id} className="rounded-xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                <article key={c.id} className="rounded-xl bg-white p-4 shadow-[0_8px_26px_-10px_rgba(15,23,42,0.07)]">
                     <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-sm font-medium text-slate-800">{c.title}</div><StatusBadge>{c.status}</StatusBadge></div>
                     <div className="grid md:grid-cols-5 gap-2 mt-2 text-xs">
                         <div>Старт: {c.startDate || c.startAt}</div>
@@ -4555,12 +5398,11 @@ function AdminReview({ navigate }) {
         saveViewPreferences('admin.review', { mentorFilter });
     }, [mentorFilter]);
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Проверки и риски</h2>
-                <p className="text-sm text-slate-500 mt-1">Очередь заданий и предупреждения по срокам.</p>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4">
                 <select value={mentorFilter} onChange={(e) => setMentorFilter(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm w-full md:w-auto"><option value="all">Все менторы</option><option value="u-men-1">Екатерина Соловьева</option></select>
             </div>
             <StudentGeneric title="Задания к проверке">
@@ -4580,19 +5422,18 @@ function AdminReview({ navigate }) {
 function AdminCertification() {
     const registry = pvlDomainApi.adminApi.getAdminCertification();
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Сертификация</h2>
-                <p className="text-sm text-slate-500 mt-1">Самооценка и допуск по ученицам.</p>
             </div>
-            <div className="grid gap-3">
+            <div className="grid gap-4">
                 {registry.map((c) => {
                     const user = getUser(c.studentId);
                     const pts = pvlDomainApi.helpers.getStudentPointsSummary(c.studentId);
                     const certRow = pvlDomainApi.studentApi.getStudentCertification(c.studentId);
                     const szs = certRow?.szScores;
                     return (
-                        <article key={c.studentId} className="rounded-xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                        <article key={c.studentId} className="rounded-xl bg-white p-4 shadow-[0_8px_26px_-10px_rgba(15,23,42,0.07)]">
                             <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-sm font-medium text-slate-800">{user?.fullName || c.studentId}</div><StatusBadge>{c.admissionStatus}</StatusBadge></div>
                             <div className="grid md:grid-cols-4 gap-2 mt-3 text-xs text-slate-600">
                                 <div>Запись: {c.szRecordingStatus}</div><div>Самооценка: {c.szSelfAssessmentStatus}</div><div>Оценка ментора: {c.szMentorAssessmentStatus}</div><div>Дедлайн: {c.deadlineAt}</div>
@@ -4616,12 +5457,11 @@ function AdminSettings() {
     const settings = pvlDomainApi.adminApi.getAdminSettings();
     const audit = pvlDomainApi.audit.getAuditLog({}).slice(0, 20);
     return (
-        <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+        <div className="space-y-6">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Настройки</h2>
-                <p className="text-sm text-slate-500 mt-1">Правила курса и журнал действий.</p>
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 text-sm text-slate-600 shadow-sm">
+            <div className="rounded-3xl bg-white p-5 text-sm text-slate-600 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
                 <p>Здесь будут справочники разделов, шаблоны писем менторам и даты потоков. Сейчас отображаются только базовые константы начисления баллов.</p>
                 {pvlDevToolsEnabled() ? (
                     <>
@@ -4632,11 +5472,11 @@ function AdminSettings() {
                     </>
                 ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                 <h3 className="font-display text-lg text-slate-800 mb-3">Журнал действий</h3>
                 <div className="grid gap-2">
                     {audit.length === 0 ? <div className="text-sm text-slate-500">Записей пока нет.</div> : audit.map((a) => (
-                        <article key={a.id} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+                        <article key={a.id} className="rounded-xl bg-slate-50/90 shadow-sm p-3">
                             <div className="text-[10px] text-slate-400">{a.createdAt}</div>
                             <div className="text-xs text-slate-800 mt-1">{a.summary || `${a.actionType} · ${a.entityType}`}</div>
                         </article>
@@ -4652,7 +5492,7 @@ function AdminLegacyRedirect({ navigate, target }) {
         navigate(target);
     }, [navigate, target]);
     return (
-        <div className="rounded-2xl border border-slate-100/90 bg-white p-6 text-sm text-slate-500 shadow-sm">
+        <div className="rounded-3xl bg-white p-6 text-sm text-slate-500 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
             Раздел перенесён — открываем актуальную учительскую…
         </div>
     );
@@ -4668,7 +5508,7 @@ function AdminPage({
     refreshKey,
     forceRefresh,
 }) {
-    const legacyAdmin = ['/admin/dashboard', '/admin/cohorts', '/admin/review', '/admin/qa-moderation'];
+    const legacyAdmin = ['/admin/dashboard', '/admin/cohorts', '/admin/review', '/admin/qa-moderation', '/admin/qa', '/admin/questions'];
     if (legacyAdmin.includes(route)) return <AdminLegacyRedirect navigate={navigate} target="/admin/pvl" />;
 
     if (route === '/admin/pvl') return <TeacherPvlHome navigate={navigate} />;
@@ -4701,9 +5541,8 @@ function AdminPage({
     if (adminPathOnly === '/admin/calendar') {
         return <PvlAdminCalendarScreen navigate={navigate} refresh={forceRefresh} route={route} />;
     }
-    const adminCourseRouteKey = route === '/admin/questions' ? '/admin/qa' : route;
-    if (ADMIN_COURSE_ROUTE_RE.test(adminCourseRouteKey)) {
-        const studentRoute = adminCourseRouteKey.replace(/^\/admin/, '/student');
+    if (ADMIN_COURSE_ROUTE_RE.test(route)) {
+        const studentRoute = route.replace(/^\/admin/, '/student');
         const wrapNav = (next) => {
             if (typeof next !== 'string') {
                 navigate(next);
@@ -4719,9 +5558,6 @@ function AdminPage({
                     return;
                 }
                 let mapped = next.replace(/^\/student/, '/admin');
-                if (mapped === '/admin/qa' || mapped.startsWith('/admin/qa/')) {
-                    mapped = mapped.replace(/^\/admin\/qa/, '/admin/questions');
-                }
                 navigate(mapped);
                 return;
             }
@@ -4837,6 +5673,7 @@ const QA_ROUTE_LIST = [
     '/student/lessons',
     '/student/tracker',
     '/student/practicums',
+    '/student/messages',
     '/student/checklist',
     '/student/results',
     '/student/results/:taskId',
@@ -4846,6 +5683,7 @@ const QA_ROUTE_LIST = [
     '/mentor/dashboard',
     '/mentor/mentees',
     '/mentor/review-queue',
+    '/mentor/messages',
     '/mentor/library',
     '/mentor/library/:itemId',
     '/mentor/materials',
@@ -4869,8 +5707,6 @@ const QA_ROUTE_LIST = [
     '/admin/results/:taskId',
     '/admin/certification',
     '/admin/self-assessment',
-    '/admin/qa',
-    '/admin/questions',
     '/admin/settings',
     '/student/settings',
     '/mentor/settings',
@@ -5003,7 +5839,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
     };
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-5">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h2 className="font-display text-3xl text-[#4A3728]">QA приемка</h2>
                 <p className="text-sm text-[#9B8B80]">Чек-листы, acceptance scenarios и test harness для ручной проверки.</p>
@@ -5083,7 +5919,17 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
 
 function NotificationCenter({ userId }) {
     const [open, setOpen] = useState(false);
-    const list = pvlDomainApi.notifications.getNotificationsForUser(userId);
+    const [list, setList] = useState(() => pvlDomainApi.notifications.getNotificationsForUser(userId));
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            const rows = await pvlDomainApi.notifications.refreshFromDb(userId);
+            if (mounted) setList(rows);
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [userId, open]);
     const unread = list.filter((n) => !n.isRead).length;
     return (
         <div className="relative">
@@ -5094,7 +5940,16 @@ function NotificationCenter({ userId }) {
                 <div className="absolute right-0 mt-2 w-[360px] max-h-[320px] overflow-auto rounded-2xl border border-[#E8D5C4] bg-white p-2 z-20">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-xs text-[#9B8B80]">Notification center</span>
-                        <button onClick={() => { pvlDomainApi.notifications.markAllNotificationsRead(userId); setOpen(false); }} className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]">mark all read</button>
+                        <button
+                            onClick={() => {
+                                pvlDomainApi.notifications.markAllNotificationsRead(userId);
+                                setList(pvlDomainApi.notifications.getNotificationsForUser(userId));
+                                setOpen(false);
+                            }}
+                            className="text-[10px] rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#C8855A]"
+                        >
+                            mark all read
+                        </button>
                     </div>
                     <div className="grid gap-1">
                         {list.length === 0 ? <div className="text-xs text-[#9B8B80] p-2">No notifications</div> : list.map((n) => (
@@ -5103,7 +5958,17 @@ function NotificationCenter({ userId }) {
                                 <div className="text-xs text-[#2C1810]">{n.text}</div>
                                 <div className="mt-1 flex justify-between">
                                     <span className="text-[10px] text-[#9B8B80]">{n.createdAt}</span>
-                                    {!n.isRead ? <button onClick={() => pvlDomainApi.notifications.markNotificationRead(n.id)} className="text-[10px] text-[#C8855A]">read</button> : null}
+                                    {!n.isRead ? (
+                                        <button
+                                            onClick={() => {
+                                                pvlDomainApi.notifications.markNotificationRead(n.id);
+                                                setList(pvlDomainApi.notifications.getNotificationsForUser(userId));
+                                            }}
+                                            className="text-[10px] text-[#C8855A]"
+                                        >
+                                            read
+                                        </button>
+                                    ) : null}
                                 </div>
                             </article>
                         ))}
@@ -5116,10 +5981,12 @@ function NotificationCenter({ userId }) {
 
 export default function PvlPrototypeApp({
     embeddedInGarden = false,
+    gardenResolvedRole = null,
     gardenBridgeRef,
     onGardenRouteChange,
     onGardenExit,
     onEmbeddedDemoRoleChange,
+    hideEmbeddedRoleSwitch = false,
 } = {}) {
     const session = loadAppSession() || {};
     const [role, setRole] = useState(session.role || 'student');
@@ -5147,7 +6014,53 @@ export default function PvlPrototypeApp({
     const [cmsItems, setCmsItems] = useState(() => buildMergedCmsState().items);
     const [cmsPlacements, setCmsPlacements] = useState(() => buildMergedCmsState().placements);
     const [dataTick, setDataTick] = useState(0);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const forceRefresh = () => setDataTick((x) => x + 1);
+
+    useEffect(() => {
+        if (!embeddedInGarden) return;
+        const gardenUser = readGardenCurrentUserFromStorage();
+        const roleFromProfile = resolvePvlRoleFromGardenProfile(gardenUser);
+        const resolvedRole = gardenResolvedRole || roleFromProfile;
+        logPvlRoleResolution(gardenUser, resolvedRole);
+        const hasAuthoritativeSource = Boolean(gardenResolvedRole) || Boolean(gardenUser);
+        if (hasAuthoritativeSource && resolvedRole === 'no_access') {
+            clearAppSession();
+            onGardenExit?.();
+            return;
+        }
+        if (!hasAuthoritativeSource) return;
+        if (resolvedRole !== role) {
+            const nextActor = resolvedRole === 'admin' ? 'u-adm-1' : resolvedRole === 'mentor' ? 'u-men-1' : 'u-st-1';
+            setRole(resolvedRole);
+            setActingUserId(nextActor);
+        }
+        setRoute((prev) => redirectToAllowedRoute(resolvedRole, prev || ''));
+    }, [embeddedInGarden, onGardenExit, role, gardenResolvedRole]);
+
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const res = await syncPvlRuntimeFromDb();
+                await syncPvlActorsFromGarden();
+                if (!mounted) return;
+                if (!res?.synced) {
+                    forceRefresh();
+                    return;
+                }
+                const next = buildMergedCmsState();
+                setCmsItems(next.items);
+                setCmsPlacements(next.placements);
+                forceRefresh();
+            } catch {
+                /* fallback to mock-only runtime */
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
     const navigate = useCallback((nextRoute) => {
         const allowedRoute = redirectToAllowedRoute(role, nextRoute);
@@ -5167,10 +6080,10 @@ export default function PvlPrototypeApp({
                 practicums: 'Практикумы',
                 checklist: 'Трекер',
                 tracker: 'Трекер',
+                messages: 'Коммуникации',
                 results: 'Результаты',
                 certification: 'Сертификация',
                 'self-assessment': 'Сертификация',
-                qa: 'FAQ',
                 settings: 'Настройки',
                 'cultural-code': 'Культурный код Лиги',
             };
@@ -5185,8 +6098,24 @@ export default function PvlPrototypeApp({
     }, [role, actingUserId]);
 
     useEffect(() => {
+        let nextRoute = route;
+        if (role === 'mentor' && typeof nextRoute === 'string' && nextRoute.startsWith('/student/')) {
+            nextRoute = nextRoute.replace('/student/', '/mentor/');
+        } else if (role === 'student' && typeof nextRoute === 'string' && nextRoute.startsWith('/mentor/')) {
+            nextRoute = nextRoute.replace('/mentor/', '/student/');
+        } else if (role === 'admin' && typeof nextRoute === 'string' && (nextRoute.startsWith('/student/') || nextRoute.startsWith('/mentor/'))) {
+            nextRoute = '/admin/pvl';
+        }
+        const allowedRoute = redirectToAllowedRoute(role, nextRoute);
+        if (allowedRoute !== route) setRoute(allowedRoute);
+    }, [role, route]);
+
+    useEffect(() => {
         saveAppSession({ role, studentId, actingUserId, nowDate, route, studentSection, adminSection, mentorSection });
     }, [role, studentId, actingUserId, nowDate, route, studentSection, adminSection, mentorSection]);
+    useEffect(() => {
+        setMobileMenuOpen(false);
+    }, [route, role]);
 
     useEffect(() => {
         if (!gardenBridgeRef) return undefined;
@@ -5251,17 +6180,24 @@ export default function PvlPrototypeApp({
             <button type="button" onClick={() => navigate('/qa')} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Приёмка QA</button>
         </div>
     ) : null;
+    const showCabinetSwitcher = !embeddedInGarden || (pvlDevToolsEnabled() && !hideEmbeddedRoleSwitch);
+    const showEmbeddedTopBar = embeddedInGarden && (showCabinetSwitcher || !!devToolsBar);
 
     return (
-        <div className="relative rounded-3xl overflow-hidden" style={{ zoom: 1.15 }}>
+        <div className={`relative overflow-hidden ${embeddedInGarden ? '' : 'md:rounded-3xl'}`}>
+            {!embeddedInGarden ? (
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-90"
+                    aria-hidden
+                    style={{
+                        background:
+                            'radial-gradient(circle at top, rgba(63,139,107,0.12), transparent 55%), radial-gradient(circle at 20% 20%, rgba(143,127,106,0.1), transparent 40%), linear-gradient(180deg, #fbf9f3 0%, #f7f3ea 100%)',
+                    }}
+                />
+            ) : null}
             <div
-                className="pointer-events-none absolute inset-0 opacity-90"
-                aria-hidden
-                style={{
-                    background: 'radial-gradient(circle at top, rgba(63,139,107,0.12), transparent 55%), radial-gradient(circle at 20% 20%, rgba(143,127,106,0.1), transparent 40%), linear-gradient(180deg, #fbf9f3 0%, #f7f3ea 100%)',
-                }}
-            />
-            <div className={`relative grid grid-cols-1 gap-5 p-1 md:p-2 ${embeddedInGarden ? '' : 'xl:grid-cols-[260px_1fr]'}`}>
+                className={`relative grid grid-cols-1 gap-6 ${embeddedInGarden ? 'px-3 py-4 sm:px-5 sm:py-5 md:px-6' : 'p-3 md:p-5 xl:grid-cols-[280px_minmax(0,1fr)]'}`}
+            >
                 {!embeddedInGarden ? (
                     <SidebarMenu
                         role={role}
@@ -5274,50 +6210,138 @@ export default function PvlPrototypeApp({
                         setMentorSection={setMentorSection}
                         navigate={navigate}
                         onGardenExit={onGardenExit}
+                        studentId={studentId}
+                        actingUserId={actingUserId}
+                        className="hidden md:block"
                     />
                 ) : null}
-                <main className="space-y-4 min-w-0">
+                <main className={`min-w-0 ${embeddedInGarden ? 'space-y-5 md:space-y-6' : ''}`}>
                     {!embeddedInGarden ? (
-                        <div className="rounded-2xl border border-slate-100/90 bg-white/90 backdrop-blur-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shadow-slate-200/30">
-                            {!route.startsWith('/admin/') ? <SubtleTrail path={route} /> : <div />}
-                            <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} />
-                            {devToolsBar}
+                        <div className="flex min-w-0 flex-col overflow-hidden rounded-3xl bg-white/95 shadow-[0_18px_50px_-14px_rgba(15,23,42,0.1)]">
+                            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100/40 bg-white/60 px-5 py-4 backdrop-blur-sm">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMobileMenuOpen(true)}
+                                        className="md:hidden inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-700"
+                                        aria-label="Открыть меню"
+                                    >
+                                        <Menu size={18} />
+                                    </button>
+                                    {shouldShowSubtleTrail(route) ? <SubtleTrail path={route} /> : <div />}
+                                </div>
+                                {showCabinetSwitcher ? <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} /> : <div />}
+                                {devToolsBar}
+                            </div>
+                            {pvlDevToolsEnabled() ? (
+                                <div className="border-b border-slate-100/70 px-3 py-2 bg-slate-50/40">
+                                    <DebugPanel
+                                        role={role}
+                                        setRole={setRole}
+                                        navigate={navigate}
+                                        actingUserId={actingUserId}
+                                        setActingUserId={(id) => {
+                                            setActingUserId(id);
+                                            if (id.startsWith('u-st-')) setStudentId(id);
+                                        }}
+                                        nowDate={nowDate}
+                                        setNowDate={setNowDate}
+                                        forceRefresh={forceRefresh}
+                                    />
+                                </div>
+                            ) : null}
+                            {route.startsWith('/admin/') ? <AdminDrilldownNavBar route={route} navigate={navigate} /> : null}
+                            <div className="p-5 md:p-7 lg:px-8 min-w-0">
+                                {content}
+                            </div>
+                            {pvlDevToolsEnabled() ? (
+                                <div className="border-t border-slate-100/70 p-4 space-y-5 bg-slate-50/30">
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
+                                        Методологический вопрос (для разработки): порог допуска к СЗ — 400 или 500 баллов; в прототипе не решено.
+                                    </div>
+                                    <div className="rounded-xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
+                                        Маршрутов в реестре: {validateRouteMap().length} · строк матрицы доступа: {validateRoleAccessMap().length}
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
                     ) : (
-                        <div className="rounded-2xl border border-slate-100/90 bg-white/90 backdrop-blur-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shadow-slate-200/30">
-                            <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} />
-                            {devToolsBar}
-                        </div>
-                    )}
-                    {pvlDevToolsEnabled() ? (
-                        <DebugPanel
-                            role={role}
-                            setRole={setRole}
-                            navigate={navigate}
-                            actingUserId={actingUserId}
-                            setActingUserId={(id) => {
-                                setActingUserId(id);
-                                if (id.startsWith('u-st-')) setStudentId(id);
-                            }}
-                            nowDate={nowDate}
-                            setNowDate={setNowDate}
-                            forceRefresh={forceRefresh}
-                        />
-                    ) : null}
-                    {route.startsWith('/admin/') ? <AdminDrilldownNavBar route={route} navigate={navigate} /> : null}
-                    {content}
-                    {pvlDevToolsEnabled() ? (
                         <>
-                            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
-                                Методологический вопрос (для разработки): порог допуска к СЗ — 400 или 500 баллов; в прототипе не решено.
-                            </div>
-                            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
-                                Маршрутов в реестре: {validateRouteMap().length} · строк матрицы доступа: {validateRoleAccessMap().length}
-                            </div>
+                            {showEmbeddedTopBar ? (
+                                <div className="flex flex-wrap items-center justify-between gap-4 pb-4">
+                                    {showCabinetSwitcher ? <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} /> : <div />}
+                                    {devToolsBar}
+                                </div>
+                            ) : null}
+                            {pvlDevToolsEnabled() ? (
+                                <DebugPanel
+                                    role={role}
+                                    setRole={setRole}
+                                    navigate={navigate}
+                                    actingUserId={actingUserId}
+                                    setActingUserId={(id) => {
+                                        setActingUserId(id);
+                                        if (id.startsWith('u-st-')) setStudentId(id);
+                                    }}
+                                    nowDate={nowDate}
+                                    setNowDate={setNowDate}
+                                    forceRefresh={forceRefresh}
+                                />
+                            ) : null}
+                            {route.startsWith('/admin/') ? <AdminDrilldownNavBar route={route} navigate={navigate} /> : null}
+                            {content}
+                            {pvlDevToolsEnabled() ? (
+                                <>
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
+                                        Методологический вопрос (для разработки): порог допуска к СЗ — 400 или 500 баллов; в прототипе не решено.
+                                    </div>
+                                    <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
+                                        Маршрутов в реестре: {validateRouteMap().length} · строк матрицы доступа: {validateRoleAccessMap().length}
+                                    </div>
+                                </>
+                            ) : null}
                         </>
-                    ) : null}
+                    )}
                 </main>
             </div>
+            {!embeddedInGarden && mobileMenuOpen ? (
+                <div className="md:hidden fixed inset-0 z-40">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-slate-900/35"
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-label="Закрыть меню"
+                    />
+                    <div className="absolute left-0 top-0 h-full w-[86vw] max-w-[360px] bg-transparent p-3">
+                        <div className="h-full overflow-y-auto">
+                            <div className="mb-2 flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-700"
+                                    aria-label="Закрыть меню"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <SidebarMenu
+                                role={role}
+                                route={route}
+                                studentSection={studentSection}
+                                setStudentSection={setStudentSection}
+                                adminSection={adminSection}
+                                setAdminSection={setAdminSection}
+                                mentorSection={mentorSection}
+                                setMentorSection={setMentorSection}
+                                navigate={navigate}
+                                onGardenExit={onGardenExit}
+                                studentId={studentId}
+                                actingUserId={actingUserId}
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }

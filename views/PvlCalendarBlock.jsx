@@ -43,6 +43,15 @@ export function calendarEventDotClass(eventType) {
     }
 }
 
+const CAL_WEEKDAYS_LOWER = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+
+function formatCalendarMonthYearRu(d) {
+    const y = d.getFullYear();
+    const m = d.toLocaleString('ru-RU', { month: 'long' });
+    const cap = m.charAt(0).toUpperCase() + m.slice(1);
+    return `${cap} ${y} г.`;
+}
+
 function eventDayKey(ev) {
     if (ev.date) return String(ev.date).slice(0, 10);
     return String(ev.startAt || '').slice(0, 10);
@@ -96,6 +105,52 @@ function openEventNavigation(ev, navigate, routePrefix) {
  * Компактный календарь (паттерн сетки как в календаре встреч сада) + ближайшие события.
  * Только просмотр для student/mentor; admin на дашборде тоже read-only здесь.
  */
+function CalendarLegendDot({ eventType }) {
+    return (
+        <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(eventType)}`}
+            aria-hidden
+        />
+    );
+}
+
+function CalendarDayButton({
+    day,
+    dayEvts,
+    isSelected,
+    isToday,
+    showTodayHighlight,
+    onClick,
+}) {
+    const types = Array.from(new Set(dayEvts.map((e) => e.eventType))).slice(0, 3);
+    const base =
+        'flex aspect-square w-full min-h-0 min-w-0 flex-col items-stretch rounded-xl border text-[13px] tabular-nums transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#8FC4B3]/50 focus-visible:ring-offset-1';
+    let state = '';
+    if (isSelected) {
+        state =
+            ' border-[#6FA68C]/55 bg-[#D4EBE2] text-[#0F3428] shadow-[0_6px_18px_-8px_rgba(27,77,62,0.4)] font-semibold';
+    } else if (showTodayHighlight && isToday) {
+        state = ' border-[#8FC4B3] bg-white text-[#3D342B] font-semibold shadow-sm';
+    } else {
+        state =
+            ' border-[#E8E0D4]/70 bg-[#FAF8F5] text-[#3D342B] font-medium hover:border-[#D4C8BC] hover:bg-[#F3EDE6]';
+    }
+    return (
+        <button type="button" onClick={onClick} className={`${base} ${state}`}>
+            <span className="flex flex-1 items-center justify-center leading-none">{day}</span>
+            <div className="flex h-2.5 shrink-0 items-center justify-center gap-1 px-1 pb-1">
+                {types.map((t) => (
+                    <span
+                        key={t}
+                        title={PVL_CAL_EVENT_LABELS[t] || t}
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${calendarEventDotClass(t)}`}
+                    />
+                ))}
+            </div>
+        </button>
+    );
+}
+
 export function PvlDashboardCalendarBlock({
     viewerRole,
     cohortId,
@@ -103,7 +158,8 @@ export function PvlDashboardCalendarBlock({
     routePrefix = '/student',
     title = 'Календарь курса',
     onOpenFullCalendar,
-    fullCalendarLabel = 'Открыть календарь',
+    /** Текст зелёной кнопки под сеткой (если передан onOpenFullCalendar) */
+    scheduleCtaLabel = '+ Запланировать',
     eventTypeFilter = [],
 }) {
     const [currentDate, setCurrentDate] = useState(() => new Date(`${PVL_TODAY}T12:00:00`));
@@ -130,7 +186,7 @@ export function PvlDashboardCalendarBlock({
             .slice(0, 8);
     }, [events]);
 
-    const monthLabel = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthHeading = formatCalendarMonthYearRu(currentDate);
 
     const listEvents = useMemo(() => {
         if (!selectedDayKey) return upcoming;
@@ -148,58 +204,61 @@ export function PvlDashboardCalendarBlock({
     };
 
     return (
-        <section className="rounded-2xl border border-slate-100/90 bg-white p-5 md:p-6 shadow-sm shadow-slate-200/40">
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                <div>
-                    <h3 className="font-display text-xl text-slate-800">{title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                        {Array.isArray(eventTypeFilter) && eventTypeFilter.length
-                            ? 'События потока по выбранному типу.'
-                            : 'События потока: встречи, эфиры, выход уроков.'}
-                    </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => handleMonthNav(-1)}
-                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-                    >
-                        ←
-                    </button>
-                    <span className="text-sm font-medium text-slate-700 capitalize min-w-[10rem] text-center">{monthLabel}</span>
-                    <button
-                        type="button"
-                        onClick={() => handleMonthNav(1)}
-                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-                    >
-                        →
-                    </button>
-                    {onOpenFullCalendar ? (
+        <section className="rounded-[1.75rem] bg-[#FAF8F5] px-4 pt-5 pb-8 md:px-6 md:pt-6 md:pb-10 shadow-[0_18px_50px_-14px_rgba(15,23,42,0.08)]">
+            <div className="mb-4">
+                <h3 className="font-display text-xl text-[#3D342B]">{title}</h3>
+            </div>
+
+            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-[#7A6B5C]">
+                <span className="inline-flex items-center gap-2">
+                    <CalendarLegendDot eventType="mentor_meeting" />
+                    Встречи
+                </span>
+                <span className="inline-flex items-center gap-2">
+                    <CalendarLegendDot eventType="live_stream" />
+                    Эфиры
+                </span>
+                <span className="inline-flex items-center gap-2">
+                    <CalendarLegendDot eventType="lesson_release" />
+                    Уроки
+                </span>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-5 lg:gap-7 items-stretch lg:items-start">
+                <div className="w-full lg:w-[min(100%,320px)] shrink-0 select-none rounded-[1.75rem] bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                    <div className="mb-3 flex items-center justify-between gap-2">
                         <button
                             type="button"
-                            onClick={onOpenFullCalendar}
-                            className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1.5 text-[#C8855A] hover:bg-[#FAF6F2]"
+                            onClick={() => handleMonthNav(-1)}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg text-[#5C4D42] transition-colors hover:bg-[#EDE6DE]/90"
+                            aria-label="Предыдущий месяц"
                         >
-                            {fullCalendarLabel}
+                            ‹
                         </button>
-                    ) : null}
-                </div>
-            </div>
-
-            <div className="flex flex-wrap gap-4 text-[10px] text-slate-500 mb-3">
-                <span className="inline-flex items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${calendarEventDotClass('mentor_meeting')}`} /> Встречи</span>
-                <span className="inline-flex items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${calendarEventDotClass('live_stream')}`} /> Эфиры</span>
-                <span className="inline-flex items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${calendarEventDotClass('lesson_release')}`} /> Уроки</span>
-            </div>
-
-            <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 items-stretch">
-                <div className="w-full lg:w-[min(100%,280px)] shrink-0 rounded-2xl border border-slate-100 bg-[#fafaf8] p-3 md:p-4 select-none">
-                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
-                        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => <div key={d}>{d}</div>)}
+                        <span className="min-w-0 flex-1 text-center font-display text-base font-semibold tracking-tight text-[#3D342B]">{monthHeading}</span>
+                        <button
+                            type="button"
+                            onClick={() => handleMonthNav(1)}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg text-[#5C4D42] transition-colors hover:bg-[#EDE6DE]/90"
+                            aria-label="Следующий месяц"
+                        >
+                            ›
+                        </button>
                     </div>
-                    <div className="grid grid-cols-7 gap-1">
+                    <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-[#9B8B80]">
+                        {CAL_WEEKDAYS_LOWER.map((d) => (
+                            <div key={d} className="flex items-center justify-center py-1">
+                                {d}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5">
                         {Array.from({ length: startOffset }).map((_, i) => (
-                            <div key={`empty-${i}`} className="aspect-square rounded-xl bg-transparent" />
+                            <div
+                                key={`empty-${i}`}
+                                className="aspect-square min-h-0 min-w-0 rounded-xl border border-[#E8E0D4]/40 bg-[#F0E9E2]/35"
+                                aria-hidden
+                            />
                         ))}
                         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
                             const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -207,69 +266,66 @@ export function PvlDashboardCalendarBlock({
                             const isToday = key === PVL_TODAY;
                             const isSelected = selectedDayKey === key;
                             return (
-                                <button
+                                <CalendarDayButton
                                     key={key}
-                                    type="button"
+                                    day={day}
+                                    dayEvts={dayEvts}
+                                    isSelected={isSelected}
+                                    isToday={isToday}
+                                    showTodayHighlight
                                     onClick={() => setSelectedDayKey((prev) => (prev === key ? null : key))}
-                                    className={`aspect-square rounded-xl border flex flex-col items-center justify-start pt-1 text-xs transition-colors cursor-pointer ${
-                                        isSelected
-                                            ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200/80'
-                                            : isToday
-                                              ? 'border-teal-200 bg-teal-50/50'
-                                              : 'border-slate-100/80 bg-white hover:border-slate-200'
-                                    }`}
-                                >
-                                    <span
-                                        className={`tabular-nums ${isSelected || isToday ? 'font-semibold text-teal-900' : 'text-slate-600'}`}
-                                    >
-                                        {day}
-                                    </span>
-                                    <div className="flex flex-wrap gap-0.5 justify-center mt-0.5 px-0.5 min-h-[10px]">
-                                        {Array.from(new Set(dayEvts.map((e) => e.eventType))).slice(0, 3).map((t) => (
-                                            <span key={t} className={`w-1.5 h-1.5 rounded-full ${calendarEventDotClass(t)}`} title={PVL_CAL_EVENT_LABELS[t] || t} />
-                                        ))}
-                                    </div>
-                                </button>
+                                />
                             );
                         })}
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-3 leading-snug">Нажмите на дату — справа список событий. Повторный клик снимает выбор.</p>
+                    {onOpenFullCalendar ? (
+                        <button
+                            type="button"
+                            onClick={onOpenFullCalendar}
+                            className="mt-5 w-full rounded-2xl bg-[#1B4D3E] py-3.5 text-center text-sm font-semibold text-white shadow-[0_12px_28px_-14px_rgba(27,77,62,0.55)] transition-colors hover:bg-[#164535]"
+                        >
+                            {scheduleCtaLabel}
+                        </button>
+                    ) : null}
                 </div>
 
-                <div className="flex-1 min-w-0 flex flex-col rounded-2xl border border-slate-100/90 bg-slate-50/40 p-4 md:p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                        <h4 className="text-sm font-semibold text-slate-800">{listTitle}</h4>
+                <div className="flex min-w-0 flex-1 flex-col p-2 md:p-3 lg:pl-1 lg:pb-1">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-semibold text-[#3D342B]">{listTitle}</h4>
                         {selectedDayKey ? (
                             <button
                                 type="button"
                                 onClick={() => setSelectedDayKey(null)}
-                                className="text-[11px] text-[#C8855A] hover:underline"
+                                className="text-[11px] text-[#8B6F52] hover:underline"
                             >
                                 Показать ближайшие
                             </button>
                         ) : null}
                     </div>
-                    <div className="flex-1 min-h-[200px] max-h-[320px] overflow-y-auto pr-1 -mr-1">
+                    <div className="min-h-[140px] max-h-[220px] flex-1 overflow-y-auto pb-1 pr-1 -mr-1">
                         {listEvents.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center">
-                                <p className="text-sm text-slate-500">
+                            <div className="rounded-xl bg-white px-3 py-6 text-center shadow-[0_8px_28px_-12px_rgba(15,23,42,0.07)]">
+                                <p className="text-sm text-[#6B5D4F]">
                                     {selectedDayKey ? 'В этот день событий нет.' : 'Нет предстоящих событий в выбранном потоке.'}
                                 </p>
                             </div>
                         ) : (
-                            <ul className="space-y-2">
+                            <ul className="space-y-1.5">
                                 {listEvents.map((ev) => (
                                     <li key={ev.id}>
                                         <button
                                             type="button"
                                             onClick={() => openEventNavigation(ev, navigate, routePrefix)}
-                                            className="w-full text-left rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm shadow-slate-200/30 hover:border-emerald-100 hover:bg-emerald-50/20 transition-colors"
+                                            className="w-full rounded-xl bg-white/90 px-2.5 py-2 text-left shadow-sm transition-colors hover:bg-white hover:shadow-[0_10px_28px_-14px_rgba(15,23,42,0.1)]"
                                         >
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${calendarEventDotClass(ev.eventType)}`} />
-                                                <span className="text-sm font-medium text-slate-800">{ev.title}</span>
+                                                <span
+                                                    className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`}
+                                                    title={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                                />
+                                                <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
                                             </div>
-                                            <div className="text-[11px] text-slate-500 mt-1">
+                                            <div className="mt-1 text-[11px] text-[#6B5D4F]">
                                                 {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
                                                 {' · '}
                                                 {formatPvlDateTime(ev.startAt)}
@@ -300,6 +356,8 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
     const [filterRole, setFilterRole] = useState(() => readCalendarUiPrefs()?.filterRole || 'all');
     const [filterCohort, setFilterCohort] = useState(() => readCalendarUiPrefs()?.filterCohort || 'all');
     const [editingId, setEditingId] = useState('');
+    /** Подсветка рамкой только у выбранного дня (не у всех дней с событиями). */
+    const [selectedDayKey, setSelectedDayKey] = useState(null);
 
     useEffect(() => {
         const fromUrl = parseCalendarEventIdFromRoute(route);
@@ -308,6 +366,11 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
+
+    useEffect(() => {
+        setSelectedDayKey(null);
+    }, [year, month]);
+
     useEffect(() => {
         saveViewPreferences(CALENDAR_UI_PREFS_KEY, {
             monthYm: `${year}-${String(month + 1).padStart(2, '0')}`,
@@ -331,6 +394,12 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
 
     const editing = editingId ? pvlDomainApi.calendarApi.getById(editingId) : null;
 
+    useEffect(() => {
+        if (!editingId || !editing) return;
+        const k = eventDayKey(editing);
+        if (k) setSelectedDayKey(k);
+    }, [editingId, editing]);
+
     const bump = () => {
         setTick((x) => x + 1);
         refresh?.();
@@ -341,32 +410,35 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
     const startOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
     const monthEvents = eventsForMonth(filtered, year, month);
     const byDay = groupByDay(monthEvents);
-    const monthLabel = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthHeading = formatCalendarMonthYearRu(currentDate);
 
     const cohorts = pvlDomainApi.adminApi.getAdminCohorts();
 
-    return (
-        <div className="space-y-5">
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
-                <h2 className="font-display text-2xl text-slate-800">Календарь курса</h2>
-                <p className="text-sm text-slate-500 mt-1">Создание и редактирование событий потока. Участницы и менторы видят календарь только для чтения.</p>
-            </div>
+    const createNewCalendarEvent = () => {
+        const row = pvlDomainApi.adminApi.createCalendarEvent({});
+        bump();
+        navigate?.(`/admin/calendar?event=${encodeURIComponent(row.id)}`);
+    };
 
-            <div className="rounded-2xl border border-slate-100/90 bg-white p-4 flex flex-wrap gap-3 shadow-sm">
-                <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
+    return (
+        <div className="space-y-3">
+            <div className="space-y-3 rounded-2xl bg-white p-4 shadow-[0_14px_44px_-14px_rgba(15,23,42,0.08)] md:p-5">
+                <h2 className="font-display text-2xl text-slate-800">Календарь курса</h2>
+                <div className="flex flex-wrap gap-2">
+                <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white">
                     <option value="all">Все типы</option>
                     <option value="mentor_meeting">Встречи с менторами</option>
                     <option value="live_stream">Прямые эфиры</option>
                     <option value="lesson_release">Выход уроков</option>
                 </select>
-                <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
+                <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white">
                     <option value="all">Все роли видимости</option>
                     <option value="all_vis">Только all</option>
                     <option value="student">student</option>
                     <option value="mentor">mentor</option>
                     <option value="admin">admin</option>
                 </select>
-                <select value={filterCohort} onChange={(e) => setFilterCohort(e.target.value)} className="rounded-xl border border-slate-200 p-2 text-sm">
+                <select value={filterCohort} onChange={(e) => setFilterCohort(e.target.value)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white">
                     <option value="all">Все потоки</option>
                     {cohorts.map((c) => (
                         <option key={c.id} value={c.id}>{c.title}</option>
@@ -374,81 +446,40 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                 </select>
                 <button
                     type="button"
-                    onClick={() => {
-                        const row = pvlDomainApi.adminApi.createCalendarEvent({});
-                        bump();
-                        navigate?.(`/admin/calendar?event=${encodeURIComponent(row.id)}`);
-                    }}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 ml-auto"
+                    onClick={createNewCalendarEvent}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 ml-auto"
                 >
                     + Событие
                 </button>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-4 items-start">
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                        <button type="button" onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="rounded-xl border border-slate-200 px-2 py-1 text-sm">←</button>
-                        <span className="text-sm font-medium capitalize">{monthLabel}</span>
-                        <button type="button" onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="rounded-xl border border-slate-200 px-2 py-1 text-sm">→</button>
-                    </div>
-                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-400 font-semibold mb-1">
-                        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => <div key={d}>{d}</div>)}
-                    </div>
-                    <div className="grid grid-cols-7 gap-1">
-                        {Array.from({ length: startOffset }).map((_, i) => <div key={`e-${i}`} className="aspect-square" />)}
-                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-                            const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            const dayEvts = byDay.get(key) || [];
-                            return (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => {
-                                        if (dayEvts[0] && navigate) navigate(`/admin/calendar?event=${encodeURIComponent(dayEvts[0].id)}`);
-                                    }}
-                                    className={`aspect-square rounded-lg border text-xs flex flex-col items-center justify-start pt-0.5 ${dayEvts.length ? 'border-teal-100 bg-teal-50/40' : 'border-slate-50 bg-slate-50/30'}`}
-                                >
-                                    <span className="tabular-nums text-slate-600">{day}</span>
-                                    <div className="flex gap-0.5 flex-wrap justify-center">
-                                        {Array.from(new Set(dayEvts.map((e) => e.eventType))).slice(0, 3).map((t) => (
-                                            <span key={t} className={`w-1.5 h-1.5 rounded-full ${calendarEventDotClass(t)}`} />
-                                        ))}
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
                 </div>
-
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm space-y-3">
-                    <h3 className="font-display text-lg text-slate-800">События (отфильтровано)</h3>
-                    <div className="max-h-[280px] overflow-y-auto space-y-2 pr-1">
-                        {filtered.map((ev) => (
-                            <button
-                                key={ev.id}
-                                type="button"
-                                onClick={() => navigate?.(`/admin/calendar?event=${encodeURIComponent(ev.id)}`)}
-                                className={`w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors ${editingId === ev.id ? 'border-blue-200 bg-blue-50/50' : 'border-slate-100 hover:bg-slate-50'}`}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <span className={`w-2 h-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} />
-                                    <span className="font-medium text-slate-800">{ev.title}</span>
-                                </div>
-                                <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)} · {ev.visibilityRole} · {ev.cohortId}</div>
-                            </button>
-                        ))}
-                    </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-slate-600">
+                    <span className="inline-flex items-center gap-2">
+                        <CalendarLegendDot eventType="mentor_meeting" />
+                        Встречи
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                        <CalendarLegendDot eventType="live_stream" />
+                        Эфиры
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                        <CalendarLegendDot eventType="lesson_release" />
+                        Уроки
+                    </span>
                 </div>
             </div>
 
             {editing ? (
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
-                    <h3 className="font-display text-lg text-slate-800">Редактирование</h3>
-                    <div className="grid md:grid-cols-2 gap-3">
-                        <label className="block text-xs text-slate-500">Название
+                <div className="space-y-2 rounded-2xl bg-white p-3 shadow-[0_12px_36px_-12px_rgba(15,23,42,0.07)]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-display text-base text-slate-800">Редактирование события</h3>
+                        <button type="button" onClick={() => navigate?.('/admin/calendar')} className="text-xs rounded-xl border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50">
+                            ← К календарю
+                        </button>
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-2">
+                        <label className="block text-xs text-slate-500 md:col-span-2">Название
                             <input
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.title}
                                 onChange={(e) => {
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, { title: e.target.value });
@@ -458,7 +489,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                         </label>
                         <label className="block text-xs text-slate-500">Тип
                             <select
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.eventType}
                                 onChange={(e) => {
                                     const eventType = e.target.value;
@@ -471,9 +502,9 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                 <option value="lesson_release">Выход урока</option>
                             </select>
                         </label>
-                        <label className="block text-xs text-slate-500 md:col-span-2">Описание
+                        <label className="block text-xs text-slate-500 md:col-span-3">Описание
                             <textarea
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm min-h-[72px]"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm min-h-[60px]"
                                 value={editing.description || ''}
                                 onChange={(e) => {
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, { description: e.target.value });
@@ -483,7 +514,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                         </label>
                         <label className="block text-xs text-slate-500">Дата (ДД-ММ-ГГГГ)
                             <input
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.date || ''}
                                 onChange={(e) => {
                                     const date = e.target.value;
@@ -498,7 +529,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                         </label>
                         <label className="block text-xs text-slate-500">Видимость
                             <select
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.visibilityRole || 'all'}
                                 onChange={(e) => {
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, { visibilityRole: e.target.value });
@@ -513,7 +544,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                         </label>
                         <label className="block text-xs text-slate-500">Поток
                             <select
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.cohortId || 'cohort-2026-1'}
                                 onChange={(e) => {
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, { cohortId: e.target.value });
@@ -525,9 +556,9 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                 ))}
                             </select>
                         </label>
-                        <label className="block text-xs text-slate-500">Связанный урок (id)
+                        <label className="block text-xs text-slate-500 md:col-span-3">Связанный урок (id)
                             <input
-                                className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-sm"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.linkedLessonId || ''}
                                 placeholder="les-7"
                                 onChange={(e) => {
@@ -537,7 +568,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                             />
                         </label>
                     </div>
-                    <div className="flex flex-wrap gap-2 pt-2">
+                    <div className="flex flex-wrap gap-2 pt-1">
                         <button
                             type="button"
                             onClick={() => {
@@ -547,18 +578,105 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                     bump();
                                 }
                             }}
-                            className="text-sm rounded-xl border border-rose-200 text-rose-700 px-4 py-2 hover:bg-rose-50"
+                            className="text-xs rounded-xl border border-rose-200 text-rose-700 px-3 py-1.5 hover:bg-rose-50"
                         >
                             Удалить
-                        </button>
-                        <button type="button" onClick={() => navigate?.('/admin/calendar')} className="text-sm rounded-xl border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-50 ml-auto">
-                            ← Назад к календарю
                         </button>
                     </div>
                 </div>
             ) : null}
 
-            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-xs text-slate-600">
+            <div className="grid items-start gap-5 lg:grid-cols-2">
+                <div className="rounded-[1.75rem] bg-white p-4 pb-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg text-[#5C4D42] transition-colors hover:bg-[#EDE6DE]/90"
+                            aria-label="Предыдущий месяц"
+                        >
+                            ‹
+                        </button>
+                        <span className="min-w-0 flex-1 text-center font-display text-base font-semibold tracking-tight text-[#3D342B]">{monthHeading}</span>
+                        <button
+                            type="button"
+                            onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg text-[#5C4D42] transition-colors hover:bg-[#EDE6DE]/90"
+                            aria-label="Следующий месяц"
+                        >
+                            ›
+                        </button>
+                    </div>
+                    <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-[#9B8B80]">
+                        {CAL_WEEKDAYS_LOWER.map((d) => (
+                            <div key={d} className="flex items-center justify-center py-1">
+                                {d}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5 pb-1">
+                        {Array.from({ length: startOffset }).map((_, i) => (
+                            <div
+                                key={`e-${i}`}
+                                className="aspect-square min-h-0 min-w-0 rounded-xl border border-[#E8E0D4]/40 bg-[#F0E9E2]/35"
+                                aria-hidden
+                            />
+                        ))}
+                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+                            const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            const dayEvts = byDay.get(key) || [];
+                            const isSelected = selectedDayKey === key;
+                            const isToday = key === PVL_TODAY;
+                            return (
+                                <CalendarDayButton
+                                    key={key}
+                                    day={day}
+                                    dayEvts={dayEvts}
+                                    isSelected={isSelected}
+                                    isToday={isToday}
+                                    showTodayHighlight
+                                    onClick={() => {
+                                        setSelectedDayKey(key);
+                                        if (dayEvts[0] && navigate) navigate(`/admin/calendar?event=${encodeURIComponent(dayEvts[0].id)}`);
+                                    }}
+                                />
+                            );
+                        })}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={createNewCalendarEvent}
+                        className="mt-5 w-full rounded-2xl bg-[#1B4D3E] py-3.5 text-center text-sm font-semibold text-white shadow-[0_12px_28px_-14px_rgba(27,77,62,0.55)] transition-colors hover:bg-[#164535]"
+                    >
+                        + Запланировать
+                    </button>
+                </div>
+
+                <div className="space-y-2 rounded-2xl bg-white p-3 shadow-[0_12px_36px_-12px_rgba(15,23,42,0.07)]">
+                    <h3 className="font-display text-lg text-slate-800">События (отфильтровано)</h3>
+                    <div className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1">
+                        {filtered.map((ev) => (
+                            <button
+                                key={ev.id}
+                                type="button"
+                                onClick={() => navigate?.(`/admin/calendar?event=${encodeURIComponent(ev.id)}`)}
+                                className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm transition-colors ${editingId === ev.id ? 'bg-blue-50/80 ring-1 ring-inset ring-blue-200/80' : 'hover:bg-slate-50/90'}`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span
+                                        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`}
+                                        title={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                    />
+                                    <span className="font-medium text-slate-800">{ev.title}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)} · {ev.visibilityRole} · {ev.cohortId}</div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="rounded-lg bg-slate-50/90 p-3 text-xs text-slate-600">
                 <span className="font-medium text-slate-700">Предпросмотр для участницы / ментора:</span>
                 {' '}
                 те же цвета и список, без кнопок редактирования. Переход по событию на дашборде ведёт в «Практикумы» или «Уроки», если задана связь.

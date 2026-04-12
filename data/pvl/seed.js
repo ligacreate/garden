@@ -69,9 +69,8 @@ export const seed = {
         { id: 'sp-4', userId: 'u-st-4', cohortId: 'cohort-2026-1', mentorId: 'u-men-1', currentWeek: 2, currentModule: 1, courseStatus: COURSE_STATUS.AT_RISK, coursePoints: 20, szSelfAssessmentPoints: 0, szMentorAssessmentPoints: 0, szAdmissionStatus: CERTIFICATION_STATUS.NOT_STARTED, lastActivityAt: '2026-05-01', unreadCount: 0, createdAt: now, updatedAt: now },
     ],
     mentorProfiles: [
-        // Демо-режим: оба ментора видят весь набор учениц, как в учительской.
-        { id: 'mp-1', userId: 'u-men-1', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-1', 'u-st-2', 'u-st-3', 'u-st-4'], activeReviewCount: 6, activeRiskCount: 3, createdAt: now, updatedAt: now },
-        { id: 'mp-2', userId: 'u-men-2', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-1', 'u-st-2', 'u-st-3', 'u-st-4'], activeReviewCount: 6, activeRiskCount: 3, createdAt: now, updatedAt: now },
+        { id: 'mp-1', userId: 'u-men-1', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-1', 'u-st-2', 'u-st-4'], activeReviewCount: 6, activeRiskCount: 3, createdAt: now, updatedAt: now },
+        { id: 'mp-2', userId: 'u-men-2', cohortIds: ['cohort-2026-1'], menteeIds: ['u-st-3'], activeReviewCount: 6, activeRiskCount: 3, createdAt: now, updatedAt: now },
     ],
     adminProfiles: [
         { id: 'ap-1', userId: 'u-adm-1', permissions: ['content:write', 'cohorts:write', 'certification:write'], createdAt: now, updatedAt: now },
@@ -238,6 +237,475 @@ export const seed = {
     contentItems: [
         { id: 'cnt-1', title: 'Стартовый онбординг', shortDescription: 'Материал старта', fullDescription: 'Размещается в разделе О курсе', contentType: CONTENT_TYPE.VIDEO, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '18 мин', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
         { id: 'cnt-2', title: 'Сценарий для ментора', shortDescription: 'Шаблон практикума', fullDescription: 'Для раздела Практикумы', contentType: CONTENT_TYPE.TEMPLATE, status: CONTENT_STATUS.DRAFT, visibility: 'by_role', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '20 мин', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-01', title: 'Письмо и эмоции: механизмы и нюансы', shortDescription: 'Механизмы влияния письма на эмоциональную регуляцию.', fullDescription: `<pre style="white-space:pre-wrap">Письменные практики, в частности экспрессивное письмо, помогают в работе с эмоциями через ключевые психологические и физиологические механизмы.
+
+1) Когнитивная обработка и структура
+- перевод хаотичного опыта в связный нарратив;
+- осмысление через причинно-следственные связи;
+- завершение переработки за счёт компактной истории.
+
+2) Эмоциональная регуляция
+- снижение руминации;
+- эффект экспозиции (привыкание);
+- уменьшение напряжения от подавления эмоций.
+
+3) Освобождение когнитивных ресурсов
+Навязчивые мысли занимают рабочую память; письмо помогает освободить внимание.
+
+4) Улучшения при регулярной практике
+- снижение тревоги и депрессивных симптомов;
+- улучшение самочувствия и устойчивости;
+- позитивные поведенческие эффекты.
+
+Нюанс: краткосрочный дискомфорт после письма возможен и считается нормальным.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '12 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-02', title: 'Встречи с письменными практиками: групповой эффект', shortDescription: 'Как группа усиливает эффект индивидуального письма.', fullDescription: `<pre style="white-space:pre-wrap">Групповой формат усиливает эффект письменных практик за счёт реляционного компонента.
+
+Ключевые эффекты:
+- самоисследование через обратную связь;
+- видение инаковости и развитие эмпатии;
+- формирование общности и снижения изоляции.
+
+Диалог в группе:
+- внешний диалог влияет на внутренний;
+- смыслы формируются в совместном обсуждении.
+
+Практический результат:
+- нормализация чувств;
+- безопасная среда для уязвимости;
+- поддержание дисциплины за счёт ритуала встреч.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '10 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-03', title: 'Терапевтический дневник: форматы и приватность', shortDescription: 'Форматы дневника и почему конфиденциальность критична.', fullDescription: `<pre style="white-space:pre-wrap">Терапевтический эффект возникает не от количества текста, а от качества переработки опыта.
+
+Рабочие форматы:
+- экспрессивное письмо (для стрессовых и трудных переживаний);
+- позитивное письмо (для ресурса и устойчивости);
+- best possible self (образ желаемого будущего).
+
+Что важно:
+- приватность повышает эффективность;
+- простое перечисление фактов без рефлексии даёт слабый эффект;
+- допустимы аудио/видеодневники при сохранении искренности.
+
+Практика: 15–20 минут, в безопасном месте, без цензуры и ожидания чужой оценки.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '11 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-04', title: 'Пять практик для новичка', shortDescription: 'Базовые форматы письменных практик с быстрым стартом.', fullDescription: `<pre style="white-space:pre-wrap">5 форматов для старта:
+1. Экспрессивное письмо (15–20 минут, 3–4 дня).
+2. Позитивное письмо (в том числе ультракороткие сессии).
+3. Лучшая возможная версия себя.
+4. Письма другим (без обязательной отправки).
+5. Анализ личного успеха.
+
+Общий принцип: глубина и регулярность важнее объёма. Приватность — обязательное условие.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '8 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-05', title: 'Доказательная база: уровни надёжности', shortDescription: 'Что подтверждено сильно, средне и где зона риска.', fullDescription: `<pre style="white-space:pre-wrap">Высокая надёжность:
+- улучшения для здоровых людей и при умеренном стрессе;
+- важны связная история и приватность.
+
+Средняя надёжность:
+- эффекты зависят от особенностей участника;
+- позитивное письмо может быть равноэффективной альтернативой.
+
+Низкая надёжность/риски:
+- тяжёлые клинические состояния без сопровождения;
+- свежее горе;
+- катарсис без осмысления.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '9 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-06', title: 'Механизмы действия и таблица «задача — формат»', shortDescription: 'Когнитивные механизмы и подбор практики под задачу.', fullDescription: `<pre style="white-space:pre-wrap">Ключевые механизмы:
+- когнитивная переработка;
+- эмоциональная регуляция;
+- психологическое дистанцирование;
+- смыслообразование;
+- освобождение рабочей памяти.
+
+Таблица «задача → формат»:
+- стресс: EW / positive writing / планирование;
+- разгрузка: письмо перед событием / транзакционное;
+- решения: структурированная рефлексия (DIEP), CEW;
+- фокус: письмо об успехе, mindful writing;
+- восстановление: связный нарратив + дистанцирование.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '10 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-07', title: 'Техника безопасности и красные флаги', shortDescription: 'Когда снижать интенсивность и когда направлять к специалисту.', fullDescription: `<pre style="white-space:pre-wrap">Критические противопоказания:
+- свежая травма (&lt; 4 недель),
+- тяжёлая депрессия,
+- тяжёлый ПТСР без сопровождения.
+
+Красные флаги:
+- эмоциональное затопление;
+- застревание в руминации;
+- сильное сопротивление;
+- ухудшение состояния на дни.
+
+Рекомендации ведущей:
+- право «стоп»;
+- структурированные форматы (CEW) вместо свободного погружения;
+- микродозирование и позитивные варианты;
+- направление к специалисту при стойком ухудшении.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '9 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-08', title: 'Мифы о письменных практиках', shortDescription: 'Частые заблуждения и как объяснять участницам.', fullDescription: `<pre style="white-space:pre-wrap">Разобраны мифы:
+1) «Достаточно выплеснуть эмоции» — нет, нужна когнитивная переработка.
+2) «Работает только через травму» — нет, позитивное письмо тоже эффективно.
+3) «Нужно писать часами» — нет, возможны короткие протоколы.
+4) «Текст обязательно должен кто-то читать» — нет, приватность повышает эффект.
+5) «Сразу станет легче» — возможен кратковременный дискомфорт.
+6) «Польза только через смену привычек» — есть прямой психофизиологический эффект.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '8 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-09', title: 'Протокол для специалистов: смысл и типология EW/CEW', shortDescription: 'Методологический протокол для ведущих и специалистов.', fullDescription: `<pre style="white-space:pre-wrap">Протокол для специалистов:
+- опора на эвдемоническое благополучие и поиск смысла;
+- различение EW (выражение) и CEW (осмысление + дистанцирование);
+- модель A-to-D: перевод хаоса опыта в структурированный текст;
+- обязательные правила безопасности и скрининга;
+- алгоритм сессии: настройка → инструкция → письмо → метарефлексия.
+
+Практический вывод:
+письмо — не «исповедь», а технология сборки личного нарратива и устойчивой рефлексии.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '12 мин', categoryId: 'writing_research', categoryTitle: 'Исследования о письменных практиках', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-10', title: 'Техника безопасности при работе с письменными практиками', shortDescription: 'Расширенные рекомендации по безопасности для ведущих.', fullDescription: `<pre style="white-space:pre-wrap">Дополнительные рекомендации к технике безопасности:
+- главный ориентир: практика должна «собирать», а не «расшатывать»;
+- противопоказания для самостоятельной глубокой практики;
+- подготовка пространства, времени и поддержки;
+- жёсткое правило приватности текста;
+- шкала дистресса 0–10 и выбор интенсивности формата;
+- ресурсные упражнения до и после сложных тем;
+- принцип «НЕ НАСИЛУЙТЕ СЕБЯ».
+
+Это расширение к уроку по безопасности, с акцентом на действия ведущей.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '11 мин', categoryId: 'safety', categoryTitle: 'Техника безопасности', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        { id: 'cnt-lib-11', title: 'Семь мифов о письменных практиках: полный разбор для ведущей', shortDescription: 'Полная версия разбора мифов с готовыми формулировками для гостий.', fullDescription: `<pre style="white-space:pre-wrap">Полный разбор 7 мифов:
+1) «Не умею красиво писать»;
+2) «Главное — выплеснуть»;
+3) «Работает только через негатив»;
+4) «Нужно писать часами»;
+5) «Текст должен кто-то прочитать»;
+6) «После практики сразу станет легко»;
+7) «Письмо помогает только через смену привычек».
+
+Материал содержит готовые объяснения для ведущей в разговоре с участницами.</pre>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '10 мин', categoryId: 'myths', categoryTitle: 'Мифы и объяснения', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
+        {
+            id: 'cnt-m0-v1',
+            title: 'Урок 1. Письменные практики — ключ к осознанной жизни',
+            shortDescription: 'Видео и конспект: зачем письменные практики и как они связаны с осознанной жизнью.',
+            fullDescription: '<p><strong>Конспект первого урока.</strong> Письменные практики помогают структурировать опыт, снижать руминацию и прояснять ценности. После просмотра сформулируйте одну гипотезу: что вы хотите проверить практикой на ближайшую неделю.</p><ul><li>Связь письма, эмоций и ясности;</li><li>Безопасность и приватность текста;</li><li>Микрошаг после урока.</li></ul>',
+            contentType: CONTENT_TYPE.VIDEO,
+            lessonKind: 'text_video',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonVideoEmbed: '<iframe src="https://kinescope.io/embed/m0-lesson-1" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>',
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '25 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 12,
+            tags: ['модуль 0', 'видео', 'конспект'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-q1',
+            title: 'Тест после урока 1',
+            shortDescription: 'Проверка базовых идей после первого видео.',
+            fullDescription: '<p>Ответьте на вопросы по материалу урока 1. Порог зачёта: 70%.</p>',
+            contentType: CONTENT_TYPE.CHECKLIST,
+            lessonKind: 'quiz',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonQuiz: {
+                instruction: 'Выберите один верный вариант в каждом вопросе.',
+                settings: { attempts: 2, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
+                questions: [
+                    {
+                        id: 'm0q1-q1',
+                        type: 'single',
+                        text: 'Что из перечисленного ближе всего к роли письменных практик в курсе?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q1-q1-a', text: 'Инструмент структурирования опыта и ясности', isCorrect: true },
+                            { id: 'm0q1-q1-b', text: 'Замена личной терапии у специалиста', isCorrect: false },
+                            { id: 'm0q1-q1-c', text: 'Обязательная публикация текста для оценки', isCorrect: false },
+                        ],
+                    },
+                    {
+                        id: 'm0q1-q2',
+                        type: 'single',
+                        text: 'Почему приватность текста обычно усиливает эффект практики?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q1-q2-a', text: 'Снижается страх оценки и проще говорить правду себе', isCorrect: true },
+                            { id: 'm0q1-q2-b', text: 'Текст без читателя теряет смысл', isCorrect: false },
+                            { id: 'm0q1-q2-c', text: 'Так требует любой публичный блог', isCorrect: false },
+                        ],
+                    },
+                ],
+            },
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '10 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 13,
+            tags: ['модуль 0', 'тест'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-v2',
+            title: 'Урок 2. Виды и типы письменных практик',
+            shortDescription: 'Видео и конспект: как отличать форматы и подбирать практику под задачу.',
+            fullDescription: '<p><strong>Конспект второго урока.</strong> Письменные практики различаются по цели, интенсивности и контексту (индивидуально / в группе). Важно не смешивать «письменные» и «писательские» практики.</p><ul><li>Базовые типы и сигналы «когда что уместно»;</li><li>Экспрессивное и ресурсное письмо — разные задачи;</li><li>Короткая самопроверка: какой формат выбрать сегодня?</li></ul>',
+            contentType: CONTENT_TYPE.VIDEO,
+            lessonKind: 'text_video',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonVideoEmbed: '<iframe src="https://kinescope.io/embed/m0-lesson-2" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>',
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '25 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 14,
+            tags: ['модуль 0', 'видео', 'конспект'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-q2',
+            title: 'Тест после урока 2',
+            shortDescription: 'Виды и типы практик.',
+            fullDescription: '<p>Вопросы по уроку 2. Порог зачёта: 70%.</p>',
+            contentType: CONTENT_TYPE.CHECKLIST,
+            lessonKind: 'quiz',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonQuiz: {
+                instruction: 'Выберите один верный вариант в каждом вопросе.',
+                settings: { attempts: 2, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
+                questions: [
+                    {
+                        id: 'm0q2-q1',
+                        type: 'single',
+                        text: 'Что верно про «письменные» и «писательские» практики?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q2-q1-a', text: 'Это разные направления; в курсе фокус на письменных практиках самопознания', isCorrect: true },
+                            { id: 'm0q2-q1-b', text: 'Это синонимы, разницы нет', isCorrect: false },
+                            { id: 'm0q2-q1-c', text: 'Писательские практики обязательны для сертификации вместо письменных', isCorrect: false },
+                        ],
+                    },
+                    {
+                        id: 'm0q2-q2',
+                        type: 'single',
+                        text: 'Зачем обычно различают форматы по «интенсивности»?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q2-q2-a', text: 'Чтобы подобрать глубину и безопасность под состояние участницы', isCorrect: true },
+                            { id: 'm0q2-q2-b', text: 'Чтобы все практики длились ровно 60 минут', isCorrect: false },
+                            { id: 'm0q2-q2-c', text: 'Чтобы исключить групповой формат', isCorrect: false },
+                        ],
+                    },
+                ],
+            },
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '10 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 15,
+            tags: ['модуль 0', 'тест'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-v3',
+            title: 'Урок 3. Сила практик: как понять себя лучше?',
+            shortDescription: 'Видео и конспект: самопознание через письмо и опорные вопросы.',
+            fullDescription: '<p><strong>Конспект третьего урока.</strong> Практики усиливают самонаблюдение: мы учимся замечать паттерны, эмоции и смыслы. Важны регулярность и честность без излишнего давления.</p><ul><li>Когнитивная переработка vs простое «выплеснуть»;</li><li>Малые сессии лучше редких марафонов;</li><li>Один вопрос для рефлексии после урока.</li></ul>',
+            contentType: CONTENT_TYPE.VIDEO,
+            lessonKind: 'text_video',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonVideoEmbed: '<iframe src="https://kinescope.io/embed/m0-lesson-3" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>',
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '25 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 16,
+            tags: ['модуль 0', 'видео', 'конспект'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-q3',
+            title: 'Тест после урока 3',
+            shortDescription: 'Сила практик и самопознание.',
+            fullDescription: '<p>Вопросы по уроку 3. Порог зачёта: 70%.</p>',
+            contentType: CONTENT_TYPE.CHECKLIST,
+            lessonKind: 'quiz',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonQuiz: {
+                instruction: 'Выберите один верный вариант в каждом вопросе.',
+                settings: { attempts: 2, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
+                questions: [
+                    {
+                        id: 'm0q3-q1',
+                        type: 'single',
+                        text: 'Что важнее для устойчивого эффекта письменных практик?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q3-q1-a', text: 'Регулярность и честность переработки, а не разовый «катарсис»', isCorrect: true },
+                            { id: 'm0q3-q1-b', text: 'Только объём текста за один раз', isCorrect: false },
+                            { id: 'm0q3-q1-c', text: 'Обязательное чтение текста вслух группе', isCorrect: false },
+                        ],
+                    },
+                    {
+                        id: 'm0q3-q2',
+                        type: 'single',
+                        text: 'Как письмо может помочь «понять себя лучше»?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q3-q2-a', text: 'Через структурирование мыслей и увиденные закономерности', isCorrect: true },
+                            { id: 'm0q3-q2-b', text: 'Только если текст оценит эксперт', isCorrect: false },
+                            { id: 'm0q3-q2-c', text: 'Исключительно через исправление орфографии', isCorrect: false },
+                        ],
+                    },
+                ],
+            },
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '10 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 17,
+            tags: ['модуль 0', 'тест'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-v4',
+            title: 'Урок 4. Интеграция практик в повседневную жизнь',
+            shortDescription: 'Видео и конспект: как не бросить практику после курса.',
+            fullDescription: '<p><strong>Конспект четвёртого урока.</strong> Интеграция — это микродозы, триггеры-напоминания и бережные ожидания. Свяжите практику с уже существующими ритуалами (утро, дорога, вечер).</p><ul><li>План на 7 дней: когда и где 10–15 минут;</li><li>Сигнал «стоп», если перегруз;</li><li>Поддержка среды и договорённость с собой.</li></ul>',
+            contentType: CONTENT_TYPE.VIDEO,
+            lessonKind: 'text_video',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonVideoEmbed: '<iframe src="https://kinescope.io/embed/m0-lesson-4" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>',
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '25 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 18,
+            tags: ['модуль 0', 'видео', 'конспект'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        {
+            id: 'cnt-m0-q4',
+            title: 'Тест после урока 4',
+            shortDescription: 'Интеграция практик в жизнь.',
+            fullDescription: '<p>Вопросы по уроку 4. Порог зачёта: 70%.</p>',
+            contentType: CONTENT_TYPE.CHECKLIST,
+            lessonKind: 'quiz',
+            targetSection: 'library',
+            targetRole: 'both',
+            targetCohort: 'cohort-2026-1',
+            lessonQuiz: {
+                instruction: 'Выберите один верный вариант в каждом вопросе.',
+                settings: { attempts: 2, passPercent: 70, showCorrectAfterSubmit: true, showResultImmediately: true, shuffleOptions: false },
+                questions: [
+                    {
+                        id: 'm0q4-q1',
+                        type: 'single',
+                        text: 'Что лучше поддерживает интеграцию практики в быт?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q4-q1-a', text: 'Привязка к уже существующему ритуалу и реалистичный тайминг', isCorrect: true },
+                            { id: 'm0q4-q1-b', text: 'Писать только в состоянии выгорания «на износ»', isCorrect: false },
+                            { id: 'm0q4-q1-c', text: 'Отказ от сна в пользу длинных сессий', isCorrect: false },
+                        ],
+                    },
+                    {
+                        id: 'm0q4-q2',
+                        type: 'single',
+                        text: 'Зачем нужен личный сигнал «стоп» в практике?',
+                        points: 1,
+                        options: [
+                            { id: 'm0q4-q2-a', text: 'Чтобы снизить риск перегруза и уважать границы', isCorrect: true },
+                            { id: 'm0q4-q2-b', text: 'Чтобы никогда не заканчивать текст', isCorrect: false },
+                            { id: 'm0q4-q2-c', text: 'Чтобы обязать группу читать дневник', isCorrect: false },
+                        ],
+                    },
+                ],
+            },
+            status: CONTENT_STATUS.PUBLISHED,
+            visibility: 'by_cohort',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '10 мин',
+            categoryId: 'mod0_writing',
+            categoryTitle: 'Модуль 0: типы и виды письменных практик',
+            orderIndex: 19,
+            tags: ['модуль 0', 'тест'],
+            createdBy: 'u-adm-1',
+            createdAt: now,
+            updatedAt: now,
+        },
+        { id: 'cnt-glo-01', title: 'Глоссарий курса', shortDescription: 'Базовые термины курса ПВЛ.', fullDescription: `<h3>Термины курса</h3>
+<table>
+  <thead>
+    <tr><th>Термин</th><th>Расшифровка</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Артефакт встречи</td><td>То, что остается у участницы после встречи (и то, что можно потрогать/пощупать) - списки, планы, шаги.</td></tr>
+    <tr><td>Встреча с письменными практиками</td><td>Групповой формат с доминированием письма и тишины (соотношение письма и разговоров - 70/30), не лекция и не терапия. Встреча - это совокупность письменных практик, выстроенных в определенной структуре. Письменная практика - это одна часть встречи. Мы - ведущие встреч с письменными практиками. Неверно: ведущие письменных практик, приглашаю вас на письменную практику.</td></tr>
+    <tr><td>Жизненный цикл встречи</td><td>От идеи и анонса до пост-промо и следующего шага.</td></tr>
+    <tr><td>Завтрак</td><td>Устоявшееся название формата встречи в сообществе.</td></tr>
+    <tr><td>Инструкция к практике</td><td>Объяснение того, как будет выполняться практика: короткая, &lt;=30 слов, ясные шаги и пример того, как будет выглядеть результат.</td></tr>
+    <tr><td>Кейс</td><td>Ситуация из практики ведущих Лиги, обычно поделена на две части: что происходило и как поступила ведущая.</td></tr>
+    <tr><td>Намерения</td><td>2-3 конкретных шага после встречи у каждой участницы.</td></tr>
+    <tr><td>Настройка</td><td>Вход в тему: заземление, дыхание, короткая медитация и т.п.</td></tr>
+    <tr><td>Писательские практики</td><td>Практики, которые подходят начинающим писателям. Важно не путать письменные и писательские практики.</td></tr>
+    <tr><td>Правило «стоп»</td><td>Право не продолжать тему / не делиться текстом.</td></tr>
+    <tr><td>Результат встречи</td><td>Замысел: что участницы уносят (инсайт, ясность, шаги, состояние) - не дублируем отдельными терминами «смысловой/физический».</td></tr>
+    <tr><td>Рефлексивный отклик</td><td>Осмысление после практики (письменно / в паре / в кругу).</td></tr>
+    <tr><td>Руминация</td><td>Повторяющееся, навязчивое прокручивание в голове тревожных или неприятных мыслей, воспоминаний и переживаний «по кругу», без движения к решению или ясности.</td></tr>
+    <tr><td>Сборный завтрак</td><td>Практикум: части встречи ведут ученицы по очереди, остальные - гости.</td></tr>
+    <tr><td>Сертификационный завтрак (СЗ)</td><td>Финальная встреча для проверки соответствия стандарту; запись, самооценка, оценка ментора.</td></tr>
+    <tr><td>Сценарий встречи</td><td>Пошаговый план встречи: вход -&gt; настройка -&gt; цепочка практик -&gt; рефлексивный отклик -&gt; шеринг -&gt; завершение.</td></tr>
+    <tr><td>Техника безопасности</td><td>Правила для ведущей и группы: на что необходимо обращать внимание, границы роли ведущей.</td></tr>
+    <tr><td>Тренировочный завтрак</td><td>Полная встреча по критериям сертификационного завтрака с разбором ментора.</td></tr>
+    <tr><td>Шеринг</td><td>Этап, на котором участницы по очереди делятся устно тем, что написали, или своим откликом на практику - по желанию и в рамках правил безопасности. Выполняется по желанию, в кругу или в малых группах, с уважением к таймингу. Шеринг - не лекция и не групповая терапия: ведущая не комментирует личное содержание как эксперт, а держит формат, время и безопасное пространство.</td></tr>
+  </tbody>
+</table>`, contentType: CONTENT_TYPE.TEXT, status: CONTENT_STATUS.PUBLISHED, visibility: 'by_cohort', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '9 мин', createdBy: 'u-adm-1', createdAt: now, updatedAt: now },
     ],
     contentPlacements: [
         { id: 'pl-1', contentItemId: 'cnt-1', targetSection: 'about', targetRole: ROLES.STUDENT, cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 1, isPublished: true, createdAt: now, updatedAt: now },
@@ -245,6 +713,26 @@ export const seed = {
         { id: 'pl-3', contentItemId: 'cnt-2', targetSection: 'practicums', targetRole: ROLES.MENTOR, cohortId: 'cohort-2026-1', weekNumber: 6, moduleNumber: 2, orderIndex: 1, isPublished: false, createdAt: now, updatedAt: now },
         { id: 'pl-4', contentItemId: 'cnt-1', targetSection: 'certification', targetRole: ROLES.STUDENT, cohortId: 'cohort-2026-1', weekNumber: 10, moduleNumber: 4, orderIndex: 1, isPublished: true, createdAt: now, updatedAt: now },
         { id: 'pl-5', contentItemId: 'cnt-1', targetSection: 'cultural_code', targetRole: ROLES.STUDENT, cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 1, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-01', contentItemId: 'cnt-lib-01', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 101, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-02', contentItemId: 'cnt-lib-02', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 102, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-03', contentItemId: 'cnt-lib-03', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 103, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-04', contentItemId: 'cnt-lib-04', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 104, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-05', contentItemId: 'cnt-lib-05', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 105, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-06', contentItemId: 'cnt-lib-06', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 106, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-07', contentItemId: 'cnt-lib-07', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 107, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-08', contentItemId: 'cnt-lib-08', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 108, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-09', contentItemId: 'cnt-lib-09', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 109, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-10', contentItemId: 'cnt-lib-10', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 110, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-lib-11', contentItemId: 'cnt-lib-11', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 111, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-v1', contentItemId: 'cnt-m0-v1', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 12, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-q1', contentItemId: 'cnt-m0-q1', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 13, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-v2', contentItemId: 'cnt-m0-v2', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 14, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-q2', contentItemId: 'cnt-m0-q2', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 15, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-v3', contentItemId: 'cnt-m0-v3', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 16, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-q3', contentItemId: 'cnt-m0-q3', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 17, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-v4', contentItemId: 'cnt-m0-v4', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 18, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-m0-q4', contentItemId: 'cnt-m0-q4', targetSection: 'library', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 19, isPublished: true, createdAt: now, updatedAt: now },
+        { id: 'pl-glo-01', contentItemId: 'cnt-glo-01', targetSection: 'glossary', targetRole: 'both', cohortId: 'cohort-2026-1', weekNumber: 0, moduleNumber: 0, orderIndex: 1, isPublished: true, createdAt: now, updatedAt: now },
     ],
     certificationProgress: [
         { id: 'cert-1', studentId: 'u-st-1', guestPlanStatus: 'in_progress', trialBreakfastStatus: 'pending', szRecordingStatus: 'not_started', szSelfAssessmentStatus: 'not_started', szMentorAssessmentStatus: 'not_started', certificationPackageStatus: 'not_started', admissionStatus: CERTIFICATION_STATUS.IN_PROGRESS, redFlags: [], deadlineAt: SCORE_RULES.SZ_RECORDING_DEADLINE, createdAt: now, updatedAt: now },
@@ -258,6 +746,35 @@ export const seed = {
         { id: 'risk-4b', studentId: 'u-st-4', relatedTaskId: 'task-6', relatedControlPointId: null, relatedMeetingId: null, riskType: 'deadline_overdue', riskLevel: RISK_LEVEL.MEDIUM, title: 'Доработка просрочена', description: 'Долго на доработке', daysOverdue: 28, recommendedAction: 'Проверить план', isResolved: false, createdAt: now, updatedAt: now },
     ],
     dashboardWidgets: DEFAULT_WIDGETS,
+    directMessages: [
+        {
+            id: 'dm-1',
+            mentorId: 'u-men-1',
+            studentId: 'u-st-1',
+            authorUserId: 'u-men-1',
+            text: 'Привет! Если нужно, разберем черновик до отправки.',
+            createdAt: '2026-06-01T10:15:00.000Z',
+            updatedAt: '2026-06-01T10:15:00.000Z',
+        },
+        {
+            id: 'dm-2',
+            mentorId: 'u-men-1',
+            studentId: 'u-st-1',
+            authorUserId: 'u-st-1',
+            text: 'Да, спасибо! Отправлю новую версию вечером.',
+            createdAt: '2026-06-01T10:27:00.000Z',
+            updatedAt: '2026-06-01T10:27:00.000Z',
+        },
+        {
+            id: 'dm-3',
+            mentorId: 'u-men-1',
+            studentId: 'u-st-2',
+            authorUserId: 'u-st-2',
+            text: 'Подскажите, пожалуйста, что поправить в структуре сценария.',
+            createdAt: '2026-06-02T08:40:00.000Z',
+            updatedAt: '2026-06-02T08:40:00.000Z',
+        },
+    ],
     faqItems: [
         { id: 'faq-1', title: 'Как получить баллы?', answer: 'Закрывать модули, КТ и сдавать в срок.', targetRole: ROLES.STUDENT, orderIndex: 1 },
         { id: 'faq-2', title: 'Где комментарии ментора?', answer: 'В разделе Результаты и карточке задания.', targetRole: ROLES.STUDENT, orderIndex: 2 },

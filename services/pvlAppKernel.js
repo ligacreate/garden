@@ -1,11 +1,7 @@
 const SESSION_KEY = 'pvl_app_session_v1';
 const PREFS_KEY = 'pvl_view_prefs_v1';
 
-/**
- * Режим приёмки ПВЛ: маршруты ученицы / ментора / учительской доступны независимо от текущей роли в сессии.
- * Отключить позже: заменить на false и вернуть строгую проверку.
- */
-export const PVL_REVIEW_NAV_UNLOCK = true;
+export const PVL_REVIEW_NAV_UNLOCK = false;
 
 export const ROUTE_ACCESS_MAP = Object.freeze({
     student: ['/student/'],
@@ -50,9 +46,9 @@ const PVL_COURSE_SIDEBAR_LABELS = [
     'Библиотека курса',
     'Трекер курса',
     'Практикумы с менторами',
+    'Коммуникации',
     'Результаты',
     'Сертификация и самооценка',
-    'Вопросы и ответы',
 ];
 
 export function buildSidebarByRole(role) {
@@ -63,7 +59,7 @@ export function buildSidebarByRole(role) {
             'Менторы',
             'Материалы курса',
             'Календарь',
-            ...PVL_COURSE_SIDEBAR_LABELS,
+            ...PVL_COURSE_SIDEBAR_LABELS.filter((label) => label !== 'Коммуникации'),
             'Настройки',
         ];
     }
@@ -136,12 +132,12 @@ export function getAllRoutes() {
         '/student/lessons',
         '/student/tracker',
         '/student/practicums',
+        '/student/messages',
         '/student/checklist',
         '/student/results',
         '/student/results/:taskId',
         '/student/certification',
         '/student/self-assessment',
-        '/student/qa',
         '/student/settings',
         '/student/cultural-code',
         '/mentor/dashboard',
@@ -155,11 +151,11 @@ export function getAllRoutes() {
         '/mentor/tracker',
         '/mentor/lessons',
         '/mentor/practicums',
+        '/mentor/messages',
         '/mentor/checklist',
         '/mentor/results',
         '/mentor/certification',
         '/mentor/self-assessment',
-        '/mentor/qa',
         '/mentor/cultural-code',
         '/mentor/materials',
         '/mentor/settings',
@@ -183,8 +179,6 @@ export function getAllRoutes() {
         '/admin/results/:taskId',
         '/admin/certification',
         '/admin/self-assessment',
-        '/admin/qa',
-        '/admin/questions',
         '/admin/settings',
         '/qa',
         '/debug/qa',

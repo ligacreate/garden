@@ -7,6 +7,7 @@ import { api } from '../services/dataService';
 import DOMPurify from 'dompurify';
 import { clearAppSession, getHomeRouteByRole, loadAppSession, saveAppSession } from '../services/pvlAppKernel';
 import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
+import { canSeePvlInGarden, resolvePvlRoleFromGardenProfile } from '../services/pvlRoleResolver';
 import {
     buildGardenPvlAdminNav,
     buildGardenPvlMentorNav,
@@ -134,18 +135,6 @@ const COURSES = [
 /** id карточки входа в ПВЛ в списке курсов библиотеки */
 const PVL_ENTRY_COURSE_ID = 6;
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
-const AI_CAMP_MENTOR_PIN = "1234";
-const AI_CAMP_STUDENT_PIN = "1111";
-/** Отдельный PIN для роли admin внутри ПВЛ (учительская / контент) — не путать с «Админкой» всего сада */
-const AI_CAMP_ADMIN_PIN = "2222";
-
-/** Роль в саду → роль в прототипе ПВЛ (иерархия из utils/roles). */
-function mapGardenRoleToAlCampPvlRole(role) {
-    if (!role) return 'student';
-    if (role === ROLES.ADMIN) return 'admin';
-    if (hasAccess(role, ROLES.MENTOR)) return 'mentor';
-    return 'student';
-}
 
 function normalizeStyledHtmlToSemantic(html) {
     const parser = new DOMParser();
@@ -215,10 +204,6 @@ const CourseLibraryView = ({
     const [selectedCourseId, setSelectedCourseId] = useState(null);
     const [selectedTag, setSelectedTag] = useState('Все');
     const [selectedMaterial, setSelectedMaterial] = useState(null);
-    const [aiCampRole, setAiCampRole] = useState('student');
-    const [aiCampName, setAiCampName] = useState('');
-    const [aiCampPin, setAiCampPin] = useState('');
-    const [aiCampError, setAiCampError] = useState('');
     const [aiCampSession, setAiCampSession] = useState(() => {
         try {
             const raw = localStorage.getItem(AI_CAMP_SESSION_KEY);
@@ -374,6 +359,8 @@ const CourseLibraryView = ({
     };
 
     const role = user?.role || ROLES.APPLICANT;
+    const pvlResolvedRole = resolvePvlRoleFromGardenProfile(user);
+    const canSeePvlCourse = canSeePvlInGarden(user);
     const hiddenCourses = librarySettings?.hiddenCourses || [];
     const materialOrder = librarySettings?.materialOrder || {};
 
@@ -388,13 +375,14 @@ const CourseLibraryView = ({
             });
 
         return COURSES.filter((course) => {
+            if (course.id === PVL_ENTRY_COURSE_ID && !canSeePvlCourse) return false;
             if (!hasAccess(role, course.minRole)) return false;
             if (hiddenCourses.includes(course.title)) return false;
             if (course.hidden) return false;
             if (!course.hideWhenEmpty) return true;
             return (materialsCountByCourse.get(course.title) || 0) > 0;
         });
-    }, [hiddenCourses, knowledgeBase, role]);
+    }, [canSeePvlCourse, hiddenCourses, knowledgeBase, role]);
 
     const filteredCourses = useMemo(() => {
         return availableCourses
@@ -460,8 +448,6 @@ const CourseLibraryView = ({
         setSelectedCourseId(null);
         setSelectedTag('Все');
         setSelectedMaterial(null);
-        setAiCampPin('');
-        setAiCampError('');
     }, [resetToken]);
 
     useEffect(() => {
@@ -471,6 +457,14 @@ const CourseLibraryView = ({
         setSelectedTag('Все');
         setSelectedMaterial(null);
     }, [availableCourses, selectedCourseId]);
+    useEffect(() => {
+        if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) return;
+        if (canSeePvlCourse) return;
+        setSelectedCourseId(null);
+        setSelectedTag('Все');
+        setSelectedMaterial(null);
+        onBackToGarden?.();
+    }, [canSeePvlCourse, onBackToGarden, selectedCourse?.id]);
 
     const totalCount = selectedCourse ? courseMaterials.length : 0;
 
@@ -520,9 +514,12 @@ const CourseLibraryView = ({
     );
     const syncPvlSessionFromAlCamp = (session) => {
         if (!session) return;
+        if (!session.role) return;
         const pvlRole = session.role === 'mentor' ? 'mentor' : session.role === 'admin' ? 'admin' : 'student';
         const prev = loadAppSession();
-        if (prev?.role === pvlRole) return;
+        const rolePrefix = `/${pvlRole}/`;
+        const prevRouteMatchesRole = String(prev?.route || '').startsWith(rolePrefix);
+        if (prev?.role === pvlRole && prevRouteMatchesRole) return;
         const actingUserId = pvlRole === 'mentor' ? 'u-men-1' : pvlRole === 'admin' ? 'u-adm-1' : 'u-st-1';
         saveAppSession({
             role: pvlRole,
@@ -536,7 +533,7 @@ const CourseLibraryView = ({
     };
 
     const buildGardenAlCampSession = (u) => ({
-        role: mapGardenRoleToAlCampPvlRole(u.role),
+        role: resolvePvlRoleFromGardenProfile(u),
         name: (u.name && String(u.name).trim()) || u.email || 'Участник',
         linkedUserId: u.id,
         authSource: 'garden',
@@ -546,6 +543,11 @@ const CourseLibraryView = ({
         if (!user?.id) return;
         setGardenCampPaused(false);
         const next = buildGardenAlCampSession(user);
+        if (!next?.role || next.role === 'no_access') {
+            setAiCampSession(null);
+            clearAppSession();
+            return;
+        }
         setAiCampSession(next);
         try {
             localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(next));
@@ -555,37 +557,8 @@ const CourseLibraryView = ({
         syncPvlSessionFromAlCamp(next);
     };
 
-    const handleAiCampLogin = (e) => {
-        e.preventDefault();
-        const expectedPin = aiCampRole === 'mentor'
-            ? AI_CAMP_MENTOR_PIN
-            : aiCampRole === 'admin'
-                ? AI_CAMP_ADMIN_PIN
-                : AI_CAMP_STUDENT_PIN;
-        if (aiCampPin !== expectedPin) {
-            const roleLabel = aiCampRole === 'mentor' ? 'Ментор' : aiCampRole === 'admin' ? 'Администратор курса' : 'Ученик';
-            setAiCampError(`Неверный код для роли «${roleLabel}».`);
-            return;
-        }
-        const defaultName = aiCampRole === 'mentor' ? 'Ментор' : aiCampRole === 'admin' ? 'Администратор курса' : 'Ученик';
-        const session = {
-            role: aiCampRole,
-            name: aiCampName?.trim() || defaultName,
-            authSource: 'pin',
-        };
-        setAiCampSession(session);
-        localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(session));
-        syncPvlSessionFromAlCamp(session);
-        setGardenCampPaused(false);
-        setAiCampError('');
-        setAiCampPin('');
-    };
-
     const handleAiCampLogout = useCallback(() => {
         setAiCampSession(null);
-        setAiCampName('');
-        setAiCampPin('');
-        setAiCampError('');
         setGardenCampPaused(true);
         localStorage.removeItem(AI_CAMP_SESSION_KEY);
         clearAppSession();
@@ -669,6 +642,11 @@ const CourseLibraryView = ({
     useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !user?.id || gardenCampPaused) return;
         const next = buildGardenAlCampSession(user);
+        if (!next?.role || next.role === 'no_access') {
+            setAiCampSession(null);
+            clearAppSession();
+            return;
+        }
         setAiCampSession((prev) => {
             if (prev?.authSource === 'garden' && prev.linkedUserId === user.id && prev.role === next.role) {
                 return prev;
@@ -687,7 +665,7 @@ const CourseLibraryView = ({
             <div className="flex justify-between items-end mb-10">
                 <div>
                     <h1 className="text-4xl font-light text-slate-800 tracking-tight">{selectedCourse ? selectedCourse.title : 'Библиотека'}</h1>
-                    <p className="text-slate-400 mt-1 font-light">{selectedCourse ? 'Материалы курса' : 'Обучающие материалы и курсы'}</p>
+                    {!selectedCourse ? <p className="text-slate-400 mt-1 font-light">Обучающие материалы и курсы</p> : null}
                 </div>
                 {selectedCourse?.id !== PVL_ENTRY_COURSE_ID ? (
                     <div className="text-right hidden md:block">
@@ -764,7 +742,7 @@ const CourseLibraryView = ({
                     ))}
                 </div>
             ) : selectedCourse.id === PVL_ENTRY_COURSE_ID ? (
-                <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/50">
+                <div className="min-w-0 w-full rounded-[2rem] p-5 sm:p-7 bg-transparent shadow-none border-0 ring-0 outline-none">
                     {!aiCampSession && (
                         <div className="flex justify-end mb-4">
                             <Button variant="secondary" onClick={onBackToGarden}>Вернуться к саду</Button>
@@ -777,69 +755,25 @@ const CourseLibraryView = ({
                                 <Button variant="primary" type="button" onClick={handleGardenCampResume}>Войти снова по роли в саду</Button>
                             </div>
                         ) : !user ? (
-                            <form onSubmit={handleAiCampLogin} className="max-w-xl mx-auto">
-                                <div className="text-2xl font-medium text-slate-900 mb-2">Вход в курс «{PVL_COURSE_DISPLAY_NAME}»</div>
-                                <div className="text-sm text-slate-500 mb-5">Выберите роль и введите код доступа (если нет входа в сад).</div>
-
-                                <div className="flex flex-wrap gap-2 mb-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setAiCampRole('student')}
-                                        className={`px-4 py-2 rounded-full text-sm ${aiCampRole === 'student' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
-                                    >
-                                        Ученик
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAiCampRole('mentor')}
-                                        className={`px-4 py-2 rounded-full text-sm ${aiCampRole === 'mentor' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
-                                    >
-                                        Ментор
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAiCampRole('admin')}
-                                        className={`px-4 py-2 rounded-full text-sm ${aiCampRole === 'admin' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
-                                        title="Учительская ПВЛ, контент и потоки (не «Админка» всего сада)"
-                                    >
-                                        Админ курса
-                                    </button>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <input
-                                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                                        placeholder={aiCampRole === 'mentor' ? 'Имя ментора' : aiCampRole === 'admin' ? 'Имя или подпись' : 'Имя ученика'}
-                                        value={aiCampName}
-                                        onChange={(e) => setAiCampName(e.target.value)}
-                                    />
-                                    <input
-                                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                                        type="password"
-                                        placeholder="Код доступа"
-                                        value={aiCampPin}
-                                        onChange={(e) => setAiCampPin(e.target.value)}
-                                    />
-                                </div>
-                                {aiCampError && <div className="text-sm text-rose-600 mt-3">{aiCampError}</div>}
-                                <div className="text-xs text-slate-400 mt-2">
-                                    Демо-коды: ученик — {AI_CAMP_STUDENT_PIN}, ментор — {AI_CAMP_MENTOR_PIN}, админ курса — {AI_CAMP_ADMIN_PIN}
-                                </div>
-                                <div className="mt-4">
-                                    <Button variant="primary" type="submit">Войти в систему</Button>
-                                </div>
-                            </form>
+                            <div className="max-w-xl mx-auto text-center py-10 space-y-3">
+                                <div className="text-2xl font-medium text-slate-900">Вход в курс «{PVL_COURSE_DISPLAY_NAME}»</div>
+                                <div className="text-sm text-slate-500">Доступ к ПВЛ определяется только по роли в учетной записи САДА.</div>
+                                <Button variant="secondary" onClick={onBackToGarden}>Вернуться в САД</Button>
+                            </div>
                         ) : (
                             <div className="max-w-xl mx-auto text-center py-10 space-y-2">
                                 <div className="text-slate-500 text-sm">Подключение к курсу по роли в вашем профиле сада…</div>
                                 <div className="text-xs text-slate-400">
-                                    Роль в курсе: <span className="font-medium text-slate-600">{mapGardenRoleToAlCampPvlRole(user.role)}</span>
-                                    {' '}(из учётной записи, без PIN)
+                                    Роль в курсе:{' '}
+                                    <span className="font-medium text-slate-600">
+                                        {pvlResolvedRole === 'admin' ? 'admin' : pvlResolvedRole === 'mentor' ? 'mentor' : pvlResolvedRole === 'student' ? 'student' : 'нет доступа'}
+                                    </span>
+                                    {' '}(из учётной записи САДА)
                                 </div>
                             </div>
                         )
                     ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
                                 <div className="text-sm text-slate-500">
                                     {aiCampSession.name}
@@ -847,7 +781,7 @@ const CourseLibraryView = ({
                                     {aiCampSession.role === 'mentor' ? 'Ментор' : aiCampSession.role === 'admin' ? 'Администратор курса' : 'Ученик'}
                                 </div>
                             </div>
-                            <div className="rounded-[2rem] border border-[#E8D5C4]/40 overflow-hidden bg-white/90 -mx-2 px-2 py-3 md:px-4 max-w-[100vw]">
+                            <div className="min-w-0 w-full">
                                 <PvlErrorBoundary
                                     onExit={handleAiCampLogout}
                                     onReset={() => setPvlResetKey((k) => k + 1)}
@@ -857,12 +791,14 @@ const CourseLibraryView = ({
                                     )}
                                     >
                                         <PvlPrototypeApp
-                                            key={`${pvlResetKey}-al-camp`}
+                                            key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.linkedUserId || 'anon'}`}
                                             embeddedInGarden
+                                            gardenResolvedRole={pvlResolvedRole}
                                             gardenBridgeRef={gardenPvlBridgeRef}
                                             onGardenRouteChange={setPvlGardenRoute}
                                             onGardenExit={onBackToGarden}
                                             onEmbeddedDemoRoleChange={handleEmbeddedPvlDemoRoleChange}
+                                            hideEmbeddedRoleSwitch={pvlResolvedRole !== 'admin'}
                                         />
                                     </Suspense>
                                 </PvlErrorBoundary>

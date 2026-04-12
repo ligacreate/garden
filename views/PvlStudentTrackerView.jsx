@@ -1,6 +1,56 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL } from '../data/pvlReferenceContent';
+import { buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
+
+function moduleStepsProgress(mod, checked) {
+    let done = 0;
+    mod.items.forEach((item, i) => {
+        const key = trackerStepKey(mod.id, item, i);
+        if (checked[key]) done += 1;
+    });
+    return { done, total: mod.items.length };
+}
+
+/**
+ * Корневой экран трекера: карточки модулей в том же шаблоне, что «Категории библиотеки» (обложка, заголовок, строка, счётчик, «Открыть»).
+ */
+function TrackerModuleLibraryCards({ checked, onOpenModule }) {
+    return (
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {PVL_PLATFORM_MODULES.map((mod) => {
+                const { done, total } = moduleStepsProgress(mod, checked);
+                const cover = mod.coverImage || 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80';
+                return (
+                    <article
+                        key={mod.id}
+                        className="overflow-hidden rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]"
+                    >
+                        <img src={cover} alt="" className="h-36 w-full object-cover" />
+                        <div className="p-4">
+                            <h4 className="font-medium text-slate-800 leading-snug">{mod.title}</h4>
+                            <p className="text-xs text-[#9B8B80] mt-1 line-clamp-2">{mod.sub}</p>
+                            <p className="text-xs text-[#9B8B80] mt-2">Материалы категории</p>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                                Материалов: {total}
+                                <span className="text-slate-400"> · </span>
+                                <span className="tabular-nums">пройдено {done}/{total}</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onOpenModule(mod.id)}
+                                className="mt-3 rounded-full bg-emerald-700 text-white text-xs px-4 py-1.5 hover:bg-emerald-800 font-medium"
+                            >
+                                Открыть
+                            </button>
+                        </div>
+                    </article>
+                );
+            })}
+        </div>
+    );
+}
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
+import { pvlDomainApi } from '../services/pvlMockApi';
 
 export function platformStepsStorageKey(studentId) {
     return `pvl_checked_${studentId}`;
@@ -47,6 +97,17 @@ function stepLessonStatus(isDone, tag) {
     return 'не начато';
 }
 
+function trackerStepKey(moduleId, item, index) {
+    const extId = String(item?.id || '').trim();
+    if (extId) return `sid:${extId}`;
+    const textSlug = String(item?.text || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '');
+    return `m:${moduleId}:s:${textSlug || index}`;
+}
+
 function TrackerStatusBadge({ children }) {
     const s = String(children || '').toLowerCase();
     let cls = 'bg-slate-100 text-slate-700 border-slate-200';
@@ -71,7 +132,7 @@ function computePlatformStepStats(checked) {
     PVL_PLATFORM_MODULES.forEach((mod) => {
         mod.items.forEach((item, i) => {
             totalSteps += 1;
-            const key = `${mod.id}-${i}`;
+            const key = trackerStepKey(mod.id, item, i);
             if (checked[key]) doneSteps += 1;
             if (item.anchor) {
                 anchorsTotal += 1;
@@ -99,7 +160,7 @@ export function computePvlTrackerDashboardStats(checked) {
     PVL_PLATFORM_MODULES.forEach((mod) => {
         let moduleHasIncomplete = false;
         mod.items.forEach((item, i) => {
-            const key = `${mod.id}-${i}`;
+            const key = trackerStepKey(mod.id, item, i);
             const done = !!checked[key];
             const tag = item.tag || 'task';
             if (TRACKER_LESSON_TAGS.has(tag)) {
@@ -143,11 +204,24 @@ export function usePlatformStepChecklist(studentId) {
     });
     useEffect(() => {
         try {
-            setChecked(JSON.parse(localStorage.getItem(storageKey) || '{}'));
+            const local = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            const fromDb = pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {};
+            const source = Object.keys(fromDb).length ? fromDb : local;
+            const migrated = { ...source };
+            PVL_PLATFORM_MODULES.forEach((mod) => {
+                mod.items.forEach((item, i) => {
+                    const oldKey = `${mod.id}-${i}`;
+                    const newKey = trackerStepKey(mod.id, item, i);
+                    if (source[oldKey] && !source[newKey]) migrated[newKey] = true;
+                });
+            });
+            const merged = migrated;
+            setChecked(merged);
+            localStorage.setItem(storageKey, JSON.stringify(merged));
         } catch {
             setChecked({});
         }
-    }, [storageKey]);
+    }, [storageKey, studentId]);
 
     const toggleItem = useCallback((key) => {
         setChecked((prev) => {
@@ -157,9 +231,10 @@ export function usePlatformStepChecklist(studentId) {
             } catch {
                 /* ignore */
             }
+            pvlDomainApi.studentApi.saveTrackerChecklist(studentId, next);
             return next;
         });
-    }, [storageKey]);
+    }, [storageKey, studentId]);
 
     const stats = useMemo(() => computePlatformStepStats(checked), [checked]);
     return { checked, toggleItem, stats };
@@ -175,6 +250,8 @@ export function PlatformCourseModulesGrid({
     onToggleItem = null,
     onOpenItem = null,
     interactionMode = 'toggle',
+    /** Показать один модуль (шаги уроков/тестов) — после выбора карточки на корне трекера */
+    onlyModuleId = null,
 }) {
     const hookState = usePlatformStepChecklist(studentId);
     const checked = checkedOverride || hookState.checked;
@@ -187,9 +264,17 @@ export function PlatformCourseModulesGrid({
         ? 'rounded-2xl border border-slate-100/90 bg-white/90 shadow-sm shadow-slate-200/20 overflow-hidden'
         : 'rounded-2xl border border-slate-100/90 bg-white shadow-sm shadow-slate-200/30 overflow-hidden';
 
+    const modulesToShow = useMemo(() => {
+        if (onlyModuleId == null) return PVL_PLATFORM_MODULES;
+        return PVL_PLATFORM_MODULES.filter((m) => Number(m.id) === Number(onlyModuleId));
+    }, [onlyModuleId]);
+
+    const gridClass =
+        onlyModuleId != null ? 'grid gap-6 grid-cols-1 max-w-3xl' : 'grid gap-6 md:grid-cols-2';
+
     return (
-        <div className="grid gap-6 md:grid-cols-2">
-            {PVL_PLATFORM_MODULES.map((mod) => {
+        <div className={gridClass}>
+            {modulesToShow.map((mod) => {
                 const numCls = variant === 'lessons' ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-display font-semibold bg-slate-100 text-slate-700 border border-slate-200/80' : `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-display font-semibold ${moduleNumClass(mod.cls)}`;
                 return (
                     <article key={mod.id} className={articleClass}>
@@ -205,10 +290,11 @@ export function PlatformCourseModulesGrid({
                         <div className="p-4 md:p-5">
                             <ul className="space-y-0 divide-y divide-slate-50">
                                 {mod.items.map((item, i) => {
-                                    const key = `${mod.id}-${i}`;
+                                    const key = trackerStepKey(mod.id, item, i);
                                     const isDone = !!checked[key];
                                     const tag = item.tag || 'task';
                                     const stLabel = stepLessonStatus(isDone, tag);
+                                    const quizCard = tag === 'quiz';
                                     return (
                                         <li key={key}>
                                             <button
@@ -220,7 +306,11 @@ export function PlatformCourseModulesGrid({
                                                     }
                                                     toggleItem(key);
                                                 }}
-                                                className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-1 rounded-lg text-left hover:bg-slate-50/80 transition-colors"
+                                                className={`w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors ${
+                                                    quizCard
+                                                        ? 'border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 to-white shadow-[0_8px_24px_-14px_rgba(15,23,42,0.08)] hover:from-emerald-50 hover:to-emerald-50/50'
+                                                        : 'rounded-lg px-1 hover:bg-slate-50/80'
+                                                }`}
                                             >
                                                 <span
                                                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
@@ -249,12 +339,18 @@ export function PlatformCourseModulesGrid({
  * Полный путь курса: модули (включая модуль 0), шаги, прогресс и задания потока со статусами.
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
-export function StudentCourseTracker({ studentId, navigate }) {
+export function StudentCourseTracker({ studentId }) {
     const { checked, toggleItem, stats } = usePlatformStepChecklist(studentId);
     const { doneSteps, totalSteps, pct } = stats;
+    /** Пусто = сетка карточек модулей; иначе открыт шаг (слева список шага модуля, справа материал). */
     const [activeStepKey, setActiveStepKey] = useState('');
+
+    const openModuleFromCard = useCallback((modId) => {
+        const m = PVL_PLATFORM_MODULES.find((x) => Number(x.id) === Number(modId));
+        if (m?.items?.length) setActiveStepKey(trackerStepKey(m.id, m.items[0], 0));
+    }, []);
     const orderedSteps = useMemo(
-        () => PVL_PLATFORM_MODULES.flatMap((mod) => mod.items.map((item, i) => ({ key: `${mod.id}-${i}`, item, module: mod, index: i }))),
+        () => PVL_PLATFORM_MODULES.flatMap((mod) => mod.items.map((item, i) => ({ key: trackerStepKey(mod.id, item, i), item, module: mod, index: i }))),
         [],
     );
     const activeStepIndex = useMemo(() => orderedSteps.findIndex((s) => s.key === activeStepKey), [orderedSteps, activeStepKey]);
@@ -263,6 +359,31 @@ export function StudentCourseTracker({ studentId, navigate }) {
     const nextStep = activeStepIndex >= 0 && activeStepIndex < orderedSteps.length - 1 ? orderedSteps[activeStepIndex + 1] : null;
     const activeTagLabel = activeStep ? (PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал') : 'материал';
     const activeStatus = activeStep ? stepLessonStatus(!!checked[activeStep.key], activeStep.item?.tag) : '';
+    const firstStepKeyInActiveModule = activeStep
+        ? (orderedSteps.find((s) => s.module?.id === activeStep.module?.id)?.key || '')
+        : '';
+
+    const contentItemId = activeStep?.item?.contentItemId ? String(activeStep.item.contentItemId).trim() : '';
+    const linkedItem = useMemo(() => {
+        if (!contentItemId || !studentId) return null;
+        return pvlDomainApi.studentApi.getPublishedLibraryItemById(studentId, contentItemId);
+    }, [studentId, contentItemId, checked[activeStep?.key || '']]);
+
+    const lessonVideoPlayerHtml = useMemo(
+        () => (linkedItem ? buildLessonVideoPlayerHtml(linkedItem) : ''),
+        [linkedItem?.id, linkedItem?.lessonVideoEmbed, linkedItem?.lessonVideoUrl],
+    );
+
+    useEffect(() => {
+        if (!activeStep?.key || !contentItemId || !studentId) return;
+        const item = pvlDomainApi.studentApi.getPublishedLibraryItemById(studentId, contentItemId);
+        pvlDomainApi.studentApi.updateLibraryProgress(studentId, contentItemId, Math.max(10, item?.progressPercent || 10));
+    }, [activeStep?.key, contentItemId, studentId]);
+
+    const syncLibraryAndStepComplete = useCallback(() => {
+        if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
+        if (activeStep && !checked[activeStep.key]) toggleItem(activeStep.key);
+    }, [activeStep, checked, contentItemId, studentId, toggleItem]);
 
     if (activeStep) {
         const moduleItems = activeStep.module?.items || [];
@@ -270,9 +391,21 @@ export function StudentCourseTracker({ studentId, navigate }) {
             <div className="space-y-4">
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
                     <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800">Трекер</span>
+                        <button
+                            type="button"
+                            onClick={() => setActiveStepKey('')}
+                            className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800 hover:bg-emerald-100"
+                        >
+                            Трекер
+                        </button>
                         <span> / </span>
-                        <span>{activeStep.module?.title || 'Модуль'}</span>
+                        <button
+                            type="button"
+                            onClick={() => firstStepKeyInActiveModule && setActiveStepKey(firstStepKeyInActiveModule)}
+                            className="hover:underline"
+                        >
+                            {activeStep.module?.title || 'Модуль'}
+                        </button>
                         <span> / </span>
                         <span className="text-slate-700">{activeStep.item?.text}</span>
                     </div>
@@ -281,7 +414,7 @@ export function StudentCourseTracker({ studentId, navigate }) {
                             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Шаги текущего блока</div>
                             <div className="space-y-1.5">
                                 {moduleItems.map((item, i) => {
-                                    const key = `${activeStep.module.id}-${i}`;
+                                    const key = trackerStepKey(activeStep.module.id, item, i);
                                     const isActive = key === activeStep.key;
                                     const isDone = !!checked[key];
                                     return (
@@ -304,18 +437,35 @@ export function StudentCourseTracker({ studentId, navigate }) {
                             <div className="text-[10px] uppercase tracking-wider text-slate-400">Материал</div>
                             <h3 className="font-display text-2xl text-slate-800 mt-1">{activeStep.item?.text}</h3>
                             <p className="text-xs text-slate-500 mt-2">
-                                {activeStep.module?.title} · {activeTagLabel} · {activeStatus}
+                                {activeStep.module?.title} · {activeTagLabel} · {linkedItem?.completed ? 'пройдено' : activeStatus}
                             </p>
-                            <div className="mt-4 text-sm text-slate-700 leading-relaxed rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-                                Это экран урока в логике трекера. Изучите материал и отметьте прохождение кнопкой ниже.
-                            </div>
+                            {contentItemId && !linkedItem ? (
+                                <div className="mt-4 text-sm text-amber-800 leading-relaxed rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                                    Материал привязан к шагу, но не найден в данных курса для вашего потока (проверьте seed, БД или учительскую).
+                                </div>
+                            ) : null}
+                            {linkedItem ? (
+                                <div className="mt-4 max-h-[min(70vh,640px)] overflow-y-auto pr-1">
+                                    <PvlLibraryMaterialBody
+                                        key={linkedItem.id}
+                                        variant="tracker"
+                                        selectedItem={linkedItem}
+                                        lessonVideoPlayerHtml={lessonVideoPlayerHtml}
+                                        onQuizPassed={syncLibraryAndStepComplete}
+                                    />
+                                </div>
+                            ) : !contentItemId ? (
+                                <div className="mt-4 text-sm text-slate-700 leading-relaxed rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+                                    Этот шаг пока без привязанного материала. Изучите материал по программе курса и отметьте прохождение кнопкой ниже.
+                                </div>
+                            ) : null}
                             <div className="mt-4 flex flex-wrap items-center gap-2">
                                 <button
                                     type="button"
                                     onClick={() => setActiveStepKey('')}
                                     className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
                                 >
-                                    Назад к трекеру
+                                    Назад к модулям
                                 </button>
                                 <button
                                     type="button"
@@ -323,7 +473,7 @@ export function StudentCourseTracker({ studentId, navigate }) {
                                     onClick={() => prevStep && setActiveStepKey(prevStep.key)}
                                     className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                    Предыдущий урок
+                                    Предыдущий шаг
                                 </button>
                                 <button
                                     type="button"
@@ -331,14 +481,20 @@ export function StudentCourseTracker({ studentId, navigate }) {
                                     onClick={() => nextStep && setActiveStepKey(nextStep.key)}
                                     className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                    Следующий урок
+                                    Следующий шаг
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => toggleItem(activeStep.key)}
-                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100"
+                                    disabled={!!checked[activeStep.key]}
+                                    onClick={() => {
+                                        if (!checked[activeStep.key]) {
+                                            if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
+                                            toggleItem(activeStep.key);
+                                        }
+                                    }}
+                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {checked[activeStep.key] ? 'Снять отметку «Изучено»' : 'Отметить как изучено'}
+                                    {checked[activeStep.key] ? 'Отмечено как изучено' : 'Отметить как изучено'}
                                 </button>
                             </div>
                         </section>
@@ -352,7 +508,6 @@ export function StudentCourseTracker({ studentId, navigate }) {
         <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-700/95 via-emerald-800/95 to-teal-900 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
-                <p className="text-sm text-white/75 mt-1">Полный путь по модулям, начиная с <span className="text-white font-medium">модуля 0 (вход и настройка)</span>. Клик по строке открывает урок справа, отметка ставится только внутри урока.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">
                     <div className="text-center">
                         <div className="font-display text-3xl tabular-nums">{doneSteps}</div>
@@ -369,14 +524,13 @@ export function StudentCourseTracker({ studentId, navigate }) {
                 </div>
             </div>
 
-            <PlatformCourseModulesGrid
-                studentId={studentId}
-                variant="tracker"
-                checkedOverride={checked}
-                onToggleItem={toggleItem}
-                interactionMode="open"
-                onOpenItem={(payload) => setActiveStepKey(payload.key)}
-            />
+            <div className="flex flex-wrap items-end justify-between gap-2">
+                <h3 className="font-display text-lg text-slate-800">Модули курса</h3>
+                <p className="text-xs text-slate-500 max-w-xl">
+                    Откройте модуль — сразу откроется первый шаг со списком уроков слева. Материалы модуля 0 только в трекере, не в библиотеке.
+                </p>
+            </div>
+            <TrackerModuleLibraryCards checked={checked} onOpenModule={openModuleFromCard} />
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>

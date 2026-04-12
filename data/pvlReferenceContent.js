@@ -3,19 +3,38 @@
  * pvl_platform_v4.html, pvl_assessment.html). Не подключает сами HTML — только данные для React.
  */
 
+/** Категории библиотеки, дублирующие прохождение модулей в трекере — не показывать в списке «Категории библиотеки». */
+export const PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS = ['mod0_writing'];
+
+/**
+ * Обложки модулей в трекере — тот же визуальный шаблон, что карточки категорий в библиотеке (rounded-3xl, фото сверху).
+ * Квизы/тесты внутри модуля в списке шагов помечаются тегом quiz; превью в конструкторе материалов держать в одной визуальной линии.
+ */
+const PVL_MODULE_COVERS = [
+    'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
+    'https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=900&q=80',
+    'https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=900&q=80',
+    'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=900&q=80',
+];
+
 /** Трекер модулей — pvl_platform.html (MODULES) */
 export const PVL_PLATFORM_MODULES = [
     {
         id: 0,
         label: '0',
         cls: 'mod-0',
-        title: 'Модуль 0: Вход и настройка',
-        sub: 'До начала обучения',
+        title: 'Модуль 0: типы и виды письменных практик',
+        sub: 'Четыре видеоурока с конспектами и тест после каждого',
+        coverImage: PVL_MODULE_COVERS[0],
         items: [
-            { text: 'Онбординг на платформе: правила, ритм, контрольные точки', tag: 'video', anchor: false },
-            { text: 'Правило «Чистых полок»: снять корону эксперта', tag: 'video', anchor: false },
-            { text: 'Посещение живой или онлайн встречи с ПП', tag: 'anchor', anchor: true },
-            { text: 'Заполнение наблюдательного листа «Как устроена встреча»', tag: 'task', anchor: false },
+            { text: 'Урок 1: письменные практики — ключ к осознанной жизни (видео + конспект)', tag: 'video', anchor: false, contentItemId: 'cnt-m0-v1' },
+            { text: 'Тест после урока 1', tag: 'quiz', anchor: false, contentItemId: 'cnt-m0-q1' },
+            { text: 'Урок 2: виды и типы письменных практик (видео + конспект)', tag: 'video', anchor: false, contentItemId: 'cnt-m0-v2' },
+            { text: 'Тест после урока 2', tag: 'quiz', anchor: false, contentItemId: 'cnt-m0-q2' },
+            { text: 'Урок 3: сила практик — как понять себя лучше? (видео + конспект)', tag: 'video', anchor: false, contentItemId: 'cnt-m0-v3' },
+            { text: 'Тест после урока 3', tag: 'quiz', anchor: false, contentItemId: 'cnt-m0-q3' },
+            { text: 'Урок 4: интеграция практик в повседневную жизнь (видео + конспект)', tag: 'video', anchor: false, contentItemId: 'cnt-m0-v4' },
+            { text: 'Тест после урока 4', tag: 'quiz', anchor: false, contentItemId: 'cnt-m0-q4' },
         ],
     },
     {
@@ -24,9 +43,8 @@ export const PVL_PLATFORM_MODULES = [
         cls: 'mod-1',
         title: 'Модуль 1: «ПИШИ»',
         sub: 'Формат и базовая методология',
+        coverImage: PVL_MODULE_COVERS[1],
         items: [
-            { text: 'Видеоурок: «ПП — ключ к осознанной жизни»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Виды и типы письменных практик»', tag: 'video', anchor: false },
             { text: 'Видеоурок: «Научные основы письменных практик»', tag: 'video', anchor: false },
             { text: 'Видеоурок: «Образ ведущей — роль, правила, границы»', tag: 'video', anchor: false },
             { text: 'Видеоурок: «Из чего состоит письменная практика»', tag: 'video', anchor: false },
@@ -48,6 +66,7 @@ export const PVL_PLATFORM_MODULES = [
         cls: 'mod-2',
         title: 'Модуль 2: «ВЕДИ»',
         sub: 'Конструктор сценария и групповая динамика',
+        coverImage: PVL_MODULE_COVERS[2],
         items: [
             { text: 'Видеоурок: «Составление сценария» (часть 1 — логика и структура)', tag: 'video', anchor: false },
             { text: 'Видеоурок: «Составление сценария» (часть 2 — смешанные техники)', tag: 'video', anchor: false },
@@ -74,6 +93,7 @@ export const PVL_PLATFORM_MODULES = [
         cls: 'mod-3',
         title: 'Модуль 3: «ЛЮБИ»',
         sub: 'Сбор группы, сертификация и пост-анализ',
+        coverImage: PVL_MODULE_COVERS[3],
         items: [
             { text: 'Видеоурок: «Сбор завтраков — всё, что вы хотели спросить»', tag: 'video', anchor: false },
             { text: 'Видеоурок: «Не только офлайн и не только завтраки»', tag: 'video', anchor: false },

@@ -1,0 +1,41 @@
+Ручная выкладка «Сад» + ПВЛ (статика + PostgreSQL)
+================================================
+
+1) Сборка фронта (уже можно взять папку dist/ после npm run build)
+   Команда из корня репозитория:
+     npm ci
+     npm run build
+   Загрузите на хостинг СОДЕРЖИМОЕ папки dist/ (index.html, assets/, …) в корень сайта или в подкаталог.
+   Для SPA обычно нужен fallback всех маршрутов на index.html (nginx try_files и т.п.).
+
+2) Переменные окружения при сборке (Vite)
+   В .env.production или в CI задайте, например:
+     VITE_POSTGREST_URL=https://api.skrebeyko.ru/
+     VITE_USE_LOCAL_DB=false
+   (точный URL — ваш PostgREST; без локального мока БД для прода.)
+
+3) SQL на PostgreSQL — порядок применения
+   Если база пустая по ПВЛ, выполните по очереди:
+     database/pvl/migrations/001_pvl_scoring_system.sql
+     database/pvl/migrations/002_pvl_runtime_content.sql
+     database/pvl/migrations/003_pvl_tracker_homework_bridge.sql
+     database/pvl/migrations/004_pvl_content_items_lesson_fields.sql   ← НОВЫЙ
+
+   Если 001–003 уже накатывали раньше, достаточно только:
+     database/pvl/migrations/004_pvl_content_items_lesson_fields.sql
+
+   Пример:
+     psql "postgresql://USER:PASS@HOST:5432/DBNAME" -f database/pvl/migrations/004_pvl_content_items_lesson_fields.sql
+
+4) PostgREST
+   Таблицы должны быть в схеме, которую отдаёт API (часто public).
+   JWT: PGRST_JWT_SECRET должен совпадать с секретом подписи garden_auth_token (см. сообщение технарю про PGRST300).
+
+5) Опционально: демо-данные
+   database/pvl/seed/001_demo_minimal.sql — только если нужен минимальный демо-набор в БД (не обязателен для продакшена с вашим контентом).
+
+6) Архив для передачи
+   Можно упаковать:
+     - dist/
+     - database/pvl/migrations/*.sql
+     - этот файл HOSTING-RU.txt

@@ -137,6 +137,11 @@ body::before {
     font-family: var(--font-display);
   }
 
+  /* ПВЛ, встроенный в «Сад»: те же шрифты, что у основного UI (Onest), без Bricolage в заголовках */
+  .pvl-garden-embed .font-display {
+    font-family: var(--font-sans);
+  }
+
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-semibold transition-all duration-300 active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 bg-blue-600 text-white shadow-[0_12px_24px_-12px_rgba(47,111,84,0.6)] hover:bg-blue-700;
   }

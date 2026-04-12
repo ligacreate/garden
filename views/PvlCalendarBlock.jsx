@@ -128,9 +128,9 @@ function CalendarDayButton({
     let state = '';
     if (isSelected) {
         state =
-            ' border-[#6FA68C]/55 bg-[#D4EBE2] text-[#0F3428] shadow-[0_6px_18px_-8px_rgba(27,77,62,0.4)] font-semibold';
+            ' border-[#6FA68C]/55 bg-[#D4EBE2] text-[#0F3428] font-semibold ring-1 ring-[#6FA68C]/25';
     } else if (showTodayHighlight && isToday) {
-        state = ' border-[#8FC4B3] bg-white text-[#3D342B] font-semibold shadow-sm';
+        state = ' border-[#8FC4B3] bg-white text-[#3D342B] font-semibold';
     } else {
         state =
             ' border-[#E8E0D4]/70 bg-[#FAF8F5] text-[#3D342B] font-medium hover:border-[#D4C8BC] hover:bg-[#F3EDE6]';
@@ -204,12 +204,15 @@ export function PvlDashboardCalendarBlock({
     };
 
     return (
-        <section className="rounded-[1.75rem] bg-[#FAF8F5] px-4 pt-5 pb-8 md:px-6 md:pt-6 md:pb-10 shadow-[0_18px_50px_-14px_rgba(15,23,42,0.08)]">
-            <div className="mb-4">
+        <section className="space-y-4">
+            <div>
                 <h3 className="font-display text-xl text-[#3D342B]">{title}</h3>
+                {Array.isArray(eventTypeFilter) && eventTypeFilter.length > 0 ? (
+                    <p className="mt-1 text-sm text-[#7A6B5C]">События потока по выбранному типу</p>
+                ) : null}
             </div>
 
-            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-[#7A6B5C]">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-[#7A6B5C]">
                 <span className="inline-flex items-center gap-2">
                     <CalendarLegendDot eventType="mentor_meeting" />
                     Встречи
@@ -224,8 +227,9 @@ export function PvlDashboardCalendarBlock({
                 </span>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-5 lg:gap-7 items-stretch lg:items-start">
-                <div className="w-full lg:w-[min(100%,320px)] shrink-0 select-none rounded-[1.75rem] bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+            <div className="rounded-2xl border border-[#E8E0D4]/55 bg-[#FAF8F5] p-4 md:p-5">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:gap-0">
+                <div className="w-full shrink-0 select-none lg:w-[min(100%,320px)] lg:border-r lg:border-[#E8E0D4]/45 lg:pr-6">
                     <div className="mb-3 flex items-center justify-between gap-2">
                         <button
                             type="button"
@@ -256,7 +260,7 @@ export function PvlDashboardCalendarBlock({
                         {Array.from({ length: startOffset }).map((_, i) => (
                             <div
                                 key={`empty-${i}`}
-                                className="aspect-square min-h-0 min-w-0 rounded-xl border border-[#E8E0D4]/40 bg-[#F0E9E2]/35"
+                                className="aspect-square min-h-0 min-w-0 rounded-lg bg-[#EDE6DE]/15"
                                 aria-hidden
                             />
                         ))}
@@ -282,14 +286,14 @@ export function PvlDashboardCalendarBlock({
                         <button
                             type="button"
                             onClick={onOpenFullCalendar}
-                            className="mt-5 w-full rounded-2xl bg-[#1B4D3E] py-3.5 text-center text-sm font-semibold text-white shadow-[0_12px_28px_-14px_rgba(27,77,62,0.55)] transition-colors hover:bg-[#164535]"
+                            className="mt-5 w-full rounded-xl bg-[#1B4D3E] py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-[#164535]"
                         >
                             {scheduleCtaLabel}
                         </button>
                     ) : null}
                 </div>
 
-                <div className="flex min-w-0 flex-1 flex-col p-2 md:p-3 lg:pl-1 lg:pb-1">
+                <div className="flex min-w-0 flex-1 flex-col lg:pl-6">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-sm font-semibold text-[#3D342B]">{listTitle}</h4>
                         {selectedDayKey ? (
@@ -302,21 +306,19 @@ export function PvlDashboardCalendarBlock({
                             </button>
                         ) : null}
                     </div>
-                    <div className="min-h-[140px] max-h-[220px] flex-1 overflow-y-auto pb-1 pr-1 -mr-1">
+                    <div className="min-h-[140px] max-h-[220px] flex-1 overflow-y-auto">
                         {listEvents.length === 0 ? (
-                            <div className="rounded-xl bg-white px-3 py-6 text-center shadow-[0_8px_28px_-12px_rgba(15,23,42,0.07)]">
-                                <p className="text-sm text-[#6B5D4F]">
-                                    {selectedDayKey ? 'В этот день событий нет.' : 'Нет предстоящих событий в выбранном потоке.'}
-                                </p>
-                            </div>
+                            <p className="py-6 text-center text-sm text-[#6B5D4F]">
+                                {selectedDayKey ? 'В этот день событий нет.' : 'Нет предстоящих событий в выбранном потоке.'}
+                            </p>
                         ) : (
-                            <ul className="space-y-1.5">
+                            <ul className="divide-y divide-[#E8E0D4]/50">
                                 {listEvents.map((ev) => (
                                     <li key={ev.id}>
                                         <button
                                             type="button"
                                             onClick={() => openEventNavigation(ev, navigate, routePrefix)}
-                                            className="w-full rounded-xl bg-white/90 px-2.5 py-2 text-left shadow-sm transition-colors hover:bg-white hover:shadow-[0_10px_28px_-14px_rgba(15,23,42,0.1)]"
+                                            className="w-full rounded-md px-1 py-2.5 text-left transition-colors hover:bg-[#EDE6DE]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#8FC4B3]/60"
                                         >
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <span
@@ -336,6 +338,7 @@ export function PvlDashboardCalendarBlock({
                             </ul>
                         )}
                     </div>
+                </div>
                 </div>
             </div>
         </section>
@@ -618,7 +621,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                         {Array.from({ length: startOffset }).map((_, i) => (
                             <div
                                 key={`e-${i}`}
-                                className="aspect-square min-h-0 min-w-0 rounded-xl border border-[#E8E0D4]/40 bg-[#F0E9E2]/35"
+                                className="aspect-square min-h-0 min-w-0 rounded-lg bg-[#EDE6DE]/15"
                                 aria-hidden
                             />
                         ))}

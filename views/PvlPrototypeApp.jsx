@@ -6184,7 +6184,9 @@ export default function PvlPrototypeApp({
     const showEmbeddedTopBar = embeddedInGarden && (showCabinetSwitcher || !!devToolsBar);
 
     return (
-        <div className={`relative overflow-hidden ${embeddedInGarden ? '' : 'md:rounded-3xl'}`}>
+        <div
+            className={`relative overflow-hidden ${embeddedInGarden ? 'pvl-garden-embed font-sans text-slate-700 antialiased' : 'md:rounded-3xl'}`}
+        >
             {!embeddedInGarden ? (
                 <div
                     className="pointer-events-none absolute inset-0 opacity-90"
@@ -6196,7 +6198,7 @@ export default function PvlPrototypeApp({
                 />
             ) : null}
             <div
-                className={`relative grid grid-cols-1 gap-6 ${embeddedInGarden ? 'px-3 py-4 sm:px-5 sm:py-5 md:px-6' : 'p-3 md:p-5 xl:grid-cols-[280px_minmax(0,1fr)]'}`}
+                className={`relative grid grid-cols-1 gap-6 ${embeddedInGarden ? 'px-0 py-4 sm:py-5' : 'p-3 md:p-5 xl:grid-cols-[280px_minmax(0,1fr)]'}`}
             >
                 {!embeddedInGarden ? (
                     <SidebarMenu
@@ -6217,7 +6219,7 @@ export default function PvlPrototypeApp({
                 ) : null}
                 <main className={`min-w-0 ${embeddedInGarden ? 'space-y-5 md:space-y-6' : ''}`}>
                     {!embeddedInGarden ? (
-                        <div className="flex min-w-0 flex-col overflow-hidden rounded-3xl bg-white/95 shadow-[0_18px_50px_-14px_rgba(15,23,42,0.1)]">
+                        <div className="flex min-w-0 flex-col overflow-hidden rounded-3xl bg-white/95 shadow-[0_10px_36px_-16px_rgba(15,23,42,0.07)]">
                             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100/40 bg-white/60 px-5 py-4 backdrop-blur-sm">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <button

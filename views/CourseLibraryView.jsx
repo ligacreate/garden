@@ -742,7 +742,7 @@ const CourseLibraryView = ({
                     ))}
                 </div>
             ) : selectedCourse.id === PVL_ENTRY_COURSE_ID ? (
-                <div className="min-w-0 w-full rounded-[2rem] p-5 sm:p-7 bg-transparent shadow-none border-0 ring-0 outline-none">
+                <div className="min-w-0 w-full rounded-[2rem] bg-transparent px-0 pt-1 pb-0 shadow-none border-0 ring-0 outline-none">
                     {!aiCampSession && (
                         <div className="flex justify-end mb-4">
                             <Button variant="secondary" onClick={onBackToGarden}>Вернуться к саду</Button>

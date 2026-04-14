@@ -52,8 +52,8 @@ export function buildLessonVideoPlayerHtml(item) {
 
 /** Санитизация HTML конспекта/материала (импорт MD → marked → хранение в fullDescription). */
 const PVL_MATERIAL_HTML_PURIFY = {
-    ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption', 'br', 'hr'],
-    ADD_ATTR: ['align', 'colspan', 'rowspan', 'data-pvl-wiki-ref', 'target', 'rel', 'title', 'loading'],
+    ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption', 'br', 'hr', 'ol', 'ul', 'li'],
+    ADD_ATTR: ['align', 'colspan', 'rowspan', 'data-pvl-wiki-ref', 'target', 'rel', 'title', 'loading', 'start', 'type', 'reversed'],
 };
 
 export function normalizeMaterialHtml(source = '') {
@@ -258,8 +258,15 @@ export function LibraryQuizRunner({ quiz: rawQuiz, onPassed }) {
     );
 }
 
-const materialBodyClass =
-    'text-sm text-slate-700 leading-7 overflow-x-auto max-w-full [&_.pvl-doc-verbatim]:whitespace-pre-wrap [&_.pvl-doc-verbatim]:font-normal [&_.pvl-doc-verbatim]:text-slate-700 [&_.pvl-doc-verbatim]:leading-7 [&_.pvl-wiki-embed]:my-3 [&>h1]:mt-4 [&>h1]:mb-2 [&>h1]:text-xl [&>h1]:font-semibold [&>h2]:mt-4 [&>h2]:mb-2 [&>h2]:text-lg [&>h2]:font-semibold [&>h3]:mt-3 [&>h3]:mb-1 [&>h3]:text-base [&>h3]:font-semibold [&>h4]:mt-3 [&>h4]:mb-1 [&>h4]:text-base [&>h4]:font-semibold [&>h5]:mt-2 [&>h5]:mb-1 [&>h5]:text-sm [&>h5]:font-semibold [&>h6]:mt-2 [&>h6]:text-sm [&>h6]:font-semibold [&>p]:mb-2 [&>ul]:my-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:my-2 [&>ol]:list-decimal [&>ol]:pl-5 [&>blockquote]:my-3 [&>blockquote]:border-l-4 [&>blockquote]:border-slate-300 [&>blockquote]:pl-4 [&>blockquote]:text-slate-600 [&>hr]:my-4 [&>pre]:whitespace-pre-wrap [&>pre]:rounded-xl [&>pre]:border [&>pre]:border-slate-200 [&>pre]:bg-slate-50 [&>pre]:p-3 [&_table]:my-4 [&_table]:w-full [&_table]:min-w-[min(100%,48rem)] [&_table]:border-collapse [&_table]:border [&_table]:border-slate-200 [&_table]:text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50/90 [&_th]:px-2 [&_th]:py-2 [&_th]:text-left [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-2 [&_td]:align-top [&_a]:text-emerald-800 [&_a]:underline [&_img]:max-h-[min(80vh,32rem)] [&_img]:max-w-full [&_img]:rounded-lg [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em]';
+/**
+ * Общие стили тела материала (библиотека, трекер, глоссарий, предпросмотр в учительской).
+ * Не ставим overflow-x-auto на корень — иначе обрезаются маркеры нумерованных списков (10 → «0»).
+ * Горизонтальный скролл только у таблиц.
+ */
+export const pvlMaterialBodyClass =
+    'text-sm text-slate-700 leading-7 max-w-full [&_.pvl-doc-verbatim]:whitespace-pre-wrap [&_.pvl-doc-verbatim]:font-normal [&_.pvl-doc-verbatim]:text-slate-700 [&_.pvl-doc-verbatim]:leading-7 [&_.pvl-wiki-embed]:my-3 [&>h1]:mt-4 [&>h1]:mb-2 [&>h1]:text-xl [&>h1]:font-semibold [&>h2]:mt-4 [&>h2]:mb-2 [&>h2]:text-lg [&>h2]:font-semibold [&>h3]:mt-3 [&>h3]:mb-1 [&>h3]:text-base [&>h3]:font-semibold [&>h4]:mt-3 [&>h4]:mb-1 [&>h4]:text-base [&>h4]:font-semibold [&>h5]:mt-2 [&>h5]:mb-1 [&>h5]:text-sm [&>h5]:font-semibold [&>h6]:mt-2 [&>h6]:text-sm [&>h6]:font-semibold [&>p]:mb-2 [&>ul]:my-2 [&>ul]:list-disc [&>ul]:list-inside [&>ul]:pl-1 [&>ol]:my-2 [&>ol]:list-decimal [&>ol]:list-inside [&>ol]:pl-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:list-inside [&_ul]:pl-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:pl-1 [&_li]:my-0.5 [&>blockquote]:my-3 [&>blockquote]:border-l-4 [&>blockquote]:border-slate-300 [&>blockquote]:pl-4 [&>blockquote]:text-slate-600 [&>hr]:my-4 [&>pre]:whitespace-pre-wrap [&>pre]:rounded-xl [&>pre]:border [&>pre]:border-slate-200 [&>pre]:bg-slate-50 [&>pre]:p-3 [&_table]:my-4 [&_table]:block [&_table]:w-full [&_table]:max-w-none [&_table]:overflow-x-auto [&_table]:min-w-[min(100%,48rem)] [&_table]:border-collapse [&_table]:border [&_table]:border-slate-200 [&_table]:text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50/90 [&_th]:px-2 [&_th]:py-2 [&_th]:text-left [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-2 [&_td]:align-top [&_a]:text-emerald-800 [&_a]:underline [&_img]:max-h-[min(80vh,32rem)] [&_img]:max-w-full [&_img]:rounded-lg [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em]';
+
+const materialBodyClass = pvlMaterialBodyClass;
 
 /**
  * Тело карточки материала: тест / видео+конспект / текст — как в библиотеке.

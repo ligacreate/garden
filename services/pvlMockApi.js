@@ -512,12 +512,84 @@ export function pruneSeedPvlDemoStudentRows() {
 export async function syncPvlRuntimeFromDb() {
     if (!pvlPostgrestApi.isEnabled()) return { synced: false, reason: 'disabled' };
     const snapshot = await pvlPostgrestApi.loadRuntimeSnapshot();
-    db.contentItems = snapshot.items.map(mapDbContentItemToRuntime);
-    db.contentPlacements = snapshot.placements.map(mapDbPlacementToRuntime);
-    db.calendarEvents = snapshot.events.map(mapDbEventToRuntime);
-    db.faqItems = snapshot.faq.map(mapDbFaqToRuntime);
+    const mappedItems = snapshot.items.map(mapDbContentItemToRuntime);
+    const mappedPlacements = snapshot.placements.map(mapDbPlacementToRuntime);
+    const mappedEvents = snapshot.events.map(mapDbEventToRuntime);
+    const mappedFaq = snapshot.faq.map(mapDbFaqToRuntime);
+    /** Не затираем каталог пустым ответом (частый сбой RLS/токена сразу после F5). */
+    if (mappedItems.length > 0) {
+        db.contentItems = mappedItems;
+    }
+    if (mappedPlacements.length > 0) {
+        db.contentPlacements = mappedPlacements;
+    }
+    if (mappedEvents.length > 0) {
+        db.calendarEvents = mappedEvents;
+    }
+    if (mappedFaq.length > 0) {
+        db.faqItems = mappedFaq;
+    }
     await syncTrackerAndHomeworkFromDb();
     return { synced: true };
+}
+
+function applyGardenMentorLinkRow(row) {
+    const studentId = row?.student_id != null ? String(row.student_id).trim() : '';
+    if (!studentId) return;
+    const mentorId = row?.mentor_id != null && row.mentor_id !== '' ? String(row.mentor_id).trim() : null;
+    const profile = (db.studentProfiles || []).find((p) => String(p.userId) === studentId);
+    if (!profile) return;
+    for (const m of db.mentorProfiles || []) {
+        if (!Array.isArray(m.menteeIds)) continue;
+        if (!m.menteeIds.includes(studentId)) continue;
+        m.menteeIds = m.menteeIds.filter((id) => id !== studentId);
+        m.updatedAt = nowIso();
+    }
+    profile.mentorId = mentorId;
+    profile.updatedAt = nowIso();
+    if (mentorId) {
+        const mentor = (db.mentorProfiles || []).find(
+            (mp) => String(mp.userId) === mentorId || String(mp.id) === mentorId,
+        );
+        if (mentor) {
+            const next = new Set(mentor.menteeIds || []);
+            next.add(studentId);
+            mentor.menteeIds = Array.from(next);
+            mentor.updatedAt = nowIso();
+        }
+    }
+}
+
+async function hydrateGardenMentorAssignmentsFromDb() {
+    if (!pvlPostgrestApi.isEnabled()) return;
+    const ids = [
+        ...new Set(
+            (db.studentProfiles || [])
+                .map((p) => String(p.userId || '').trim())
+                .filter((id) => isUuidString(id)),
+        ),
+    ];
+    if (ids.length === 0) return;
+    const rows = await pvlPostgrestApi.listGardenMentorLinksByStudentIds(ids);
+    for (const row of rows || []) {
+        applyGardenMentorLinkRow(row);
+    }
+}
+
+function persistGardenMentorLink(studentUserId, mentorUserId) {
+    if (!pvlPostgrestApi.isEnabled()) return;
+    const sid = String(studentUserId || '').trim();
+    if (!isUuidString(sid)) return;
+    const rawMentor = mentorUserId != null && mentorUserId !== '' ? String(mentorUserId).trim() : null;
+    if (rawMentor != null && !isUuidString(rawMentor)) return;
+    fireAndForget(
+        () => pvlPostgrestApi.upsertGardenMentorLink({
+            student_id: sid,
+            mentor_id: rawMentor,
+            updated_at: new Date().toISOString(),
+        }),
+        { table: 'pvl_garden_mentor_links', endpoint: '/public.pvl_garden_mentor_links', id: sid },
+    );
 }
 
 export async function syncPvlActorsFromGarden() {
@@ -635,6 +707,18 @@ export async function syncPvlActorsFromGarden() {
         db._pvlGardenApplicantsSynced = pvlTrackMembers.length > 0;
         if (pvlTrackMembers.length > 0) {
             pruneSeedPvlDemoStudentRows();
+        }
+
+        try {
+            await hydrateGardenMentorAssignmentsFromDb();
+        } catch (e) {
+            logDbFallback({
+                endpoint: '/pvl_garden_mentor_links',
+                status: 'error',
+                table: 'pvl_garden_mentor_links',
+                id: null,
+                error: String(e?.message || e || 'hydrate mentor links failed'),
+            });
         }
 
         return {
@@ -2242,6 +2326,7 @@ export const adminApi = {
             profile.updatedAt = nowIso();
         }
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_mentee_to_mentor', 'mentor_profile', mentor.userId || mentor.id, 'Assigned mentee to mentor', { studentUserId });
+        persistGardenMentorLink(studentUserId, mentor.userId || mentorUserId);
         return mentor;
     },
     removeMenteeFromMentor(mentorUserId, studentUserId) {
@@ -2256,6 +2341,8 @@ export const adminApi = {
             profile.updatedAt = nowIso();
         }
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'remove_mentee_from_mentor', 'mentor_profile', mentor.userId || mentor.id, 'Removed mentee from mentor', { studentUserId });
+        const spAfter = db.studentProfiles.find((p) => p.userId === studentUserId);
+        persistGardenMentorLink(studentUserId, spAfter?.mentorId || null);
         return mentor;
     },
     /** Одна ученица — один ментор: синхронизирует mentorProfiles.menteeIds и studentProfiles.mentorId */
@@ -2272,6 +2359,7 @@ export const adminApi = {
             profile.mentorId = null;
             profile.updatedAt = nowIso();
             addAuditEvent('u-adm-1', ROLES.ADMIN, 'clear_student_mentor', 'student_profile', studentUserId, 'Cleared mentor assignment', {});
+            persistGardenMentorLink(studentUserId, null);
             return profile;
         }
         const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
@@ -2283,6 +2371,7 @@ export const adminApi = {
         profile.mentorId = mentor.userId || mentorUserId;
         profile.updatedAt = nowIso();
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_student_mentor', 'student_profile', studentUserId, 'Assigned mentor', { mentorUserId: profile.mentorId });
+        persistGardenMentorLink(studentUserId, profile.mentorId);
         return profile;
     },
     getAdminCohorts() {

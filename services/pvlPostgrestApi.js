@@ -95,6 +95,11 @@ function asArray(data) {
     return Array.isArray(data) ? data : [];
 }
 
+function isUuidString(v) {
+    if (v == null || v === '') return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v).trim());
+}
+
 function normalizeCalendarEventTypeForDb(value) {
     const raw = String(value || '').toLowerCase().trim();
     const map = {
@@ -442,6 +447,38 @@ export const pvlPostgrestApi = {
     },
     async listStudents() {
         return request('pvl_students', { params: { select: '*' } });
+    },
+
+    /** Чтение назначений менторов по списку id учениц (profiles.id). */
+    async listGardenMentorLinksByStudentIds(studentIds) {
+        const uuids = asArray(studentIds)
+            .map((id) => String(id || '').trim())
+            .filter((id) => isUuidString(id));
+        if (uuids.length === 0) return [];
+        const chunkSize = 45;
+        const merged = [];
+        for (let i = 0; i < uuids.length; i += chunkSize) {
+            const chunk = uuids.slice(i, i + chunkSize);
+            // eslint-disable-next-line no-await-in-loop
+            const rows = await request('pvl_garden_mentor_links', {
+                params: {
+                    select: '*',
+                    student_id: `in.(${chunk.join(',')})`,
+                },
+            });
+            merged.push(...asArray(rows));
+        }
+        return merged;
+    },
+
+    /** UPSERT одной строки: student_id — PK в PostgREST (resolution=merge-duplicates). */
+    async upsertGardenMentorLink(payload) {
+        const rows = await request('pvl_garden_mentor_links', {
+            method: 'POST',
+            body: [payload],
+            prefer: 'resolution=merge-duplicates,return=representation',
+        });
+        return asArray(rows)[0] || null;
     },
 
     // Backward compatibility with current integration points

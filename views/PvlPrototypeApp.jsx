@@ -31,7 +31,13 @@ import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
 import PvlSzAssessmentFlow from './PvlSzAssessmentFlow';
-import { stripMaterialNumbering, buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
+import {
+    stripMaterialNumbering,
+    buildLessonVideoPlayerHtml,
+    PvlLibraryMaterialBody,
+    normalizeMaterialHtml,
+    pvlMaterialBodyClass,
+} from './pvlLibraryMaterialShared';
 import { markdownToPvlHtml } from '../utils/pvlMarkdownImport';
 import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
 import {
@@ -3695,11 +3701,7 @@ function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint
             return null;
         }
     }, [html]);
-    const textPreview = useMemo(() => {
-        if (!html) return '';
-        const withoutTables = html.replace(/<table[\s\S]*?<\/table>/gi, ' ');
-        return withoutTables.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    }, [html]);
+    const safeBodyHtml = useMemo(() => normalizeMaterialHtml(html), [html]);
     if (!visible) {
         return (
             <article className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500 leading-snug">
@@ -3718,9 +3720,11 @@ function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint
                     {tableSummary.tables > 1 ? ` · таблиц: ${tableSummary.tables}` : ''}
                 </div>
             ) : null}
-            <div className="mt-3 text-sm text-slate-700 max-h-[180px] overflow-y-auto">
-                {textPreview || 'Текст материала пустой.'}
-            </div>
+            <div
+                className={`mt-3 max-h-[220px] overflow-y-auto overflow-x-hidden ${pvlMaterialBodyClass}`}
+                // eslint-disable-next-line react/no-danger
+                dangerouslySetInnerHTML={{ __html: safeBodyHtml || '<p class="text-slate-500">Текст материала пустой.</p>' }}
+            />
         </article>
     );
 }
@@ -6692,11 +6696,9 @@ export default function PvlPrototypeApp({
                 /* лог в syncPvlActorsFromGarden / dataService */
             }
             if (!mounted) return;
-            if (res?.synced) {
-                const next = buildMergedCmsState();
-                setCmsItems(next.items);
-                setCmsPlacements(next.placements);
-            }
+            const next = buildMergedCmsState();
+            setCmsItems(next.items);
+            setCmsPlacements(next.placements);
             forceRefresh();
 
             if (!embeddedInGarden) return;

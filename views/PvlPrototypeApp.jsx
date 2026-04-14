@@ -71,6 +71,7 @@ import {
     syncPvlRuntimeFromDb,
     pvlPatchCurrentUserFromGarden,
 } from '../services/pvlMockApi';
+import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 import { TASK_STATUS } from '../data/pvl/enums';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
@@ -152,7 +153,10 @@ const LEGACY_MENTEE_ROUTE_TO_USER = {
     'm-104': 'u-st-4',
 };
 
-/** Единый источник контента для карточек разделов: seed (API) + демо из pvlMockData, плейсменты с contentItemId. */
+/**
+ * Контент карточек: при работе с PostgREST — только данные из `pvlDomainApi.db` (снимок БД).
+ * Локально без БД — объединение с демо `pvlMockData`.
+ */
 function normalizeContentStatus(s) {
     if (s == null) return 'draft';
     if (typeof s === 'string') return s.toLowerCase();
@@ -161,8 +165,11 @@ function normalizeContentStatus(s) {
 
 function buildMergedCmsState() {
     const db = pvlDomainApi.db;
+    const useDbOnly = pvlPostgrestApi.isEnabled();
     const dbItems = Array.isArray(db?.contentItems) ? [...db.contentItems] : [];
-    const mockItems = Array.isArray(pvlMockData.contentItems) ? [...pvlMockData.contentItems] : [];
+    const mockItems = useDbOnly
+        ? []
+        : (Array.isArray(pvlMockData.contentItems) ? [...pvlMockData.contentItems] : []);
     const byId = new Map();
     mockItems.forEach((i) => {
         if (i?.id) byId.set(i.id, { ...i, status: normalizeContentStatus(i.status) });
@@ -175,7 +182,9 @@ function buildMergedCmsState() {
     const items = Array.from(byId.values());
 
     const dbPl = Array.isArray(db?.contentPlacements) ? db.contentPlacements : [];
-    const mockPl = Array.isArray(pvlMockData.contentPlacements) ? pvlMockData.contentPlacements : [];
+    const mockPl = useDbOnly
+        ? []
+        : (Array.isArray(pvlMockData.contentPlacements) ? pvlMockData.contentPlacements : []);
     const plById = new Map();
     mockPl.forEach((p) => {
         if (!p?.id) return;

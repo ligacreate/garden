@@ -516,19 +516,11 @@ export async function syncPvlRuntimeFromDb() {
     const mappedPlacements = snapshot.placements.map(mapDbPlacementToRuntime);
     const mappedEvents = snapshot.events.map(mapDbEventToRuntime);
     const mappedFaq = snapshot.faq.map(mapDbFaqToRuntime);
-    /** Не затираем каталог пустым ответом (частый сбой RLS/токена сразу после F5). */
-    if (mappedItems.length > 0) {
-        db.contentItems = mappedItems;
-    }
-    if (mappedPlacements.length > 0) {
-        db.contentPlacements = mappedPlacements;
-    }
-    if (mappedEvents.length > 0) {
-        db.calendarEvents = mappedEvents;
-    }
-    if (mappedFaq.length > 0) {
-        db.faqItems = mappedFaq;
-    }
+    /** Состояние рантайма = ответ PostgREST (включая пустые списки — источник правды в БД). */
+    db.contentItems = mappedItems;
+    db.contentPlacements = mappedPlacements;
+    db.calendarEvents = mappedEvents;
+    db.faqItems = mappedFaq;
     await syncTrackerAndHomeworkFromDb();
     return { synced: true };
 }

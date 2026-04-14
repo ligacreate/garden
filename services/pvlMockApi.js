@@ -1,7 +1,7 @@
 import { seed } from '../data/pvl/seed';
 import { capSzMentor, capSzSelf, computeCourseBreakdown } from './pvlScoringEngine';
 import { CANONICAL_SCHEDULE_2026 } from '../data/pvl/constants';
-import { CERTIFICATION_STATUS, CONTENT_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
+import { CERTIFICATION_STATUS, CONTENT_STATUS, COURSE_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import { pvlPostgrestApi } from './pvlPostgrestApi';
@@ -28,6 +28,7 @@ import {
 } from '../selectors/pvlCalculators';
 import { api } from './dataService';
 import { ROLES as GARDEN_ROLES } from '../utils/roles';
+import { classifyGardenProfileForPvlStudent, pvlGardenRoleLabelRu } from '../utils/pvlGardenAdmission';
 
 /** Согласовано с калькуляторами дедлайнов в прототипе */
 const DASHBOARD_TODAY = '2026-06-03';
@@ -99,7 +100,99 @@ function fireAndForget(promiseFactory, meta = {}) {
     }
 }
 
+/** UUID потока из database/pvl/seed/001_demo_minimal.sql ↔ строковый id в mock (data/pvl/seed.js). */
+const PVL_SQL_COHORT_UUID_TO_SEED = Object.freeze({
+    '11111111-1111-1111-1111-111111111101': 'cohort-2026-1',
+});
+const PVL_SEED_COHORT_TO_SQL_UUID = Object.freeze({
+    'cohort-2026-1': '11111111-1111-1111-1111-111111111101',
+});
+
+function isUuidString(v) {
+    if (v == null || v === '') return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v).trim());
+}
+
+/** PostgREST: created_by/updated_by — UUID; строки вида u-adm-1 в колонку UUID не пишем. */
+function uuidOrNull(v) {
+    return isUuidString(v) ? String(v).trim() : null;
+}
+
+function sqlCohortUuidToSeedId(sqlId) {
+    if (sqlId == null || sqlId === '') return null;
+    const s = String(sqlId);
+    return PVL_SQL_COHORT_UUID_TO_SEED[s] || s;
+}
+
+function seedCohortIdToSqlUuid(seedOrSql) {
+    if (seedOrSql == null || seedOrSql === '') return null;
+    const s = String(seedOrSql).trim();
+    if (isUuidString(s)) return s;
+    return PVL_SEED_COHORT_TO_SQL_UUID[s] || null;
+}
+
+/** Статус материала для PostgreSQL (CHECK: draft | published | archived). */
+function contentStatusToDb(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === CONTENT_STATUS.UNPUBLISHED || s === 'unpublished') return 'draft';
+    if (s === CONTENT_STATUS.PUBLISHED || s === 'published') return 'published';
+    if (s === CONTENT_STATUS.ARCHIVED || s === 'archived') return 'archived';
+    return 'draft';
+}
+
+/**
+ * Эквивалентность id потока: UUID из БД и строка seed (cohort-2026-1) сопоставляются.
+ */
+export function pvlCohortIdsEquivalent(a, b) {
+    const na = a == null || a === '' ? null : sqlCohortUuidToSeedId(a) || String(a);
+    const nb = b == null || b === '' ? null : sqlCohortUuidToSeedId(b) || String(b);
+    return na === nb;
+}
+
+/** Placement без cohort_id в БД = виден всем потокам; иначе — только совпадающему потоку. */
+export function pvlPlacementVisibleForCohort(placementCohortId, profileCohortId) {
+    if (placementCohortId == null || placementCohortId === '') return true;
+    if (profileCohortId == null || profileCohortId === '') return false;
+    return pvlCohortIdsEquivalent(placementCohortId, profileCohortId);
+}
+
+function newPvlPersistedEntityId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return `pvl-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+
+function contentItemToDbPayload(item) {
+    const status = contentStatusToDb(item.status);
+    return {
+        title: item.title || '',
+        short_description: item.shortDescription || '',
+        body_html: item.fullDescription || item.description || '',
+        content_type: item.contentType || 'text',
+        target_section: item.targetSection || 'library',
+        target_role: item.targetRole || 'both',
+        visibility: item.visibility || 'all',
+        target_cohort_id: seedCohortIdToSqlUuid(item.targetCohort),
+        module_number: item.moduleNumber != null ? Number(item.moduleNumber) : null,
+        week_number: item.weekNumber != null ? Number(item.weekNumber) : null,
+        order_index: Number(item.orderIndex) || 999,
+        category_id: item.categoryId || null,
+        category_title: item.categoryTitle || null,
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        lesson_video_url: item.lessonVideoUrl || null,
+        lesson_rutube_url: item.lessonRutubeUrl || null,
+        lesson_video_embed: item.lessonVideoEmbed || null,
+        lesson_quiz: item.lessonQuiz || null,
+        homework_config: item.lessonHomework || null,
+        glossary_payload: item.glossaryPayload || null,
+        library_payload: item.libraryPayload || null,
+        lesson_kind: item.targetSection === 'lessons' ? (item.lessonKind || null) : null,
+        status,
+        updated_by: uuidOrNull(item.updatedBy) || uuidOrNull(item.createdBy),
+    };
+}
+
 function mapDbContentItemToRuntime(row) {
+    const targetCohortSeed = row.target_cohort_id ? sqlCohortUuidToSeedId(row.target_cohort_id) : null;
     return {
         id: row.id,
         title: row.title || '',
@@ -107,6 +200,16 @@ function mapDbContentItemToRuntime(row) {
         fullDescription: row.body_html || '',
         description: row.body_html || '',
         contentType: row.content_type || 'text',
+        targetSection: row.target_section || 'library',
+        targetRole: row.target_role || 'both',
+        visibility: row.visibility || 'all',
+        targetCohort: targetCohortSeed || undefined,
+        moduleNumber: row.module_number ?? 0,
+        weekNumber: row.week_number ?? 0,
+        orderIndex: Number(row.order_index) || 999,
+        categoryId: row.category_id || '',
+        categoryTitle: row.category_title || '',
+        tags: Array.isArray(row.tags) ? row.tags : [],
         lessonVideoUrl: row.lesson_video_url || '',
         lessonRutubeUrl: row.lesson_rutube_url || '',
         lessonVideoEmbed: row.lesson_video_embed || '',
@@ -114,6 +217,7 @@ function mapDbContentItemToRuntime(row) {
         lessonHomework: row.homework_config || null,
         glossaryPayload: row.glossary_payload || null,
         libraryPayload: row.library_payload || null,
+        lessonKind: row.lesson_kind || undefined,
         status: row.status || 'draft',
         createdBy: row.created_by || 'u-adm-1',
         updatedBy: row.updated_by || row.created_by || 'u-adm-1',
@@ -123,17 +227,19 @@ function mapDbContentItemToRuntime(row) {
 }
 
 function mapDbPlacementToRuntime(row) {
+    const cohortSeed = row.cohort_id ? sqlCohortUuidToSeedId(row.cohort_id) : null;
     return {
         id: row.id,
         contentItemId: row.content_item_id,
         targetRole: row.target_role || 'both',
         targetSection: row.target_section || 'library',
-        cohortId: row.cohort_id || 'cohort-2026-1',
-        targetCohort: row.cohort_id || 'cohort-2026-1',
+        /** null = все потоки (не подменять на дефолт — иначе ломается фильтр выдачи). */
+        cohortId: cohortSeed,
+        targetCohort: cohortSeed,
         moduleNumber: row.module_number ?? 0,
         weekNumber: row.week_number ?? 0,
         orderIndex: Number(row.order_index ?? row.sort_order ?? 0),
-        isPublished: !!row.is_published,
+        isPublished: row.is_published !== false,
         createdAt: row.created_at || nowIso(),
         updatedAt: row.updated_at || nowIso(),
     };
@@ -157,11 +263,13 @@ function mapDbEventToRuntime(row) {
         description: row.description || '',
         eventType: normalizedEventType,
         visibilityRole: row.visibility_role || 'all',
-        cohortId: row.cohort_id || 'cohort-2026-1',
+        cohortId: row.cohort_id ? sqlCohortUuidToSeedId(row.cohort_id) : null,
         moduleNumber: row.module_number ?? 0,
         weekNumber: row.week_number ?? 0,
         linkedLessonId: row.linked_lesson_id || null,
         linkedPracticumId: row.linked_practicum_id || null,
+        /** YYYY-MM-DD для сетки календаря (date_hint в БД или из start_at). */
+        date: row.date_hint ? String(row.date_hint).slice(0, 10) : String(row.start_at || row.starts_at || '').slice(0, 10),
         startAt: row.start_at || row.starts_at || nowIso(),
         endAt: row.end_at || row.ends_at || nowIso(),
         colorToken: row.color_token || row.event_type || 'other',
@@ -427,35 +535,14 @@ export async function syncPvlActorsFromGarden() {
         }
         if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
 
-        /**
-         * Только поле `role` из profiles (не status: 'active').
-         * Важно: в БД у части пользователей `role` пустой — в Саду дефолт «абитуриент»
-         * (см. RemoteApiService `_ensurePostgrestUser`, LocalStorageService), но PostgREST
-         * отдаёт null, и только явные «mentor» матчились. Пустая роль = абитуриент для ПВЛ.
-         */
         const roleOnly = (u) => String(u?.role ?? '').trim().toLowerCase();
-        const roleLabelLower = (u) => String(u?.roleLabel || u?.role_title || '').trim().toLowerCase();
-        const explicitNonApplicantRoles = new Set([
-            GARDEN_ROLES.MENTOR,
-            GARDEN_ROLES.INTERN,
-            GARDEN_ROLES.LEADER,
-            GARDEN_ROLES.ADMIN,
-            GARDEN_ROLES.CURATOR,
-            'mentor', 'intern', 'leader', 'admin', 'curator',
-            'ментор', 'стажер', 'стажёр', 'ведущая', 'администратор', 'куратор',
-        ]);
-        const isGardenApplicant = (u) => {
-            const r = roleOnly(u);
-            if (r && explicitNonApplicantRoles.has(r)) return false;
-            if (r === GARDEN_ROLES.APPLICANT) return true;
-            if (r === 'абитуриент' || r === 'абитуриентка') return true;
-            if (roleLabelLower(u).includes('битуриент')) return true;
-            if (!r) return true;
-            return false;
-        };
 
         const mentors = users.filter((u) => roleOnly(u) === GARDEN_ROLES.MENTOR);
-        const applicants = users.filter(isGardenApplicant);
+
+        /** Участники ПВЛ (абитуриенты и ученицы курса), без персонала — см. utils/pvlGardenAdmission.js */
+        const pvlTrackMembers = users
+            .map((u) => ({ profile: u, admission: classifyGardenProfileForPvlStudent(u) }))
+            .filter((x) => x.admission != null);
 
         mentors.forEach((u) => {
             if (!u?.id) return;
@@ -493,9 +580,10 @@ export async function syncPvlActorsFromGarden() {
             }
         });
 
-        applicants.forEach((u) => {
+        pvlTrackMembers.forEach(({ profile: u, admission }) => {
             if (!u?.id) return;
             const userId = String(u.id);
+            const gr = admission.gardenRole;
             const realName = u.name || u.fullName || u.email || userId;
             const existingUser = (db.users || []).find((x) => String(x.id) === userId);
             if (!existingUser) {
@@ -506,16 +594,19 @@ export async function syncPvlActorsFromGarden() {
                     email: u.email || '',
                     avatar: u.avatar || '',
                     isActive: true,
-                    gardenRole: 'applicant',
+                    gardenRole: gr,
+                    gardenRoleSource: admission.sourceRole || '',
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
             } else {
                 if (realName && realName !== userId) existingUser.fullName = realName;
-                existingUser.gardenRole = 'applicant';
+                existingUser.gardenRole = gr;
+                existingUser.gardenRoleSource = admission.sourceRole || '';
+                existingUser.updatedAt = nowIso();
             }
-            const existsStudent = (db.studentProfiles || []).some((x) => String(x.userId) === userId);
-            if (!existsStudent) {
+            const sp = (db.studentProfiles || []).find((x) => String(x.userId) === userId);
+            if (!sp) {
                 db.studentProfiles.push({
                     id: uid('sp'),
                     userId,
@@ -528,21 +619,31 @@ export async function syncPvlActorsFromGarden() {
                     szSelfAssessmentPoints: 0,
                     szMentorAssessmentPoints: 0,
                     szAdmissionStatus: CERTIFICATION_STATUS.NOT_STARTED,
+                    gardenRole: gr,
                     lastActivityAt: nowIso().slice(0, 10),
                     unreadCount: 0,
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
+            } else {
+                sp.gardenRole = gr;
+                sp.updatedAt = nowIso();
             }
         });
 
-        /** Есть абитуриенты из profiles — админка и ментор не показывают демо u-st-* (см. getAdminStudents / getMentorMenteeIds). */
-        db._pvlGardenApplicantsSynced = applicants.length > 0;
-        if (applicants.length > 0) {
+        /** Есть синхронизированные из Сада участники трека — админка и ментор не показывают демо u-st-* */
+        db._pvlGardenApplicantsSynced = pvlTrackMembers.length > 0;
+        if (pvlTrackMembers.length > 0) {
             pruneSeedPvlDemoStudentRows();
         }
 
-        return { synced: true, mentors: mentors.length, applicants: applicants.length };
+        return {
+            synced: true,
+            mentors: mentors.length,
+            applicants: pvlTrackMembers.filter((x) => x.admission.gardenRole === 'applicant').length,
+            students: pvlTrackMembers.filter((x) => x.admission.gardenRole === 'student').length,
+            trackMembers: pvlTrackMembers.length,
+        };
     } catch (error) {
         logDbFallback({
             endpoint: '/profiles',
@@ -553,6 +654,56 @@ export async function syncPvlActorsFromGarden() {
         });
         return { synced: false, reason: 'error' };
     }
+}
+
+/** Технический userId для предпросмотра курса в учительской/менторе без реальных абитуриентов. Не показывается в списке «Ученицы». */
+export const PVL_PREVIEW_STUDENT_ID = 'pvl-preview-cohort';
+
+export function isPvlPreviewStudentId(userId) {
+    return String(userId || '') === PVL_PREVIEW_STUDENT_ID;
+}
+
+/**
+ * Гарантирует наличие профиля ученицы для отображения CMS (трекер, библиотека, глоссарий) без зависимости от абитуриентов из Сада.
+ * Идемпотентно.
+ */
+export function ensurePvlPreviewStudentProfile() {
+    if ((db.studentProfiles || []).some((p) => String(p.userId) === PVL_PREVIEW_STUDENT_ID)) {
+        return PVL_PREVIEW_STUDENT_ID;
+    }
+    if (!(db.users || []).some((u) => String(u.id) === PVL_PREVIEW_STUDENT_ID)) {
+        db.users.push({
+            id: PVL_PREVIEW_STUDENT_ID,
+            role: ROLES.STUDENT,
+            fullName: 'Предпросмотр курса',
+            email: '',
+            avatar: '',
+            isActive: true,
+            gardenRole: 'preview',
+            gardenRoleSource: '',
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+        });
+    }
+    db.studentProfiles.push({
+        id: uid('sp'),
+        userId: PVL_PREVIEW_STUDENT_ID,
+        cohortId: 'cohort-2026-1',
+        mentorId: null,
+        currentWeek: 0,
+        currentModule: 1,
+        courseStatus: COURSE_STATUS.ACTIVE,
+        coursePoints: 0,
+        szSelfAssessmentPoints: 0,
+        szMentorAssessmentPoints: 0,
+        szAdmissionStatus: CERTIFICATION_STATUS.NOT_STARTED,
+        gardenRole: 'preview',
+        lastActivityAt: nowIso().slice(0, 10),
+        unreadCount: 0,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+    });
+    return PVL_PREVIEW_STUDENT_ID;
 }
 
 function isTaskDisputeOpen(studentId, taskId) {
@@ -1019,8 +1170,7 @@ function buildMentorCohortApplicantRows(mentorId) {
     return profiles
         .map((p) => {
             const user = db.users.find((u) => u.id === p.userId);
-            const gr = user?.gardenRole;
-            const isGardenApplicant = gr === 'applicant' || gr == null;
+            const gr = p.gardenRole ?? user?.gardenRole ?? null;
             const mentorUid = p.mentorId;
             const mentorUser = mentorUid ? db.users.find((u) => u.id === mentorUid) : null;
             const mentorName = mentorUid ? (mentorUser?.fullName || String(mentorUid)) : '—';
@@ -1034,10 +1184,10 @@ function buildMentorCohortApplicantRows(mentorId) {
                 mentorName,
                 isMyMentee,
                 gardenRole: gr || null,
-                isGardenApplicant,
+                statusLabelRu: pvlGardenRoleLabelRu(gr),
             };
         })
-        .filter((r) => r.isGardenApplicant);
+        .filter((r) => !isPvlPreviewStudentId(r.userId));
 }
 
 function getTaskDetail(studentId, taskId) {
@@ -1161,7 +1311,7 @@ function persistSubmissionToDb(studentId, taskId) {
 function getPublishedContentFor(role, section, cohortId) {
     return db.contentPlacements
         .filter((p) => p.targetSection === section && p.isPublished)
-        .filter((p) => !p.cohortId || p.cohortId === cohortId)
+        .filter((p) => pvlPlacementVisibleForCohort(p.cohortId, cohortId))
         .filter((p) => p.targetRole === role || p.targetRole === 'both')
         .map((p) => ({ placement: p, item: db.contentItems.find((ci) => ci.id === p.contentItemId) }))
         .filter((x) => x.item && x.item.status === CONTENT_STATUS.PUBLISHED)
@@ -1189,7 +1339,7 @@ function ensureLibrarySeedInDb() {
         if (!existingIds.has(item.id)) db.contentItems.push(item);
         if (!db.contentPlacements.some((p) => p.contentItemId === item.id && p.targetSection === 'library')) {
             db.contentPlacements.push({
-                id: uid('pl'),
+                id: newPvlPersistedEntityId(),
                 contentItemId: item.id,
                 targetSection: 'library',
                 targetRole: index % 7 === 0 ? 'both' : 'student',
@@ -1876,7 +2026,7 @@ function calendarVisibleToViewer(event, viewerRole) {
 export const calendarApi = {
     listForViewer(viewerRole, cohortId) {
         return (db.calendarEvents || [])
-            .filter((e) => !cohortId || e.cohortId === cohortId)
+            .filter((e) => !cohortId || pvlPlacementVisibleForCohort(e.cohortId, cohortId))
             .filter((e) => calendarVisibleToViewer(e, viewerRole))
             .slice()
             .sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
@@ -1904,25 +2054,25 @@ export const adminApi = {
         return db.contentItems.filter((c) => (filters.status ? c.status === filters.status : true));
     },
     createContentItem(payload) {
-        const item = { id: uid('cnt'), status: CONTENT_STATUS.DRAFT, visibility: 'all', attachments: [], externalLinks: [], coverImage: '', estimatedDuration: '', createdBy: 'u-adm-1', createdAt: nowIso(), updatedAt: nowIso(), ...payload };
+        const item = {
+            id: newPvlPersistedEntityId(),
+            status: CONTENT_STATUS.DRAFT,
+            visibility: 'all',
+            attachments: [],
+            externalLinks: [],
+            coverImage: '',
+            estimatedDuration: '',
+            createdBy: 'u-adm-1',
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+            ...payload,
+        };
         db.contentItems.unshift(item);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_content', 'content_item', item.id, 'Created content item', item);
         fireAndForget(() => pvlPostgrestApi.upsertContentItem({
             id: item.id,
-            title: item.title || '',
-            short_description: item.shortDescription || '',
-            body_html: item.fullDescription || item.description || '',
-            content_type: item.contentType || 'text',
-            lesson_video_url: item.lessonVideoUrl || null,
-            lesson_rutube_url: item.lessonRutubeUrl || null,
-            lesson_video_embed: item.lessonVideoEmbed || null,
-            lesson_quiz: item.lessonQuiz || null,
-            homework_config: item.lessonHomework || null,
-            glossary_payload: item.glossaryPayload || null,
-            library_payload: item.libraryPayload || null,
-            status: item.status || 'draft',
-            created_by: item.createdBy || 'u-adm-1',
-            updated_by: item.updatedBy || item.createdBy || 'u-adm-1',
+            ...contentItemToDbPayload(item),
+            created_by: uuidOrNull(item.createdBy),
             created_at: item.createdAt,
             updated_at: item.updatedAt,
         }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: item.id });
@@ -1937,19 +2087,8 @@ export const adminApi = {
         Object.assign(item, payload, { updatedAt: nowIso() });
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_content', 'content_item', contentId, 'Updated content item', payload);
         fireAndForget(() => pvlPostgrestApi.updateContentItem(contentId, {
-            title: item.title || '',
-            short_description: item.shortDescription || '',
-            body_html: item.fullDescription || item.description || '',
-            content_type: item.contentType || 'text',
-            lesson_video_url: item.lessonVideoUrl || null,
-            lesson_rutube_url: item.lessonRutubeUrl || null,
-            lesson_video_embed: item.lessonVideoEmbed || null,
-            lesson_quiz: item.lessonQuiz || null,
-            homework_config: item.lessonHomework || null,
-            glossary_payload: item.glossaryPayload || null,
-            library_payload: item.libraryPayload || null,
-            status: item.status || 'draft',
-            updated_by: 'u-adm-1',
+            ...contentItemToDbPayload(item),
+            updated_by: uuidOrNull(item.updatedBy) || uuidOrNull(item.createdBy),
             updated_at: item.updatedAt,
         }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: contentId });
         return item;
@@ -1959,7 +2098,7 @@ export const adminApi = {
         if (!src) return null;
         const copy = {
             ...src,
-            id: uid('cnt'),
+            id: newPvlPersistedEntityId(),
             title: `${src.title} (copy)`,
             status: CONTENT_STATUS.DRAFT,
             createdAt: nowIso(),
@@ -1967,6 +2106,13 @@ export const adminApi = {
         };
         db.contentItems.unshift(copy);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'duplicate_content', 'content_item', copy.id, 'Duplicated content item', { sourceId: contentId });
+        fireAndForget(() => pvlPostgrestApi.upsertContentItem({
+            id: copy.id,
+            ...contentItemToDbPayload(copy),
+            created_by: uuidOrNull(copy.createdBy),
+            created_at: copy.createdAt,
+            updated_at: copy.updatedAt,
+        }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: copy.id });
         return copy;
     },
     publishContentItem(contentId) {
@@ -2012,7 +2158,7 @@ export const adminApi = {
         return this.updateContentItem(contentId, { status: CONTENT_STATUS.DRAFT });
     },
     createPlacement(payload) {
-        const placement = { id: uid('pl'), isPublished: true, createdAt: nowIso(), updatedAt: nowIso(), ...payload };
+        const placement = { id: newPvlPersistedEntityId(), isPublished: true, createdAt: nowIso(), updatedAt: nowIso(), ...payload };
         db.contentPlacements.push(placement);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_placement', 'content_placement', placement.id, 'Assigned content placement', payload);
         fireAndForget(() => pvlPostgrestApi.upsertPlacement({
@@ -2020,7 +2166,7 @@ export const adminApi = {
             content_item_id: placement.contentItemId || placement.contentId,
             target_role: placement.targetRole || 'both',
             target_section: placement.targetSection || 'library',
-            cohort_id: placement.cohortId || placement.targetCohort || 'cohort-2026-1',
+            cohort_id: seedCohortIdToSqlUuid(placement.cohortId || placement.targetCohort),
             module_number: Number(placement.moduleNumber ?? placement.weekNumber ?? 0),
             week_number: Number(placement.weekNumber ?? placement.moduleNumber ?? 0),
             order_index: Number(placement.orderIndex ?? 0),
@@ -2041,7 +2187,7 @@ export const adminApi = {
         fireAndForget(() => pvlPostgrestApi.updatePlacement(placementId, {
             target_role: p.targetRole || 'both',
             target_section: p.targetSection || 'library',
-            cohort_id: p.cohortId || p.targetCohort || 'cohort-2026-1',
+            cohort_id: seedCohortIdToSqlUuid(p.cohortId || p.targetCohort),
             module_number: Number(p.moduleNumber ?? p.weekNumber ?? 0),
             week_number: Number(p.weekNumber ?? p.moduleNumber ?? 0),
             order_index: Number(p.orderIndex ?? 0),
@@ -2077,6 +2223,7 @@ export const adminApi = {
         if (db._pvlGardenApplicantsSynced) {
             list = list.filter((s) => !isSeedPvlDemoStudentId(s.userId));
         }
+        list = list.filter((s) => !isPvlPreviewStudentId(s.userId));
         return list;
     },
     getAdminMentors() {
@@ -2394,6 +2541,13 @@ function setTaskStatus(studentId, taskId, toStatus, changedByUserId, comment = '
 
 export const pvlDomainApi = {
     db,
+    ensurePvlPreviewStudentProfile,
+    isPvlPreviewStudentId,
+    PVL_PREVIEW_STUDENT_ID,
+    gardenAdmission: {
+        classifyGardenProfileForPvlStudent,
+        pvlGardenRoleLabelRu,
+    },
     studentApi,
     mentorApi,
     adminApi,

@@ -1392,6 +1392,7 @@ class RemoteApiService {
         return { ...profile, role: ROLES.APPLICANT };
     }
 
+    /** Все профили: нужен SELECT на `profiles` согласно RLS (см. database/pvl/notes/garden-profiles-rls-for-pvl-sync.md). Источник роли абитуриента: колонка `role`. */
     async getUsers() {
         const { data } = await postgrestFetch('profiles', { select: '*' });
         return (data || []).map((profile) => this._normalizeProfile(profile));
@@ -2504,6 +2505,8 @@ class RemoteApiService {
         const data = { ...profile };
         return {
             ...data,
+            /** жизненный цикл аккаунта; не путать с ролью абитуриента (см. `role`) */
+            status: data.status,
             avatar: data.avatar_url || data.avatar,
             treeDesc: data.tree_desc || data.treeDesc,
             role: data.role,

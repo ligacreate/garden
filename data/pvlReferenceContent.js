@@ -24,8 +24,9 @@ export const PVL_PLATFORM_MODULES = [
     {
         id: 1,
         label: 'Пиши',
+        icon: '✍️',
         cls: 'mod-1',
-        title: '«ПИШИ»',
+        title: 'ПИШИ',
         sub: 'Формат и базовая методология письменных практик',
         coverImage: PVL_MODULE_COVERS[1],
         items: [],
@@ -33,8 +34,9 @@ export const PVL_PLATFORM_MODULES = [
     {
         id: 2,
         label: 'Веди',
+        icon: '🧭',
         cls: 'mod-2',
-        title: '«ВЕДИ»',
+        title: 'ВЕДИ',
         sub: 'Конструктор сценария и групповая динамика',
         coverImage: PVL_MODULE_COVERS[2],
         items: [],
@@ -42,19 +44,20 @@ export const PVL_PLATFORM_MODULES = [
     {
         id: 3,
         label: 'Люби',
+        icon: '🌸',
         cls: 'mod-3',
-        title: '«ЛЮБИ»',
+        title: 'ЛЮБИ',
         sub: 'Сбор группы, сертификация и пост-анализ',
         coverImage: PVL_MODULE_COVERS[3],
         items: [],
     },
 ];
 
-/** Подпись опоры курса по внутреннему номеру модуля из расписания (0 — прелёрнинг → «ПИШИ»). */
+/** Подпись опоры курса по внутреннему номеру модуля из расписания (0 — прелёрнинг → ПИШИ). */
 export function pvlPlatformModuleTitleFromInternal(internalModule) {
     const n = Number(internalModule);
     const platformId = n <= 1 ? 1 : n === 2 ? 2 : 3;
-    return PVL_PLATFORM_MODULES.find((m) => Number(m.id) === platformId)?.title || '«Пиши» — старт курса';
+    return PVL_PLATFORM_MODULES.find((m) => Number(m.id) === platformId)?.title || 'ПИШИ — старт курса';
 }
 
 /**

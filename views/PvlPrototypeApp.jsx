@@ -40,6 +40,7 @@ import {
     PVL_CERT_PROCESS_STEPS,
     PVL_CERT_RED_FLAGS,
     PVL_GLOSSARY_FILTERS,
+    PVL_PLATFORM_MODULES,
     PVL_TRACKER_GLOSSARY,
     PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS,
     PVL_TRACKER_RULES,
@@ -54,7 +55,16 @@ import {
     getUser,
     getStudentCertification,
 } from '../data/pvlMockData';
-import { mapStudentHomeworkDisplayStatus, mapTaskStatus, pvlDomainApi, syncPvlActorsFromGarden, syncPvlRuntimeFromDb, pvlPatchCurrentUserFromGarden } from '../services/pvlMockApi';
+import {
+    mapStudentHomeworkDisplayStatus,
+    mapTaskStatus,
+    pvlCohortIdsEquivalent,
+    pvlDomainApi,
+    pvlPlacementVisibleForCohort,
+    syncPvlActorsFromGarden,
+    syncPvlRuntimeFromDb,
+    pvlPatchCurrentUserFromGarden,
+} from '../services/pvlMockApi';
 import { TASK_STATUS } from '../data/pvl/enums';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
@@ -70,6 +80,7 @@ import {
 } from '../services/pvlAppKernel';
 import { logPvlRoleResolution, readGardenCurrentUserFromStorage, resolvePvlRoleFromGardenProfile } from '../services/pvlRoleResolver';
 import { api } from '../services/dataService';
+import { pvlGardenRoleLabelRu } from '../utils/pvlGardenAdmission';
 
 function pvlDevToolsEnabled() {
     try {
@@ -91,12 +102,39 @@ function resolveActorUser(id) {
         || null;
 }
 
-/** Предпросмотр материалов в учительской: первая ученица потока из Сада (или пусто). */
+/** Имя для UI: в Саду чаще `name`, в сиде ПВЛ — `fullName`. */
+function resolveActorDisplayName(id) {
+    const u = resolveActorUser(id);
+    if (!u) return '';
+    return String(u.fullName || u.name || u.email || '').trim();
+}
+
+/** Заголовок дашборда ученицы: как в сайдбаре / шапке вложения — с запасным чтением из garden_currentUser. */
+function resolveStudentDashboardHeroName(studentId) {
+    let name = resolveActorDisplayName(studentId);
+    if (name) return name;
+    try {
+        const gu = readGardenCurrentUserFromStorage();
+        if (gu && String(gu.id) === String(studentId)) {
+            name = String(gu.name || gu.fullName || gu.email || '').trim();
+        }
+    } catch {
+        /* noop */
+    }
+    return name;
+}
+
+/**
+ * Предпросмотр материалов в учительской: первая реальная ученица из списка админки,
+ * либо технический профиль предпросмотра (без абитуриентов из Сада контент курса всё равно виден).
+ */
 function getFirstCohortStudentId() {
     try {
-        return pvlDomainApi.adminApi.getAdminStudents({})[0]?.userId ?? null;
+        const rows = pvlDomainApi.adminApi.getAdminStudents({});
+        if (rows.length > 0) return rows[0].userId;
+        return pvlDomainApi.ensurePvlPreviewStudentProfile();
     } catch {
-        return null;
+        return pvlDomainApi.ensurePvlPreviewStudentProfile();
     }
 }
 
@@ -533,9 +571,9 @@ const SidebarMenu = ({
 }) => {
     const routePath = sidebarRoutePath(currentRoute);
     const sidebarActorName = useMemo(() => {
-        if (role === 'student') return resolveActorUser(studentId)?.fullName?.trim() || '';
-        if (role === 'mentor') return resolveActorUser(resolvePvlMentorActorId(actingUserId))?.fullName?.trim() || '';
-        return resolveActorUser(actingUserId)?.fullName?.trim() || '';
+        if (role === 'student') return resolveActorDisplayName(studentId);
+        if (role === 'mentor') return resolveActorDisplayName(resolvePvlMentorActorId(actingUserId));
+        return resolveActorDisplayName(actingUserId);
     }, [role, studentId, actingUserId]);
     const sidebarRoleLabel = role === 'student' ? 'Участница' : role === 'mentor' ? 'Ментор' : 'Учительская';
     const sidebarTitle = sidebarActorName || sidebarRoleLabel;
@@ -1063,7 +1101,7 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
         .filter((p) => p.targetSection === sectionKey)
         .filter((p) => p.targetRole === role || p.targetRole === 'both')
         .filter((p) => p.isPublished !== false)
-        .filter((p) => !p.cohortId || p.cohortId === cohortId);
+        .filter((p) => pvlPlacementVisibleForCohort(p.cohortId, cohortId));
     const byItemId = new Map();
     relevantPlacements.forEach((p) => {
         const itemId = p.contentId || p.contentItemId;
@@ -1079,7 +1117,7 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
             const visibilityAllowed =
                 item.visibility === 'all'
                 || (item.visibility === 'by_role' && roleAllowed)
-                || ((item.visibility === 'by_cohort' || item.visibility === 'cohort') && (!item.targetCohort || item.targetCohort === cohortId));
+                || ((item.visibility === 'by_cohort' || item.visibility === 'cohort') && (!item.targetCohort || pvlCohortIdsEquivalent(item.targetCohort, cohortId)));
             const hasPlacement = !!placementMeta;
             const inSection = item.targetSection === sectionKey || hasPlacement;
             return item.status === 'published' && visibilityAllowed && inSection;
@@ -1087,6 +1125,38 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
     return withPlacement
         .sort((a, b) => (a.placementMeta?.order ?? a.item.orderIndex ?? 999) - (b.placementMeta?.order ?? b.item.orderIndex ?? 999))
         .map((x) => x.item);
+}
+
+/**
+ * Строит модули трекера из опубликованных уроков CMS.
+ * Если уроков нет — возвращает PVL_PLATFORM_MODULES с пустыми items (заглушка).
+ * Поле moduleNumber из placement маппится на id модуля (1=Пиши, 2=Веди, 3=Люби; 0 → 1).
+ */
+function buildTrackerModulesFromCms(cmsItems = [], cmsPlacements = []) {
+    const lessonPlacements = cmsPlacements
+        .filter((p) => p.targetSection === 'lessons' && p.isPublished !== false)
+        .sort((a, b) => (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0));
+    if (!lessonPlacements.length) return PVL_PLATFORM_MODULES;
+    const byModule = {};
+    lessonPlacements.forEach((p) => {
+        const rawMod = Number(p.moduleNumber) || 0;
+        const modId = rawMod <= 1 ? 1 : rawMod === 2 ? 2 : 3;
+        if (!byModule[modId]) byModule[modId] = [];
+        const item = cmsItems.find((x) => x.id === (p.contentItemId || p.contentId));
+        if (!item) return;
+        const tagMap = { video: 'video', pdf: 'pdf', quiz: 'quiz', text: 'task', audio: 'task' };
+        byModule[modId].push({
+            text: item.title || `Урок ${byModule[modId].length + 1}`,
+            tag: tagMap[item.contentType] || 'task',
+            contentItemId: String(item.id),
+        });
+    });
+    const hasAny = Object.values(byModule).some((arr) => arr.length > 0);
+    if (!hasAny) return PVL_PLATFORM_MODULES;
+    return PVL_PLATFORM_MODULES.map((mod) => ({
+        ...mod,
+        items: byModule[mod.id] || [],
+    }));
 }
 
 function AdminContentSectionPreview({
@@ -1718,6 +1788,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
     }, [activeHomework]);
     const feed = snapshot.activityFeed || [];
     const user = resolveActorUser(studentId);
+    const heroDisplayName = resolveStudentDashboardHeroName(studentId);
     const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId || p.id === studentId) || null;
     const mentorUserId = profile?.mentorId || null;
     const mentorUser = mentorUserId ? resolveActorUser(mentorUserId) : null;
@@ -1735,7 +1806,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                 <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-6">
                     <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/65">{PVL_COURSE_DISPLAY_NAME}</p>
-                        <h2 className="font-display text-2xl md:text-3xl mt-2 tracking-tight">{user?.fullName || 'Участница'}</h2>
+                        <h2 className="font-display text-2xl md:text-3xl mt-2 tracking-tight">{heroDisplayName || 'Участница'}</h2>
                         {cohortTitle ? <div className="mt-2 text-sm text-white/80">{cohortTitle}</div> : null}
                         <div className="mt-2 text-sm text-white/80">Ментор: {mentorUser?.fullName || 'не назначен'}</div>
                         <button
@@ -2013,18 +2084,16 @@ function StudentPracticumsCalendar({ studentId }) {
     );
 }
 
-/** Контент «О курсе» задаётся в учительской (CMS); здесь только каркас экрана. */
-const ABOUT_COURSE_MATERIALS = [];
-
-function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
-    const [activeId, setActiveId] = useState(ABOUT_COURSE_MATERIALS[0]?.id || '');
-    const active = ABOUT_COURSE_MATERIALS.find((m) => m.id === activeId) || ABOUT_COURSE_MATERIALS[0];
+function StudentAboutEnriched({ navigate, routePrefix = '/student', cmsItems = [], cmsPlacements = [] }) {
+    const materials = getPublishedContentBySection('about', 'student', cmsItems, cmsPlacements);
+    const [activeId, setActiveId] = useState(materials[0]?.id || '');
+    const active = materials.find((m) => m.id === activeId) || materials[0];
     const tags = ['Все', 'Обзор', 'Старт', 'Платформа', 'Безопасность', 'Баллы', 'Команда', 'Трекер'];
     const [tagFilter, setTagFilter] = useState('Все');
-    const filtered = ABOUT_COURSE_MATERIALS.filter((m) => tagFilter === 'Все' || m.tag === tagFilter);
+    const filtered = materials.filter((m) => tagFilter === 'Все' || (m.tags || []).includes(tagFilter) || m.tag === tagFilter);
     const goTracker = () => navigate(`${routePrefix}/tracker`);
 
-    if (ABOUT_COURSE_MATERIALS.length === 0) {
+    if (materials.length === 0) {
         return (
             <div className="space-y-6">
                 <div className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
@@ -2074,11 +2143,11 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                     <div className="h-36 md:h-44 shrink-0 bg-gradient-to-br from-[#FAF6F2] via-emerald-50/80 to-teal-100/60 border-b border-slate-100" aria-hidden />
                     <div className="p-5 md:p-6 flex-1 flex flex-col min-h-0 overflow-y-auto">
                         <div className="flex flex-wrap gap-2 mb-3">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 border border-slate-200 rounded-full px-2.5 py-1">{active?.tag}</span>
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/80 border border-emerald-100 bg-emerald-50/50 rounded-full px-2.5 py-1">{active?.kind}</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 border border-slate-200 rounded-full px-2.5 py-1">{(active?.tags || []).join(', ') || active?.tag}</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/80 border border-emerald-100 bg-emerald-50/50 rounded-full px-2.5 py-1">{active?.contentType || active?.kind}</span>
                         </div>
                         <h3 className="font-display text-xl text-slate-800">{active?.title}</h3>
-                        <p className="text-sm text-slate-600 mt-3 leading-relaxed flex-1">{active?.summary}</p>
+                        <p className="text-sm text-slate-600 mt-3 leading-relaxed flex-1">{active?.shortDescription || active?.summary}</p>
                         {active?.id === 'week0' ? (
                             <button
                                 type="button"
@@ -2114,18 +2183,18 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
                         <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы</h3>
                     </div>
                     <ul className="divide-y divide-slate-100 overflow-y-auto flex-1 min-h-0">
-                        {ABOUT_COURSE_MATERIALS.map((m) => (
+                        {filtered.map((m) => (
                             <li key={m.id}>
                                 <button
                                     type="button"
                                     onClick={() => { setActiveId(m.id); setTagFilter('Все'); }}
                                     className={`w-full text-left px-5 py-4 flex gap-4 transition-colors ${activeId === m.id ? 'bg-emerald-50/40 border-l-4 border-l-emerald-500 pl-4' : 'hover:bg-slate-50/80 border-l-4 border-l-transparent pl-4'}`}
                                 >
-                                    <span className="text-lg shrink-0" aria-hidden>{m.kind === 'действие' ? '→' : '📄'}</span>
+                                    <span className="text-lg shrink-0" aria-hidden>{(m.contentType || m.kind) === 'task' ? '→' : '📄'}</span>
                                     <div className="min-w-0">
                                         <div className="text-sm font-semibold text-slate-800">{m.title}</div>
-                                        <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{m.tag} · {m.kind}</div>
-                                        <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">{m.summary}</p>
+                                        <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{(m.tags || []).join(', ') || m.tag} · {m.contentType || m.kind}</div>
+                                        <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">{m.shortDescription || m.summary}</p>
                                     </div>
                                 </button>
                             </li>
@@ -2146,7 +2215,7 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
     );
 }
 
-function StudentGlossarySearch() {
+function StudentGlossarySearch({ studentId = '', cmsItems = [], cmsPlacements = [] }) {
     const [q, setQuery] = useState('');
     const [letter, setLetter] = useState('all');
     const [expandedId, setExpandedId] = useState('');
@@ -2158,8 +2227,7 @@ function StudentGlossarySearch() {
             .replace(/^[\s"'«»()]+|[\s"'«»()]+$/g, '')
             .replace(/[:\-–—]\s*$/u, '')
             .trim();
-        const studentId = 'u-st-1';
-        const byPlacement = pvlDomainApi.selectors.getPublishedContentForStudent(studentId, 'glossary') || [];
+        const byPlacement = getPublishedContentBySection('glossary', 'student', cmsItems, cmsPlacements) || [];
         const htmlSources = byPlacement
             .map((x) => ({
                 title: String(x.title || '').trim(),
@@ -2232,13 +2300,16 @@ function StudentGlossarySearch() {
             seen.add(k);
             uniq.push(row);
         });
+        if (uniq.length === 0) {
+            return PVL_TRACKER_GLOSSARY.map((g) => ({ id: g.term, term: g.term, definition: g.def }));
+        }
         return uniq;
-    }, []);
+    }, [cmsItems, cmsPlacements]);
     const base = glossaryItems.map((g) => ({
         id: g.id,
         term: g.term,
-        abbr: null,
-        catLabel: null,
+        abbr: g.abbr || null,
+        catLabel: g.catLabel || null,
         definition: g.definition,
     }));
     const qlow = q.trim().toLowerCase();
@@ -2829,21 +2900,50 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     }
     if (route === '/student/about') return (
         <div className="space-y-5">
-            <StudentAboutEnriched navigate={navigate} routePrefix={routePrefix} />
+            <StudentAboutEnriched navigate={navigate} routePrefix={routePrefix} cmsItems={cmsItems} cmsPlacements={cmsPlacements} />
         </div>
     );
-    if (route === '/student/glossary') return <StudentGlossarySearch />;
+    if (route === '/student/glossary') return <StudentGlossarySearch studentId={studentId} cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (route === '/student/library') return <LibraryPage studentId={studentId} navigate={navigate} routePrefix={routePrefix} refresh={refresh} refreshKey={refreshKey} />;
     if (route.startsWith('/student/library/')) {
         const itemId = route.split('/')[3] || '';
         return <LibraryPage studentId={studentId} navigate={navigate} initialItemId={itemId} routePrefix={routePrefix} refresh={refresh} refreshKey={refreshKey} />;
     }
     if (route === '/student/lessons' || route === '/student/checklist') {
-        return <StudentCourseTracker studentId={studentId} />;
+        return (
+            <StudentCourseTracker
+                studentId={studentId}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
+                navigate={navigate}
+                routePrefix={routePrefix}
+            />
+        );
     }
-    if (route === '/student/practicums') return <PvlDashboardCalendarBlock viewerRole="student" cohortId="cohort-2026-1" navigate={navigate} routePrefix={routePrefix} title="Практикумы с менторами" eventTypeFilter={['mentor_meeting']} />;
+    if (route === '/student/practicums') {
+        /** Встречи с менторами: основной тип + legacy `session` из старых данных/БД. */
+        const practicumViewerRole = routePrefix === '/admin' ? 'admin' : routePrefix === '/mentor' ? 'mentor' : 'student';
+        return (
+            <PvlDashboardCalendarBlock
+                viewerRole={practicumViewerRole}
+                cohortId="cohort-2026-1"
+                navigate={navigate}
+                routePrefix={routePrefix}
+                title="Практикумы с менторами"
+                eventTypeFilter={['mentor_meeting', 'session']}
+            />
+        );
+    }
     if (route === '/student/messages') return <StudentDirectMessages studentId={studentId} />;
-    if (route === '/student/tracker') return <StudentCourseTracker studentId={studentId} />;
+    if (route === '/student/tracker') {
+        return (
+            <StudentCourseTracker
+                studentId={studentId}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
+                navigate={navigate}
+                routePrefix={routePrefix}
+            />
+        );
+    }
     if (route === '/student/certification' || route === '/student/self-assessment') {
         const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
         return (
@@ -2922,8 +3022,10 @@ function buildTeacherStudentRows() {
     return pvlDomainApi.adminApi.getAdminStudents({}).map((sp) => {
         const userId = sp.userId;
         const user = resolveActorUser(userId);
+        const gardenRole = sp.gardenRole ?? user?.gardenRole ?? null;
+        const statusLabelRu = pvlGardenRoleLabelRu(gardenRole);
         const mentorUserId = sp.mentorId || '';
-        const mentorLine = mentorUserId ? (resolveActorUser(mentorUserId)?.fullName || mentorUserId) : '—';
+        const mentorLine = mentorUserId ? (resolveActorDisplayName(mentorUserId) || mentorUserId) : '—';
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
         const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
@@ -2940,6 +3042,8 @@ function buildTeacherStudentRows() {
         return {
             userId,
             user,
+            gardenRole,
+            statusLabelRu,
             mentorUserId,
             courseLine,
             closedPct,
@@ -3277,9 +3381,9 @@ function MentorApplicantsPanel({ mentorId, refreshKey = 0 }) {
             <header>
                 <h2 className="font-display text-2xl text-slate-800">Абитуриенты потока</h2>
                 <p className="mt-1 text-sm text-slate-500 max-w-2xl">
-                    Актуальный список из Сада (профили с ролью «Абитуриент») подгружается при открытии курса. Здесь видны все участницы потока «
+                    Актуальный список участников потока из Сада (роль в profiles и классификация ПВЛ — абитуриент / ученица). Поток «
                     {cohortTitle}
-                    »; закрепление за ментором задаётся в учительской.
+                    »; закрепление за ментором — в учительской.
                 </p>
             </header>
             {rows.length === 0 ? (
@@ -3296,8 +3400,9 @@ function MentorApplicantsPanel({ mentorId, refreshKey = 0 }) {
                             <tr className="text-xs text-slate-500 border-b border-slate-100">
                                 <th className="pb-2 pr-3 font-medium">Имя</th>
                                 <th className="pb-2 pr-3 font-medium">Email</th>
+                                <th className="pb-2 pr-3 font-medium">Роль в курсе</th>
                                 <th className="pb-2 pr-3 font-medium">Ментор (по учительской)</th>
-                                <th className="pb-2 font-medium">Статус</th>
+                                <th className="pb-2 font-medium">Менти</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3305,6 +3410,7 @@ function MentorApplicantsPanel({ mentorId, refreshKey = 0 }) {
                                 <tr key={row.userId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80">
                                     <td className="py-3 pr-3 align-top font-medium text-slate-800">{row.fullName}</td>
                                     <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.email || '—'}</td>
+                                    <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.statusLabelRu}</td>
                                     <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.mentorName}</td>
                                     <td className="py-3 align-top">
                                         {row.isMyMentee ? (
@@ -3325,7 +3431,8 @@ function MentorApplicantsPanel({ mentorId, refreshKey = 0 }) {
                         <article key={row.userId} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-sm">
                             <div className="font-medium text-slate-800">{row.fullName}</div>
                             <div className="text-xs text-slate-500 mt-1">{row.email || '—'}</div>
-                            <div className="text-xs text-slate-600 mt-2">Ментор: {row.mentorName}</div>
+                            <div className="text-xs text-slate-600 mt-2">Роль: {row.statusLabelRu}</div>
+                            <div className="text-xs text-slate-600 mt-1">Ментор: {row.mentorName}</div>
                             <div className="mt-2">{row.isMyMentee ? <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900">Ваше менти</span> : <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Поток</span>}</div>
                         </article>
                     ))}
@@ -3387,7 +3494,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         const mp = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId);
         const direct = (mp?.menteeIds || [])[0];
         if (direct) return direct;
-        return pvlDomainApi.adminApi.getAdminStudents({})[0]?.userId ?? null;
+        return getFirstCohortStudentId();
     }, [mentorId, refreshKey]);
     const mentorMirrorUnavailable = (
         <div className="rounded-3xl bg-white p-8 text-center text-slate-600 text-sm shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
@@ -3408,7 +3515,14 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     if (route === '/mentor/messages') return <MentorDirectMessages mentorId={mentorId} />;
     if (route === '/mentor/tracker') {
         if (!mentorMirrorStudentId) return mentorMirrorUnavailable;
-        return <StudentCourseTracker studentId={mentorMirrorStudentId} />;
+        return (
+            <StudentCourseTracker
+                studentId={mentorMirrorStudentId}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
+                navigate={navigate}
+                routePrefix="/mentor"
+            />
+        );
     }
     if (route === '/mentor/materials') return <MentorMaterialsPage cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (route === '/mentor/library' || route.startsWith('/mentor/library/')) {
@@ -5513,11 +5627,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
 function AdminStudents({ navigate, route, refreshKey = 0 }) {
     const [cohortId, setCohortId] = useState('all');
     const [listTick, setListTick] = useState(0);
+    const [syncResult, setSyncResult] = useState(null);
     useEffect(() => {
         let cancelled = false;
         (async () => {
             try {
-                await syncPvlActorsFromGarden();
+                const result = await syncPvlActorsFromGarden();
+                if (!cancelled) setSyncResult(result);
             } finally {
                 if (!cancelled) setListTick((t) => t + 1);
             }
@@ -5530,7 +5646,7 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
     const mentorOptions = useMemo(() => (
         pvlDomainApi.adminApi.getAdminMentors().map((mp) => ({
             userId: mp.userId || mp.id,
-            label: resolveActorUser(mp.userId)?.fullName || mp.userId,
+            label: resolveActorDisplayName(mp.userId || mp.id) || mp.userId || mp.id,
         }))
     ), [listTick]);
     const rows = useMemo(() => buildTeacherStudentRows().filter((r) => {
@@ -5564,6 +5680,14 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                 </select>
             </div>
             <div className="grid gap-4 md:hidden">
+                {rows.length === 0 && syncResult != null && (
+                    <div className="rounded-xl bg-slate-50/80 p-4 text-sm text-slate-500 text-center">
+                        {syncResult?.synced === false && syncResult?.reason === 'no_users' && 'Профили из Сада не загружены (0 строк).'}
+                        {syncResult?.synced === false && syncResult?.reason === 'error' && 'Ошибка синхронизации с Садом.'}
+                        {syncResult?.synced === true && (syncResult.trackMembers ?? 0) === 0 && 'Нет участников ПВЛ в выборке (только персонал).'}
+                        {syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && `В базе ПВЛ: ${syncResult.trackMembers} участн. (абитуриенты: ${syncResult.applicants ?? 0}, ученицы: ${syncResult.students ?? 0}).`}
+                    </div>
+                )}
                 {rows.map((row) => (
                     <article
                         key={row.userId}
@@ -5574,8 +5698,9 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                             className="text-left w-full text-sm font-medium text-blue-700 hover:underline"
                             onClick={() => navigate(`/admin/students/${row.userId}`)}
                         >
-                            {row.user?.fullName || row.userId}
+                            {resolveActorDisplayName(row.userId) || row.userId}
                         </button>
+                        <div className="text-[10px] text-slate-500 mt-1">{row.statusLabelRu}</div>
                         <div className="text-xs text-slate-600 mt-1">{row.courseLine}</div>
                         <div className="mt-3">
                             <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-1">Ментор</div>
@@ -5583,7 +5708,7 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                 value={row.mentorUserId || ''}
                                 onChange={(e) => assignStudentMentor(row.userId, e.target.value)}
                                 className={mentorSelectClass}
-                                aria-label={`Ментор для ${row.user?.fullName || row.userId}`}
+                                aria-label={`Ментор для ${resolveActorDisplayName(row.userId) || row.userId}`}
                             >
                                 <option value="">Нет ментора — выберите</option>
                                 {mentorOptions.map((m) => (
@@ -5601,10 +5726,11 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                 ))}
             </div>
             <div className="hidden md:block overflow-x-auto -mx-1 px-1">
-                <table className="w-full text-sm text-left min-w-[860px]">
+                <table className="w-full text-sm text-left min-w-[920px]">
                     <thead>
                         <tr className="text-xs text-slate-500 border-b border-slate-100">
                             <th className="pb-2 pr-3 font-medium">Имя</th>
+                            <th className="pb-2 pr-3 font-medium whitespace-nowrap">Статус</th>
                             <th className="pb-2 pr-3 font-medium">Сейчас по курсу</th>
                             <th className="pb-2 pr-3 font-medium min-w-[12rem]">Ментор</th>
                             <th className="pb-2 pr-3 font-medium tabular-nums">Закрытие ДЗ</th>
@@ -5614,6 +5740,18 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                         </tr>
                     </thead>
                     <tbody>
+                        {rows.length === 0 && (
+                            <tr>
+                                <td colSpan={8} className="py-10 text-center text-sm text-slate-500">
+                                    {syncResult == null && 'Загрузка учениц…'}
+                                    {syncResult?.synced === false && syncResult?.reason === 'no_users' && 'Список профилей из Сада пуст (0 строк). Убедитесь, что JWT передаётся в PostgREST и политика SELECT на profiles разрешает читать нужные строки (см. migrations/05_profiles_rls.sql: при схеме «только свой профиль» админ не увидит абитуриентов — нужна политика select для role=admin или service role).'}
+                                    {syncResult?.synced === false && syncResult?.reason === 'error' && 'Ошибка при синхронизации с Садом. Проверьте подключение к PostgREST.'}
+                                    {syncResult?.synced === true && (syncResult.trackMembers ?? 0) === 0 && 'Синхронизация прошла: в выборке из Сада нет участников ПВЛ (все пользователи с ролями персонала: ментор/стажёр/ведущая/админ/куратор).'}
+                                    {syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && cohortId !== 'all' && 'Участники есть в данных, но в выбранном потоке список пуст. Выберите «Все потоки».'}
+                                    {syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && cohortId === 'all' && 'Участники синхронизированы, но строк нет — обновите страницу или проверьте консоль.'}
+                                </td>
+                            </tr>
+                        )}
                         {rows.map((row) => (
                             <tr
                                 key={row.userId}
@@ -5625,16 +5763,17 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                         className="font-medium text-blue-700 hover:underline text-left"
                                         onClick={() => navigate(`/admin/students/${row.userId}`)}
                                     >
-                                        {row.user?.fullName || row.userId}
+                                        {resolveActorDisplayName(row.userId) || row.userId}
                                     </button>
                                 </td>
+                                <td className="py-3 pr-3 align-top text-xs text-slate-600 whitespace-nowrap">{row.statusLabelRu}</td>
                                 <td className="py-3 pr-3 align-top text-slate-600 text-xs max-w-[14rem]">{row.courseLine}</td>
                                 <td className="py-3 pr-3 align-top" onClick={(e) => e.stopPropagation()}>
                                     <select
                                         value={row.mentorUserId || ''}
                                         onChange={(e) => assignStudentMentor(row.userId, e.target.value)}
                                         className={mentorSelectClass}
-                                        aria-label={`Ментор для ${row.user?.fullName || row.userId}`}
+                                        aria-label={`Ментор для ${resolveActorDisplayName(row.userId) || row.userId}`}
                                     >
                                         <option value="">Нет ментора — выберите</option>
                                         {mentorOptions.map((m) => (
@@ -5691,10 +5830,23 @@ function buildAdminMentorWorkloadRows() {
 function AdminMentors() {
     const [refreshTick, setRefreshTick] = useState(0);
     const [candidateByMentor, setCandidateByMentor] = useState({});
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                await syncPvlActorsFromGarden();
+            } finally {
+                if (!cancelled) setRefreshTick((t) => t + 1);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
     const mentors = useMemo(() => buildAdminMentorWorkloadRows(), [refreshTick]);
     const allStudents = useMemo(() => pvlDomainApi.adminApi.getAdminStudents({}), [refreshTick]);
     const displayNameByUserId = useMemo(
-        () => Object.fromEntries(allStudents.map((s) => [s.userId, resolveActorUser(s.userId)?.fullName || s.userId])),
+        () => Object.fromEntries(allStudents.map((s) => [s.userId, resolveActorDisplayName(s.userId) || s.userId])),
         [allStudents],
     );
     const handleAddMentee = (mentorUserId) => {
@@ -5743,7 +5895,7 @@ function AdminMentors() {
                     <article key={m.id} className="rounded-3xl bg-white p-4 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-5">
                         <div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-base font-semibold text-slate-800">{m.user?.fullName || m.mentorUserId}</div>
+                                <div className="text-base font-semibold text-slate-800">{resolveActorDisplayName(m.mentorUserId) || m.user?.fullName || m.mentorUserId}</div>
                                 <StatusBadge>{m.statusLabel}</StatusBadge>
                             </div>
                             <div className="text-xs text-slate-500 mt-0.5">ID: {m.mentorUserId}</div>

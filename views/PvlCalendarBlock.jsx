@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { loadViewPreferences, saveViewPreferences } from '../services/pvlAppKernel';
-import { pvlDomainApi } from '../services/pvlMockApi';
+import { pvlCohortIdsEquivalent, pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
 /** Согласовано с прототипом дедлайнов ПВЛ */
@@ -52,8 +52,15 @@ function formatCalendarMonthYearRu(d) {
     return `${cap} ${y} г.`;
 }
 
+/** Ключ дня YYYY-MM-DD для сетки: учитывает date в YYYY-MM-DD и ДД-ММ-ГГГГ из формы учительской. */
 function eventDayKey(ev) {
-    if (ev.date) return String(ev.date).slice(0, 10);
+    if (!ev) return '';
+    const raw = ev.date != null && ev.date !== '' ? String(ev.date).trim() : '';
+    if (raw) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 10);
+        const dmY = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (dmY) return `${dmY[3]}-${dmY[1]}-${dmY[2]}`;
+    }
     return String(ev.startAt || '').slice(0, 10);
 }
 
@@ -151,6 +158,14 @@ function CalendarDayButton({
     );
 }
 
+function sortEventsChronologically(list) {
+    return list.slice().sort((a, b) => {
+        const c = String(eventDayKey(a)).localeCompare(String(eventDayKey(b)));
+        if (c !== 0) return c;
+        return String(a.startAt || '').localeCompare(String(b.startAt || ''));
+    });
+}
+
 export function PvlDashboardCalendarBlock({
     viewerRole,
     cohortId,
@@ -163,14 +178,31 @@ export function PvlDashboardCalendarBlock({
     eventTypeFilter = [],
 }) {
     const [currentDate, setCurrentDate] = useState(() => new Date(`${PVL_TODAY}T12:00:00`));
-    /** YYYY-MM-DD в видимом месяце или null — тогда справа «ближайшие» */
+    /** YYYY-MM-DD в видимом месяце или null — тогда справа список за месяц */
     const [selectedDayKey, setSelectedDayKey] = useState(null);
+    const monthNavigatedByUser = useRef(false);
+    const monthInitializedFromEvents = useRef(false);
     const events = useMemo(() => {
         const all = pvlDomainApi.calendarApi.listForViewer(viewerRole, cohortId);
         if (!Array.isArray(eventTypeFilter) || eventTypeFilter.length === 0) return all;
         const allowed = new Set(eventTypeFilter.map((t) => String(t || '').toLowerCase()));
         return all.filter((ev) => allowed.has(String(ev.eventType || '').toLowerCase()));
     }, [viewerRole, cohortId, eventTypeFilter]);
+
+    /** Один раз подстраиваем месяц под данные календаря (как на экране «Календарь»), чтобы точки и список совпадали. */
+    useEffect(() => {
+        if (monthNavigatedByUser.current || monthInitializedFromEvents.current || !events.length) return;
+        const sorted = sortEventsChronologically(events);
+        const anchor = sorted.find((e) => String(eventDayKey(e)) >= PVL_TODAY) || sorted[0];
+        const k = eventDayKey(anchor);
+        if (!k || k.length < 10) return;
+        const y = Number(k.slice(0, 4));
+        const m = Number(k.slice(5, 7));
+        if (!y || !m) return;
+        monthInitializedFromEvents.current = true;
+        setCurrentDate(new Date(y, m - 1, 1, 12, 0, 0));
+    }, [events]);
+
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -179,26 +211,22 @@ export function PvlDashboardCalendarBlock({
     const monthEvents = eventsForMonth(events, year, month);
     const byDay = useMemo(() => groupByDay(monthEvents), [monthEvents]);
 
-    const upcoming = useMemo(() => {
-        return events
-            .filter((e) => String(eventDayKey(e)) >= PVL_TODAY)
-            .sort((a, b) => String(eventDayKey(a)).localeCompare(String(eventDayKey(b))) || String(a.startAt || '').localeCompare(String(b.startAt || '')))
-            .slice(0, 8);
-    }, [events]);
+    const monthEventsSorted = useMemo(() => sortEventsChronologically(monthEvents), [monthEvents]);
 
     const monthHeading = formatCalendarMonthYearRu(currentDate);
 
     const listEvents = useMemo(() => {
-        if (!selectedDayKey) return upcoming;
-        const dayList = (byDay.get(selectedDayKey) || []).slice().sort((a, b) => String(a.startAt || '').localeCompare(String(b.startAt || '')));
+        if (!selectedDayKey) return monthEventsSorted;
+        const dayList = sortEventsChronologically(byDay.get(selectedDayKey) || []);
         return dayList;
-    }, [selectedDayKey, byDay, upcoming]);
+    }, [selectedDayKey, byDay, monthEventsSorted]);
 
     const listTitle = selectedDayKey
         ? `События · ${new Date(`${selectedDayKey}T12:00:00`).toLocaleString('ru-RU', { day: 'numeric', month: 'long' })}`
-        : 'Ближайшие события';
+        : 'События в этом месяце';
 
     const handleMonthNav = (delta) => {
+        monthNavigatedByUser.current = true;
         setSelectedDayKey(null);
         setCurrentDate(new Date(year, month + delta, 1));
     };
@@ -309,7 +337,7 @@ export function PvlDashboardCalendarBlock({
                     <div className="min-h-[140px] max-h-[220px] flex-1 overflow-y-auto">
                         {listEvents.length === 0 ? (
                             <p className="py-6 text-center text-sm text-[#6B5D4F]">
-                                {selectedDayKey ? 'В этот день событий нет.' : 'Нет предстоящих событий в выбранном потоке.'}
+                                {selectedDayKey ? 'В этот день событий нет.' : 'В этом месяце нет событий в выбранном потоке.'}
                             </p>
                         ) : (
                             <ul className="divide-y divide-[#E8E0D4]/50">
@@ -361,6 +389,8 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
     const [editingId, setEditingId] = useState('');
     /** Подсветка рамкой только у выбранного дня (не у всех дней с событиями). */
     const [selectedDayKey, setSelectedDayKey] = useState(null);
+    /** Один раз подстроить месяц под данные (как на дашборде), если в сохранённом месяце нет событий. */
+    const initialMonthAlignedRef = useRef(false);
 
     useEffect(() => {
         const fromUrl = parseCalendarEventIdFromRoute(route);
@@ -393,9 +423,34 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
             if (filterRole === 'all_vis') return e.visibilityRole === 'all';
             return e.visibilityRole === filterRole;
         })
-        .filter((e) => (filterCohort === 'all' ? true : e.cohortId === filterCohort)), [events, filterType, filterRole, filterCohort]);
+        .filter((e) => (filterCohort === 'all' ? true : pvlCohortIdsEquivalent(e.cohortId, filterCohort))), [events, filterType, filterRole, filterCohort]);
 
     const editing = editingId ? pvlDomainApi.calendarApi.getById(editingId) : null;
+
+    useEffect(() => {
+        if (initialMonthAlignedRef.current) return;
+        if (!filtered.length) return;
+        const y = currentDate.getFullYear();
+        const mo = currentDate.getMonth();
+        if (eventsForMonth(filtered, y, mo).length > 0) {
+            initialMonthAlignedRef.current = true;
+            return;
+        }
+        const sorted = sortEventsChronologically(filtered);
+        const k = eventDayKey(sorted[0]);
+        if (!k || k.length < 10) {
+            initialMonthAlignedRef.current = true;
+            return;
+        }
+        const y2 = Number(k.slice(0, 4));
+        const m2 = Number(k.slice(5, 7));
+        if (!y2 || !m2) {
+            initialMonthAlignedRef.current = true;
+            return;
+        }
+        setCurrentDate(new Date(y2, m2 - 1, 1, 12, 0, 0));
+        initialMonthAlignedRef.current = true;
+    }, [filtered, currentDate]);
 
     useEffect(() => {
         if (!editingId || !editing) return;
@@ -412,6 +467,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     const startOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
     const monthEvents = eventsForMonth(filtered, year, month);
+    const monthEventsSorted = useMemo(() => sortEventsChronologically(monthEvents), [monthEvents]);
     const byDay = groupByDay(monthEvents);
     const monthHeading = formatCalendarMonthYearRu(currentDate);
 
@@ -658,10 +714,10 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                 <div className="space-y-2 rounded-2xl bg-white p-3 shadow-[0_12px_36px_-12px_rgba(15,23,42,0.07)]">
                     <h3 className="font-display text-lg text-slate-800">События</h3>
                     <div className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1">
-                        {filtered.length === 0 ? (
+                        {monthEventsSorted.length === 0 ? (
                             <p className="text-sm text-slate-500 px-1 py-2">Пока нет событий в этом месяце.</p>
                         ) : (
-                            filtered.map((ev) => (
+                            monthEventsSorted.map((ev) => (
                                 <button
                                     key={ev.id}
                                     type="button"
@@ -675,7 +731,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                         />
                                         <span className="font-medium text-slate-800">{ev.title}</span>
                                     </div>
-                                    <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)} · {ev.visibilityRole} · {ev.cohortId}</div>
+                                    <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)}</div>
                                 </button>
                             ))
                         )}

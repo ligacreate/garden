@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
-import { buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
+import { buildLessonVideoPlayerHtml, isVideoLessonLayout, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import { pvlDomainApi } from '../services/pvlMockApi';
 
@@ -197,6 +197,7 @@ export function usePlatformStepChecklist(studentId) {
  */
 export function PlatformCourseModulesGrid({
     studentId,
+    modules: modulesProp = null,
     variant = 'tracker',
     checkedOverride = null,
     onToggleItem = null,
@@ -216,10 +217,11 @@ export function PlatformCourseModulesGrid({
         ? 'rounded-2xl border border-slate-100/90 bg-white/90 shadow-sm shadow-slate-200/20 overflow-hidden'
         : 'rounded-2xl border border-slate-100/90 bg-white shadow-sm shadow-slate-200/30 overflow-hidden';
 
+    const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
     const modulesToShow = useMemo(() => {
-        if (onlyModuleId == null) return PVL_PLATFORM_MODULES;
-        return PVL_PLATFORM_MODULES.filter((m) => Number(m.id) === Number(onlyModuleId));
-    }, [onlyModuleId]);
+        if (onlyModuleId == null) return resolvedModules;
+        return resolvedModules.filter((m) => Number(m.id) === Number(onlyModuleId));
+    }, [onlyModuleId, resolvedModules]);
 
     const gridClass =
         onlyModuleId != null ? 'grid gap-6 grid-cols-1 max-w-3xl' : 'grid gap-6 md:grid-cols-2';
@@ -227,12 +229,21 @@ export function PlatformCourseModulesGrid({
     return (
         <div className={gridClass}>
             {modulesToShow.map((mod) => {
-                const numCls = variant === 'lessons' ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-display font-semibold bg-slate-100 text-slate-700 border border-slate-200/80' : `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-display font-semibold ${moduleNumClass(mod.cls)}`;
+                const numCls = variant === 'lessons'
+                    ? 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl leading-none bg-slate-100 text-slate-700 border border-slate-200/80'
+                    : `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl leading-none ${moduleNumClass(mod.cls)}`;
                 return (
                     <article key={mod.id} className={articleClass}>
                         <div className={`flex gap-4 p-4 md:p-5 border-b ${variant === 'lessons' ? 'border-slate-100' : 'border-slate-100'}`}>
-                            <div className={numCls}>
-                                {mod.label}
+                            <div
+                                className={numCls}
+                                aria-label={mod.icon && mod.label ? `Модуль ${mod.label}` : undefined}
+                            >
+                                {mod.icon ? (
+                                    <span aria-hidden>{mod.icon}</span>
+                                ) : (
+                                    <span className="text-[10px] font-display font-semibold text-center leading-tight px-0.5">{mod.label}</span>
+                                )}
                             </div>
                             <div>
                                 <h4 className={`font-display leading-snug ${variant === 'lessons' ? 'text-base text-slate-800' : 'text-lg text-slate-900'}`}>{mod.title}</h4>
@@ -243,7 +254,7 @@ export function PlatformCourseModulesGrid({
                             <ul className="space-y-0 divide-y divide-slate-50">
                                 {!mod.items?.length ? (
                                     <li className="py-6 px-2 text-sm text-slate-500 text-center leading-relaxed">
-                                        Уроки и шаги модуля появятся здесь после публикации в учительской.
+                                        Здесь скоро появятся уроки
                                     </li>
                                 ) : (
                                     mod.items.map((item, i) => {
@@ -297,14 +308,30 @@ export function PlatformCourseModulesGrid({
  * Полный путь курса: три опоры (Пиши / Веди / Люби), шаги, прогресс и задания потока со статусами.
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
-export function StudentCourseTracker({ studentId }) {
-    const { checked, toggleItem, stats } = usePlatformStepChecklist(studentId);
-    const { doneSteps, totalSteps, pct } = stats;
+export function StudentCourseTracker({
+    studentId,
+    modules: modulesProp = null,
+    navigate = null,
+    routePrefix = '/student',
+}) {
+    const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
+    const { checked, toggleItem } = usePlatformStepChecklist(studentId);
+    const { doneSteps, totalSteps, pct } = useMemo(() => {
+        let done = 0;
+        let total = 0;
+        resolvedModules.forEach((mod) => {
+            mod.items.forEach((item, i) => {
+                total += 1;
+                if (checked[trackerStepKey(mod.id, item, i)]) done += 1;
+            });
+        });
+        return { doneSteps: done, totalSteps: total, pct: total ? Math.round((done / total) * 100) : 0 };
+    }, [resolvedModules, checked]);
     /** Пусто = сетка карточек модулей; иначе открыт шаг (слева список шага модуля, справа материал). */
     const [activeStepKey, setActiveStepKey] = useState('');
     const orderedSteps = useMemo(
-        () => PVL_PLATFORM_MODULES.flatMap((mod) => mod.items.map((item, i) => ({ key: trackerStepKey(mod.id, item, i), item, module: mod, index: i }))),
-        [],
+        () => resolvedModules.flatMap((mod) => mod.items.map((item, i) => ({ key: trackerStepKey(mod.id, item, i), item, module: mod, index: i }))),
+        [resolvedModules],
     );
     const activeStepIndex = useMemo(() => orderedSteps.findIndex((s) => s.key === activeStepKey), [orderedSteps, activeStepKey]);
     const activeStep = activeStepIndex >= 0 ? orderedSteps[activeStepIndex] : null;
@@ -413,7 +440,24 @@ export function StudentCourseTracker({ studentId }) {
                                 </div>
                             ) : null}
                             {linkedItem ? (
-                                <div className="mt-4 max-h-[min(70vh,640px)] overflow-y-auto pr-1">
+                                <div
+                                    className={
+                                        isVideoLessonLayout(linkedItem)
+                                            ? 'mt-4'
+                                            : 'mt-4 max-h-[min(70vh,640px)] overflow-y-auto pr-1'
+                                    }
+                                >
+                                    {contentItemId && navigate ? (
+                                        <div className="mb-3 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate(`${routePrefix}/library/${contentItemId}`)}
+                                                className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-900 hover:bg-emerald-100"
+                                            >
+                                                Открыть урок полностью (как в библиотеке)
+                                            </button>
+                                        </div>
+                                    ) : null}
                                     <PvlLibraryMaterialBody
                                         key={linkedItem.id}
                                         variant="tracker"
@@ -500,6 +544,7 @@ export function StudentCourseTracker({ studentId }) {
             </div>
             <PlatformCourseModulesGrid
                 studentId={studentId}
+                modules={resolvedModules}
                 variant="tracker"
                 checkedOverride={checked}
                 onToggleItem={toggleItem}

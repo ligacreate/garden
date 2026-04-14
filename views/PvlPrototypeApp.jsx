@@ -1633,7 +1633,11 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
     }, [activeHomework]);
     const feed = snapshot.activityFeed || [];
     const user = getUser(studentId);
-    const cohortId = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId)?.cohortId || 'cohort-2026-1';
+    const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId || p.id === studentId) || null;
+    const mentorUserId = profile?.mentorId || null;
+    const mentorUser = mentorUserId ? getUser(mentorUserId) : null;
+    const cohortId = profile?.cohortId || profile?.cohort || 'cohort-2026-1';
+    const cohortTitle = profile?.cohort || pvlDomainApi.db.cohorts.find((c) => c.id === profile?.cohortId)?.title || '';
 
     const fmtDeadline = (ymd) => (ymd ? formatPvlDateTime(`${String(ymd).slice(0, 10)}T12:00:00`) : '—');
 
@@ -1647,6 +1651,8 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                     <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/65">{PVL_COURSE_DISPLAY_NAME}</p>
                         <h2 className="font-display text-2xl md:text-3xl mt-2 tracking-tight">{user?.fullName || 'Участница'}</h2>
+                        {cohortTitle ? <div className="mt-2 text-sm text-white/80">{cohortTitle}</div> : null}
+                        <div className="mt-2 text-sm text-white/80">Ментор: {mentorUser?.fullName || 'не назначен'}</div>
                         <button
                             type="button"
                             onClick={() => navigate?.(`${routePrefix}/lessons`)}
@@ -2531,10 +2537,19 @@ function DirectMessageThread({ messages, actorId }) {
 function StudentDirectMessages({ studentId = 'u-st-1' }) {
     const [text, setText] = useState('');
     const [tick, setTick] = useState(0);
+    const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId || p.id === studentId) || null;
     const dialog = useMemo(() => {
         void tick;
-        return pvlDomainApi.sharedApi.getStudentDirectDialog(studentId);
-    }, [studentId, tick]);
+        const dialogFromApi = pvlDomainApi.sharedApi.getStudentDirectDialog(studentId);
+        if (dialogFromApi?.mentorId && dialogFromApi?.mentor) return dialogFromApi;
+        if (profile?.mentorId) {
+            return {
+                ...dialogFromApi,
+                mentor: dialogFromApi?.mentor || getUser(profile.mentorId) || null,
+            };
+        }
+        return dialogFromApi;
+    }, [studentId, tick, profile]);
     const onSend = () => {
         const body = String(text || '').trim();
         if (!body || !dialog.mentorId) return;

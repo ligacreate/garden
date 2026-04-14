@@ -66,6 +66,7 @@ export function buildSidebarByRole(role) {
     if (role === 'mentor') {
         return [
             'Дашборд',
+            'Абитуриенты',
             'Мои менти',
             'Очередь проверок',
             ...PVL_COURSE_SIDEBAR_LABELS,

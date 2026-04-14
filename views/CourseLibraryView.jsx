@@ -520,10 +520,12 @@ const CourseLibraryView = ({
         const rolePrefix = `/${pvlRole}/`;
         const prevRouteMatchesRole = String(prev?.route || '').startsWith(rolePrefix);
         if (prev?.role === pvlRole && prevRouteMatchesRole) return;
-        const actingUserId = pvlRole === 'mentor' ? 'u-men-1' : pvlRole === 'admin' ? 'u-adm-1' : 'u-st-1';
+        const linked = session.linkedUserId != null ? String(session.linkedUserId) : null;
+        const actingUserId = linked || (pvlRole === 'mentor' ? 'u-men-1' : pvlRole === 'admin' ? 'u-adm-1' : 'u-st-1');
+        const studentId = pvlRole === 'student' ? (linked || 'u-st-1') : (prev?.studentId || 'u-st-1');
         saveAppSession({
             role: pvlRole,
-            studentId: 'u-st-1',
+            studentId,
             actingUserId,
             nowDate: '2026-06-03',
             route: getHomeRouteByRole(pvlRole),
@@ -568,7 +570,8 @@ const CourseLibraryView = ({
     const handleEmbeddedPvlDemoRoleChange = useCallback((nextRole) => {
         setAiCampSession((prev) => {
             if (!prev) return prev;
-            const next = { ...prev, role: nextRole };
+            const linkedUserId = prev.linkedUserId ?? user?.id;
+            const next = { ...prev, role: nextRole, linkedUserId };
             try {
                 localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(next));
             } catch {
@@ -576,10 +579,12 @@ const CourseLibraryView = ({
             }
             return next;
         });
-        const actingUserId = nextRole === 'mentor' ? 'u-men-1' : nextRole === 'admin' ? 'u-adm-1' : 'u-st-1';
+        const linked = user?.id != null ? String(user.id) : null;
+        const actingUserId = linked || (nextRole === 'mentor' ? 'u-men-1' : nextRole === 'admin' ? 'u-adm-1' : 'u-st-1');
+        const studentId = nextRole === 'student' ? (linked || 'u-st-1') : (loadAppSession()?.studentId || 'u-st-1');
         saveAppSession({
             role: nextRole,
-            studentId: 'u-st-1',
+            studentId,
             actingUserId,
             nowDate: '2026-06-03',
             route: getHomeRouteByRole(nextRole),
@@ -587,7 +592,7 @@ const CourseLibraryView = ({
             adminSection: 'Дашборд',
             mentorSection: 'Дашборд',
         });
-    }, []);
+    }, [user?.id]);
 
     const gardenPvlItems = useMemo(() => {
         if (!aiCampSession) return [];

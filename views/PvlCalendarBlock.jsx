@@ -656,25 +656,29 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                 </div>
 
                 <div className="space-y-2 rounded-2xl bg-white p-3 shadow-[0_12px_36px_-12px_rgba(15,23,42,0.07)]">
-                    <h3 className="font-display text-lg text-slate-800">События (отфильтровано)</h3>
+                    <h3 className="font-display text-lg text-slate-800">События</h3>
                     <div className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1">
-                        {filtered.map((ev) => (
-                            <button
-                                key={ev.id}
-                                type="button"
-                                onClick={() => navigate?.(`/admin/calendar?event=${encodeURIComponent(ev.id)}`)}
-                                className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm transition-colors ${editingId === ev.id ? 'bg-blue-50/80 ring-1 ring-inset ring-blue-200/80' : 'hover:bg-slate-50/90'}`}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <span
-                                        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`}
-                                        title={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                                    />
-                                    <span className="font-medium text-slate-800">{ev.title}</span>
-                                </div>
-                                <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)} · {ev.visibilityRole} · {ev.cohortId}</div>
-                            </button>
-                        ))}
+                        {filtered.length === 0 ? (
+                            <p className="text-sm text-slate-500 px-1 py-2">Пока нет событий в этом месяце.</p>
+                        ) : (
+                            filtered.map((ev) => (
+                                <button
+                                    key={ev.id}
+                                    type="button"
+                                    onClick={() => navigate?.(`/admin/calendar?event=${encodeURIComponent(ev.id)}`)}
+                                    className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm transition-colors ${editingId === ev.id ? 'bg-blue-50/80 ring-1 ring-inset ring-blue-200/80' : 'hover:bg-slate-50/90'}`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <span
+                                            className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`}
+                                            title={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                        />
+                                        <span className="font-medium text-slate-800">{ev.title}</span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)} · {ev.visibilityRole} · {ev.cohortId}</div>
+                                </button>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

@@ -4,7 +4,7 @@
  */
 
 /** Категории библиотеки, дублирующие прохождение модулей в трекере — не показывать в списке «Категории библиотеки». */
-export const PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS = [];
+export const PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS = ['pvl_tracker_course'];
 
 /**
  * Обложки модулей в трекере — тот же визуальный шаблон, что карточки категорий в библиотеке (rounded-3xl, фото сверху).
@@ -17,88 +17,58 @@ const PVL_MODULE_COVERS = [
     'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=900&q=80',
 ];
 
-/** Трекер модулей — pvl_platform.html (MODULES). Три модуля курса: Пиши, Веди, Люби. */
+/**
+ * Каркас модулей трекера (обложки и названия). Список шагов/уроков пуст, пока контент не заведён в учительской / БД.
+ */
 export const PVL_PLATFORM_MODULES = [
     {
         id: 1,
-        label: '1',
+        label: 'Пиши',
         cls: 'mod-1',
-        title: 'Модуль 1: «ПИШИ»',
-        sub: 'Формат и базовая методология',
+        title: '«ПИШИ»',
+        sub: 'Формат и базовая методология письменных практик',
         coverImage: PVL_MODULE_COVERS[1],
-        items: [
-            { text: 'Видеоурок: «Научные основы письменных практик»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Образ ведущей — роль, правила, границы»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Из чего состоит письменная практика»', tag: 'video', anchor: false },
-            { text: 'PDF: Глоссарий курса (распечатать и держать рядом)', tag: 'pdf', anchor: false },
-            { text: 'PDF: Наблюдательный лист для посещения завтрака', tag: 'pdf', anchor: false },
-            { text: 'Чек-лист: анализ готовой практики по элементам', tag: 'task', anchor: false },
-            { text: 'Задание: проанализировать 3 готовые практики по чек-листу', tag: 'task', anchor: false },
-            { text: 'Задание: создать 2 авторские микропрактики по шаблону', tag: 'task', anchor: false },
-            { text: 'Тренировка в паре: провести свою практику и получить отклик', tag: 'live', anchor: false },
-            { text: '🧠 Психология: доверие, раскрытие, польза группы', tag: 'video', anchor: false },
-            { text: 'Посещение завтрака от ментора + разбор и рефлексия', tag: 'anchor', anchor: true },
-            { text: 'Посещение завтрака у первой ведущей Лиги', tag: 'anchor', anchor: true },
-            { text: 'Практикум с ментором: вопросы-ответы по Модулю 1', tag: 'live', anchor: false },
-        ],
+        items: [],
     },
     {
         id: 2,
-        label: '2',
+        label: 'Веди',
         cls: 'mod-2',
-        title: 'Модуль 2: «ВЕДИ»',
+        title: '«ВЕДИ»',
         sub: 'Конструктор сценария и групповая динамика',
         coverImage: PVL_MODULE_COVERS[2],
-        items: [
-            { text: 'Видеоурок: «Составление сценария» (часть 1 — логика и структура)', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Составление сценария» (часть 2 — смешанные техники)', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Кто такая ведущая» (роль и границы)', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Офлайн и онлайн — к чему готовиться»', tag: 'video', anchor: false },
-            { text: 'PDF: Схемы трёх типов сценариев (бусы / кольцевой / пучок)', tag: 'pdf', anchor: false },
-            { text: 'Чек-лист сценария встречи', tag: 'task', anchor: false },
-            { text: 'Чек-лист технический для онлайн-встречи', tag: 'task', anchor: false },
-            { text: 'Задание: декомпозиция цели встречи на 3–4 шага', tag: 'task', anchor: false },
-            { text: 'Задание: банк идей практик для сценария (мозговой штурм)', tag: 'task', anchor: false },
-            { text: 'Задание: составить полный сценарий встречи на 90 минут', tag: 'task', anchor: false },
-            { text: 'Задание: «Что может пойти не так» (список)', tag: 'task', anchor: false },
-            { text: 'Квиз-кейсы: «Что делать, если...» (реальные ситуации)', tag: 'task', anchor: false },
-            { text: '🧠 МАК-карта с фокусом на тему Модуля 2', tag: 'live', anchor: false },
-            { text: '🧠 Психология: групповая динамика, Такман, управление энергией', tag: 'video', anchor: false },
-            { text: 'Мини-проведение в паре/тройке с разбором', tag: 'anchor', anchor: true },
-            { text: 'Посещение завтрака у второй ведущей Лиги', tag: 'anchor', anchor: true },
-            { text: 'Практикум с ментором: вопросы-ответы по Модулю 2', tag: 'live', anchor: false },
-        ],
+        items: [],
     },
     {
         id: 3,
-        label: '3',
+        label: 'Люби',
         cls: 'mod-3',
-        title: 'Модуль 3: «ЛЮБИ»',
+        title: '«ЛЮБИ»',
         sub: 'Сбор группы, сертификация и пост-анализ',
         coverImage: PVL_MODULE_COVERS[3],
-        items: [
-            { text: 'Видеоурок: «Сбор завтраков — всё, что вы хотели спросить»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Не только офлайн и не только завтраки»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Культурный код Лиги»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Как анализировать встречи»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Этика и эстетика встреч с ПП»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Жизненный цикл встречи и планирование расписания»', tag: 'video', anchor: false },
-            { text: 'Видеоурок: «Цена и ценность» (урок о продажах)', tag: 'video', anchor: false },
-            { text: 'PDF: Контент-план до первой встречи (4 вектора)', tag: 'pdf', anchor: false },
-            { text: 'Чек-лист: таблица критериев оценки СЗ с балльной системой', tag: 'task', anchor: false },
-            { text: 'PDF: 6 вопросов для ретро ведущей (пост-анализ встречи)', tag: 'pdf', anchor: false },
-            { text: 'Задание: финансовый план первого месяца в Лиге', tag: 'task', anchor: false },
-            { text: 'Задание: контент-план по 4 векторам для анонса СЗ', tag: 'task', anchor: false },
-            { text: '🧠 МАК-карта с фокусом на тему Модуля 3', tag: 'live', anchor: false },
-            { text: '🧠 Психология: влияние ведущей, конфликты, жизнь после встречи', tag: 'video', anchor: false },
-            { text: 'Тренировочный завтрак с ментором', tag: 'anchor', anchor: true },
-            { text: 'Сертификационный завтрак: анонс согласован с ментором', tag: 'anchor', anchor: true },
-            { text: 'Сертификационный завтрак: проведён и записан', tag: 'anchor', anchor: true },
-            { text: 'Ретро ведущей: пост-анализ в течение 24 часов после СЗ', tag: 'anchor', anchor: true },
-            { text: 'Практикум с ментором: вопросы-ответы по Модулю 3', tag: 'live', anchor: false },
-        ],
+        items: [],
     },
 ];
+
+/** Подпись опоры курса по внутреннему номеру модуля из расписания (0 — прелёрнинг → «ПИШИ»). */
+export function pvlPlatformModuleTitleFromInternal(internalModule) {
+    const n = Number(internalModule);
+    const platformId = n <= 1 ? 1 : n === 2 ? 2 : 3;
+    return PVL_PLATFORM_MODULES.find((m) => Number(m.id) === platformId)?.title || '«Пиши» — старт курса';
+}
+
+/**
+ * Опции «Модуль» для учительской: те же внутренние номера 0–3, что в CANONICAL_SCHEDULE_2026 и трекере (clampPvlModule).
+ * Подписи согласованы с карточками модулей в трекере (ПИШИ / ВЕДИ / ЛЮБИ + модуль 0).
+ */
+export function getPvlCourseModulePickerOptions() {
+    const pre = { value: '0', label: 'Модуль 0 — старт курса (прелёрнинг)' };
+    const fromTracker = PVL_PLATFORM_MODULES.map((m) => ({
+        value: String(Number(m.id)),
+        label: `Модуль ${m.id} — ${m.title}`,
+    }));
+    return [pre, ...fromTracker];
+}
 
 /** Подписи типов шагов — как в pvl_platform.html / pvl_tracker.html */
 export const PVL_TRACKER_TAG_LABEL = {

@@ -10,6 +10,7 @@ import {
     ChevronRight,
     CornerUpLeft,
     Files,
+    GraduationCap,
     GripVertical,
     Info,
     KanbanSquare,
@@ -31,6 +32,7 @@ import PvlMenteeCardView from './PvlMenteeCardView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
 import PvlSzAssessmentFlow from './PvlSzAssessmentFlow';
 import { stripMaterialNumbering, buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
+import { markdownToPvlHtml } from '../utils/pvlMarkdownImport';
 import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
 import {
     PVL_CERT_CONDITIONS,
@@ -41,6 +43,8 @@ import {
     PVL_TRACKER_GLOSSARY,
     PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS,
     PVL_TRACKER_RULES,
+    getPvlCourseModulePickerOptions,
+    pvlPlatformModuleTitleFromInternal,
 } from '../data/pvlReferenceContent';
 import { PVL_COURSE_DISPLAY_NAME } from '../data/pvl/courseDisplay';
 import { SCORING_RULES } from '../data/pvl/scoringRules';
@@ -85,6 +89,15 @@ function resolveActorUser(id) {
     return pvlDomainApi.db.users.find((u) => u.id === sid)
         || pvlMockData.users.find((u) => u.id === sid)
         || null;
+}
+
+/** Предпросмотр материалов в учительской: первая ученица потока из Сада (или пусто). */
+function getFirstCohortStudentId() {
+    try {
+        return pvlDomainApi.adminApi.getAdminStudents({})[0]?.userId ?? null;
+    } catch {
+        return null;
+    }
 }
 
 /** Совместимость старых демо-id карточек менти с учётками seed API */
@@ -133,11 +146,11 @@ function buildMergedCmsState() {
     return { items, placements };
 }
 
-/** В демо `actingUserId` часто остаётся ученицей при переключении на кабинет ментора — иначе getMentorMenteeIds даёт пустой список и канбан пустой. */
+/** В демо `actingUserId` часто остаётся ученицей при переключении на кабинет ментора — подставляем реального ментора из профилей. */
 function resolvePvlMentorActorId(actingUserId) {
     const profiles = pvlDomainApi.db?.mentorProfiles || [];
     if (profiles.some((m) => m.userId === actingUserId)) return actingUserId;
-    return 'u-men-1';
+    return profiles[0]?.userId || actingUserId || null;
 }
 
 function pvlPersonInitials(displayName) {
@@ -184,10 +197,9 @@ const COURSE_MENU_LABELS = [
     'Сертификация',
 ];
 
-const MENTOR_COURSE_MIRROR_STUDENT_ID = 'u-st-1';
-
 const MENTOR_TOP_NAV = [
     { label: 'Дашборд', path: '/mentor/dashboard' },
+    { label: 'Абитуриенты', path: '/mentor/applicants' },
     { label: 'Мои менти', path: '/mentor/mentees' },
     { label: 'Очередь', path: '/mentor/review-queue' },
 ];
@@ -472,6 +484,7 @@ const STUDENT_MENU_ICON = {
 
 const MENTOR_MENU_ICON = {
     Дашборд: LayoutGrid,
+    Абитуриенты: GraduationCap,
     'Мои менти': Users,
     Очередь: KanbanSquare,
     Настройки: Settings2,
@@ -720,6 +733,7 @@ const BREADCRUMB_LABELS = {
     messages: 'Коммуникации',
     'cultural-code': 'Культурный код',
     materials: 'Материалы',
+    applicants: 'Абитуриенты',
     mentee: 'Ученица',
     task: 'Задание',
     content: 'Материалы курса',
@@ -966,7 +980,13 @@ function assignContentToSection(placements, contentId, targetSection, targetRole
 function filterContentItems(items, filters) {
     return items
         .filter((i) => (filters.section === 'all' ? true : i.targetSection === filters.section))
-        .filter((i) => (filters.status === 'all' ? true : i.status === filters.status))
+        .filter((i) => {
+            if (filters.status === 'all') return true;
+            if (filters.status === 'withdrawn') {
+                return i.status === 'unpublished' || i.status === 'archived';
+            }
+            return i.status === filters.status;
+        })
         .filter((i) => (filters.role === 'all' ? true : i.targetRole === filters.role || i.targetRole === 'both'))
         .filter((i) => (filters.type === 'all' ? true : i.contentType === filters.type))
         .filter((i) => String(i.title || '').toLowerCase().includes(String(filters.query || '').toLowerCase().trim()));
@@ -1002,10 +1022,11 @@ const TARGET_ROLE_LABELS = {
 };
 
 const CONTENT_STATUS_LABEL = {
-    draft: 'Черновик',
+    draft: 'Не опубликован',
     published: 'Опубликован',
     unpublished: 'Снят с публикации',
     archived: 'В архиве',
+    withdrawn: 'Снятые / в архиве',
 };
 
 function labelTargetSection(key) {
@@ -1068,6 +1089,100 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
         .map((x) => x.item);
 }
 
+function AdminContentSectionPreview({
+    section,
+    items,
+    placements,
+    cohortId = 'cohort-2026-1',
+    moduleFilter = 'all',
+}) {
+    if (section === 'all') {
+        return (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                Для предпросмотра в формате ученицы выберите один раздел: Библиотека, Уроки или Глоссарий.
+            </div>
+        );
+    }
+    const previewItemsRaw = getPublishedContentBySection(section, 'student', items, placements, cohortId) || [];
+    const previewItems = section === 'lessons' && moduleFilter !== 'all'
+        ? previewItemsRaw.filter((i) => String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(moduleFilter))
+        : previewItemsRaw;
+
+    if (!previewItems.length) {
+        return (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                В этом разделе пока нет опубликованных материалов для выбранного потока.
+            </div>
+        );
+    }
+
+    if (section === 'library') {
+        return (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {previewItems.map((i) => (
+                    <article key={i.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        {i.coverImage ? <img src={i.coverImage} alt="" className="h-28 w-full object-cover" /> : null}
+                        <div className="p-3">
+                            <div className="text-sm font-medium text-slate-800 line-clamp-2">{i.title}</div>
+                            <div className="mt-1 text-xs text-slate-500 line-clamp-2">{i.shortDescription || i.description || 'Описание появится позже.'}</div>
+                            <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">
+                                {CONTENT_TYPE_LABEL[i.contentType] || i.contentType || 'Материал'}
+                            </div>
+                        </div>
+                    </article>
+                ))}
+            </div>
+        );
+    }
+
+    if (section === 'glossary') {
+        return (
+            <div className="grid gap-3 md:grid-cols-2">
+                {previewItems.map((i) => (
+                    <article key={i.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <div className="text-sm font-semibold text-slate-800">{i.title}</div>
+                        <div className="mt-1 text-xs text-slate-600 line-clamp-3 whitespace-pre-line">
+                            {String(i.fullDescription || i.description || i.shortDescription || 'Определение добавляется в карточку термина.').replace(/<[^>]*>/g, ' ')}
+                        </div>
+                    </article>
+                ))}
+            </div>
+        );
+    }
+
+    if (section === 'lessons') {
+        const byModule = previewItems.reduce((acc, item) => {
+            const mod = clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0);
+            if (!acc[mod]) acc[mod] = [];
+            acc[mod].push(item);
+            return acc;
+        }, {});
+        const moduleOrder = Object.keys(byModule).map(Number).sort((a, b) => a - b);
+        return (
+            <div className="grid gap-3 md:grid-cols-2">
+                {moduleOrder.map((mod) => (
+                    <article key={mod} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Модуль {mod}</div>
+                        <ul className="space-y-1.5">
+                            {byModule[mod].map((i) => (
+                                <li key={i.id} className="rounded-xl border border-slate-100 bg-slate-50/60 px-2.5 py-2">
+                                    <div className="text-sm text-slate-800">{i.title}</div>
+                                    <div className="mt-1 text-[11px] text-slate-500">
+                                        {i.lessonKind === 'quiz' ? 'Тест' : i.lessonKind === 'homework' ? 'Домашнее задание' : 'Урок'}
+                                        {i.estimatedDuration ? ` · ${i.estimatedDuration}` : ''}
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </article>
+                ))}
+            </div>
+        );
+    }
+
+    return null;
+}
+
 function GardenContentCards({ items }) {
     if (!items.length) return <div className="rounded-3xl bg-white p-6 text-sm text-slate-500 shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)]">В этом разделе пока нет материалов.</div>;
     return (
@@ -1120,51 +1235,6 @@ function escapeHtml(source = '') {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
-}
-
-function formatInlineMarkdown(text = '') {
-    let s = escapeHtml(text);
-    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
-    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    s = s.replace(/_(.+?)_/g, '<em>$1</em>');
-    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-    return s;
-}
-
-function markdownToPvlHtml(markdown = '') {
-    const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
-    const out = [];
-    let listBuffer = [];
-    const flushList = () => {
-        if (!listBuffer.length) return;
-        out.push(`<ul>${listBuffer.map((x) => `<li>${x}</li>`).join('')}</ul>`);
-        listBuffer = [];
-    };
-    for (const raw of lines) {
-        const line = String(raw || '').trim();
-        if (!line) {
-            flushList();
-            continue;
-        }
-        const h = line.match(/^(#{1,4})\s+(.+)$/);
-        if (h) {
-            flushList();
-            const lvl = Math.min(4, h[1].length + 1);
-            out.push(`<h${lvl}>${formatInlineMarkdown(h[2])}</h${lvl}>`);
-            continue;
-        }
-        const li = line.match(/^[-*]\s+(.+)$/);
-        if (li) {
-            listBuffer.push(formatInlineMarkdown(li[1]));
-            continue;
-        }
-        flushList();
-        out.push(`<p>${formatInlineMarkdown(line)}</p>`);
-    }
-    flushList();
-    return out.join('\n');
 }
 
 function parseImportedPvlDoc(text = '') {
@@ -1229,8 +1299,8 @@ function buildCategoryIdFromTitle(title = '') {
 
 function clampPvlModule(value) {
     const n = Number(value);
-    if (!Number.isFinite(n)) return 1;
-    return Math.max(1, Math.min(3, Math.round(n)));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(3, Math.round(n)));
 }
 
 function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student', refresh = null, refreshKey = 0 }) {
@@ -1380,8 +1450,8 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                         </div>
                         <div className="rounded-xl bg-slate-50/90 shadow-sm p-3 min-w-0">
                             <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Рекомендуем открыть</div>
-                            <div className="mt-1 text-sm font-semibold text-slate-800 leading-snug line-clamp-3" title={progress.recommendedNextMaterial?.title || ''}>
-                                {progress.recommendedNextMaterial?.title || '—'}
+                            <div className="mt-1 text-sm font-semibold text-slate-800 leading-snug line-clamp-3" title={progress.recommendedNextTitle || progress.recommendedNextMaterial?.title || ''}>
+                                {progress.recommendedNextTitle || progress.recommendedNextMaterial?.title || '—'}
                             </div>
                             <p className="mt-1 text-[11px] text-slate-500 leading-snug">Следующий шаг по курсу</p>
                         </div>
@@ -1634,7 +1704,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
 
 const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'на доработке', 'проверено', 'в работе']);
 
-function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
+function StudentDashboard({ studentId, navigate, routePrefix = '/student', gardenBridgeRef = null }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
     const points = pvlDomainApi.helpers.getStudentPointsSummary(studentId);
     const libraryProgress = pvlDomainApi.studentApi.getStudentLibraryProgress(studentId);
@@ -1732,6 +1802,34 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
                     navigate={navigate}
                     routePrefix={routePrefix}
                 />
+            </section>
+
+            <section className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
+                <h3 className="font-display text-xl text-slate-800">Ваш ментор</h3>
+                {mentorUser ? (
+                    <button
+                        type="button"
+                        disabled={!gardenBridgeRef?.current?.openGardenUserProfile || !mentorUserId}
+                        onClick={() => {
+                            if (mentorUserId && gardenBridgeRef?.current?.openGardenUserProfile) {
+                                gardenBridgeRef.current.openGardenUserProfile(mentorUserId);
+                            }
+                        }}
+                        className={`mt-3 flex w-full max-w-lg items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/30 p-3 text-left transition-colors ${gardenBridgeRef?.current?.openGardenUserProfile && mentorUserId ? 'hover:bg-emerald-50 cursor-pointer' : 'cursor-default opacity-95'}`}
+                    >
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-sm font-semibold">
+                            {pvlPersonInitials(mentorUser.fullName)}
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-sm font-medium text-slate-800">{mentorUser.fullName}</div>
+                            <div className="text-xs text-slate-500">Закреплённый ментор по вашему потоку{gardenBridgeRef?.current?.openGardenUserProfile ? ' · открыть профиль в Саду' : ''}</div>
+                        </div>
+                    </button>
+                ) : (
+                    <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                        Ментор пока не назначен. Как только учительская закрепит ментора, он появится здесь и в разделе «Коммуникации».
+                    </div>
+                )}
             </section>
 
             <section className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
@@ -1898,7 +1996,7 @@ function StudentPracticumsCalendar({ studentId }) {
                                             <div className="text-[11px] font-medium text-slate-400">{practicumEventTypeRu(ev.eventType)}</div>
                                             <div className="text-sm font-medium text-slate-800 mt-0.5">{ev.title}</div>
                                             {ev.focus ? <div className="text-xs text-slate-500 mt-1">{ev.focus}</div> : null}
-                                            <div className="text-xs text-slate-400 mt-1">Модуль {clampPvlModule(ev.moduleNumber ?? ev.weekNumber ?? 0)}</div>
+                                            <div className="text-xs text-slate-400 mt-1">{pvlPlatformModuleTitleFromInternal(ev.moduleNumber ?? ev.weekNumber ?? 1)}</div>
                                         </div>
                                         <div className="text-right shrink-0">
                                             <div className="text-sm font-medium text-slate-800">{formatPvlDateTime(ev.at)}</div>
@@ -1915,72 +2013,54 @@ function StudentPracticumsCalendar({ studentId }) {
     );
 }
 
-const ABOUT_COURSE_MATERIALS = [
-    {
-        id: 'intro',
-        tag: 'Обзор',
-        kind: 'документ',
-        title: `Курс «${PVL_COURSE_DISPLAY_NAME}»`,
-        summary: 'Три месяца интенсивной траектории по модулям, сопровождение ментором и учительской.',
-    },
-    {
-        id: 'structure',
-        tag: 'Обзор',
-        kind: 'документ',
-        title: 'Как устроен курс',
-        summary: 'Модули 0-4, шаги в трекере, домашние задания со статусами и обратной связью ментора. Сертификационный завтрак и самооценка — в конце пути.',
-    },
-    {
-        id: 'platform',
-        tag: 'Платформа',
-        kind: 'документ',
-        title: 'Как пользоваться платформой',
-        summary: 'Разделы слева ведут в материалы, трекер, практикумы и результаты. Сообщения по заданию — в карточке работы.',
-    },
-    {
-        id: 'onboarding',
-        tag: 'Старт',
-        kind: 'документ',
-        title: 'Онбординг',
-        summary: 'Пошаговое знакомство с курсом без отдельного пункта меню. Далее — модуль 0 в трекере.',
-    },
-    {
-        id: 'safety',
-        tag: 'Безопасность',
-        kind: 'документ',
-        title: 'Правила безопасности',
-        summary: 'Конфиденциальность практик группы, бережная обратная связь, уважение границ. Подробности — в материалах потока и у куратора.',
-    },
-    {
-        id: 'points',
-        tag: 'Баллы',
-        kind: 'документ',
-        title: 'Курсовые баллы и призы',
-        summary: 'До 400 курсовых баллов за траекторию и КТ, до 50 — бонус ментора. Призы и номинации объявляет учительская.',
-    },
-    {
-        id: 'matrix',
-        tag: 'Команда',
-        kind: 'документ',
-        title: 'Матрица ответственности',
-        summary: 'Учительская — поток и правила. Ментор — проверка и встречи. Участница — шаги и сдача в срок. Куратор и техподдержка — организация и доступы.',
-    },
-    {
-        id: 'week0',
-        tag: 'Трекер',
-        kind: 'действие',
-        title: 'Старт курса',
-        summary: 'Первый шаг — трекер. Откройте модуль 1 «Пиши», просмотрите шаги и приступайте к урокам.',
-    },
-];
+/** Контент «О курсе» задаётся в учительской (CMS); здесь только каркас экрана. */
+const ABOUT_COURSE_MATERIALS = [];
 
 function StudentAboutEnriched({ navigate, routePrefix = '/student' }) {
-    const [activeId, setActiveId] = useState(ABOUT_COURSE_MATERIALS[0]?.id || 'intro');
+    const [activeId, setActiveId] = useState(ABOUT_COURSE_MATERIALS[0]?.id || '');
     const active = ABOUT_COURSE_MATERIALS.find((m) => m.id === activeId) || ABOUT_COURSE_MATERIALS[0];
     const tags = ['Все', 'Обзор', 'Старт', 'Платформа', 'Безопасность', 'Баллы', 'Команда', 'Трекер'];
     const [tagFilter, setTagFilter] = useState('Все');
     const filtered = ABOUT_COURSE_MATERIALS.filter((m) => tagFilter === 'Все' || m.tag === tagFilter);
     const goTracker = () => navigate(`${routePrefix}/tracker`);
+
+    if (ABOUT_COURSE_MATERIALS.length === 0) {
+        return (
+            <div className="space-y-6">
+                <div className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы курса</p>
+                    <h2 className="font-display text-2xl md:text-3xl text-slate-800 mt-1">О курсе</h2>
+                </div>
+                <div className="grid lg:grid-cols-2 gap-5 lg:gap-6 items-stretch min-h-0">
+                    <div className="flex min-h-[280px] flex-col justify-center rounded-3xl bg-white p-8 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] text-center text-slate-600 text-sm">
+                        <p className="font-medium text-slate-800">Материалы ещё не опубликованы</p>
+                        <p className="mt-2 text-slate-500">Как только учительская добавит блоки в раздел «О курсе», они появятся здесь.</p>
+                        <button
+                            type="button"
+                            onClick={goTracker}
+                            className="mt-6 self-center rounded-full bg-[#4A3728] text-white px-5 py-2.5 text-sm font-medium hover:bg-[#3d2f22]"
+                        >
+                            Открыть трекер
+                        </button>
+                    </div>
+                    <div className="flex min-h-[280px] flex-col rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                        <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+                            <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы</h3>
+                        </div>
+                        <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-500">Список пуст</div>
+                    </div>
+                </div>
+                <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
+                    <h4 className="font-display text-lg text-slate-800 mb-3">Правила траектории</h4>
+                    <ul className="space-y-2 text-sm text-slate-600 list-disc pl-5">
+                        {PVL_TRACKER_RULES.map((line) => (
+                            <li key={line.slice(0, 40)}>{line}</li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -2443,6 +2523,11 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
             </section>
 
             <section className="space-y-2">
+                {!tasks.length ? (
+                    <p className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] px-3.5 py-6 text-sm text-slate-500 text-center">
+                        Пока нет заданий с ответами ментора — как только появятся сдачи, они отобразятся здесь.
+                    </p>
+                ) : null}
                 {tasks.map((t) => (
                     <article key={t.id} className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3.5">
                         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -2584,19 +2669,27 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
             </div>
             <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 space-y-5">
                 <div className="text-xs text-slate-500">Ментор: <span className="font-medium text-slate-700">{dialog.mentor?.fullName || 'не назначен'}</span></div>
-                <DirectMessageThread messages={dialog.messages} actorId={studentId} />
-                <div className="flex items-end gap-2">
-                    <textarea
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        rows={3}
-                        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                        placeholder="Напишите сообщение ментору..."
-                    />
-                    <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
-                        Отправить
-                    </button>
-                </div>
+                {dialog.mentorId ? (
+                    <>
+                        <DirectMessageThread messages={dialog.messages} actorId={studentId} />
+                        <div className="flex items-end gap-2">
+                            <textarea
+                                value={text}
+                                onChange={(e) => setText(e.target.value)}
+                                rows={3}
+                                className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+                                placeholder="Напишите сообщение ментору..."
+                            />
+                            <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
+                                Отправить
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                        Диалог недоступен, пока вам не назначен ментор. После назначения здесь появится переписка и форма отправки сообщений.
+                    </div>
+                )}
             </section>
         </div>
     );
@@ -2612,6 +2705,7 @@ function MentorDirectMessages({ mentorId = 'u-men-1' }) {
     }, [mentorId, tick]);
     const selectedStudentId = activeStudentId || dialogs[0]?.studentId || '';
     const selectedDialog = useMemo(() => dialogs.find((d) => d.studentId === selectedStudentId) || null, [dialogs, selectedStudentId]);
+    const mentorUser = resolveActorUser(mentorId);
     const messages = useMemo(() => {
         if (!selectedStudentId) return [];
         return pvlDomainApi.sharedApi.getDirectMessages(mentorId, selectedStudentId);
@@ -2632,6 +2726,7 @@ function MentorDirectMessages({ mentorId = 'u-men-1' }) {
         <div className="space-y-6">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                 <h2 className="font-display text-2xl text-slate-800">Коммуникации с менти</h2>
+                <p className="mt-1 text-xs text-slate-500">Ментор: <span className="font-medium text-slate-700">{mentorUser?.fullName || '—'}</span></p>
             </div>
             <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 grid lg:grid-cols-[280px_1fr] gap-4">
                 <aside className="rounded-xl border border-slate-100 bg-slate-50/70 p-2 space-y-1 max-h-[56vh] overflow-y-auto">
@@ -2706,12 +2801,12 @@ function PvlMergeOnboardingRedirect({ navigate, to }) {
     );
 }
 
-function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0, routePrefix = '/student' }) {
+function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0, routePrefix = '/student', gardenBridgeRef = null }) {
     if (route === '/student/onboarding') {
         return <PvlMergeOnboardingRedirect navigate={navigate} to="/student/about" />;
     }
     if (route === '/student/settings') return <PvlCabinetSettingsStub />;
-    if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
+    if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} gardenBridgeRef={gardenBridgeRef} />;
     if (route === '/student/results') return <StudentResults studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];
@@ -2798,7 +2893,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         const sectionMaterials = sectionKey ? getPublishedContentBySection(sectionKey, 'student', cmsItems, cmsPlacements) : [];
         return <StudentGeneric title="Культурный код Лиги"><GardenContentCards items={sectionMaterials.length ? sectionMaterials : ['Бережность', 'Ясность', 'Без советов', 'Поддержка сообщества'].map((x) => ({ id: x, title: x, shortDescription: '', contentType: 'text', tags: ['код'] }))} /></StudentGeneric>;
     }
-    return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
+    return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} gardenBridgeRef={gardenBridgeRef} />;
 }
 
 function MentorMaterialsPage({ cmsItems, cmsPlacements }) {
@@ -3172,6 +3267,74 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
     );
 }
 
+function MentorApplicantsPanel({ mentorId, refreshKey = 0 }) {
+    const rows = useMemo(() => pvlDomainApi.mentorApi.getMentorCohortApplicants(mentorId), [mentorId, refreshKey]);
+    const mp = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId);
+    const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === mp?.cohortIds?.[0])?.title || 'Поток ПВЛ';
+
+    return (
+        <div className="space-y-5">
+            <header>
+                <h2 className="font-display text-2xl text-slate-800">Абитуриенты потока</h2>
+                <p className="mt-1 text-sm text-slate-500 max-w-2xl">
+                    Актуальный список из Сада (профили с ролью «Абитуриент») подгружается при открытии курса. Здесь видны все участницы потока «
+                    {cohortTitle}
+                    »; закрепление за ментором задаётся в учительской.
+                </p>
+            </header>
+            {rows.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-600">
+                    <p className="font-medium text-slate-800">Пока нет абитуриентов в данных курса</p>
+                    <p className="mt-2 text-slate-500 max-w-md mx-auto">
+                        Убедитесь, что в Саду у пользователей в профиле указана роль «Абитуриент», и что загрузка профилей с сервера прошла успешно. После появления учениц в учительской список обновится автоматически.
+                    </p>
+                </div>
+            ) : (
+                <div className="hidden md:block overflow-x-auto -mx-1 px-1">
+                    <table className="w-full text-sm text-left min-w-[640px]">
+                        <thead>
+                            <tr className="text-xs text-slate-500 border-b border-slate-100">
+                                <th className="pb-2 pr-3 font-medium">Имя</th>
+                                <th className="pb-2 pr-3 font-medium">Email</th>
+                                <th className="pb-2 pr-3 font-medium">Ментор (по учительской)</th>
+                                <th className="pb-2 font-medium">Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((row) => (
+                                <tr key={row.userId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80">
+                                    <td className="py-3 pr-3 align-top font-medium text-slate-800">{row.fullName}</td>
+                                    <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.email || '—'}</td>
+                                    <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.mentorName}</td>
+                                    <td className="py-3 align-top">
+                                        {row.isMyMentee ? (
+                                            <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900">Ваше менти</span>
+                                        ) : (
+                                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Поток</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            {rows.length > 0 ? (
+                <div className="grid gap-3 md:hidden">
+                    {rows.map((row) => (
+                        <article key={row.userId} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-sm">
+                            <div className="font-medium text-slate-800">{row.fullName}</div>
+                            <div className="text-xs text-slate-500 mt-1">{row.email || '—'}</div>
+                            <div className="text-xs text-slate-600 mt-2">Ментор: {row.mentorName}</div>
+                            <div className="mt-2">{row.isMyMentee ? <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900">Ваше менти</span> : <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Поток</span>}</div>
+                        </article>
+                    ))}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 function MentorMenteesPanel({ navigate, mentorId, refreshKey = 0 }) {
     const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     return (
@@ -3194,10 +3357,12 @@ function MentorReviewQueuePanel({ navigate, mentorId, refresh, refreshKey = 0 })
 function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
     const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
     const mentorCohortId = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId)?.cohortIds?.[0] || 'cohort-2026-1';
+    const mentorUser = resolveActorUser(mentorId);
     return (
         <div className="space-y-5">
             <header className="pb-1">
                 <h2 className="font-display text-2xl text-slate-800">Дашборд ментора</h2>
+                <p className="mt-1 text-sm text-slate-500">{mentorUser?.fullName || 'Ментор'}</p>
             </header>
             <MentorMenteesGardenGrid navigate={navigate} menteeRows={menteeRows} heading="Мои менти" />
             <section>
@@ -3218,6 +3383,18 @@ function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
 }
 
 function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refreshKey = 0, mentorId = 'u-men-1' }) {
+    const mentorMirrorStudentId = useMemo(() => {
+        const mp = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId);
+        const direct = (mp?.menteeIds || [])[0];
+        if (direct) return direct;
+        return pvlDomainApi.adminApi.getAdminStudents({})[0]?.userId ?? null;
+    }, [mentorId, refreshKey]);
+    const mentorMirrorUnavailable = (
+        <div className="rounded-3xl bg-white p-8 text-center text-slate-600 text-sm shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+            <p className="font-medium text-slate-800">Нет ученицы для предпросмотра</p>
+            <p className="mt-2 text-slate-500 max-w-md mx-auto">Когда учительская закрепит менти, здесь откроется такой же вид, как в кабинете ученицы.</p>
+        </div>
+    );
     const [pathOnly, query = ''] = String(route || '').split('?');
     const fromKanban = /(?:^|&)from=kanban(?:&|$)/.test(query);
     if (route === '/mentor/onboarding') {
@@ -3225,16 +3402,19 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     }
     if (route === '/mentor/settings') return <PvlCabinetSettingsStub />;
     if (route === '/mentor/dashboard') return <MentorDashboard navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
+    if (route === '/mentor/applicants') return <MentorApplicantsPanel mentorId={mentorId} refreshKey={refreshKey} />;
     if (route === '/mentor/mentees') return <MentorMenteesPanel navigate={navigate} mentorId={mentorId} refreshKey={refreshKey} />;
     if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
     if (route === '/mentor/messages') return <MentorDirectMessages mentorId={mentorId} />;
     if (route === '/mentor/tracker') {
-        return <StudentCourseTracker studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} />;
+        if (!mentorMirrorStudentId) return mentorMirrorUnavailable;
+        return <StudentCourseTracker studentId={mentorMirrorStudentId} />;
     }
     if (route === '/mentor/materials') return <MentorMaterialsPage cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (route === '/mentor/library' || route.startsWith('/mentor/library/')) {
         const itemId = route === '/mentor/library' ? '' : route.slice('/mentor/library/'.length).split('/')[0] || '';
-        return <LibraryPage studentId={MENTOR_COURSE_MIRROR_STUDENT_ID} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" refresh={refresh} refreshKey={refreshKey} />;
+        if (!mentorMirrorStudentId) return mentorMirrorUnavailable;
+        return <LibraryPage studentId={mentorMirrorStudentId} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" refresh={refresh} refreshKey={refreshKey} />;
     }
     if (/^\/mentor\/mentee\/[^/]+\/task\/[^/]+$/.test(pathOnly)) {
         const [, , , menteeId, , taskId] = pathOnly.split('/');
@@ -3285,10 +3465,13 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         }
     };
     const courseRoute = route.replace(/^\/mentor\//, '/student/');
+    if (!mentorMirrorStudentId) {
+        return mentorMirrorUnavailable;
+    }
     return (
         <StudentPage
             route={courseRoute}
-            studentId={MENTOR_COURSE_MIRROR_STUDENT_ID}
+            studentId={mentorMirrorStudentId}
             navigate={mentorCourseNavigate}
             cmsItems={cmsItems}
             cmsPlacements={cmsPlacements}
@@ -3881,11 +4064,13 @@ function AdminContentItemScreen({
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
     const libraryCategories = useMemo(() => {
         try {
-            return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(MENTOR_COURSE_MIRROR_STUDENT_ID) || [];
+            const sid = getFirstCohortStudentId();
+            if (!sid) return [];
+            return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(sid) || [];
         } catch {
             return [];
         }
-    }, []);
+    }, [forceRefresh]);
 
     const beginEdit = () => {
         if (!item) return;
@@ -4251,11 +4436,13 @@ function AdminContentItemScreen({
                                 <div className="space-y-1">
                                     <label className="text-xs text-slate-500 ml-0.5">Модуль</label>
                                     <select
-                                        value={clampPvlModule(editForm.moduleNumber)}
+                                        value={String(clampPvlModule(editForm.moduleNumber))}
                                         onChange={(e) => setEditForm((f) => ({ ...f, moduleNumber: e.target.value, weekNumber: e.target.value }))}
                                         className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
                                     >
-                                        {[0, 1, 2, 3, 4].map((m) => <option key={m} value={m}>Модуль {m}</option>)}
+                                        {getPvlCourseModulePickerOptions().map((opt) => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="space-y-1">
@@ -4551,8 +4738,9 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const placements = cmsPlacements;
     const setItems = setCmsItems;
     const setPlacements = setCmsPlacements;
-    const [filters, setFilters] = useState({ section: 'all', status: 'all', role: 'all', type: 'all', cohort: 'all', module: 'all', query: '' });
+    const [filters, setFilters] = useState({ section: 'library', status: 'all', role: 'all', type: 'all', cohort: 'all', module: 'all', query: '' });
     const [draggingId, setDraggingId] = useState(null);
+    const [previewAsStudent, setPreviewAsStudent] = useState(true);
     const [isCoverUploading, setIsCoverUploading] = useState(false);
     const [importedDocName, setImportedDocName] = useState('');
     const [docImportError, setDocImportError] = useState('');
@@ -4597,11 +4785,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
     const baseLibraryCategories = useMemo(() => {
         try {
-            return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(MENTOR_COURSE_MIRROR_STUDENT_ID) || [];
+            const sid = getFirstCohortStudentId();
+            if (!sid) return [];
+            return pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(sid) || [];
         } catch {
             return [];
         }
-    }, []);
+    }, [items.length, cmsPlacements.length]);
     const libraryCategories = useMemo(() => {
         const byId = new Map();
         [...baseLibraryCategories, ...customLibraryCategories].forEach((c) => {
@@ -4612,7 +4802,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         });
         return Array.from(byId.values());
     }, [baseLibraryCategories, customLibraryCategories]);
-    const moduleOptions = useMemo(() => [1, 2, 3], []);
+    const modulePickerOptions = useMemo(() => getPvlCourseModulePickerOptions(), []);
     const createLibraryCategoryId = useCallback((title) => buildCategoryIdFromTitle(title), []);
     const addOrSelectCustomLibraryCategory = useCallback((title) => {
         const normalizedTitle = String(title || '').trim();
@@ -5027,12 +5217,12 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                             <div className="text-xs font-medium text-emerald-900/80">Куда публиковать в курсе</div>
                             <div className="grid md:grid-cols-2 gap-2">
                                 <select
-                                    value={draft.moduleNumber}
+                                    value={String(clampPvlModule(draft.moduleNumber))}
                                     onChange={(e) => setDraft((d) => ({ ...d, moduleNumber: e.target.value, weekNumber: e.target.value }))}
                                     className={cmsIn}
                                 >
-                                    {moduleOptions.map((m) => (
-                                        <option key={m} value={m}>Модуль {m}</option>
+                                    {modulePickerOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
                                 </select>
                                 <select
@@ -5164,7 +5354,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                     ))}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                    {[['all', 'Все статусы'], ['draft', 'Черновики'], ['published', 'Опубликованные'], ['unpublished', 'Снятые'], ['archived', 'В архиве']].map(([val, label]) => (
+                    {[['all', 'Все статусы'], ['draft', 'Черновики'], ['published', 'Опубликованные'], ['withdrawn', 'Снятые / в архиве']].map(([val, label]) => (
                         <button
                             key={val}
                             type="button"
@@ -5178,7 +5368,38 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 {filtered.length > 0 && (
                     <div className="text-xs text-slate-400 pl-1">{filtered.length} материалов</div>
                 )}
+                <div className="flex items-center gap-2 pl-1">
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                        <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-emerald-700"
+                            checked={previewAsStudent}
+                            onChange={(e) => setPreviewAsStudent(e.target.checked)}
+                        />
+                        Предпросмотр как в ученическом кабинете
+                    </label>
+                </div>
             </div>
+
+            {previewAsStudent ? (
+                <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Предпросмотр раздела: {filters.section === 'all' ? 'выберите раздел' : labelTargetSection(filters.section)}
+                        </h3>
+                        <span className="text-[11px] text-slate-500">
+                            Поток: {filters.cohort === 'all' ? 'по умолчанию' : filters.cohort}
+                        </span>
+                    </div>
+                    <AdminContentSectionPreview
+                        section={filters.section}
+                        items={items}
+                        placements={placements}
+                        cohortId={filters.cohort === 'all' ? 'cohort-2026-1' : filters.cohort}
+                        moduleFilter={filters.module}
+                    />
+                </section>
+            ) : null}
 
             <div className="grid gap-4">
                 {filtered.map((i) => (
@@ -5210,7 +5431,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         <button type="button" onClick={() => {
                                             const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
                                             setItems((prev) => [copy, ...prev]);
-                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
                                 {i.status === 'unpublished' && (
@@ -5220,7 +5441,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         <button type="button" onClick={() => {
                                             const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
                                             setItems((prev) => [copy, ...prev]);
-                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
                                 {i.status === 'draft' && (
@@ -5243,7 +5464,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         <button type="button" onClick={() => {
                                             const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
                                             setItems((prev) => [copy, ...prev]);
-                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
                                 {i.status === 'archived' && (
@@ -5252,7 +5473,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         <button type="button" onClick={() => {
                                             const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
                                             setItems((prev) => [copy, ...prev]);
-                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
                             </div>
@@ -5289,7 +5510,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     );
 }
 
-function AdminStudents({ navigate, route }) {
+function AdminStudents({ navigate, route, refreshKey = 0 }) {
     const [cohortId, setCohortId] = useState('all');
     const [listTick, setListTick] = useState(0);
     const cohorts = pvlDomainApi.adminApi.getAdminCohorts();
@@ -5303,7 +5524,7 @@ function AdminStudents({ navigate, route }) {
         if (cohortId === 'all') return true;
         const sp = pvlDomainApi.db.studentProfiles.find((p) => p.userId === r.userId);
         return sp?.cohortId === cohortId;
-    }), [cohortId, listTick]);
+    }), [cohortId, listTick, refreshKey]);
 
     const assignStudentMentor = (studentId, mentorUserId) => {
         pvlDomainApi.adminApi.assignStudentMentor(studentId, mentorUserId || null);
@@ -5781,6 +6002,15 @@ function AdminPage({
         return <PvlAdminCalendarScreen navigate={navigate} refresh={forceRefresh} route={route} />;
     }
     if (ADMIN_COURSE_ROUTE_RE.test(route)) {
+        const previewSid = getFirstCohortStudentId();
+        if (!previewSid) {
+            return (
+                <div className="rounded-3xl bg-white p-8 text-center text-slate-600 text-sm shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                    <p className="font-medium text-slate-800">Нет абитуриентов для предпросмотра</p>
+                    <p className="mt-2 text-slate-500 max-w-md mx-auto">Когда в потоке появятся ученицы из Сада, здесь откроется предпросмотр курса как в их кабинете.</p>
+                </div>
+            );
+        }
         const studentRoute = route.replace(/^\/admin/, '/student');
         const wrapNav = (next) => {
             if (typeof next !== 'string') {
@@ -5805,7 +6035,7 @@ function AdminPage({
         return (
             <StudentPage
                 route={studentRoute}
-                studentId={MENTOR_COURSE_MIRROR_STUDENT_ID}
+                studentId={previewSid}
                 navigate={wrapNav}
                 cmsItems={cmsItems}
                 cmsPlacements={cmsPlacements}
@@ -5815,7 +6045,7 @@ function AdminPage({
             />
         );
     }
-    if (adminPathOnly === '/admin/students') return <AdminStudents navigate={navigate} route={route} />;
+    if (adminPathOnly === '/admin/students') return <AdminStudents navigate={navigate} route={route} refreshKey={refreshKey} />;
     if (adminPathOnly === '/admin/mentors') return <AdminMentors />;
     if (adminPathOnly === '/admin/settings') return <AdminSettings />;
 
@@ -5920,6 +6150,7 @@ const QA_ROUTE_LIST = [
     '/student/self-assessment',
     '/student/cultural-code',
     '/mentor/dashboard',
+    '/mentor/applicants',
     '/mentor/mentees',
     '/mentor/review-queue',
     '/mentor/messages',
@@ -5988,21 +6219,21 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
     const week6CpCount = cps.filter((c) => c.weekNumber === 6).length;
     const szDeadlineOk = cps.some((c) => c.code === 'KT8' && c.deadlineAt === '2026-06-30');
     const adminMenuOk = ADMIN_SIDEBAR_CONFIG.filter((x) => x.type === 'item').length === 14;
-    const pvlCalendarOk = pvlDomainApi.calendarApi.listForViewer('admin', null).length >= 1;
+    const pvlCalendarOk = Array.isArray(pvlDomainApi.calendarApi.listForViewer('admin', null));
     const scoresSeparated = true;
 
     const criticalChecks = [
         { title: 'Меню участницы: 8 пунктов курса в сайдбаре (плюс Дашборд, Настройки, сад)', ok: studentMenuPass },
         { title: 'О курсе содержит стартовые материалы', ok: pvlDomainApi.studentApi.getStudentLibrary('u-st-1').length >= 0 },
         { title: 'Библиотека не смешана с Уроками', ok: true },
-        { title: 'Результаты содержат домашки/статусы/комментарии', ok: pvlDomainApi.studentApi.getStudentResults('u-st-1').length > 0 },
+        { title: 'Результаты: API отдаёт список (в сиде может быть пусто до реальных сдач)', ok: Array.isArray(pvlDomainApi.studentApi.getStudentResults('u-st-1', {})) },
         { title: 'Курсовые 400 и СЗ 54 раздельно', ok: scoresSeparated },
         { title: 'Модули 1-3 присутствуют', ok: weeks.some((w) => w.moduleNumber === 1) && weeks.some((w) => w.moduleNumber === 3) },
         { title: '9 КТ присутствуют', ok: cps.length === 9 },
         { title: 'Модуль с 3 отдельными КТ', ok: week6CpCount === 3 },
         { title: 'Дедлайн записи СЗ: 30.06.2026', ok: szDeadlineOk },
         { title: 'Учительская: 14 пунктов меню (управление + курс + Настройки)', ok: adminMenuOk },
-        { title: 'Календарь ПВЛ: есть события в seed', ok: pvlCalendarOk },
+        { title: 'Календарь ПВЛ: API списка событий доступен', ok: pvlCalendarOk },
     ];
 
     const runScenario = (id) => {
@@ -6269,12 +6500,14 @@ export default function PvlPrototypeApp({
             return;
         }
         if (!hasAuthoritativeSource) return;
-        // Патчим имя текущего пользователя из Garden в mock-запись
         pvlPatchCurrentUserFromGarden(gardenUser, resolvedRole);
+        const gid = gardenUser?.id != null ? String(gardenUser.id) : null;
+        if (gid) {
+            setActingUserId(gid);
+            if (resolvedRole === 'student') setStudentId(gid);
+        }
         if (resolvedRole !== role) {
-            const nextActor = resolvedRole === 'admin' ? 'u-adm-1' : resolvedRole === 'mentor' ? 'u-men-1' : 'u-st-1';
             setRole(resolvedRole);
-            setActingUserId(nextActor);
         }
         setRoute((prev) => redirectToAllowedRoute(resolvedRole, prev || ''));
     }, [embeddedInGarden, onGardenExit, role, gardenResolvedRole]);
@@ -6286,16 +6519,14 @@ export default function PvlPrototypeApp({
                 const res = await syncPvlRuntimeFromDb();
                 await syncPvlActorsFromGarden();
                 if (!mounted) return;
-                if (!res?.synced) {
-                    forceRefresh();
-                    return;
+                if (res?.synced) {
+                    const next = buildMergedCmsState();
+                    setCmsItems(next.items);
+                    setCmsPlacements(next.placements);
                 }
-                const next = buildMergedCmsState();
-                setCmsItems(next.items);
-                setCmsPlacements(next.placements);
                 forceRefresh();
             } catch {
-                /* fallback to mock-only runtime */
+                if (mounted) forceRefresh();
             }
         })();
         return () => {
@@ -6396,10 +6627,21 @@ export default function PvlPrototypeApp({
             return <MentorPage route={route} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} mentorId={resolvePvlMentorActorId(actingUserId)} />;
         }
         if (route.startsWith('/student/')) {
-            return <StudentPage route={route} studentId={studentId} navigate={navigate} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refresh={forceRefresh} refreshKey={dataTick} />;
+            return (
+                <StudentPage
+                    route={route}
+                    studentId={studentId}
+                    navigate={navigate}
+                    cmsItems={cmsItems}
+                    cmsPlacements={cmsPlacements}
+                    refresh={forceRefresh}
+                    refreshKey={dataTick}
+                    gardenBridgeRef={embeddedInGarden ? gardenBridgeRef : null}
+                />
+            );
         }
         return <ScreenState error={`Неизвестный маршрут. Перейдите в раздел через меню или переключатель кабинета.`}><div /></ScreenState>;
-    }, [role, route, studentId, actingUserId, cmsItems, cmsPlacements, dataTick, navigate]);
+    }, [role, route, studentId, actingUserId, cmsItems, cmsPlacements, dataTick, navigate, embeddedInGarden, gardenBridgeRef]);
 
     const devToolsBar = pvlDevToolsEnabled() ? (
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-end border-t xl:border-t-0 border-[#F0E6DC] pt-2 xl:pt-0">

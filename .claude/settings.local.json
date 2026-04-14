@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(systeminfo)",
+      "Bash(npm -v)",
+      "Bash(pnpm -v)",
+      "Bash(git --version)",
+      "Bash(npm install:*)",
+      "Bash(powershell -NoProfile -Command \"[System.Media.SystemSounds]::Asterisk.Play\\(\\); Start-Sleep -Milliseconds 800; exit 0\")",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(powershell -NoProfile -Command \"Get-Content 'c:\\\\Users\\\\Настенька\\\\Desktop\\\\garden\\\\.claude\\\\settings.json' | ConvertFrom-Json | ConvertTo-Json -Depth 10\")",
+      "WebFetch(domain:api.github.com)",
+      "Bash(npm run:*)",
+      "Bash(node -e ':*)"
+    ]
+  }
+}

@@ -1,112 +1,11 @@
 import React, { useState } from 'react';
 import PvlMenteeCardView from './PvlMenteeCardView';
 
-export const mentorMentees = [
-    {
-        id: 'm-101',
-        fullName: 'Анна Ковалева',
-        currentWeek: 6,
-        meetingStatus: 'проведена',
-        lastHomework: 'Сценарий v0.8',
-        lastSubmissionStatus: 'на доработке',
-        coursePoints: 248,
-        overdueHomeworks: 1,
-        hasUnreadMessage: true,
-    },
-    {
-        id: 'm-102',
-        fullName: 'Мария Громова',
-        currentWeek: 5,
-        meetingStatus: 'не проведена',
-        lastHomework: 'Паспорт встречи',
-        lastSubmissionStatus: 'к проверке',
-        coursePoints: 182,
-        overdueHomeworks: 2,
-        hasUnreadMessage: false,
-    },
-    {
-        id: 'm-103',
-        fullName: 'Елена Бородина',
-        currentWeek: 8,
-        meetingStatus: 'проведена',
-        lastHomework: 'Финальный сценарий',
-        lastSubmissionStatus: 'принято',
-        coursePoints: 320,
-        overdueHomeworks: 0,
-        hasUnreadMessage: true,
-    },
-    {
-        id: 'm-104',
-        fullName: 'Ольга Сидорова',
-        currentWeek: 4,
-        meetingStatus: 'не проведена',
-        lastHomework: '2 микропрактики',
-        lastSubmissionStatus: 'не сдано',
-        coursePoints: 130,
-        overdueHomeworks: 3,
-        hasUnreadMessage: false,
-    },
-];
+export const mentorMentees = [];
 
-export const reviewQueue = [
-    {
-        id: 'rq-1',
-        menteeId: 'm-101',
-        menteeName: 'Анна Ковалева',
-        assignmentTitle: 'КТ4: Сценарий >= v0.8',
-        assignmentType: 'контрольная точка',
-        submittedAt: '2026-06-01',
-        deadlineAt: '2026-06-02',
-        isOverdue: false,
-    },
-    {
-        id: 'rq-2',
-        menteeId: 'm-102',
-        menteeName: 'Мария Громова',
-        assignmentTitle: 'Паспорт встречи',
-        assignmentType: 'домашка',
-        submittedAt: '2026-05-21',
-        deadlineAt: '2026-05-19',
-        isOverdue: true,
-    },
-    {
-        id: 'rq-3',
-        menteeId: 'm-104',
-        menteeName: 'Ольга Сидорова',
-        assignmentTitle: 'КТ2: Микропрактики + рефлексия',
-        assignmentType: 'контрольная точка',
-        submittedAt: '2026-05-14',
-        deadlineAt: '2026-05-12',
-        isOverdue: true,
-    },
-];
+export const reviewQueue = [];
 
-export const deadlineRisks = [
-    {
-        id: 'r-1',
-        menteeId: 'm-102',
-        menteeName: 'Мария Громова',
-        riskType: 'просрочен дедлайн недели',
-        overdueItem: 'Неделя 4: Паспорт встречи',
-        overdueDays: 3,
-    },
-    {
-        id: 'r-2',
-        menteeId: 'm-102',
-        menteeName: 'Мария Громова',
-        riskType: 'антидолг',
-        overdueItem: 'D+3 по неделе 4',
-        overdueDays: 1,
-    },
-    {
-        id: 'r-3',
-        menteeId: 'm-104',
-        menteeName: 'Ольга Сидорова',
-        riskType: 'просрочена контрольная точка',
-        overdueItem: 'КТ2: микропрактики',
-        overdueDays: 5,
-    },
-];
+export const deadlineRisks = [];
 
 export function statusBadge(status) {
     const value = String(status || '').toLowerCase();

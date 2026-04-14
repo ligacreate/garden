@@ -274,6 +274,23 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         setMobileMenuOpen(false);
     };
 
+    useEffect(() => {
+        const r = gardenPvlBridgeRef;
+        if (!r) return undefined;
+        r.current = r.current || {};
+        r.current.openGardenUserProfile = (userId) => {
+            if (userId == null) return;
+            const target = mergedUsers.find((u) => String(u.id) === String(userId));
+            if (!target) return;
+            setLeaderUser(target);
+            setView('leader');
+            setMobileMenuOpen(false);
+        };
+        return () => {
+            if (r.current?.openGardenUserProfile) delete r.current.openGardenUserProfile;
+        };
+    }, [mergedUsers]);
+
     const handleUpdateProfile = async (updated) => {
         try {
             // Optimistic update

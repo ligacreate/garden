@@ -1,54 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL } from '../data/pvlReferenceContent';
+import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
 import { buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
-
-function moduleStepsProgress(mod, checked) {
-    let done = 0;
-    mod.items.forEach((item, i) => {
-        const key = trackerStepKey(mod.id, item, i);
-        if (checked[key]) done += 1;
-    });
-    return { done, total: mod.items.length };
-}
-
-/**
- * Корневой экран трекера: карточки модулей в том же шаблоне, что «Категории библиотеки» (обложка, заголовок, строка, счётчик, «Открыть»).
- */
-function TrackerModuleLibraryCards({ checked, onOpenModule }) {
-    return (
-        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            {PVL_PLATFORM_MODULES.map((mod) => {
-                const { done, total } = moduleStepsProgress(mod, checked);
-                const cover = mod.coverImage || 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80';
-                return (
-                    <article
-                        key={mod.id}
-                        className="overflow-hidden rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]"
-                    >
-                        <img src={cover} alt="" className="h-36 w-full object-cover" />
-                        <div className="p-4">
-                            <h4 className="font-medium text-slate-800 leading-snug">{mod.title}</h4>
-                            <p className="text-xs text-[#9B8B80] mt-1 line-clamp-2">{mod.sub}</p>
-                            <p className="text-xs text-[#9B8B80] mt-2">Материалы категории</p>
-                            <div className="mt-1 text-[11px] text-slate-500">
-                                Материалов: {total}
-                                <span className="text-slate-400"> · </span>
-                                <span className="tabular-nums">пройдено {done}/{total}</span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => onOpenModule(mod.id)}
-                                className="mt-3 rounded-full bg-emerald-700 text-white text-xs px-4 py-1.5 hover:bg-emerald-800 font-medium"
-                            >
-                                Открыть
-                            </button>
-                        </div>
-                    </article>
-                );
-            })}
-        </div>
-    );
-}
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import { pvlDomainApi } from '../services/pvlMockApi';
 
@@ -67,6 +19,7 @@ const CHECKLIST_TAG_LABEL = {
 };
 
 function moduleNumClass(cls) {
+    if (cls === 'mod-0') return 'bg-amber-700 text-white';
     if (cls === 'mod-1') return 'bg-emerald-600 text-white';
     if (cls === 'mod-2') return 'bg-teal-700 text-white';
     return 'bg-teal-800 text-white';
@@ -176,13 +129,13 @@ export function computePvlTrackerDashboardStats(checked) {
     });
 
     if (!currentModule) {
-        currentModule = PVL_PLATFORM_MODULES[PVL_PLATFORM_MODULES.length - 1] || null;
+        currentModule = PVL_PLATFORM_MODULES[0] || null;
     }
 
     const base = computePlatformStepStats(checked);
     return {
         ...base,
-        currentModuleTitle: currentModule?.title || '—',
+        currentModuleTitle: currentModule?.title || pvlPlatformModuleTitleFromInternal(1),
         lessonsDone,
         lessonsTotal,
         lessonsRemaining: Math.max(0, lessonsTotal - lessonsDone),
@@ -288,7 +241,12 @@ export function PlatformCourseModulesGrid({
                         </div>
                         <div className="p-4 md:p-5">
                             <ul className="space-y-0 divide-y divide-slate-50">
-                                {mod.items.map((item, i) => {
+                                {!mod.items?.length ? (
+                                    <li className="py-6 px-2 text-sm text-slate-500 text-center leading-relaxed">
+                                        Уроки и шаги модуля появятся здесь после публикации в учительской.
+                                    </li>
+                                ) : (
+                                    mod.items.map((item, i) => {
                                     const key = trackerStepKey(mod.id, item, i);
                                     const isDone = !!checked[key];
                                     const tag = item.tag || 'task';
@@ -324,7 +282,8 @@ export function PlatformCourseModulesGrid({
                                             </button>
                                         </li>
                                     );
-                                })}
+                                })
+                                )}
                             </ul>
                         </div>
                     </article>
@@ -335,7 +294,7 @@ export function PlatformCourseModulesGrid({
 }
 
 /**
- * Полный путь курса: модули (включая модуль 0), шаги, прогресс и задания потока со статусами.
+ * Полный путь курса: три опоры (Пиши / Веди / Люби), шаги, прогресс и задания потока со статусами.
  * Не дублирует дашборд — только траектория и статусы шагов.
  */
 export function StudentCourseTracker({ studentId }) {
@@ -343,19 +302,29 @@ export function StudentCourseTracker({ studentId }) {
     const { doneSteps, totalSteps, pct } = stats;
     /** Пусто = сетка карточек модулей; иначе открыт шаг (слева список шага модуля, справа материал). */
     const [activeStepKey, setActiveStepKey] = useState('');
-
-    const openModuleFromCard = useCallback((modId) => {
-        const m = PVL_PLATFORM_MODULES.find((x) => Number(x.id) === Number(modId));
-        if (m?.items?.length) setActiveStepKey(trackerStepKey(m.id, m.items[0], 0));
-    }, []);
     const orderedSteps = useMemo(
         () => PVL_PLATFORM_MODULES.flatMap((mod) => mod.items.map((item, i) => ({ key: trackerStepKey(mod.id, item, i), item, module: mod, index: i }))),
         [],
     );
     const activeStepIndex = useMemo(() => orderedSteps.findIndex((s) => s.key === activeStepKey), [orderedSteps, activeStepKey]);
     const activeStep = activeStepIndex >= 0 ? orderedSteps[activeStepIndex] : null;
-    const prevStep = activeStepIndex > 0 ? orderedSteps[activeStepIndex - 1] : null;
-    const nextStep = activeStepIndex >= 0 && activeStepIndex < orderedSteps.length - 1 ? orderedSteps[activeStepIndex + 1] : null;
+    const moduleOrderedSteps = useMemo(() => {
+        if (!activeStep?.module?.items) return [];
+        return activeStep.module.items.map((item, i) => ({
+            key: trackerStepKey(activeStep.module.id, item, i),
+            item,
+            module: activeStep.module,
+            index: i,
+        }));
+    }, [activeStep?.module?.id, activeStep?.module?.items]);
+    const activeModuleStepIndex = useMemo(
+        () => moduleOrderedSteps.findIndex((s) => s.key === activeStepKey),
+        [moduleOrderedSteps, activeStepKey],
+    );
+    const prevStep = activeModuleStepIndex > 0 ? moduleOrderedSteps[activeModuleStepIndex - 1] : null;
+    const nextStep = activeModuleStepIndex >= 0 && activeModuleStepIndex < moduleOrderedSteps.length - 1
+        ? moduleOrderedSteps[activeModuleStepIndex + 1]
+        : null;
     const activeTagLabel = activeStep ? (PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал') : 'материал';
     const activeStatus = activeStep ? stepLessonStatus(!!checked[activeStep.key], activeStep.item?.tag) : '';
     const firstStepKeyInActiveModule = activeStep
@@ -526,10 +495,17 @@ export function StudentCourseTracker({ studentId }) {
             <div className="flex flex-wrap items-end justify-between gap-2">
                 <h3 className="font-display text-lg text-slate-800">Модули курса</h3>
                 <p className="text-xs text-slate-500 max-w-xl">
-                    Откройте модуль — сразу откроется первый шаг со списком уроков слева. Материалы модуля 0 только в трекере, не в библиотеке.
+                    Модульный контур: шаги каждого модуля доступны сразу внизу. Клик по шагу открывает урок справа в рабочем режиме трекера.
                 </p>
             </div>
-            <TrackerModuleLibraryCards checked={checked} onOpenModule={openModuleFromCard} />
+            <PlatformCourseModulesGrid
+                studentId={studentId}
+                variant="tracker"
+                checkedOverride={checked}
+                onToggleItem={toggleItem}
+                interactionMode="open"
+                onOpenItem={({ key }) => setActiveStepKey(key)}
+            />
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>

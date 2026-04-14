@@ -3,68 +3,42 @@ import { pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
 export const menteeProfile = {
-    id: 'm-101',
-    fullName: 'Анна Ковалева',
-    cohort: 'ПВЛ 2026, поток 1',
-    currentWeek: 6,
-    currentModule: 'Модуль 2: Веди',
-    courseStatus: 'в процессе',
-    coursePoints: 248,
+    id: '',
+    fullName: '',
+    cohort: '',
+    currentWeek: 0,
+    currentModule: '',
+    courseStatus: '',
+    coursePoints: 0,
     szSelfAssessmentPoints: 0,
-    lastActivityAt: '2026-06-02 14:30',
-    unreadMessagesCount: 2,
-    overdueHomeworkCount: 1,
-    activeRiskCount: 2,
+    lastActivityAt: '',
+    unreadMessagesCount: 0,
+    overdueHomeworkCount: 0,
+    activeRiskCount: 0,
 };
 
 export const menteeStats = {
-    lessonsDone: 22,
-    lessonsTotal: 47,
-    homeworkDone: 10,
-    homeworkTotal: 18,
-    homeworkPendingReview: 2,
-    homeworkRevisionCount: 2,
-    allHomeworkSubmitted: false,
-    daysToCourseEnd: 42,
-    daysToNextDeadline: 1,
-    daysToSzDeadline: 28,
+    lessonsDone: 0,
+    lessonsTotal: 0,
+    homeworkDone: 0,
+    homeworkTotal: 0,
+    homeworkPendingReview: 0,
+    homeworkRevisionCount: 0,
+    allHomeworkSubmitted: true,
+    daysToCourseEnd: 0,
+    daysToNextDeadline: 0,
+    daysToSzDeadline: 0,
 };
 
-export const menteeTasks = [
-    { id: 't-1', title: 'Паспорт встречи', weekNumber: 4, moduleNumber: 1, type: 'обычное задание', isControlPoint: false, controlPointId: null, status: 'принято', deadlineAt: '2026-05-19', submittedAt: '2026-05-18', acceptedAt: '2026-05-19', score: 18, maxScore: 20, mentorCommentPreview: 'Сильная структура.', mentorCommentCount: 2, hasUnreadThread: false, revisionCycles: 0 },
-    { id: 't-2', title: 'КТ4: Сценарий >= v0.8', weekNumber: 6, moduleNumber: 2, type: 'контрольная точка', isControlPoint: true, controlPointId: 'КТ4', status: 'на доработке', deadlineAt: '2026-06-02', submittedAt: '2026-06-01', acceptedAt: null, score: 12, maxScore: 20, mentorCommentPreview: 'Уточнить артефакт.', mentorCommentCount: 5, hasUnreadThread: true, revisionCycles: 2 },
-    { id: 't-3', title: 'КТ5: Мини-проведение', weekNumber: 6, moduleNumber: 2, type: 'контрольная точка', isControlPoint: true, controlPointId: 'КТ5', status: 'к проверке', deadlineAt: '2026-06-02', submittedAt: '2026-06-02', acceptedAt: null, score: 0, maxScore: 10, mentorCommentPreview: 'Ожидает проверки.', mentorCommentCount: 0, hasUnreadThread: false, revisionCycles: 0 },
-    { id: 't-4', title: 'КТ6: 2 завтрака Лиги', weekNumber: 6, moduleNumber: 2, type: 'контрольная точка', isControlPoint: true, controlPointId: 'КТ6', status: 'просрочено', deadlineAt: '2026-06-02', submittedAt: null, acceptedAt: null, score: 0, maxScore: 10, mentorCommentPreview: 'Нет сдачи.', mentorCommentCount: 0, hasUnreadThread: false, revisionCycles: 0 },
-    { id: 't-5', title: 'КТ8: Запись СЗ', weekNumber: 10, moduleNumber: 3, type: 'контрольная точка', isControlPoint: true, controlPointId: 'КТ8', status: 'не начато', deadlineAt: '2026-06-30', submittedAt: null, acceptedAt: null, score: 0, maxScore: 10, mentorCommentPreview: '', mentorCommentCount: 0, hasUnreadThread: false, revisionCycles: 0 },
-];
+export const menteeTasks = [];
 
-export const controlPointStatuses = [
-    { id: 'КТ1', title: 'Встреча с ПП + лист наблюдения', weekNumber: 0, deadlineAt: '2026-04-21', submittedAt: '2026-04-20', status: 'принято', affectsPoints: true, affectsAdmission: true, specialNote: '' },
-    { id: 'КТ2', title: 'Микропрактики + рефлексия', weekNumber: 3, deadlineAt: '2026-05-12', submittedAt: '2026-05-12', status: 'принято', affectsPoints: true, affectsAdmission: true, specialNote: '' },
-    { id: 'КТ3', title: 'Паспорт встречи', weekNumber: 4, deadlineAt: '2026-05-19', submittedAt: '2026-05-18', status: 'принято', affectsPoints: true, affectsAdmission: true, specialNote: '' },
-    { id: 'КТ4', title: 'Сценарий >= v0.8', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: '2026-06-01', status: 'на доработке', affectsPoints: true, affectsAdmission: true, specialNote: 'Модуль 2: отдельная КТ из трех.' },
-    { id: 'КТ5', title: 'Мини-проведение + самоанализ', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: '2026-06-02', status: 'к проверке', affectsPoints: true, affectsAdmission: true, specialNote: 'Модуль 2: отдельная КТ из трех.' },
-    { id: 'КТ6', title: 'Два завтрака Лиги', weekNumber: 6, deadlineAt: '2026-06-02', submittedAt: null, status: 'просрочено', affectsPoints: true, affectsAdmission: true, specialNote: 'Модуль 2: отдельная КТ из трех.' },
-    { id: 'КТ7', title: 'План набора гостей на СЗ', weekNumber: 8, deadlineAt: '2026-06-16', submittedAt: null, status: 'не начато', affectsPoints: true, affectsAdmission: true, specialNote: '' },
-    { id: 'КТ8', title: 'Пробный завтрак + запись СЗ', weekNumber: 10, deadlineAt: '2026-06-30', submittedAt: null, status: 'не начато', affectsPoints: true, affectsAdmission: true, specialNote: 'Дедлайн записи СЗ: до 30.06.2026.' },
-    { id: 'КТ9', title: 'Сертификационный пакет', weekNumber: 12, deadlineAt: '2026-07-14', submittedAt: null, status: 'не начато', affectsPoints: true, affectsAdmission: true, specialNote: '' },
-];
+export const controlPointStatuses = [];
 
-export const deadlineRisks = [
-    { id: 'r1', riskType: 'просроченная контрольная точка', relatedTaskId: 't-4', title: 'КТ6: 2 завтрака Лиги', daysOverdue: 1, riskLevel: 'высокий', recommendedAction: 'Связаться сегодня и определить дату досдачи.', isResolved: false },
-    { id: 'r2', riskType: 'антидолг D+3', relatedTaskId: 't-2', title: 'Сценарий >= v0.8', daysOverdue: 0, riskLevel: 'средний', recommendedAction: 'Дать короткий фокус на 1-2 правки.', isResolved: false },
-];
+export const deadlineRisks = [];
 
-export const mentorMeetings = [
-    { id: 'mm1', weekNumber: 5, title: 'Разбор черновика', focus: 'Логика сценария', scheduledAt: '2026-05-26 19:00', happenedAt: '2026-05-26 19:00', status: 'прошла', reflectionStatus: 'есть', linkedTaskId: 't-2', mentorNotePreview: 'Нужно усилить артефакт.' },
-    { id: 'mm2', weekNumber: 6, title: 'Сборный завтрак #1', focus: 'КТ4-КТ6', scheduledAt: '2026-06-03 10:00', happenedAt: null, status: 'запланирована', reflectionStatus: 'нет', linkedTaskId: 't-3', mentorNotePreview: 'Подготовить вопросы по рискам.' },
-];
+export const mentorMeetings = [];
 
-export const menteeThreadFeed = [
-    { id: 'f1', relatedTaskId: 't-2', type: 'message', authorRole: 'student', authorName: 'Анна Ковалева', createdAt: '2026-06-01 12:41', text: 'Отправила v0.8', isUnread: false, linkedStatus: null, linkedVersionId: 'ver-2' },
-    { id: 'f2', relatedTaskId: 't-2', type: 'status', authorRole: 'system', authorName: 'Система', createdAt: '2026-06-01 13:00', text: 'Статус: отправлено -> к проверке', isUnread: false, linkedStatus: 'к проверке', linkedVersionId: null },
-    { id: 'f3', relatedTaskId: 't-2', type: 'message', authorRole: 'mentor', authorName: 'Ментор', createdAt: '2026-06-02 14:30', text: 'Уточните финальный артефакт.', isUnread: true, linkedStatus: 'на доработке', linkedVersionId: null },
-];
+export const menteeThreadFeed = [];
 
 export const certificationProgress = {
     guestPlanStatus: 'не начато',

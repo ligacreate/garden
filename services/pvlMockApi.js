@@ -2,7 +2,7 @@ import { seed } from '../data/pvl/seed';
 import { capSzMentor, capSzSelf, computeCourseBreakdown } from './pvlScoringEngine';
 import { CANONICAL_SCHEDULE_2026 } from '../data/pvl/constants';
 import { CERTIFICATION_STATUS, CONTENT_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
-import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS } from '../data/pvlReferenceContent';
+import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import { pvlPostgrestApi } from './pvlPostgrestApi';
 import {
@@ -343,6 +343,63 @@ async function syncTrackerAndHomeworkFromDb() {
     }
 }
 
+/** Демо-id учениц из seed — убираем из db, когда из Сада подгружены реальные абитуриенты. */
+const SEED_PVL_STUDENT_ID_RE = /^u-st-\d+$/;
+
+function isSeedPvlDemoStudentId(id) {
+    return SEED_PVL_STUDENT_ID_RE.test(String(id || '').trim());
+}
+
+/**
+ * Удаляет строки seed-учениц (u-st-*) и связанные записи, чтобы в учительской не оставались «Анна Лаврова» и т.п.
+ * Вызывается после syncPvlActorsFromGarden, если из profiles пришли абитуриенты.
+ */
+export function pruneSeedPvlDemoStudentRows() {
+    const drop = isSeedPvlDemoStudentId;
+    db.users = (db.users || []).filter((u) => !(drop(u.id) && u.role === ROLES.STUDENT));
+    db.studentProfiles = (db.studentProfiles || []).filter((p) => !drop(p.userId));
+    (db.mentorProfiles || []).forEach((m) => {
+        m.menteeIds = (m.menteeIds || []).filter((id) => !drop(id));
+    });
+
+    const strip = (key) => {
+        const arr = db[key];
+        if (!Array.isArray(arr)) return;
+        const next = arr.filter((row) => !drop(row?.studentId));
+        arr.length = 0;
+        next.forEach((x) => arr.push(x));
+    };
+
+    strip('studentTaskStates');
+    strip('submissions');
+    strip('statusHistory');
+    strip('threadMessages');
+    strip('mentorMeetings');
+    strip('certificationProgress');
+    strip('deadlineRisks');
+    strip('directMessages');
+    strip('studentPoints');
+    strip('weekCompletionState');
+    strip('controlPointState');
+    strip('mentorBonusEvents');
+    strip('szAssessmentState');
+
+    if (Array.isArray(db.submissionVersions) && Array.isArray(db.submissions)) {
+        const keep = new Set(db.submissions.map((s) => s.id));
+        db.submissionVersions = db.submissionVersions.filter((v) => keep.has(v.submissionId));
+    }
+
+    if (db.studentLibraryProgress && Array.isArray(db.studentLibraryProgress)) {
+        db.studentLibraryProgress = db.studentLibraryProgress.filter((r) => !drop(r.studentId));
+    }
+
+    if (db.studentTrackerChecks && typeof db.studentTrackerChecks === 'object') {
+        Object.keys(db.studentTrackerChecks).forEach((k) => {
+            if (drop(k)) delete db.studentTrackerChecks[k];
+        });
+    }
+}
+
 export async function syncPvlRuntimeFromDb() {
     if (!pvlPostgrestApi.isEnabled()) return { synced: false, reason: 'disabled' };
     const snapshot = await pvlPostgrestApi.loadRuntimeSnapshot();
@@ -356,11 +413,24 @@ export async function syncPvlRuntimeFromDb() {
 
 export async function syncPvlActorsFromGarden() {
     try {
-        const users = await api.getUsers();
+        let users = await api.getUsers();
+        if ((!Array.isArray(users) || users.length === 0) && typeof localStorage !== 'undefined') {
+            const hasToken = Boolean(localStorage.getItem('garden_auth_token'));
+            if (hasToken) {
+                await new Promise((r) => setTimeout(r, 400));
+                users = await api.getUsers();
+            }
+        }
         if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
         const normalizedRole = (u) => String(u?.role || u?.status || '').trim().toLowerCase();
+        const isGardenApplicant = (u) => {
+            const r = normalizedRole(u);
+            if (r === 'applicant' || r === 'абитуриент' || r === 'абитуриентка') return true;
+            const label = String(u?.roleLabel || u?.role_title || '').trim().toLowerCase();
+            return label.includes('битуриент');
+        };
         const mentors = users.filter((u) => normalizedRole(u) === 'mentor');
-        const applicants = users.filter((u) => normalizedRole(u) === 'applicant' || normalizedRole(u) === 'абитуриент');
+        const applicants = users.filter(isGardenApplicant);
 
         mentors.forEach((u) => {
             if (!u?.id) return;
@@ -375,11 +445,13 @@ export async function syncPvlActorsFromGarden() {
                     email: u.email || '',
                     avatar: u.avatar || '',
                     isActive: true,
+                    gardenRole: 'mentor',
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
-            } else if (realName && realName !== userId) {
-                existingUser.fullName = realName;
+            } else {
+                if (realName && realName !== userId) existingUser.fullName = realName;
+                existingUser.gardenRole = 'mentor';
             }
             const existsMentor = (db.mentorProfiles || []).some((x) => String(x.userId) === userId);
             if (!existsMentor) {
@@ -409,11 +481,13 @@ export async function syncPvlActorsFromGarden() {
                     email: u.email || '',
                     avatar: u.avatar || '',
                     isActive: true,
+                    gardenRole: 'applicant',
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
-            } else if (realName && realName !== userId) {
-                existingUser.fullName = realName;
+            } else {
+                if (realName && realName !== userId) existingUser.fullName = realName;
+                existingUser.gardenRole = 'applicant';
             }
             const existsStudent = (db.studentProfiles || []).some((x) => String(x.userId) === userId);
             if (!existsStudent) {
@@ -421,9 +495,9 @@ export async function syncPvlActorsFromGarden() {
                     id: uid('sp'),
                     userId,
                     cohortId: 'cohort-2026-1',
-                    mentorId: (db.mentorProfiles || [])[0]?.userId || null,
+                    mentorId: null,
                     currentWeek: 0,
-                    currentModule: 0,
+                    currentModule: 1,
                     courseStatus: COURSE_STATUS.ACTIVE,
                     coursePoints: 0,
                     szSelfAssessmentPoints: 0,
@@ -437,28 +511,11 @@ export async function syncPvlActorsFromGarden() {
             }
         });
 
-        // Синхронизируем имена mock-юзеров реальными именами из Garden
-        // (чтобы демо-профили u-men-1, u-st-1 и т.д. отображали реальные ФИО)
-        mentors.slice(0, 4).forEach((u, idx) => {
-            const realName = u.name || u.fullName || u.email || '';
-            if (!realName) return;
-            const mockId = idx === 0 ? 'u-men-1' : `u-men-${idx + 1}`;
-            const mockEntry = (db.users || []).find((x) => x.id === mockId);
-            if (mockEntry && !mockEntry._gardenLinked) {
-                mockEntry.fullName = realName;
-                mockEntry._gardenLinked = true;
-            }
-        });
-        applicants.slice(0, 4).forEach((u, idx) => {
-            const realName = u.name || u.fullName || u.email || '';
-            if (!realName) return;
-            const mockId = `u-st-${idx + 1}`;
-            const mockEntry = (db.users || []).find((x) => x.id === mockId);
-            if (mockEntry && !mockEntry._gardenLinked) {
-                mockEntry.fullName = realName;
-                mockEntry._gardenLinked = true;
-            }
-        });
+        /** Есть абитуриенты из profiles — админка и ментор не показывают демо u-st-* (см. getAdminStudents / getMentorMenteeIds). */
+        db._pvlGardenApplicantsSynced = applicants.length > 0;
+        if (applicants.length > 0) {
+            pruneSeedPvlDemoStudentRows();
+        }
 
         return { synced: true, mentors: mentors.length, applicants: applicants.length };
     } catch (error) {
@@ -540,44 +597,8 @@ const LIBRARY_CATEGORIES = [
     { id: 'cultural_code', title: 'Культурный код Лиги', description: 'Ценности и нормы участия' },
 ];
 
-const LIBRARY_MOCK_ITEMS = Array.from({ length: 15 }, (_, idx) => {
-    const c = LIBRARY_CATEGORIES[idx % LIBRARY_CATEGORIES.length];
-    const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
-    const base = {
-        id: `lib-cnt-${idx + 1}`,
-        title: `${c.title}: материал ${idx + 1}`,
-        shortDescription: `Короткое описание материала ${idx + 1}`,
-        fullDescription: `Подробное описание материала ${idx + 1} для категории "${c.title}".`,
-        contentType: types[idx % types.length],
-        status: 'published',
-        visibility: 'all',
-        attachments: [],
-        externalLinks: [],
-        coverImage: '',
-        estimatedDuration: `${10 + idx} мин`,
-        createdBy: 'u-adm-1',
-        createdAt: nowIso(),
-        updatedAt: nowIso(),
-        categoryId: c.id,
-        categoryTitle: c.title,
-        tags: [c.title.toLowerCase(), 'библиотека'],
-        isRequired: idx % 3 === 0,
-        isRecommended: idx % 2 === 0,
-        isNew: idx % 4 === 0,
-        orderIndex: idx + 1,
-    };
-    if (idx === 0) {
-        return {
-            ...base,
-            title: '1. Урок: введение (демо)',
-            shortDescription: 'Текст над видео: о чём урок и что подготовить перед просмотром.',
-            contentType: 'video',
-            lessonVideoEmbed: '<iframe src="https://kinescope.io/embed/8d6c3c5b-5a9d-4f2a-9d5e-000000000001" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe>',
-            fullDescription: '<p><strong>Конспект.</strong> После просмотра зафиксируйте одну мысль и один вопрос к модулю.</p><ul><li>Связка «письмо — эмоции — нарратив»;</li><li>Практический шаг на сегодня.</li></ul>',
-        };
-    }
-    return base;
-});
+/** Демо-наполнение библиотеки отключено — материалы только из учительской / БД. */
+const LIBRARY_MOCK_ITEMS = [];
 
 const pushEvent = (type, payload = {}) => {
     eventLog.push({ id: uid('evt'), type, payload, createdAt: nowIso() });
@@ -815,7 +836,7 @@ function computeStudentDashboardWidgets(studentId) {
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
     const cohort = db.cohorts.find((c) => c.id === profile?.cohortId);
     const today = DASHBOARD_TODAY;
-    const mod = profile?.currentModule ?? 0;
+    const mod = profile?.currentModule ?? 1;
     const modWeeks = CANONICAL_SCHEDULE_2026.weeks.filter((w) => w.moduleNumber === mod);
     const moduleEndDate = modWeeks.length
         ? modWeeks.reduce((a, w) => (String(w.endDate) > String(a) ? w.endDate : a), modWeeks[0].endDate)
@@ -841,7 +862,7 @@ function computeStudentDashboardWidgets(studentId) {
     const homeworkDone = taskStates.filter((s) => s.status === TASK_STATUS.ACCEPTED).length;
     const homeworkRemaining = Math.max(0, taskStates.length - homeworkDone);
 
-    const modTitle = PVL_PLATFORM_MODULES.find((m) => Number(m.id) === Number(mod))?.title || `Модуль ${mod}`;
+    const modTitle = pvlPlatformModuleTitleFromInternal(mod);
 
     const pts = calculatePointsSummary(studentId);
 
@@ -936,18 +957,62 @@ function getStudentSnapshot(studentId) {
 /** Демо: в кабинете ментора `actingUserId` часто остаётся ученицей — иначе список менти и канбан пустые. */
 function resolveMentorActorId(mentorId) {
     const profiles = db.mentorProfiles || [];
-    if (!mentorId) return profiles[0]?.userId || 'u-men-1';
+    if (!mentorId) return profiles[0]?.userId || null;
     if (profiles.some((m) => m.userId === mentorId)) return mentorId;
-    return profiles[0]?.userId || 'u-men-1';
+    return profiles[0]?.userId || null;
 }
 
 function getMentorMenteeIds(mentorId) {
     const resolved = resolveMentorActorId(mentorId);
+    if (!resolved) return [];
     const mentorProfile = (db.mentorProfiles || []).find((m) => m.userId === resolved);
+    let ids;
     if (mentorProfile && Array.isArray(mentorProfile.menteeIds) && mentorProfile.menteeIds.length > 0) {
-        return mentorProfile.menteeIds;
+        ids = mentorProfile.menteeIds;
+    } else {
+        ids = db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
     }
-    return db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
+    if (db._pvlGardenApplicantsSynced) {
+        ids = ids.filter((id) => !isSeedPvlDemoStudentId(id));
+    }
+    return ids;
+}
+
+/**
+ * Все абитуриенты потока ментора (по cohortIds профиля): актуальный список из Сада после syncPvlActorsFromGarden.
+ * Отличается от «Мои менти»: здесь весь поток, с отметкой «ваш менти».
+ */
+function buildMentorCohortApplicantRows(mentorId) {
+    const resolved = resolveMentorActorId(mentorId);
+    if (!resolved) return [];
+    const mp = (db.mentorProfiles || []).find((m) => m.userId === resolved);
+    const cohortIds = mp?.cohortIds?.length ? mp.cohortIds : ['cohort-2026-1'];
+    let profiles = (db.studentProfiles || []).filter((p) => cohortIds.includes(p.cohortId));
+    if (db._pvlGardenApplicantsSynced) {
+        profiles = profiles.filter((p) => !isSeedPvlDemoStudentId(p.userId));
+    }
+    return profiles
+        .map((p) => {
+            const user = db.users.find((u) => u.id === p.userId);
+            const gr = user?.gardenRole;
+            const isGardenApplicant = gr === 'applicant' || gr == null;
+            const mentorUid = p.mentorId;
+            const mentorUser = mentorUid ? db.users.find((u) => u.id === mentorUid) : null;
+            const mentorName = mentorUid ? (mentorUser?.fullName || String(mentorUid)) : '—';
+            const isMyMentee = !!mentorUid && (mentorUid === resolved || (mp?.menteeIds || []).includes(p.userId));
+            return {
+                userId: p.userId,
+                fullName: user?.fullName || p.userId,
+                email: user?.email || '',
+                cohortId: p.cohortId,
+                mentorId: mentorUid || null,
+                mentorName,
+                isMyMentee,
+                gardenRole: gr || null,
+                isGardenApplicant,
+            };
+        })
+        .filter((r) => r.isGardenApplicant);
 }
 
 function getTaskDetail(studentId, taskId) {
@@ -1086,6 +1151,7 @@ function getVisibleContentItems(userId, role, section) {
 }
 
 function ensureLibrarySeedInDb() {
+    if (!LIBRARY_MOCK_ITEMS.length) return;
     const hasPublishedLibraryContent = (db.contentPlacements || []).some((p) => {
         if (p.targetSection !== 'library' || p.isPublished === false) return false;
         const itemId = p.contentItemId || p.contentId;
@@ -1117,6 +1183,7 @@ function ensureLibrarySeedInDb() {
 function getPublishedLibraryContentForStudent(studentId) {
     ensureLibrarySeedInDb();
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
+    if (!profile) return [];
     const cohortId = profile?.cohortId;
     const items = getPublishedContentFor(ROLES.STUDENT, 'library', cohortId);
     return items.map((item) => {
@@ -1484,12 +1551,18 @@ export const studentApi = {
         }, 0);
         /** Общий % по библиотеке: среднее по материалам (открытие и частичное изучение тоже двигают шкалу). */
         const progressPercent = total ? Math.round(sumProgress / total) : 0;
+        const recommendedNextMaterial = items.find((i) => !i.completed && i.isRecommended)
+            || items.find((i) => !i.completed)
+            || null;
         return {
             completed,
             total,
             progressPercent,
             lastOpenedMaterial: [...items].sort((a, b) => String(b.lastOpenedAt || '').localeCompare(String(a.lastOpenedAt || '')))[0] || null,
-            recommendedNextMaterial: items.find((i) => !i.completed && i.isRecommended) || items.find((i) => !i.completed) || null,
+            recommendedNextMaterial,
+            /** Когда опубликованных материалов нет — показываем заглушку «непрочитанный материал». */
+            recommendedNextTitle: recommendedNextMaterial?.title
+                || (total === 0 ? 'Непрочитанный материал' : null),
         };
     },
     markLibraryItemCompleted(studentId, itemId) {
@@ -1558,9 +1631,17 @@ export const mentorApi = {
             risks: buildMentorRisks(db, mentorId),
         };
     },
+    /** Абитуриенты потока (все участницы курса из профилей Сада с ролью applicant), видимые ментору */
+    getMentorCohortApplicants(mentorId) {
+        return buildMentorCohortApplicantRows(mentorId);
+    },
     getMentorMentees(mentorId) {
         const menteeIds = new Set(getMentorMenteeIds(mentorId));
-        return db.studentProfiles.filter((p) => menteeIds.has(p.userId)).map((p) => ({ ...p, user: db.users.find((u) => u.id === p.userId) }));
+        let rows = db.studentProfiles.filter((p) => menteeIds.has(p.userId));
+        if (db._pvlGardenApplicantsSynced) {
+            rows = rows.filter((p) => !isSeedPvlDemoStudentId(p.userId));
+        }
+        return rows.map((p) => ({ ...p, user: db.users.find((u) => u.id === p.userId) }));
     },
     getMentorMenteeCard(mentorId, studentId) {
         const pts = calculatePointsSummary(studentId);
@@ -1967,7 +2048,11 @@ export const adminApi = {
         return this.updatePlacement(placementId, { isPublished: false });
     },
     getAdminStudents(filters = {}) {
-        return db.studentProfiles.filter((s) => (filters.cohortId ? s.cohortId === filters.cohortId : true));
+        let list = db.studentProfiles.filter((s) => (filters.cohortId ? s.cohortId === filters.cohortId : true));
+        if (db._pvlGardenApplicantsSynced) {
+            list = list.filter((s) => !isSeedPvlDemoStudentId(s.userId));
+        }
+        return list;
     },
     getAdminMentors() {
         return db.mentorProfiles;
@@ -2430,6 +2515,30 @@ export function pvlPatchCurrentUserFromGarden(gardenUser, resolvedPvlRole) {
         if (!gardenUser) return;
         const realName = gardenUser.name || gardenUser.fullName || gardenUser.email || '';
         if (!realName) return;
+        const gid = gardenUser.id != null ? String(gardenUser.id) : '';
+        if (gid) {
+            let row = (db.users || []).find((u) => String(u.id) === gid);
+            if (!row) {
+                const role = resolvedPvlRole === 'admin' ? ROLES.ADMIN
+                    : resolvedPvlRole === 'mentor' ? ROLES.MENTOR
+                    : ROLES.STUDENT;
+                row = {
+                    id: gid,
+                    role,
+                    fullName: realName,
+                    email: gardenUser.email || '',
+                    avatar: gardenUser.avatar || '',
+                    isActive: true,
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                };
+                db.users.push(row);
+            } else {
+                row.fullName = realName;
+            }
+            row._gardenLinked = true;
+            return;
+        }
         const mockId = resolvedPvlRole === 'admin' ? 'u-adm-1'
             : resolvedPvlRole === 'mentor' ? 'u-men-1'
             : 'u-st-1';

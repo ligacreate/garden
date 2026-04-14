@@ -33,9 +33,9 @@ export const CANONICAL_SCHEDULE_2026 = Object.freeze({
         { weekNumber: 7, startDate: '2026-06-03', endDate: '2026-06-09', moduleNumber: 3, title: 'Week 7' },
         { weekNumber: 8, startDate: '2026-06-10', endDate: '2026-06-16', moduleNumber: 3, title: 'Week 8' },
         { weekNumber: 9, startDate: '2026-06-17', endDate: '2026-06-23', moduleNumber: 3, title: 'Week 9' },
-        { weekNumber: 10, startDate: '2026-06-24', endDate: '2026-06-30', moduleNumber: 4, title: 'Week 10' },
-        { weekNumber: 11, startDate: '2026-07-01', endDate: '2026-07-07', moduleNumber: 4, title: 'Week 11' },
-        { weekNumber: 12, startDate: '2026-07-08', endDate: '2026-07-14', moduleNumber: 4, title: 'Week 12' },
+        { weekNumber: 10, startDate: '2026-06-24', endDate: '2026-06-30', moduleNumber: 3, title: 'Week 10' },
+        { weekNumber: 11, startDate: '2026-07-01', endDate: '2026-07-07', moduleNumber: 3, title: 'Week 11' },
+        { weekNumber: 12, startDate: '2026-07-08', endDate: '2026-07-14', moduleNumber: 3, title: 'Week 12' },
     ],
     controlPoints: [
         { code: 'KT1', weekNumber: 0, deadlineAt: '2026-04-21' },

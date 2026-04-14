@@ -56,6 +56,7 @@ export const RISK_LEVEL = Object.freeze({
 export const CONTENT_STATUS = Object.freeze({
     DRAFT: 'draft',
     PUBLISHED: 'published',
+    UNPUBLISHED: 'unpublished',
     ARCHIVED: 'archived',
 });
 

@@ -6,8 +6,11 @@ import {
     BarChart3,
     CalendarCheck2,
     CalendarDays,
+    ChevronDown,
+    ChevronRight,
     CornerUpLeft,
     Files,
+    GripVertical,
     Info,
     KanbanSquare,
     Languages,
@@ -47,7 +50,7 @@ import {
     getUser,
     getStudentCertification,
 } from '../data/pvlMockData';
-import { mapStudentHomeworkDisplayStatus, mapTaskStatus, pvlDomainApi, syncPvlActorsFromGarden, syncPvlRuntimeFromDb } from '../services/pvlMockApi';
+import { mapStudentHomeworkDisplayStatus, mapTaskStatus, pvlDomainApi, syncPvlActorsFromGarden, syncPvlRuntimeFromDb, pvlPatchCurrentUserFromGarden } from '../services/pvlMockApi';
 import { TASK_STATUS } from '../data/pvl/enums';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
@@ -70,6 +73,18 @@ function pvlDevToolsEnabled() {
     } catch {
         return false;
     }
+}
+
+/**
+ * Предпочитает живой db.users (куда попадают реальные имена из Garden) перед pvlMockData.users.
+ * Использовать везде вместо getUser(id) для отображения имён участниц и менторов.
+ */
+function resolveActorUser(id) {
+    if (!id) return null;
+    const sid = String(id);
+    return pvlDomainApi.db.users.find((u) => u.id === sid)
+        || pvlMockData.users.find((u) => u.id === sid)
+        || null;
 }
 
 /** Совместимость старых демо-id карточек менти с учётками seed API */
@@ -319,7 +334,7 @@ function hideDeadlineForAcceptedWithScore(task) {
 
 function pointsSourceLabel(sourceType) {
     const map = {
-        week0: 'Модуль 0',
+        week0: 'Ориентация',
         weekCompletion: 'Закрытие модулей',
         controlPoint: 'Контрольные точки',
         mentorBonus: 'Бонус ментора',
@@ -388,8 +403,7 @@ const CoursePointsCard = ({ points }) => (
         <div className="mt-3"><PointsProgressBar value={points.coursePointsTotal} max={400} tone="bg-emerald-600/70" /></div>
         <div className="mt-2">
             <PointsBreakdownList items={[
-                { label: 'Модуль 0', value: points.week0Points },
-                { label: 'Модули 1-4', value: points.weeksPoints },
+                { label: 'Модули 1-3', value: points.weeksPoints },
                 { label: 'КТ', value: points.controlPointsTotal },
                 { label: 'Бонус ментора', value: `${points.mentorBonusTotal}/50` },
             ]} />
@@ -506,9 +520,9 @@ const SidebarMenu = ({
 }) => {
     const routePath = sidebarRoutePath(currentRoute);
     const sidebarActorName = useMemo(() => {
-        if (role === 'student') return getUser(studentId)?.fullName?.trim() || '';
-        if (role === 'mentor') return getUser(resolvePvlMentorActorId(actingUserId))?.fullName?.trim() || '';
-        return getUser(actingUserId)?.fullName?.trim() || '';
+        if (role === 'student') return resolveActorUser(studentId)?.fullName?.trim() || '';
+        if (role === 'mentor') return resolveActorUser(resolvePvlMentorActorId(actingUserId))?.fullName?.trim() || '';
+        return resolveActorUser(actingUserId)?.fullName?.trim() || '';
     }, [role, studentId, actingUserId]);
     const sidebarRoleLabel = role === 'student' ? 'Участница' : role === 'mentor' ? 'Ментор' : 'Учительская';
     const sidebarTitle = sidebarActorName || sidebarRoleLabel;
@@ -933,7 +947,7 @@ function archiveContentItem(items, id) {
 }
 
 function unpublishToDraftItems(items, id) {
-    return updateContentItem(items, id, { status: 'draft' });
+    return updateContentItem(items, id, { status: 'unpublished' });
 }
 
 async function pvlRichEditorUploadImage(file) {
@@ -990,6 +1004,7 @@ const TARGET_ROLE_LABELS = {
 const CONTENT_STATUS_LABEL = {
     draft: 'Черновик',
     published: 'Опубликован',
+    unpublished: 'Снят с публикации',
     archived: 'В архиве',
 };
 
@@ -1214,8 +1229,8 @@ function buildCategoryIdFromTitle(title = '') {
 
 function clampPvlModule(value) {
     const n = Number(value);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(4, Math.round(n)));
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(1, Math.min(3, Math.round(n)));
 }
 
 function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student', refresh = null, refreshKey = 0 }) {
@@ -1632,10 +1647,10 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student' }) {
         return sortHomeworkByRecency(activeHomework).slice(0, 8);
     }, [activeHomework]);
     const feed = snapshot.activityFeed || [];
-    const user = getUser(studentId);
+    const user = resolveActorUser(studentId);
     const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === studentId || p.id === studentId) || null;
     const mentorUserId = profile?.mentorId || null;
-    const mentorUser = mentorUserId ? getUser(mentorUserId) : null;
+    const mentorUser = mentorUserId ? resolveActorUser(mentorUserId) : null;
     const cohortId = profile?.cohortId || profile?.cohort || 'cohort-2026-1';
     const cohortTitle = profile?.cohort || pvlDomainApi.db.cohorts.find((c) => c.id === profile?.cohortId)?.title || '';
 
@@ -1954,8 +1969,8 @@ const ABOUT_COURSE_MATERIALS = [
         id: 'week0',
         tag: 'Трекер',
         kind: 'действие',
-        title: 'Старт, модуль 0',
-        summary: 'Первый модуль в трекере — «Модуль 0: Вход и настройка». Отметьте шаги старта перед модулем 1.',
+        title: 'Старт курса',
+        summary: 'Первый шаг — трекер. Откройте модуль 1 «Пиши», просмотрите шаги и приступайте к урокам.',
     },
 ];
 
@@ -2545,7 +2560,7 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
         if (profile?.mentorId) {
             return {
                 ...dialogFromApi,
-                mentor: dialogFromApi?.mentor || getUser(profile.mentorId) || null,
+                mentor: dialogFromApi?.mentor || resolveActorUser(profile.mentorId) || null,
             };
         }
         return dialogFromApi;
@@ -2811,9 +2826,9 @@ function riskLevelDisplay(level) {
 function buildTeacherStudentRows() {
     return pvlDomainApi.adminApi.getAdminStudents({}).map((sp) => {
         const userId = sp.userId;
-        const user = getUser(userId);
+        const user = resolveActorUser(userId);
         const mentorUserId = sp.mentorId || '';
-        const mentorLine = mentorUserId ? (getUser(mentorUserId)?.fullName || mentorUserId) : '—';
+        const mentorLine = mentorUserId ? (resolveActorUser(mentorUserId)?.fullName || mentorUserId) : '—';
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
         const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
@@ -2844,7 +2859,7 @@ function buildTeacherStudentRows() {
 function buildMentorMenteeRows(mentorId) {
     const menteesFromApi = pvlDomainApi.mentorApi.getMentorMentees(mentorId);
     return menteesFromApi.map((m) => {
-        const user = m.user || getUser(m.userId);
+        const user = m.user || resolveActorUser(m.userId);
         const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === m.userId);
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === profile?.cohortId)?.title || 'Поток';
         const tasks = pvlDomainApi.studentApi.getStudentResults(m.userId, {});
@@ -4398,10 +4413,17 @@ function AdminContentItemScreen({
                             <button type="button" onClick={beginEdit} className={softBtn}>Редактировать</button>
                             {item.status === 'published' ? (
                                 <button type="button" onClick={handleUnpublish} className={softBtn}>Снять с публикации</button>
+                            ) : item.status === 'unpublished' ? (
+                                <>
+                                    <button type="button" onClick={commitPublish} className={primaryBtn}>Переопубликовать</button>
+                                    <button type="button" onClick={handleArchive} className={dangerBtn}>В архив</button>
+                                </>
                             ) : (
                                 <button type="button" onClick={commitPublish} className={primaryBtn}>Опубликовать</button>
                             )}
-                            <button type="button" onClick={handleArchive} disabled={item.status === 'archived'} className={dangerBtn}>В архив</button>
+                            {item.status === 'draft' && (
+                                <button type="button" onClick={handleArchive} className={dangerBtn}>В архив</button>
+                            )}
                         </>
                     ) : (
                         <>
@@ -4416,12 +4438,121 @@ function AdminContentItemScreen({
     );
 }
 
+/** Компактный навигатор материалов сгруппированных по разделам и категориям */
+function ContentNavigator({ items, placements, onOpen }) {
+    const [open, setOpen] = useState(false);
+    const [openSection, setOpenSection] = useState(null);
+
+    const SECTIONS = [
+        { key: 'library', label: 'Библиотека' },
+        { key: 'lessons', label: 'Уроки' },
+        { key: 'glossary', label: 'Глоссарий' },
+    ];
+
+    const grouped = useMemo(() => {
+        return SECTIONS.map(({ key, label }) => {
+            const sectionItems = [...items]
+                .filter((i) => i.targetSection === key)
+                .sort((a, b) => {
+                    const aOrder = a.orderIndex ?? 999;
+                    const bOrder = b.orderIndex ?? 999;
+                    if (aOrder !== bOrder) return aOrder - bOrder;
+                    return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
+                });
+
+            if (key === 'lessons') {
+                const byModule = {};
+                sectionItems.forEach((i) => {
+                    const mod = clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0);
+                    if (!byModule[mod]) byModule[mod] = [];
+                    byModule[mod].push(i);
+                });
+                const groups = Object.entries(byModule)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([mod, its]) => ({ groupTitle: `Модуль ${mod}`, items: its }));
+                return { key, label, groups };
+            }
+
+            if (key === 'library') {
+                const byCat = {};
+                sectionItems.forEach((i) => {
+                    const cat = i.libraryCategoryTitle || i.categoryTitle || 'Без категории';
+                    if (!byCat[cat]) byCat[cat] = [];
+                    byCat[cat].push(i);
+                });
+                const groups = Object.entries(byCat)
+                    .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+                    .map(([cat, its]) => ({ groupTitle: cat, items: its }));
+                return { key, label, groups };
+            }
+
+            return { key, label, groups: [{ groupTitle: null, items: sectionItems }] };
+        }).filter((s) => s.groups.some((g) => g.items.length > 0));
+    }, [items]);
+
+    if (grouped.length === 0) return null;
+
+    return (
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-emerald-900 hover:bg-emerald-100/50 transition-colors"
+            >
+                <span>Навигатор материалов</span>
+                <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && (
+                <div className="border-t border-emerald-100 divide-y divide-emerald-100/60">
+                    {grouped.map(({ key, label, groups }) => (
+                        <div key={key}>
+                            <button
+                                type="button"
+                                onClick={() => setOpenSection((s) => (s === key ? null : key))}
+                                className="w-full flex items-center justify-between px-4 py-2.5 bg-white/60 hover:bg-white/80 transition-colors"
+                            >
+                                <span className="text-xs font-semibold uppercase tracking-wide text-emerald-800">{label}</span>
+                                <ChevronRight size={14} className={`text-emerald-600 transition-transform ${openSection === key ? 'rotate-90' : ''}`} />
+                            </button>
+                            {openSection === key && (
+                                <div className="px-3 pb-3 pt-1 space-y-2 bg-white/40">
+                                    {groups.map(({ groupTitle, items: gItems }) => (
+                                        <div key={groupTitle ?? '_'}>
+                                            {groupTitle && (
+                                                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 px-1 py-1">{groupTitle}</div>
+                                            )}
+                                            <div className="space-y-0.5">
+                                                {gItems.map((i) => (
+                                                    <button
+                                                        key={i.id}
+                                                        type="button"
+                                                        onClick={() => onOpen(i.id)}
+                                                        className="w-full text-left px-2 py-1.5 rounded-lg text-xs text-slate-700 hover:bg-emerald-100/60 hover:text-emerald-900 transition-colors flex items-center gap-2"
+                                                    >
+                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${i.status === 'published' ? 'bg-emerald-500' : i.status === 'unpublished' ? 'bg-amber-400' : i.status === 'archived' ? 'bg-slate-300' : 'bg-slate-300'}`} />
+                                                        <span className="truncate">{i.title}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacements, navigate }) {
     const items = cmsItems;
     const placements = cmsPlacements;
     const setItems = setCmsItems;
     const setPlacements = setCmsPlacements;
     const [filters, setFilters] = useState({ section: 'all', status: 'all', role: 'all', type: 'all', cohort: 'all', module: 'all', query: '' });
+    const [draggingId, setDraggingId] = useState(null);
     const [isCoverUploading, setIsCoverUploading] = useState(false);
     const [importedDocName, setImportedDocName] = useState('');
     const [docImportError, setDocImportError] = useState('');
@@ -4457,8 +4588,8 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         targetCohort: 'cohort-2026-1',
         status: 'draft',
         visibility: 'all',
-        weekNumber: 0,
-        moduleNumber: 0,
+        weekNumber: 1,
+        moduleNumber: 1,
         estimatedDuration: '',
         tagsText: '',
     });
@@ -4481,7 +4612,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         });
         return Array.from(byId.values());
     }, [baseLibraryCategories, customLibraryCategories]);
-    const moduleOptions = useMemo(() => [0, 1, 2, 3, 4], []);
+    const moduleOptions = useMemo(() => [1, 2, 3], []);
     const createLibraryCategoryId = useCallback((title) => buildCategoryIdFromTitle(title), []);
     const addOrSelectCustomLibraryCategory = useCallback((title) => {
         const normalizedTitle = String(title || '').trim();
@@ -4665,6 +4796,27 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         pvlDomainApi.adminApi.deleteContentItem(i.id);
         setItems((prev) => prev.filter((x) => x.id !== i.id));
         setPlacements((prev) => prev.filter((p) => (p.contentId || p.contentItemId) !== i.id));
+    };
+    const handleDropReorder = (targetId) => {
+        if (!draggingId || draggingId === targetId) { setDraggingId(null); return; }
+        setItems((prev) => {
+            const fromIdx = prev.findIndex((x) => x.id === draggingId);
+            const toIdx = prev.findIndex((x) => x.id === targetId);
+            if (fromIdx === -1 || toIdx === -1) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(fromIdx, 1);
+            next.splice(toIdx, 0, moved);
+            // Пересчитываем orderIndex внутри одного раздела
+            const section = moved.targetSection;
+            let order = 0;
+            return next.map((item) => {
+                if (item.targetSection !== section) return item;
+                const updated = { ...item, orderIndex: order++ };
+                pvlDomainApi.adminApi.updateContentItem(item.id, { orderIndex: updated.orderIndex });
+                return updated;
+            });
+        });
+        setDraggingId(null);
     };
     const canPublishItem = (row) => {
         if (row?.targetSection === 'lessons' && row?.lessonKind === 'quiz') {
@@ -4997,48 +5149,112 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 ) : null}
             </div>
             
+            {/* Фильтры по разделу и статусу */}
+            <div className="space-y-2">
+                <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['glossary', 'Глоссарий']].map(([val, label]) => (
+                        <button
+                            key={val}
+                            type="button"
+                            onClick={() => setFilters((f) => ({ ...f, section: val }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filters.section === val ? 'bg-emerald-700 text-white shadow-sm' : 'text-emerald-800 hover:bg-emerald-100/70'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                    {[['all', 'Все статусы'], ['draft', 'Черновики'], ['published', 'Опубликованные'], ['unpublished', 'Снятые'], ['archived', 'В архиве']].map(([val, label]) => (
+                        <button
+                            key={val}
+                            type="button"
+                            onClick={() => setFilters((f) => ({ ...f, status: val }))}
+                            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${filters.status === val ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                {filtered.length > 0 && (
+                    <div className="text-xs text-slate-400 pl-1">{filtered.length} материалов</div>
+                )}
+            </div>
+
             <div className="grid gap-4">
                 {filtered.map((i) => (
-                    <article key={i.id} className="rounded-xl border border-emerald-100/90 bg-white p-4 shadow-sm shadow-emerald-900/5">
+                    <article
+                        key={i.id}
+                        className={`rounded-xl border bg-white p-4 shadow-sm shadow-emerald-900/5 transition-colors ${String(draggingId) === String(i.id) ? 'border-emerald-400 bg-emerald-50/30' : 'border-emerald-100/90'}`}
+                        draggable
+                        onDragStart={(e) => { setDraggingId(i.id); e.dataTransfer.effectAllowed = 'move'; }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => handleDropReorder(i.id)}
+                        onDragEnd={() => setDraggingId(null)}
+                    >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <div className="text-sm font-medium text-slate-800">{i.title}</div>
-                                <div className="text-xs text-slate-500 mt-0.5">{labelTargetSection(i.targetSection)} · {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole} · модуль {clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)} · размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}</div>
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-slate-300 cursor-grab active:cursor-grabbing flex-shrink-0" title="Перетащите для изменения порядка">
+                                    <GripVertical size={16} />
+                                </span>
+                                <div className="min-w-0">
+                                    <div className="text-sm font-medium text-slate-800">{i.title}</div>
+                                    <div className="text-xs text-slate-500 mt-0.5">{labelTargetSection(i.targetSection)} · {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole} · модуль {clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)} · размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}</div>
+                                </div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <StatusBadge>{CONTENT_STATUS_LABEL[i.status] || i.status}</StatusBadge>
                                 <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1 font-medium text-emerald-900 hover:bg-emerald-100/80">Открыть</button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (!canPublishItem(i)) {
-                                            window.alert('Нельзя опубликовать тест: проверьте вопросы и правильные ответы.');
-                                            return;
-                                        }
-                                        pvlDomainApi.adminApi.publishContentItem(i.id);
-                                        setItems((prev) => publishContentItem(prev, i.id));
-                                    }}
-                                    className="text-xs rounded-xl bg-emerald-700 px-3 py-1 font-medium text-white hover:bg-emerald-800"
-                                >
-                                    Опубликовать
-                                </button>
-                                <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
-                                <button type="button" onClick={() => { pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
-                                <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
-                                <button type="button" onClick={() => {
-                                    const normalizedModule = clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0);
-                                    const pl = pvlDomainApi.adminApi.assignContentPlacement({ contentItemId: i.id, targetSection: i.targetSection, targetRole: i.targetRole, cohortId: i.targetCohort || 'cohort-2026-1', weekNumber: normalizedModule, moduleNumber: normalizedModule, orderIndex: i.orderIndex || 999 });
-                                    if (pl) setPlacements((prev) => [...prev, pl]);
-                                }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Разместить</button>
-                                <button type="button" onClick={() => {
-                                    const copy = pvlDomainApi.adminApi.createContentItem({
-                                        ...i,
-                                        id: undefined,
-                                        title: `${i.title} (копия)`,
-                                        status: 'draft',
-                                    });
-                                    setItems((prev) => [copy, ...prev]);
-                                }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                {i.status === 'published' && (
+                                    <>
+                                        <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
+                                        <button type="button" onClick={() => {
+                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                            setItems((prev) => [copy, ...prev]);
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                    </>
+                                )}
+                                {i.status === 'unpublished' && (
+                                    <>
+                                        <button type="button" onClick={() => { pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
+                                        <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
+                                        <button type="button" onClick={() => {
+                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                            setItems((prev) => [copy, ...prev]);
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                    </>
+                                )}
+                                {i.status === 'draft' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (!canPublishItem(i)) {
+                                                    window.alert('Нельзя опубликовать тест: проверьте вопросы и правильные ответы.');
+                                                    return;
+                                                }
+                                                pvlDomainApi.adminApi.publishContentItem(i.id);
+                                                setItems((prev) => publishContentItem(prev, i.id));
+                                            }}
+                                            className="text-xs rounded-xl bg-emerald-700 px-3 py-1 font-medium text-white hover:bg-emerald-800"
+                                        >
+                                            Опубликовать
+                                        </button>
+                                        <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
+                                        <button type="button" onClick={() => {
+                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                            setItems((prev) => [copy, ...prev]);
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                    </>
+                                )}
+                                {i.status === 'archived' && (
+                                    <>
+                                        <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
+                                        <button type="button" onClick={() => {
+                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                            setItems((prev) => [copy, ...prev]);
+                                        }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копия</button>
+                                    </>
+                                )}
                             </div>
                         </div>
                         <div className="mt-3 rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-3">
@@ -5060,7 +5276,15 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         </div>
                     </article>
                 ))}
+                {filtered.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-emerald-200 p-8 text-center text-sm text-slate-400">
+                        Материалов с такими фильтрами нет
+                    </div>
+                )}
             </div>
+
+            {/* Навигатор по материалам */}
+            <ContentNavigator items={items} placements={placements} onOpen={(id) => navigate(`/admin/content/${id}`)} />
         </div>
     );
 }
@@ -5072,7 +5296,7 @@ function AdminStudents({ navigate, route }) {
     const mentorOptions = useMemo(() => (
         pvlDomainApi.adminApi.getAdminMentors().map((mp) => ({
             userId: mp.userId || mp.id,
-            label: getUser(mp.userId)?.fullName || mp.userId,
+            label: resolveActorUser(mp.userId)?.fullName || mp.userId,
         }))
     ), [listTick]);
     const rows = useMemo(() => buildTeacherStudentRows().filter((r) => {
@@ -5200,7 +5424,7 @@ function AdminStudents({ navigate, route }) {
 function buildAdminMentorWorkloadRows() {
     return pvlDomainApi.adminApi.getAdminMentors().map((m) => {
         const mentorUserId = m.userId || m.id;
-        const user = getUser(mentorUserId);
+        const user = resolveActorUser(mentorUserId);
         const mentees = m.menteeIds || [];
         const states = pvlDomainApi.db.studentTaskStates.filter((s) => mentees.includes(s.studentId));
         const unclosed = states.filter((s) => s.status !== TASK_STATUS.ACCEPTED).length;
@@ -5236,7 +5460,7 @@ function AdminMentors() {
     const mentors = useMemo(() => buildAdminMentorWorkloadRows(), [refreshTick]);
     const allStudents = useMemo(() => pvlDomainApi.adminApi.getAdminStudents({}), [refreshTick]);
     const displayNameByUserId = useMemo(
-        () => Object.fromEntries(allStudents.map((s) => [s.userId, getUser(s.userId)?.fullName || s.userId])),
+        () => Object.fromEntries(allStudents.map((s) => [s.userId, resolveActorUser(s.userId)?.fullName || s.userId])),
         [allStudents],
     );
     const handleAddMentee = (mentorUserId) => {
@@ -5443,7 +5667,7 @@ function AdminCertification() {
             </div>
             <div className="grid gap-4">
                 {registry.map((c) => {
-                    const user = getUser(c.studentId);
+                    const user = resolveActorUser(c.studentId);
                     const pts = pvlDomainApi.helpers.getStudentPointsSummary(c.studentId);
                     const certRow = pvlDomainApi.studentApi.getStudentCertification(c.studentId);
                     const szs = certRow?.szScores;
@@ -5773,7 +5997,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         { title: 'Библиотека не смешана с Уроками', ok: true },
         { title: 'Результаты содержат домашки/статусы/комментарии', ok: pvlDomainApi.studentApi.getStudentResults('u-st-1').length > 0 },
         { title: 'Курсовые 400 и СЗ 54 раздельно', ok: scoresSeparated },
-        { title: 'Модули 0-4 присутствуют', ok: weeks.some((w) => w.moduleNumber === 0) && weeks.some((w) => w.moduleNumber === 4) },
+        { title: 'Модули 1-3 присутствуют', ok: weeks.some((w) => w.moduleNumber === 1) && weeks.some((w) => w.moduleNumber === 3) },
         { title: '9 КТ присутствуют', ok: cps.length === 9 },
         { title: 'Модуль с 3 отдельными КТ', ok: week6CpCount === 3 },
         { title: 'Дедлайн записи СЗ: 30.06.2026', ok: szDeadlineOk },
@@ -6045,6 +6269,8 @@ export default function PvlPrototypeApp({
             return;
         }
         if (!hasAuthoritativeSource) return;
+        // Патчим имя текущего пользователя из Garden в mock-запись
+        pvlPatchCurrentUserFromGarden(gardenUser, resolvedRole);
         if (resolvedRole !== role) {
             const nextActor = resolvedRole === 'admin' ? 'u-adm-1' : resolvedRole === 'mentor' ? 'u-men-1' : 'u-st-1';
             setRole(resolvedRole);

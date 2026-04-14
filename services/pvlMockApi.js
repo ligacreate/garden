@@ -365,18 +365,21 @@ export async function syncPvlActorsFromGarden() {
         mentors.forEach((u) => {
             if (!u?.id) return;
             const userId = String(u.id);
-            const existsUser = (db.users || []).some((x) => String(x.id) === userId);
-            if (!existsUser) {
+            const realName = u.name || u.fullName || u.email || userId;
+            const existingUser = (db.users || []).find((x) => String(x.id) === userId);
+            if (!existingUser) {
                 db.users.push({
                     id: userId,
                     role: ROLES.MENTOR,
-                    fullName: u.name || u.fullName || u.email || userId,
+                    fullName: realName,
                     email: u.email || '',
                     avatar: u.avatar || '',
                     isActive: true,
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
+            } else if (realName && realName !== userId) {
+                existingUser.fullName = realName;
             }
             const existsMentor = (db.mentorProfiles || []).some((x) => String(x.userId) === userId);
             if (!existsMentor) {
@@ -396,18 +399,21 @@ export async function syncPvlActorsFromGarden() {
         applicants.forEach((u) => {
             if (!u?.id) return;
             const userId = String(u.id);
-            const existsUser = (db.users || []).some((x) => String(x.id) === userId);
-            if (!existsUser) {
+            const realName = u.name || u.fullName || u.email || userId;
+            const existingUser = (db.users || []).find((x) => String(x.id) === userId);
+            if (!existingUser) {
                 db.users.push({
                     id: userId,
                     role: ROLES.STUDENT,
-                    fullName: u.name || u.fullName || u.email || userId,
+                    fullName: realName,
                     email: u.email || '',
                     avatar: u.avatar || '',
                     isActive: true,
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
+            } else if (realName && realName !== userId) {
+                existingUser.fullName = realName;
             }
             const existsStudent = (db.studentProfiles || []).some((x) => String(x.userId) === userId);
             if (!existsStudent) {
@@ -428,6 +434,29 @@ export async function syncPvlActorsFromGarden() {
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
+            }
+        });
+
+        // Синхронизируем имена mock-юзеров реальными именами из Garden
+        // (чтобы демо-профили u-men-1, u-st-1 и т.д. отображали реальные ФИО)
+        mentors.slice(0, 4).forEach((u, idx) => {
+            const realName = u.name || u.fullName || u.email || '';
+            if (!realName) return;
+            const mockId = idx === 0 ? 'u-men-1' : `u-men-${idx + 1}`;
+            const mockEntry = (db.users || []).find((x) => x.id === mockId);
+            if (mockEntry && !mockEntry._gardenLinked) {
+                mockEntry.fullName = realName;
+                mockEntry._gardenLinked = true;
+            }
+        });
+        applicants.slice(0, 4).forEach((u, idx) => {
+            const realName = u.name || u.fullName || u.email || '';
+            if (!realName) return;
+            const mockId = `u-st-${idx + 1}`;
+            const mockEntry = (db.users || []).find((x) => x.id === mockId);
+            if (mockEntry && !mockEntry._gardenLinked) {
+                mockEntry.fullName = realName;
+                mockEntry._gardenLinked = true;
             }
         });
 
@@ -708,7 +737,7 @@ function calculatePointsSummary(studentId) {
     const szMentorAssessmentTotal = capSzMentor(sz?.mentorAssessmentPoints || 0);
 
     // history append-once events
-    if (week0Points > 0) addPointsHistory(studentId, 'week0', 'week0', SCORING_RULES.WEEK0_POINTS, 'Завершён модуль 0', '');
+    if (week0Points > 0) addPointsHistory(studentId, 'week0', 'week0', SCORING_RULES.WEEK0_POINTS, 'Ориентация пройдена', '');
     db.weekCompletionState.filter((w) => w.studentId === studentId && w.weekNumber >= 1 && w.weekNumber <= 12 && w.weekClosed).forEach((w) => {
         const cw = db.courseWeeks.find((row) => row.weekNumber === w.weekNumber);
         const modLabel = cw?.moduleNumber ?? w.weekNumber;
@@ -1916,7 +1945,7 @@ export const adminApi = {
         return p;
     },
     unpublishContentItem(contentId) {
-        const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.DRAFT });
+        const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.UNPUBLISHED });
         if (item) addAuditEvent('u-adm-1', ROLES.ADMIN, 'unpublish_content', 'content_item', contentId, 'Unpublished content item', {});
         return item;
     },
@@ -2391,3 +2420,25 @@ export const pvlDomainApi = {
         cloneSeedState: () => structuredClone(seed),
     },
 };
+
+/**
+ * Патчит имя текущего вошедшего пользователя из профиля Garden в mock-запись db.users.
+ * Вызывается сразу после разрешения роли, чтобы sidebar и дашборд показывали реальное ФИО.
+ */
+export function pvlPatchCurrentUserFromGarden(gardenUser, resolvedPvlRole) {
+    try {
+        if (!gardenUser) return;
+        const realName = gardenUser.name || gardenUser.fullName || gardenUser.email || '';
+        if (!realName) return;
+        const mockId = resolvedPvlRole === 'admin' ? 'u-adm-1'
+            : resolvedPvlRole === 'mentor' ? 'u-men-1'
+            : 'u-st-1';
+        const dbEntry = (db.users || []).find((u) => u.id === mockId);
+        if (dbEntry) {
+            dbEntry.fullName = realName;
+            dbEntry._gardenLinked = true;
+        }
+    } catch {
+        /* noop */
+    }
+}

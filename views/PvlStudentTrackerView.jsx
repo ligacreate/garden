@@ -67,7 +67,6 @@ const CHECKLIST_TAG_LABEL = {
 };
 
 function moduleNumClass(cls) {
-    if (cls === 'mod-0') return 'bg-emerald-700 text-white';
     if (cls === 'mod-1') return 'bg-emerald-600 text-white';
     if (cls === 'mod-2') return 'bg-teal-700 text-white';
     return 'bg-teal-800 text-white';

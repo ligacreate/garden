@@ -15,3 +15,4 @@ artifacts-*.png
 
 # Supabase SQL editor CSV exports (often contain PII)
 Supabase*.csv
+.business/

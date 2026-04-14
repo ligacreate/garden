@@ -27,6 +27,7 @@ import {
     getUnreadThreadCount,
 } from '../selectors/pvlCalculators';
 import { api } from './dataService';
+import { ROLES as GARDEN_ROLES } from '../utils/roles';
 
 /** Согласовано с калькуляторами дедлайнов в прототипе */
 const DASHBOARD_TODAY = '2026-06-03';
@@ -413,23 +414,29 @@ export async function syncPvlRuntimeFromDb() {
 
 export async function syncPvlActorsFromGarden() {
     try {
-        let users = await api.getUsers();
-        if ((!Array.isArray(users) || users.length === 0) && typeof localStorage !== 'undefined') {
-            const hasToken = Boolean(localStorage.getItem('garden_auth_token'));
-            if (hasToken) {
-                await new Promise((r) => setTimeout(r, 400));
-                users = await api.getUsers();
+        let users = [];
+        const waitBeforeAttemptMs = [0, 400, 800, 1200];
+        for (let i = 0; i < waitBeforeAttemptMs.length; i += 1) {
+            if (waitBeforeAttemptMs[i] > 0) {
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise((r) => setTimeout(r, waitBeforeAttemptMs[i]));
             }
+            // eslint-disable-next-line no-await-in-loop
+            users = await api.getUsers();
+            if (Array.isArray(users) && users.length > 0) break;
         }
         if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
-        const normalizedRole = (u) => String(u?.role || u?.status || '').trim().toLowerCase();
+
+        /** Только поле role — не подмешивать status ('active'), иначе абитуриенты не матчятся. */
+        const roleOnly = (u) => String(u?.role ?? '').trim().toLowerCase();
         const isGardenApplicant = (u) => {
-            const r = normalizedRole(u);
-            if (r === 'applicant' || r === 'абитуриент' || r === 'абитуриентка') return true;
+            const r = roleOnly(u);
+            if (r === GARDEN_ROLES.APPLICANT) return true;
+            if (r === 'абитуриент' || r === 'абитуриентка') return true;
             const label = String(u?.roleLabel || u?.role_title || '').trim().toLowerCase();
             return label.includes('битуриент');
         };
-        const mentors = users.filter((u) => normalizedRole(u) === 'mentor');
+        const mentors = users.filter((u) => roleOnly(u) === GARDEN_ROLES.MENTOR);
         const applicants = users.filter(isGardenApplicant);
 
         mentors.forEach((u) => {

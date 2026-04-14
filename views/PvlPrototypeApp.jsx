@@ -6515,24 +6515,39 @@ export default function PvlPrototypeApp({
     useEffect(() => {
         let mounted = true;
         (async () => {
+            let res = { synced: false };
             try {
-                const res = await syncPvlRuntimeFromDb();
-                await syncPvlActorsFromGarden();
-                if (!mounted) return;
-                if (res?.synced) {
-                    const next = buildMergedCmsState();
-                    setCmsItems(next.items);
-                    setCmsPlacements(next.placements);
-                }
-                forceRefresh();
+                res = await syncPvlRuntimeFromDb();
             } catch {
-                if (mounted) forceRefresh();
+                /* сбой PostgREST/снимка ПВЛ — не блокируем подтягивание учениц из profiles */
             }
+            try {
+                await syncPvlActorsFromGarden();
+            } catch {
+                /* лог в syncPvlActorsFromGarden / dataService */
+            }
+            if (!mounted) return;
+            if (res?.synced) {
+                const next = buildMergedCmsState();
+                setCmsItems(next.items);
+                setCmsPlacements(next.placements);
+            }
+            forceRefresh();
+
+            if (!embeddedInGarden) return;
+            await new Promise((r) => setTimeout(r, 1600));
+            if (!mounted) return;
+            try {
+                await syncPvlActorsFromGarden();
+            } catch {
+                /* повтор при поздней гидрации токена */
+            }
+            if (mounted) forceRefresh();
         })();
         return () => {
             mounted = false;
         };
-    }, []);
+    }, [embeddedInGarden]);
 
     const navigate = useCallback((nextRoute) => {
         const allowedRoute = redirectToAllowedRoute(role, nextRoute);

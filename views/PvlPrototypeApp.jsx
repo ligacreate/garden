@@ -4234,7 +4234,7 @@ function AdminContentItemScreen({
         forceRefresh?.();
     };
 
-    const saveFieldUpdatesFromForm = () => {
+    const saveFieldUpdatesFromForm = async () => {
         if (!editForm) return;
         const tags = String(editForm.tagsText || '').split(',').map((t) => t.trim()).filter(Boolean);
         const normalizedQuiz = normalizeLessonQuiz(editForm.lessonQuiz);
@@ -4264,12 +4264,20 @@ function AdminContentItemScreen({
             lessonVideoEmbed: videoSummaryMode ? editForm.lessonVideoEmbed : undefined,
             lessonRutubeUrl: videoSummaryMode ? editForm.lessonRutubeUrl : undefined,
         };
-        pvlDomainApi.adminApi.updateContentItem(contentId, payload);
-        applyPatchToState(payload);
+        try {
+            await pvlDomainApi.adminApi.updateContentItem(contentId, payload);
+            applyPatchToState(payload);
+        } catch (e) {
+            try {
+                window.alert(`Не удалось сохранить материал: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
 
-    /** Одна запись полей + публикация карточки; placements в API не трогаем. */
-    const commitPublish = () => {
+    /** Черновик в PostgREST, затем публикация + размещение (как ответ API в Саду). */
+    const commitPublish = async () => {
         if (panelMode === 'edit') {
             if (!String(editForm?.title || '').trim()) {
                 window.alert('Перед публикацией заполните название материала.');
@@ -4289,49 +4297,81 @@ function AdminContentItemScreen({
                     return;
                 }
             }
-            saveFieldUpdatesFromForm();
+            await saveFieldUpdatesFromForm();
         }
-        pvlDomainApi.adminApi.publishContentItem(contentId);
-        setCmsItems((prev) => publishContentItem(prev, contentId));
-        forceRefresh?.();
+        try {
+            await pvlDomainApi.adminApi.publishContentItem(contentId);
+            setCmsItems((prev) => publishContentItem(prev, contentId));
+            forceRefresh?.();
+            cancelEdit();
+        } catch (e) {
+            try {
+                window.alert(`Не удалось опубликовать: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
+    };
+
+    const handleSaveDraft = async () => {
+        await saveFieldUpdatesFromForm();
         cancelEdit();
     };
 
-    const handleSaveDraft = () => {
-        saveFieldUpdatesFromForm();
-        cancelEdit();
+    const handleUnpublish = async () => {
+        if (panelMode === 'edit') await saveFieldUpdatesFromForm();
+        try {
+            await pvlDomainApi.adminApi.unpublishContentItem(contentId);
+            setCmsItems((prev) => unpublishToDraftItems(prev, contentId));
+            forceRefresh?.();
+            cancelEdit();
+        } catch (e) {
+            try {
+                window.alert(`Не удалось снять с публикации: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
 
-    const handleUnpublish = () => {
-        if (panelMode === 'edit') saveFieldUpdatesFromForm();
-        pvlDomainApi.adminApi.unpublishContentItem(contentId);
-        setCmsItems((prev) => unpublishToDraftItems(prev, contentId));
-        forceRefresh?.();
-        cancelEdit();
-    };
-
-    const handleArchive = () => {
+    const handleArchive = async () => {
         if (!window.confirm('Отправить материал в архив?')) return;
-        if (panelMode === 'edit') saveFieldUpdatesFromForm();
-        pvlDomainApi.adminApi.archiveContentItem(contentId);
-        setCmsItems((prev) => archiveContentItem(prev, contentId));
-        forceRefresh?.();
-        cancelEdit();
+        if (panelMode === 'edit') await saveFieldUpdatesFromForm();
+        try {
+            await pvlDomainApi.adminApi.archiveContentItem(contentId);
+            setCmsItems((prev) => archiveContentItem(prev, contentId));
+            forceRefresh?.();
+            cancelEdit();
+        } catch (e) {
+            try {
+                window.alert(`Не удалось отправить в архив: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
 
-    const handleAssignPlacement = () => {
+    const handleAssignPlacement = async () => {
         if (!item) return;
-        const pl = pvlDomainApi.adminApi.assignContentPlacement({
-            contentItemId: item.id,
-            targetSection: item.targetSection,
-            targetRole: item.targetRole,
-            cohortId: item.targetCohort || 'cohort-2026-1',
-            weekNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
-            moduleNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
-            orderIndex: item.orderIndex || 999,
-        });
-        if (pl) setCmsPlacements((prev) => [...prev, pl]);
-        forceRefresh?.();
+        try {
+            const pl = await pvlDomainApi.adminApi.assignContentPlacement({
+                contentItemId: item.id,
+                targetSection: item.targetSection,
+                targetRole: item.targetRole,
+                cohortId: item.targetCohort || 'cohort-2026-1',
+                weekNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
+                moduleNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
+                orderIndex: item.orderIndex || 999,
+            });
+            if (pl) setCmsPlacements((prev) => [...prev, pl]);
+            forceRefresh?.();
+        } catch (e) {
+            try {
+                window.alert(`Не удалось добавить размещение: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
 
     const startPlacementEdit = (p) => {
@@ -4354,7 +4394,7 @@ function AdminContentItemScreen({
         setPlacementEditForm(null);
     };
 
-    const savePlacementEdit = () => {
+    const savePlacementEdit = async () => {
         if (!placementEditId || !placementEditForm) return;
         const patch = {
             targetSection: placementEditForm.targetSection,
@@ -4366,18 +4406,34 @@ function AdminContentItemScreen({
             moduleNumber: clampPvlModule(placementEditForm.moduleNumber),
             isPublished: !!placementEditForm.isPublished,
         };
-        pvlDomainApi.adminApi.updatePlacement(placementEditId, patch);
-        setCmsPlacements((prev) => prev.map((x) => (x.id === placementEditId ? { ...x, ...patch } : x)));
-        cancelPlacementEdit();
-        forceRefresh?.();
+        try {
+            await pvlDomainApi.adminApi.updatePlacement(placementEditId, patch);
+            setCmsPlacements((prev) => prev.map((x) => (x.id === placementEditId ? { ...x, ...patch } : x)));
+            cancelPlacementEdit();
+            forceRefresh?.();
+        } catch (e) {
+            try {
+                window.alert(`Не удалось сохранить размещение: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
 
-    const deletePlacementRow = (pid) => {
+    const deletePlacementRow = async (pid) => {
         if (!window.confirm('Удалить это размещение?')) return;
-        pvlDomainApi.adminApi.deletePlacement(pid);
-        setCmsPlacements((prev) => prev.filter((x) => x.id !== pid));
-        if (placementEditId === pid) cancelPlacementEdit();
-        forceRefresh?.();
+        try {
+            await pvlDomainApi.adminApi.deletePlacement(pid);
+            setCmsPlacements((prev) => prev.filter((x) => x.id !== pid));
+            if (placementEditId === pid) cancelPlacementEdit();
+            forceRefresh?.();
+        } catch (e) {
+            try {
+                window.alert(`Не удалось удалить размещение: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
 
     if (!item) {
@@ -4966,7 +5022,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         .filter((i) => sections.includes(i.targetSection))
         .filter((i) => (filters.cohort === 'all' ? true : i.targetCohort === filters.cohort))
         .filter((i) => (filters.module === 'all' ? true : String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(filters.module)));
-    const handleCreate = () => {
+    const handleCreate = async () => {
         if (!draft.title.trim()) return;
         const customLibraryTitle = String(draft.libraryCategoryCustomTitle || '').trim();
         if (draft.targetSection === 'library' && (!draft.libraryCategoryId || draft.libraryCategoryId === 'all') && !customLibraryTitle) {
@@ -5038,28 +5094,36 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             externalLinks: [draft.externalUrl, draft.fileUrl].filter(Boolean),
             createdBy: 'u-adm-1',
         };
-        const created = pvlDomainApi.adminApi.createContentItem(record);
-        setItems((prev) => [created, ...prev]);
-        setDraft((d) => ({
-            ...d,
-            title: '',
-            shortDescription: '',
-            fullDescriptionHtml: '',
-            tagsText: '',
-            lessonVideoUrl: '',
-            lessonVideoEmbed: '',
-            lessonRutubeUrl: '',
-            lessonTextBody: '',
-            lessonQuiz: createDefaultLessonQuiz(),
-            lessonHomeworkPrompt: '',
-            lessonHomeworkExpected: '',
-            lessonHomework: createDefaultLessonHomework(),
-            coverImage: '',
-            fileUrl: '',
-            externalUrl: '',
-            libraryCategoryCustomTitle: '',
-        }));
-        navigate(`/admin/content/${created.id}`);
+        try {
+            const created = await pvlDomainApi.adminApi.createContentItem(record);
+            setItems((prev) => [created, ...prev]);
+            setDraft((d) => ({
+                ...d,
+                title: '',
+                shortDescription: '',
+                fullDescriptionHtml: '',
+                tagsText: '',
+                lessonVideoUrl: '',
+                lessonVideoEmbed: '',
+                lessonRutubeUrl: '',
+                lessonTextBody: '',
+                lessonQuiz: createDefaultLessonQuiz(),
+                lessonHomeworkPrompt: '',
+                lessonHomeworkExpected: '',
+                lessonHomework: createDefaultLessonHomework(),
+                coverImage: '',
+                fileUrl: '',
+                externalUrl: '',
+                libraryCategoryCustomTitle: '',
+            }));
+            navigate(`/admin/content/${created.id}`);
+        } catch (e) {
+            try {
+                window.alert(`Не удалось создать материал: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
     const handleCoverUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -5108,11 +5172,19 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             e.target.value = '';
         }
     };
-    const handleDeleteItem = (i) => {
+    const handleDeleteItem = async (i) => {
         if (!window.confirm(`Удалить материал «${i.title}»? Связанные размещения в разделах тоже будут убраны.`)) return;
-        pvlDomainApi.adminApi.deleteContentItem(i.id);
-        setItems((prev) => prev.filter((x) => x.id !== i.id));
-        setPlacements((prev) => prev.filter((p) => (p.contentId || p.contentItemId) !== i.id));
+        try {
+            await pvlDomainApi.adminApi.deleteContentItem(i.id);
+            setItems((prev) => prev.filter((x) => x.id !== i.id));
+            setPlacements((prev) => prev.filter((p) => (p.contentId || p.contentItemId) !== i.id));
+        } catch (e) {
+            try {
+                window.alert(`Не удалось удалить: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
     };
     const handleDropReorder = (targetId) => {
         if (!draggingId || draggingId === targetId) { setDraggingId(null); return; }
@@ -5123,15 +5195,28 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             const next = [...prev];
             const [moved] = next.splice(fromIdx, 1);
             next.splice(toIdx, 0, moved);
-            // Пересчитываем orderIndex внутри одного раздела
             const section = moved.targetSection;
             let order = 0;
-            return next.map((item) => {
+            const mapped = next.map((item) => {
                 if (item.targetSection !== section) return item;
                 const updated = { ...item, orderIndex: order++ };
-                pvlDomainApi.adminApi.updateContentItem(item.id, { orderIndex: updated.orderIndex });
                 return updated;
             });
+            const toSave = mapped
+                .filter((it) => it.targetSection === section)
+                .map((it) => ({ id: it.id, orderIndex: it.orderIndex }));
+            void (async () => {
+                try {
+                    await Promise.all(toSave.map((row) => pvlDomainApi.adminApi.updateContentItem(row.id, { orderIndex: row.orderIndex })));
+                } catch (e) {
+                    try {
+                        window.alert(`Не удалось сохранить порядок: ${e?.message || e}`);
+                    } catch {
+                        /* noop */
+                    }
+                }
+            })();
+            return mapped;
         });
         setDraggingId(null);
     };
@@ -5554,20 +5639,28 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1 font-medium text-emerald-900 hover:bg-emerald-100/80">Открыть</button>
                                 {i.status === 'published' && (
                                     <>
-                                        <button type="button" onClick={() => { pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
-                                        <button type="button" onClick={() => {
-                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
-                                            setItems((prev) => [copy, ...prev]);
+                                        <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); } catch (e) { window.alert(`Не удалось снять с публикации: ${e?.message || e}`); } }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
+                                        <button type="button" onClick={async () => {
+                                            try {
+                                                const copy = await pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                                setItems((prev) => [copy, ...prev]);
+                                            } catch (e) {
+                                                window.alert(`Не удалось копировать: ${e?.message || e}`);
+                                            }
                                         }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
                                 {i.status === 'unpublished' && (
                                     <>
-                                        <button type="button" onClick={() => { pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
+                                        <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.archiveContentItem(i.id); setItems((prev) => archiveContentItem(prev, i.id)); } catch (e) { window.alert(`Не удалось в архив: ${e?.message || e}`); } }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">В архив</button>
                                         <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
-                                        <button type="button" onClick={() => {
-                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
-                                            setItems((prev) => [copy, ...prev]);
+                                        <button type="button" onClick={async () => {
+                                            try {
+                                                const copy = await pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                                setItems((prev) => [copy, ...prev]);
+                                            } catch (e) {
+                                                window.alert(`Не удалось копировать: ${e?.message || e}`);
+                                            }
                                         }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
@@ -5575,31 +5668,43 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     <>
                                         <button
                                             type="button"
-                                            onClick={() => {
+                                            onClick={async () => {
                                                 if (!canPublishItem(i)) {
                                                     window.alert('Нельзя опубликовать тест: проверьте вопросы и правильные ответы.');
                                                     return;
                                                 }
-                                                pvlDomainApi.adminApi.publishContentItem(i.id);
-                                                setItems((prev) => publishContentItem(prev, i.id));
+                                                try {
+                                                    await pvlDomainApi.adminApi.publishContentItem(i.id);
+                                                    setItems((prev) => publishContentItem(prev, i.id));
+                                                } catch (e) {
+                                                    window.alert(`Не удалось опубликовать: ${e?.message || e}`);
+                                                }
                                             }}
                                             className="text-xs rounded-xl bg-emerald-700 px-3 py-1 font-medium text-white hover:bg-emerald-800"
                                         >
                                             Опубликовать
                                         </button>
                                         <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
-                                        <button type="button" onClick={() => {
-                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
-                                            setItems((prev) => [copy, ...prev]);
+                                        <button type="button" onClick={async () => {
+                                            try {
+                                                const copy = await pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                                setItems((prev) => [copy, ...prev]);
+                                            } catch (e) {
+                                                window.alert(`Не удалось копировать: ${e?.message || e}`);
+                                            }
                                         }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
                                 {i.status === 'archived' && (
                                     <>
                                         <button type="button" onClick={() => handleDeleteItem(i)} className="text-xs rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">Удалить</button>
-                                        <button type="button" onClick={() => {
-                                            const copy = pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
-                                            setItems((prev) => [copy, ...prev]);
+                                        <button type="button" onClick={async () => {
+                                            try {
+                                                const copy = await pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
+                                                setItems((prev) => [copy, ...prev]);
+                                            } catch (e) {
+                                                window.alert(`Не удалось копировать: ${e?.message || e}`);
+                                            }
                                         }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
@@ -5614,9 +5719,9 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     <article key={p.id} className="rounded-lg border border-emerald-100/90 bg-white p-2 flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-xs text-slate-600">{labelTargetSection(p.targetSection)} · {TARGET_ROLE_LABELS[p.targetRole] || p.targetRole} · {p.targetCohort || p.cohortId || 'все'} · порядок {p.orderIndex ?? '—'}</span>
                                         <div className="flex gap-1">
-                                            <button type="button" onClick={() => pvlDomainApi.adminApi.publishPlacement(p.id)} className="text-[10px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-900">Опубликовать</button>
-                                            <button type="button" onClick={() => pvlDomainApi.adminApi.unpublishPlacement(p.id)} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-slate-700">Снять</button>
-                                            <button type="button" onClick={() => { pvlDomainApi.adminApi.deletePlacement(p.id); setPlacements((prev) => prev.filter((x) => x.id !== p.id)); }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-rose-700">Удалить</button>
+                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.publishPlacement(p.id); } catch (e) { window.alert(`Не удалось: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-900">Опубликовать</button>
+                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishPlacement(p.id); } catch (e) { window.alert(`Не удалось: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-slate-700">Снять</button>
+                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.deletePlacement(p.id); setPlacements((prev) => prev.filter((x) => x.id !== p.id)); } catch (e) { window.alert(`Не удалось удалить размещение: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-rose-700">Удалить</button>
                                         </div>
                                     </article>
                                 ))}
@@ -5668,9 +5773,25 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
         return sp?.cohortId === cohortId;
     }), [cohortId, listTick, refreshKey]);
 
-    const assignStudentMentor = (studentId, mentorUserId) => {
-        pvlDomainApi.adminApi.assignStudentMentor(studentId, mentorUserId || null);
-        setListTick((t) => t + 1);
+    const assignStudentMentor = async (studentId, mentorUserId) => {
+        try {
+            const result = await pvlDomainApi.adminApi.assignStudentMentor(studentId, mentorUserId || null);
+            if (result == null && mentorUserId) {
+                try {
+                    window.alert('Не удалось назначить ментора: в данных нет выбранного ментора или ученицы.');
+                } catch {
+                    /* noop */
+                }
+            }
+        } catch (e) {
+            try {
+                window.alert(`Не удалось сохранить привязку ментора: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        } finally {
+            setListTick((t) => t + 1);
+        }
     };
 
     const mentorSelectClass = 'w-full max-w-[16rem] rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-800 outline-none ring-1 ring-slate-200/80 focus:ring-emerald-400/80';
@@ -5862,15 +5983,31 @@ function AdminMentors() {
         () => Object.fromEntries(allStudents.map((s) => [s.userId, resolveActorDisplayName(s.userId) || s.userId])),
         [allStudents],
     );
-    const handleAddMentee = (mentorUserId) => {
+    const handleAddMentee = async (mentorUserId) => {
         const studentUserId = candidateByMentor[mentorUserId];
         if (!studentUserId) return;
-        pvlDomainApi.adminApi.assignStudentMentor(studentUserId, mentorUserId);
+        try {
+            await pvlDomainApi.adminApi.assignStudentMentor(studentUserId, mentorUserId);
+        } catch (e) {
+            try {
+                window.alert(`Не удалось назначить ученицу ментору: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
         setCandidateByMentor((prev) => ({ ...prev, [mentorUserId]: '' }));
         setRefreshTick((x) => x + 1);
     };
-    const handleRemoveMentee = (mentorUserId, studentUserId) => {
-        pvlDomainApi.adminApi.removeMenteeFromMentor(mentorUserId, studentUserId);
+    const handleRemoveMentee = async (mentorUserId, studentUserId) => {
+        try {
+            await pvlDomainApi.adminApi.removeMenteeFromMentor(mentorUserId, studentUserId);
+        } catch (e) {
+            try {
+                window.alert(`Не удалось снять привязку: ${e?.message || e}`);
+            } catch {
+                /* noop */
+            }
+        }
         setRefreshTick((x) => x + 1);
     };
     const totals = useMemo(() => {
@@ -6461,26 +6598,28 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         }
         if (id === 's8') {
             setRole('admin');
-            const item = pvlDomainApi.adminApi.createContentItem({
-                title: 'QA content',
-                shortDescription: 'qa',
-                fullDescription: 'qa',
-                contentType: 'text',
-                targetSection: 'library',
-                targetRole: 'student',
-                targetCohort: 'cohort-2026-1',
-            });
-            pvlDomainApi.adminApi.publishContentItem(item.id);
-            pvlDomainApi.adminApi.assignContentPlacement({
-                contentItemId: item.id,
-                targetSection: 'library',
-                targetRole: 'student',
-                cohortId: 'cohort-2026-1',
-                weekNumber: 1,
-                moduleNumber: 1,
-                orderIndex: 50,
-            });
-            navigate('/student/library');
+            void (async () => {
+                const item = await pvlDomainApi.adminApi.createContentItem({
+                    title: 'QA content',
+                    shortDescription: 'qa',
+                    fullDescription: 'qa',
+                    contentType: 'text',
+                    targetSection: 'library',
+                    targetRole: 'student',
+                    targetCohort: 'cohort-2026-1',
+                });
+                await pvlDomainApi.adminApi.publishContentItem(item.id);
+                await pvlDomainApi.adminApi.assignContentPlacement({
+                    contentItemId: item.id,
+                    targetSection: 'library',
+                    targetRole: 'student',
+                    cohortId: 'cohort-2026-1',
+                    weekNumber: 1,
+                    moduleNumber: 1,
+                    orderIndex: 50,
+                });
+                navigate('/student/library');
+            })();
         }
         setScenarioStatus((s) => ({ ...s, [id]: true }));
         forceRefresh();

@@ -97,7 +97,8 @@ function asArray(data) {
 
 function isUuidString(v) {
     if (v == null || v === '') return false;
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v).trim());
+    const s = String(v).trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
 function normalizeCalendarEventTypeForDb(value) {
@@ -156,7 +157,7 @@ export const pvlPostgrestApi = {
         const rows = await request('pvl_content_items', {
             method: 'POST',
             body: [payload],
-            prefer: 'return=representation',
+            prefer: 'resolution=merge-duplicates,return=representation',
         });
         return asArray(rows)[0] || null;
     },
@@ -193,7 +194,7 @@ export const pvlPostgrestApi = {
         const rows = await request('pvl_content_placements', {
             method: 'POST',
             body: [payload],
-            prefer: 'return=representation',
+            prefer: 'resolution=merge-duplicates,return=representation',
         });
         return asArray(rows)[0] || null;
     },
@@ -471,14 +472,47 @@ export const pvlPostgrestApi = {
         return merged;
     },
 
-    /** UPSERT одной строки: student_id — PK в PostgREST (resolution=merge-duplicates). */
+    /** UPSERT одной строки: student_id — PK; при сбое merge — PATCH по student_id, затем обычный INSERT. */
     async upsertGardenMentorLink(payload) {
-        const rows = await request('pvl_garden_mentor_links', {
-            method: 'POST',
-            body: [payload],
-            prefer: 'resolution=merge-duplicates,return=representation',
-        });
-        return asArray(rows)[0] || null;
+        let mergeErr = null;
+        try {
+            const rows = await request('pvl_garden_mentor_links', {
+                method: 'POST',
+                body: [payload],
+                prefer: 'resolution=merge-duplicates,return=representation',
+            });
+            const row = asArray(rows)[0];
+            if (row) return row;
+        } catch (e) {
+            mergeErr = e;
+        }
+        try {
+            const patched = await request('pvl_garden_mentor_links', {
+                method: 'PATCH',
+                params: { student_id: `eq.${payload.student_id}` },
+                body: {
+                    mentor_id: payload.mentor_id,
+                    updated_at: payload.updated_at,
+                },
+                prefer: 'return=representation',
+            });
+            const row = asArray(patched)[0];
+            if (row) return row;
+        } catch (e2) {
+            if (mergeErr) throw mergeErr;
+            throw e2;
+        }
+        try {
+            const inserted = await request('pvl_garden_mentor_links', {
+                method: 'POST',
+                body: [payload],
+                prefer: 'return=representation',
+            });
+            return asArray(inserted)[0] || null;
+        } catch (e3) {
+            if (mergeErr) throw mergeErr;
+            throw e3;
+        }
     },
 
     // Backward compatibility with current integration points

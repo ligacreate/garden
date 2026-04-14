@@ -69,12 +69,25 @@ let sqlHomeworkIdByMockTaskId = new Map();
 let mockTaskIdBySqlHomeworkId = new Map();
 
 function logDbFallback(payload = {}) {
-    if (!IS_DEV) return;
-    try {
-        // eslint-disable-next-line no-console
-        console.info('[PVL DB FALLBACK]', payload);
-    } catch {
-        /* noop */
+    const table = String(payload.table || '');
+    const err = String(payload.error || '');
+    if (IS_DEV) {
+        try {
+            // eslint-disable-next-line no-console
+            console.info('[PVL DB FALLBACK]', payload);
+        } catch {
+            /* noop */
+        }
+        return;
+    }
+    /** В проде иначе «тихие» сбои PostgREST — материалы исчезают после F5. */
+    if (table.includes('pvl_content') || table.includes('pvl_garden')) {
+        try {
+            // eslint-disable-next-line no-console
+            console.warn('[PVL DB]', table, err.slice(0, 200), payload.id || '');
+        } catch {
+            /* noop */
+        }
     }
 }
 
@@ -110,7 +123,9 @@ const PVL_SEED_COHORT_TO_SQL_UUID = Object.freeze({
 
 function isUuidString(v) {
     if (v == null || v === '') return false;
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v).trim());
+    const s = String(v).trim();
+    /** RFC-подобный UUID (в т.ч. v6/v7/v8 из auth/БД); строгая проверка версии ломала сохранение профилей. */
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
 /** PostgREST: created_by/updated_by — UUID; строки вида u-adm-1 в колонку UUID не пишем. */
@@ -163,6 +178,7 @@ function newPvlPersistedEntityId() {
 
 function contentItemToDbPayload(item) {
     const status = contentStatusToDb(item.status);
+    const links = Array.isArray(item.externalLinks) ? item.externalLinks : [];
     return {
         title: item.title || '',
         short_description: item.shortDescription || '',
@@ -178,6 +194,10 @@ function contentItemToDbPayload(item) {
         category_id: item.categoryId || null,
         category_title: item.categoryTitle || null,
         tags: Array.isArray(item.tags) ? item.tags : [],
+        cover_image: item.coverImage || null,
+        external_links: links,
+        estimated_duration: item.estimatedDuration || null,
+        metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : {},
         lesson_video_url: item.lessonVideoUrl || null,
         lesson_rutube_url: item.lessonRutubeUrl || null,
         lesson_video_embed: item.lessonVideoEmbed || null,
@@ -193,6 +213,7 @@ function contentItemToDbPayload(item) {
 
 function mapDbContentItemToRuntime(row) {
     const targetCohortSeed = row.target_cohort_id ? sqlCohortUuidToSeedId(row.target_cohort_id) : null;
+    const extLinks = row.external_links;
     return {
         id: row.id,
         title: row.title || '',
@@ -210,6 +231,10 @@ function mapDbContentItemToRuntime(row) {
         categoryId: row.category_id || '',
         categoryTitle: row.category_title || '',
         tags: Array.isArray(row.tags) ? row.tags : [],
+        coverImage: row.cover_image || '',
+        externalLinks: Array.isArray(extLinks) ? extLinks : [],
+        estimatedDuration: row.estimated_duration || '',
+        metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
         lessonVideoUrl: row.lesson_video_url || '',
         lessonRutubeUrl: row.lesson_rutube_url || '',
         lessonVideoEmbed: row.lesson_video_embed || '',
@@ -568,20 +593,43 @@ async function hydrateGardenMentorAssignmentsFromDb() {
     }
 }
 
-function persistGardenMentorLink(studentUserId, mentorUserId) {
+async function persistGardenMentorLink(studentUserId, mentorUserId) {
     if (!pvlPostgrestApi.isEnabled()) return;
     const sid = String(studentUserId || '').trim();
-    if (!isUuidString(sid)) return;
+    if (!isUuidString(sid)) {
+        try {
+            // eslint-disable-next-line no-console
+            console.warn('[PVL] mentor link: некорректный student_id (ожидается UUID):', studentUserId);
+        } catch { /* noop */ }
+        return;
+    }
     const rawMentor = mentorUserId != null && mentorUserId !== '' ? String(mentorUserId).trim() : null;
-    if (rawMentor != null && !isUuidString(rawMentor)) return;
-    fireAndForget(
-        () => pvlPostgrestApi.upsertGardenMentorLink({
+    if (rawMentor != null && !isUuidString(rawMentor)) {
+        try {
+            // eslint-disable-next-line no-console
+            console.warn('[PVL] mentor link: некорректный mentor_id (ожидается UUID):', mentorUserId);
+        } catch { /* noop */ }
+        return;
+    }
+    try {
+        await pvlPostgrestApi.upsertGardenMentorLink({
             student_id: sid,
             mentor_id: rawMentor,
             updated_at: new Date().toISOString(),
-        }),
-        { table: 'pvl_garden_mentor_links', endpoint: '/public.pvl_garden_mentor_links', id: sid },
-    );
+        });
+    } catch (error) {
+        try {
+            // eslint-disable-next-line no-console
+            console.warn('[PVL] mentor link: не сохранилось в БД:', error?.message || error);
+        } catch { /* noop */ }
+        logDbFallback({
+            endpoint: '/public.pvl_garden_mentor_links',
+            status: 'error',
+            table: 'pvl_garden_mentor_links',
+            id: sid,
+            error: String(error?.message || error || 'upsert failed'),
+        });
+    }
 }
 
 export async function syncPvlActorsFromGarden() {
@@ -2129,7 +2177,7 @@ export const adminApi = {
     getAdminContent(filters = {}) {
         return db.contentItems.filter((c) => (filters.status ? c.status === filters.status : true));
     },
-    createContentItem(payload) {
+    async createContentItem(payload) {
         const item = {
             id: newPvlPersistedEntityId(),
             status: CONTENT_STATUS.DRAFT,
@@ -2143,33 +2191,77 @@ export const adminApi = {
             updatedAt: nowIso(),
             ...payload,
         };
-        db.contentItems.unshift(item);
-        addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_content', 'content_item', item.id, 'Created content item', item);
-        fireAndForget(() => pvlPostgrestApi.upsertContentItem({
-            id: item.id,
-            ...contentItemToDbPayload(item),
-            created_by: uuidOrNull(item.createdBy),
-            created_at: item.createdAt,
-            updated_at: item.updatedAt,
-        }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: item.id });
-        return item;
+        if (!pvlPostgrestApi.isEnabled()) {
+            db.contentItems.unshift(item);
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_content', 'content_item', item.id, 'Created content item', item);
+            return item;
+        }
+        try {
+            const row = await pvlPostgrestApi.upsertContentItem({
+                id: item.id,
+                ...contentItemToDbPayload(item),
+                created_by: uuidOrNull(item.createdBy),
+                created_at: item.createdAt,
+                updated_at: item.updatedAt,
+            });
+            if (!row) throw new Error('PostgREST: пустой ответ при сохранении материала');
+            const merged = mapDbContentItemToRuntime(row);
+            db.contentItems.unshift(merged);
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_content', 'content_item', merged.id, 'Created content item', merged);
+            return merged;
+        } catch (error) {
+            try {
+                // eslint-disable-next-line no-console
+                console.warn('[PVL] createContentItem DB:', error?.message || error);
+            } catch { /* noop */ }
+            logDbFallback({
+                endpoint: '/public.pvl_content_items',
+                status: 'error',
+                table: 'pvl_content_items',
+                id: item.id,
+                error: String(error?.message || error || 'create failed'),
+            });
+            throw error;
+        }
     },
     getContentItemById(contentId) {
         return db.contentItems.find((x) => x.id === contentId) || null;
     },
-    updateContentItem(contentId, payload) {
+    async updateContentItem(contentId, payload) {
         const item = db.contentItems.find((c) => c.id === contentId);
         if (!item) return null;
+        const snapshot = { ...item };
         Object.assign(item, payload, { updatedAt: nowIso() });
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_content', 'content_item', contentId, 'Updated content item', payload);
-        fireAndForget(() => pvlPostgrestApi.updateContentItem(contentId, {
-            ...contentItemToDbPayload(item),
-            updated_by: uuidOrNull(item.updatedBy) || uuidOrNull(item.createdBy),
-            updated_at: item.updatedAt,
-        }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: contentId });
-        return item;
+        if (!pvlPostgrestApi.isEnabled()) return item;
+        try {
+            const row = await pvlPostgrestApi.updateContentItem(contentId, {
+                ...contentItemToDbPayload(item),
+                updated_by: uuidOrNull(item.updatedBy) || uuidOrNull(item.createdBy),
+                updated_at: item.updatedAt,
+            });
+            if (row) {
+                const mapped = mapDbContentItemToRuntime(row);
+                Object.assign(item, mapped);
+            }
+            return item;
+        } catch (error) {
+            Object.assign(item, snapshot);
+            try {
+                // eslint-disable-next-line no-console
+                console.warn('[PVL] updateContentItem DB:', error?.message || error);
+            } catch { /* noop */ }
+            logDbFallback({
+                endpoint: '/public.pvl_content_items',
+                status: 'error',
+                table: 'pvl_content_items',
+                id: contentId,
+                error: String(error?.message || error || 'update failed'),
+            });
+            throw error;
+        }
     },
-    duplicateContentItem(contentId) {
+    async duplicateContentItem(contentId) {
         const src = this.getContentItemById(contentId);
         if (!src) return null;
         const copy = {
@@ -2180,109 +2272,206 @@ export const adminApi = {
             createdAt: nowIso(),
             updatedAt: nowIso(),
         };
-        db.contentItems.unshift(copy);
-        addAuditEvent('u-adm-1', ROLES.ADMIN, 'duplicate_content', 'content_item', copy.id, 'Duplicated content item', { sourceId: contentId });
-        fireAndForget(() => pvlPostgrestApi.upsertContentItem({
-            id: copy.id,
-            ...contentItemToDbPayload(copy),
-            created_by: uuidOrNull(copy.createdBy),
-            created_at: copy.createdAt,
-            updated_at: copy.updatedAt,
-        }), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: copy.id });
-        return copy;
-    },
-    publishContentItem(contentId) {
-        const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.PUBLISHED });
-        if (item) {
-            const relatedPlacements = db.contentPlacements.filter((p) => (p.contentItemId || p.contentId) === contentId);
-            if (relatedPlacements.length === 0) {
-                this.createPlacement({
-                    contentItemId: contentId,
-                    targetSection: item.targetSection || 'library',
-                    targetRole: item.targetRole || 'both',
-                    cohortId: item.targetCohort || 'cohort-2026-1',
-                    targetCohort: item.targetCohort || 'cohort-2026-1',
-                    weekNumber: Number(item.weekNumber) || 0,
-                    moduleNumber: Number(item.moduleNumber) || 0,
-                    orderIndex: Number(item.orderIndex) || 999,
-                    isPublished: true,
-                });
-            } else if (!relatedPlacements.some((p) => p.isPublished !== false)) {
-                const first = relatedPlacements[0];
-                this.updatePlacement(first.id, { isPublished: true });
-            }
-            addAuditEvent('u-adm-1', ROLES.ADMIN, 'publish_content', 'content_item', contentId, 'Published content item', {});
-            addNotification('u-adm-1', ROLES.ADMIN, 'content_published', 'Материал опубликован', { contentId });
+        if (!pvlPostgrestApi.isEnabled()) {
+            db.contentItems.unshift(copy);
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'duplicate_content', 'content_item', copy.id, 'Duplicated content item', { sourceId: contentId });
+            return copy;
         }
+        try {
+            const row = await pvlPostgrestApi.upsertContentItem({
+                id: copy.id,
+                ...contentItemToDbPayload(copy),
+                created_by: uuidOrNull(copy.createdBy),
+                created_at: copy.createdAt,
+                updated_at: copy.updatedAt,
+            });
+            if (!row) throw new Error('PostgREST: пустой ответ при дублировании материала');
+            const merged = mapDbContentItemToRuntime(row);
+            db.contentItems.unshift(merged);
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'duplicate_content', 'content_item', merged.id, 'Duplicated content item', { sourceId: contentId });
+            return merged;
+        } catch (error) {
+            try {
+                // eslint-disable-next-line no-console
+                console.warn('[PVL] duplicateContentItem DB:', error?.message || error);
+            } catch { /* noop */ }
+            logDbFallback({
+                endpoint: '/public.pvl_content_items',
+                status: 'error',
+                table: 'pvl_content_items',
+                id: copy.id,
+                error: String(error?.message || error || 'duplicate failed'),
+            });
+            throw error;
+        }
+    },
+    /** Как в Саду: сначала await сохранения строки в PostgREST, затем размещение — иначе после F5 материала нет. */
+    async publishContentItem(contentId) {
+        const item = await this.updateContentItem(contentId, { status: CONTENT_STATUS.PUBLISHED });
+        if (!item) return null;
+        const relatedPlacements = db.contentPlacements.filter((p) => (p.contentItemId || p.contentId) === contentId);
+        if (relatedPlacements.length === 0) {
+            await this.createPlacement({
+                contentItemId: contentId,
+                targetSection: item.targetSection || 'library',
+                targetRole: item.targetRole || 'both',
+                cohortId: item.targetCohort || 'cohort-2026-1',
+                targetCohort: item.targetCohort || 'cohort-2026-1',
+                weekNumber: Number(item.weekNumber) || 0,
+                moduleNumber: Number(item.moduleNumber) || 0,
+                orderIndex: Number(item.orderIndex) || 999,
+                isPublished: true,
+            });
+        } else if (!relatedPlacements.some((p) => p.isPublished !== false)) {
+            const first = relatedPlacements[0];
+            await this.updatePlacement(first.id, { isPublished: true });
+        }
+        addAuditEvent('u-adm-1', ROLES.ADMIN, 'publish_content', 'content_item', contentId, 'Published content item', {});
+        addNotification('u-adm-1', ROLES.ADMIN, 'content_published', 'Материал опубликован', { contentId });
         return item;
     },
-    archiveContentItem(contentId) {
-        const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.ARCHIVED });
+    async archiveContentItem(contentId) {
+        const item = await this.updateContentItem(contentId, { status: CONTENT_STATUS.ARCHIVED });
         if (item) addAuditEvent('u-adm-1', ROLES.ADMIN, 'archive_content', 'content_item', contentId, 'Archived content item', {});
         return item;
     },
-    deleteContentItem(contentId) {
+    async deleteContentItem(contentId) {
         const idx = db.contentItems.findIndex((c) => c.id === contentId);
         if (idx < 0) return false;
+        if (pvlPostgrestApi.isEnabled()) {
+            try {
+                await pvlPostgrestApi.deleteContentItem(contentId);
+            } catch (error) {
+                try {
+                    // eslint-disable-next-line no-console
+                    console.warn('[PVL] deleteContentItem DB:', error?.message || error);
+                } catch { /* noop */ }
+                logDbFallback({
+                    endpoint: '/public.pvl_content_items',
+                    status: 'error',
+                    table: 'pvl_content_items',
+                    id: contentId,
+                    error: String(error?.message || error || 'delete failed'),
+                });
+                throw error;
+            }
+        }
         db.contentItems.splice(idx, 1);
         db.contentPlacements = db.contentPlacements.filter((p) => (p.contentItemId || p.contentId) !== contentId);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'delete_content', 'content_item', contentId, 'Deleted content item', {});
-        fireAndForget(() => pvlPostgrestApi.deleteContentItem(contentId), { table: 'pvl_content_items', endpoint: '/public.pvl_content_items', id: contentId });
         return true;
     },
-    unarchiveContentItem(contentId) {
+    async unarchiveContentItem(contentId) {
         return this.updateContentItem(contentId, { status: CONTENT_STATUS.DRAFT });
     },
-    createPlacement(payload) {
+    async createPlacement(payload) {
         const placement = { id: newPvlPersistedEntityId(), isPublished: true, createdAt: nowIso(), updatedAt: nowIso(), ...payload };
-        db.contentPlacements.push(placement);
-        addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_placement', 'content_placement', placement.id, 'Assigned content placement', payload);
-        fireAndForget(() => pvlPostgrestApi.upsertPlacement({
-            id: placement.id,
-            content_item_id: placement.contentItemId || placement.contentId,
-            target_role: placement.targetRole || 'both',
-            target_section: placement.targetSection || 'library',
-            cohort_id: seedCohortIdToSqlUuid(placement.cohortId || placement.targetCohort),
-            module_number: Number(placement.moduleNumber ?? placement.weekNumber ?? 0),
-            week_number: Number(placement.weekNumber ?? placement.moduleNumber ?? 0),
-            order_index: Number(placement.orderIndex ?? 0),
-            is_published: placement.isPublished !== false,
-            created_at: placement.createdAt,
-            updated_at: placement.updatedAt,
-        }), { table: 'pvl_content_placements', endpoint: '/public.pvl_content_placements', id: placement.id });
-        return placement;
+        if (!pvlPostgrestApi.isEnabled()) {
+            db.contentPlacements.push(placement);
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_placement', 'content_placement', placement.id, 'Assigned content placement', payload);
+            return placement;
+        }
+        try {
+            const row = await pvlPostgrestApi.upsertPlacement({
+                id: placement.id,
+                content_item_id: placement.contentItemId || placement.contentId,
+                target_role: placement.targetRole || 'both',
+                target_section: placement.targetSection || 'library',
+                cohort_id: seedCohortIdToSqlUuid(placement.cohortId || placement.targetCohort),
+                module_number: Number(placement.moduleNumber ?? placement.weekNumber ?? 0),
+                week_number: Number(placement.weekNumber ?? placement.moduleNumber ?? 0),
+                order_index: Number(placement.orderIndex ?? 0),
+                is_published: placement.isPublished !== false,
+                created_at: placement.createdAt,
+                updated_at: placement.updatedAt,
+            });
+            if (!row) throw new Error('PostgREST: пустой ответ при сохранении размещения');
+            const merged = mapDbPlacementToRuntime(row);
+            db.contentPlacements.push(merged);
+            addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_placement', 'content_placement', merged.id, 'Assigned content placement', payload);
+            return merged;
+        } catch (error) {
+            try {
+                // eslint-disable-next-line no-console
+                console.warn('[PVL] createPlacement DB:', error?.message || error);
+            } catch { /* noop */ }
+            logDbFallback({
+                endpoint: '/public.pvl_content_placements',
+                status: 'error',
+                table: 'pvl_content_placements',
+                id: placement.id,
+                error: String(error?.message || error || 'placement failed'),
+            });
+            throw error;
+        }
     },
     assignContentPlacement(payload) {
         return this.createPlacement(payload);
     },
-    updatePlacement(placementId, payload) {
+    async updatePlacement(placementId, payload) {
         const p = db.contentPlacements.find((x) => x.id === placementId);
         if (!p) return null;
+        const snapshot = { ...p };
         Object.assign(p, payload, { updatedAt: nowIso() });
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_placement', 'content_placement', placementId, 'Updated content placement', payload);
-        fireAndForget(() => pvlPostgrestApi.updatePlacement(placementId, {
-            target_role: p.targetRole || 'both',
-            target_section: p.targetSection || 'library',
-            cohort_id: seedCohortIdToSqlUuid(p.cohortId || p.targetCohort),
-            module_number: Number(p.moduleNumber ?? p.weekNumber ?? 0),
-            week_number: Number(p.weekNumber ?? p.moduleNumber ?? 0),
-            order_index: Number(p.orderIndex ?? 0),
-            is_published: p.isPublished !== false,
-            updated_at: p.updatedAt,
-        }), { table: 'pvl_content_placements', endpoint: '/public.pvl_content_placements', id: placementId });
-        return p;
+        if (!pvlPostgrestApi.isEnabled()) return p;
+        try {
+            const row = await pvlPostgrestApi.updatePlacement(placementId, {
+                target_role: p.targetRole || 'both',
+                target_section: p.targetSection || 'library',
+                cohort_id: seedCohortIdToSqlUuid(p.cohortId || p.targetCohort),
+                module_number: Number(p.moduleNumber ?? p.weekNumber ?? 0),
+                week_number: Number(p.weekNumber ?? p.moduleNumber ?? 0),
+                order_index: Number(p.orderIndex ?? 0),
+                is_published: p.isPublished !== false,
+                updated_at: p.updatedAt,
+            });
+            if (row) Object.assign(p, mapDbPlacementToRuntime(row));
+            return p;
+        } catch (error) {
+            Object.assign(p, snapshot);
+            try {
+                // eslint-disable-next-line no-console
+                console.warn('[PVL] updatePlacement DB:', error?.message || error);
+            } catch { /* noop */ }
+            logDbFallback({
+                endpoint: '/public.pvl_content_placements',
+                status: 'error',
+                table: 'pvl_content_placements',
+                id: placementId,
+                error: String(error?.message || error || 'update placement failed'),
+            });
+            throw error;
+        }
     },
-    unpublishContentItem(contentId) {
-        const item = this.updateContentItem(contentId, { status: CONTENT_STATUS.UNPUBLISHED });
+    async unpublishContentItem(contentId) {
+        const item = await this.updateContentItem(contentId, { status: CONTENT_STATUS.UNPUBLISHED });
         if (item) addAuditEvent('u-adm-1', ROLES.ADMIN, 'unpublish_content', 'content_item', contentId, 'Unpublished content item', {});
         return item;
     },
-    deletePlacement(placementId) {
+    async deletePlacement(placementId) {
         const idx = db.contentPlacements.findIndex((p) => p.id === placementId);
         if (idx < 0) return false;
+        if (pvlPostgrestApi.isEnabled()) {
+            try {
+                await pvlPostgrestApi.deletePlacement(placementId);
+            } catch (error) {
+                try {
+                    // eslint-disable-next-line no-console
+                    console.warn('[PVL] deletePlacement DB:', error?.message || error);
+                } catch { /* noop */ }
+                logDbFallback({
+                    endpoint: '/public.pvl_content_placements',
+                    status: 'error',
+                    table: 'pvl_content_placements',
+                    id: placementId,
+                    error: String(error?.message || error || 'delete placement failed'),
+                });
+                throw error;
+            }
+        }
         db.contentPlacements.splice(idx, 1);
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'remove_placement', 'content_placement', placementId, 'Removed content placement', {});
-        fireAndForget(() => pvlPostgrestApi.deletePlacement(placementId), { table: 'pvl_content_placements', endpoint: '/public.pvl_content_placements', id: placementId });
         return true;
     },
     removePlacement(placementId) {
@@ -2305,65 +2494,65 @@ export const adminApi = {
     getAdminMentors() {
         return db.mentorProfiles;
     },
-    addMenteeToMentor(mentorUserId, studentUserId) {
-        const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
+    async addMenteeToMentor(mentorUserId, studentUserId) {
+        const mentor = db.mentorProfiles.find((m) => String(m.userId) === String(mentorUserId) || String(m.id) === String(mentorUserId));
         if (!mentor || !studentUserId) return null;
         const next = new Set(Array.isArray(mentor.menteeIds) ? mentor.menteeIds : []);
         next.add(studentUserId);
         mentor.menteeIds = Array.from(next);
         mentor.updatedAt = nowIso();
-        const profile = db.studentProfiles.find((s) => s.userId === studentUserId);
+        const profile = db.studentProfiles.find((s) => String(s.userId) === String(studentUserId));
         if (profile) {
             profile.mentorId = mentor.userId || mentorUserId;
             profile.updatedAt = nowIso();
         }
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_mentee_to_mentor', 'mentor_profile', mentor.userId || mentor.id, 'Assigned mentee to mentor', { studentUserId });
-        persistGardenMentorLink(studentUserId, mentor.userId || mentorUserId);
+        await persistGardenMentorLink(studentUserId, mentor.userId || mentorUserId);
         return mentor;
     },
-    removeMenteeFromMentor(mentorUserId, studentUserId) {
-        const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
+    async removeMenteeFromMentor(mentorUserId, studentUserId) {
+        const mentor = db.mentorProfiles.find((m) => String(m.userId) === String(mentorUserId) || String(m.id) === String(mentorUserId));
         if (!mentor || !studentUserId) return null;
-        mentor.menteeIds = (mentor.menteeIds || []).filter((id) => id !== studentUserId);
+        mentor.menteeIds = (mentor.menteeIds || []).filter((id) => String(id) !== String(studentUserId));
         mentor.updatedAt = nowIso();
         const resolvedMentorUserId = mentor.userId || mentorUserId;
-        const profile = db.studentProfiles.find((p) => p.userId === studentUserId);
-        if (profile && profile.mentorId === resolvedMentorUserId) {
+        const profile = db.studentProfiles.find((p) => String(p.userId) === String(studentUserId));
+        if (profile && String(profile.mentorId) === String(resolvedMentorUserId)) {
             profile.mentorId = null;
             profile.updatedAt = nowIso();
         }
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'remove_mentee_from_mentor', 'mentor_profile', mentor.userId || mentor.id, 'Removed mentee from mentor', { studentUserId });
-        const spAfter = db.studentProfiles.find((p) => p.userId === studentUserId);
-        persistGardenMentorLink(studentUserId, spAfter?.mentorId || null);
+        const spAfter = db.studentProfiles.find((p) => String(p.userId) === String(studentUserId));
+        await persistGardenMentorLink(studentUserId, spAfter?.mentorId || null);
         return mentor;
     },
     /** Одна ученица — один ментор: синхронизирует mentorProfiles.menteeIds и studentProfiles.mentorId */
-    assignStudentMentor(studentUserId, mentorUserId) {
-        const profile = db.studentProfiles.find((p) => p.userId === studentUserId);
+    async assignStudentMentor(studentUserId, mentorUserId) {
+        const profile = db.studentProfiles.find((p) => String(p.userId) === String(studentUserId));
         if (!profile) return null;
         for (const m of db.mentorProfiles || []) {
             if (!Array.isArray(m.menteeIds)) continue;
-            if (!m.menteeIds.includes(studentUserId)) continue;
-            m.menteeIds = m.menteeIds.filter((id) => id !== studentUserId);
+            if (!m.menteeIds.some((id) => String(id) === String(studentUserId))) continue;
+            m.menteeIds = m.menteeIds.filter((id) => String(id) !== String(studentUserId));
             m.updatedAt = nowIso();
         }
         if (!mentorUserId) {
             profile.mentorId = null;
             profile.updatedAt = nowIso();
             addAuditEvent('u-adm-1', ROLES.ADMIN, 'clear_student_mentor', 'student_profile', studentUserId, 'Cleared mentor assignment', {});
-            persistGardenMentorLink(studentUserId, null);
+            await persistGardenMentorLink(studentUserId, null);
             return profile;
         }
-        const mentor = db.mentorProfiles.find((m) => m.userId === mentorUserId || m.id === mentorUserId);
+        const mentor = db.mentorProfiles.find((m) => String(m.userId) === String(mentorUserId) || String(m.id) === String(mentorUserId));
         if (!mentor) return null;
-        const next = new Set(mentor.menteeIds || []);
-        next.add(studentUserId);
+        const next = new Set((mentor.menteeIds || []).map((id) => String(id)));
+        next.add(String(studentUserId));
         mentor.menteeIds = Array.from(next);
         mentor.updatedAt = nowIso();
         profile.mentorId = mentor.userId || mentorUserId;
         profile.updatedAt = nowIso();
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'assign_student_mentor', 'student_profile', studentUserId, 'Assigned mentor', { mentorUserId: profile.mentorId });
-        persistGardenMentorLink(studentUserId, profile.mentorId);
+        await persistGardenMentorLink(studentUserId, profile.mentorId);
         return profile;
     },
     getAdminCohorts() {

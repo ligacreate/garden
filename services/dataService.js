@@ -1170,6 +1170,9 @@ class RemoteApiService {
             });
             profile = await this._fetchProfile(authUser.id);
         }
+        if (profile?.id) {
+            profile = await this._ensureDefaultApplicantRoleInDb(profile);
+        }
 
         return this._assertActive(profile || authUser);
     }
@@ -1305,6 +1308,9 @@ class RemoteApiService {
             await this._ensurePostgrestUser({ ...data.user, ...authUser });
             profile = await this._fetchProfile(authUser.id);
         }
+        if (profile?.id) {
+            profile = await this._ensureDefaultApplicantRoleInDb(profile);
+        }
         return this._assertActive(profile || authUser);
     }
 
@@ -1361,6 +1367,29 @@ class RemoteApiService {
 
         if (!data || data.length === 0) return null;
         return this._normalizeProfile(data[0]);
+    }
+
+    /**
+     * Пустой `profiles.role` в БД: в Саду по смыслу это абитуриент (см. регистрацию и админку),
+     * но PostgREST отдаёт null → ПВЛ и фильтры не видят людей. Патчим при загрузке сессии;
+     * массово — миграция `migrations/22_profiles_default_applicant_role.sql`.
+     */
+    async _ensureDefaultApplicantRoleInDb(profile) {
+        if (!profile?.id) return profile;
+        const raw = profile.role;
+        if (raw != null && String(raw).trim() !== '') return profile;
+        try {
+            const { data } = await postgrestFetch('profiles', { id: `eq.${profile.id}` }, {
+                method: 'PATCH',
+                body: { role: ROLES.APPLICANT },
+                returnRepresentation: true
+            });
+            const row = Array.isArray(data) && data[0] ? data[0] : null;
+            if (row) return this._normalizeProfile(row);
+        } catch (e) {
+            console.warn('Default applicant role patch failed:', e);
+        }
+        return { ...profile, role: ROLES.APPLICANT };
     }
 
     async getUsers() {

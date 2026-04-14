@@ -427,15 +427,33 @@ export async function syncPvlActorsFromGarden() {
         }
         if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
 
-        /** Только поле role — не подмешивать status ('active'), иначе абитуриенты не матчятся. */
+        /**
+         * Только поле `role` из profiles (не status: 'active').
+         * Важно: в БД у части пользователей `role` пустой — в Саду дефолт «абитуриент»
+         * (см. RemoteApiService `_ensurePostgrestUser`, LocalStorageService), но PostgREST
+         * отдаёт null, и только явные «mentor» матчились. Пустая роль = абитуриент для ПВЛ.
+         */
         const roleOnly = (u) => String(u?.role ?? '').trim().toLowerCase();
+        const roleLabelLower = (u) => String(u?.roleLabel || u?.role_title || '').trim().toLowerCase();
+        const explicitNonApplicantRoles = new Set([
+            GARDEN_ROLES.MENTOR,
+            GARDEN_ROLES.INTERN,
+            GARDEN_ROLES.LEADER,
+            GARDEN_ROLES.ADMIN,
+            GARDEN_ROLES.CURATOR,
+            'mentor', 'intern', 'leader', 'admin', 'curator',
+            'ментор', 'стажер', 'стажёр', 'ведущая', 'администратор', 'куратор',
+        ]);
         const isGardenApplicant = (u) => {
             const r = roleOnly(u);
+            if (r && explicitNonApplicantRoles.has(r)) return false;
             if (r === GARDEN_ROLES.APPLICANT) return true;
             if (r === 'абитуриент' || r === 'абитуриентка') return true;
-            const label = String(u?.roleLabel || u?.role_title || '').trim().toLowerCase();
-            return label.includes('битуриент');
+            if (roleLabelLower(u).includes('битуриент')) return true;
+            if (!r) return true;
+            return false;
         };
+
         const mentors = users.filter((u) => roleOnly(u) === GARDEN_ROLES.MENTOR);
         const applicants = users.filter(isGardenApplicant);
 

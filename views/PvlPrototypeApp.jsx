@@ -5513,6 +5513,19 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
 function AdminStudents({ navigate, route, refreshKey = 0 }) {
     const [cohortId, setCohortId] = useState('all');
     const [listTick, setListTick] = useState(0);
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                await syncPvlActorsFromGarden();
+            } finally {
+                if (!cancelled) setListTick((t) => t + 1);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
     const cohorts = pvlDomainApi.adminApi.getAdminCohorts();
     const mentorOptions = useMemo(() => (
         pvlDomainApi.adminApi.getAdminMentors().map((mp) => ({

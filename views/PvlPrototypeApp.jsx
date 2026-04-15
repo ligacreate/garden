@@ -38,7 +38,8 @@ import {
     normalizeMaterialHtml,
     pvlMaterialBodyClass,
 } from './pvlLibraryMaterialShared';
-import { markdownToPvlHtml } from '../utils/pvlMarkdownImport';
+import { parsePvlImportedMarkdownDoc } from '../utils/pvlMarkdownImport';
+import { pvlMaterialCardExcerpt, pvlHtmlToPlainText } from '../utils/pvlPlainText';
 import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
 import {
     PVL_CERT_CONDITIONS,
@@ -1147,6 +1148,16 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
  * Если уроков нет — возвращает PVL_PLATFORM_MODULES с пустыми items (заглушка).
  * Поле moduleNumber из placement маппится на id модуля (1=Пиши, 2=Веди, 3=Люби; 0 → 1).
  */
+/** Временная фильтрация явного QA/CI-мусора в названиях уроков (данные потом чистятся в БД). */
+function isPvlNoiseTrackerLessonTitle(title) {
+    const t = String(title || '').trim();
+    if (!t) return false;
+    if (/^check\s+lessons\b/i.test(t)) return true;
+    if (/^\[(?:ci|smoke)\]\s*/i.test(t)) return true;
+    if (/\bsmoke\s+test\b/i.test(t)) return true;
+    return false;
+}
+
 function buildTrackerModulesFromCms(cmsItems = [], cmsPlacements = []) {
     const lessonPlacements = cmsPlacements
         .filter((p) => p.targetSection === 'lessons' && p.isPublished !== false)
@@ -1159,7 +1170,8 @@ function buildTrackerModulesFromCms(cmsItems = [], cmsPlacements = []) {
         if (!byModule[modId]) byModule[modId] = [];
         const item = cmsItems.find((x) => x.id === (p.contentItemId || p.contentId));
         if (!item) return;
-        const tagMap = { video: 'video', pdf: 'pdf', quiz: 'quiz', text: 'task', audio: 'task' };
+        if (isPvlNoiseTrackerLessonTitle(item.title)) return;
+        const tagMap = { video: 'video', pdf: 'pdf', quiz: 'quiz', text: 'task', audio: 'task', template: 'task', checklist: 'quiz' };
         byModule[modId].push({
             text: item.title || `Урок ${byModule[modId].length + 1}`,
             tag: tagMap[item.contentType] || 'task',
@@ -1172,6 +1184,19 @@ function buildTrackerModulesFromCms(cmsItems = [], cmsPlacements = []) {
         ...mod,
         items: byModule[mod.id] || [],
     }));
+}
+
+/** Явный мусор предпросмотра учительской (данные потом чистятся в БД). */
+function isPvlJunkLibraryPreviewItem(item) {
+    const title = String(item?.title || '').trim();
+    const t = title.toLowerCase();
+    if (!title) return true;
+    if (/^<\s*[a-z]/i.test(title)) return true;
+    if (/^check\s+lessons\b/i.test(t)) return true;
+    if (/^\[(?:ci|smoke)\]/i.test(t)) return true;
+    if (/\bsmoke\s+test\b/i.test(t)) return true;
+    if (/test\s+card/i.test(t)) return true;
+    return false;
 }
 
 function AdminContentSectionPreview({
@@ -1202,16 +1227,31 @@ function AdminContentSectionPreview({
     }
 
     if (section === 'library') {
+        const libraryPreview = previewItems.filter((i) => !isPvlJunkLibraryPreviewItem(i));
+        if (!libraryPreview.length) {
+            return (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                    Нет материалов для предпросмотра (все отфильтрованы как служебные заглушки или раздел пуст).
+                </div>
+            );
+        }
         return (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {previewItems.map((i) => (
+                {libraryPreview.map((i) => (
                     <article key={i.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         {i.coverImage ? <img src={i.coverImage} alt="" className="h-28 w-full object-cover" /> : null}
                         <div className="p-3">
                             <div className="text-sm font-medium text-slate-800 line-clamp-2">{i.title}</div>
-                            <div className="mt-1 text-xs text-slate-500 line-clamp-2">{i.shortDescription || i.description || 'Описание появится позже.'}</div>
-                            <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">
-                                {CONTENT_TYPE_LABEL[i.contentType] || i.contentType || 'Материал'}
+                            <div className="mt-1 text-xs text-slate-500 line-clamp-2">{pvlMaterialCardExcerpt(i)}</div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">
+                                    {CONTENT_TYPE_LABEL[i.contentType] || i.contentType || 'Материал'}
+                                </span>
+                                {(i.categoryTitle || i.libraryCategoryTitle) ? (
+                                    <span className="inline-flex rounded-full border border-emerald-100 bg-emerald-50/80 px-2 py-0.5 text-[10px] text-emerald-900">
+                                        {i.categoryTitle || i.libraryCategoryTitle}
+                                    </span>
+                                ) : null}
                             </div>
                         </div>
                     </article>
@@ -1226,8 +1266,8 @@ function AdminContentSectionPreview({
                 {previewItems.map((i) => (
                     <article key={i.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                         <div className="text-sm font-semibold text-slate-800">{i.title}</div>
-                        <div className="mt-1 text-xs text-slate-600 line-clamp-3 whitespace-pre-line">
-                            {String(i.fullDescription || i.description || i.shortDescription || 'Определение добавляется в карточку термина.').replace(/<[^>]*>/g, ' ')}
+                        <div className="mt-1 text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                            {pvlHtmlToPlainText(String(i.fullDescription || i.description || i.shortDescription || 'Определение добавляется в карточку термина.'), 280)}
                         </div>
                     </article>
                 ))}
@@ -1275,7 +1315,7 @@ function GardenContentCards({ items }) {
             {items.map((i) => (
                 <article key={i.id} className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                     <h4 className="text-sm font-medium text-slate-800">{i.title}</h4>
-                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed whitespace-pre-line">{i.shortDescription || i.description || 'Описание появится позже.'}</p>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed whitespace-pre-line">{pvlMaterialCardExcerpt(i)}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-100">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</span>
                         {i.estimatedDuration ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100">{i.estimatedDuration}</span> : null}
@@ -1322,33 +1362,6 @@ function escapeHtml(source = '') {
         .replaceAll("'", '&#39;');
 }
 
-function parseImportedPvlDoc(text = '') {
-    const src = String(text || '');
-    const lines = src.replace(/\r\n/g, '\n').split('\n');
-    let title = '';
-    const headingLine = lines
-        .map((x) => String(x || '').trim())
-        .find((x) => /^#{1,6}\s+/.test(x));
-    if (headingLine) {
-        title = headingLine.replace(/^#{1,6}\s*/, '').trim();
-    }
-    for (const raw of lines) {
-        if (title) break;
-        const line = String(raw || '').trim();
-        if (!line) continue;
-        title = line.replace(/^#\s*/, '').trim();
-        break;
-    }
-    const summaryLine = lines
-        .map((x) => String(x || '').trim())
-        .find((x) => x && !x.startsWith('#') && !x.startsWith('-') && !x.startsWith('*')) || '';
-    return {
-        title: title || 'Материал из документа',
-        summary: summaryLine.slice(0, 180),
-        html: markdownToPvlHtml(src),
-    };
-}
-
 function normalizeImportedTitle(raw = '') {
     const cleared = String(raw || '')
         .replace(/^#\s*/, '')
@@ -1363,7 +1376,7 @@ function normalizeImportedTitle(raw = '') {
 }
 
 function parseImportedPvlDocWithFileName(text = '', fileName = '') {
-    const parsed = parseImportedPvlDoc(text);
+    const parsed = parsePvlImportedMarkdownDoc(text);
     const fromFileName = normalizeImportedTitle(fileName);
     const fromDoc = normalizeImportedTitle(parsed.title);
     return {
@@ -2943,7 +2956,6 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
             <StudentCourseTracker
                 studentId={studentId}
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
-                navigate={navigate}
                 routePrefix={routePrefix}
             />
         );
@@ -2968,7 +2980,6 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
             <StudentCourseTracker
                 studentId={studentId}
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
-                navigate={navigate}
                 routePrefix={routePrefix}
             />
         );
@@ -3548,7 +3559,6 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
             <StudentCourseTracker
                 studentId={mentorMirrorStudentId}
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
-                navigate={navigate}
                 routePrefix="/mentor"
             />
         );
@@ -4221,7 +4231,12 @@ function AdminContentItemScreen({
             fullDescriptionHtml: item.fullDescription || item.description || '',
             contentType: item.contentType || 'text',
             targetSection: item.targetSection || 'library',
-            lessonKind: item.lessonKind || (item.targetSection === 'lessons' && item.contentType === 'checklist' ? 'quiz' : 'text_video'),
+            lessonKind: item.lessonKind
+                || (item.targetSection === 'lessons' && item.contentType === 'checklist'
+                    ? 'quiz'
+                    : item.targetSection === 'lessons' && item.contentType === 'template'
+                        ? 'homework'
+                        : 'text_video'),
             lessonQuiz: normalizeLessonQuiz(item.lessonQuiz),
             lessonHomework: normalizeLessonHomework(item.lessonHomework),
             lessonVideoUrl: item.lessonVideoUrl || '',
@@ -4254,12 +4269,21 @@ function AdminContentItemScreen({
         const normalizedQuiz = normalizeLessonQuiz(editForm.lessonQuiz);
         const videoSummaryMode = (editForm.targetSection === 'lessons' && editForm.lessonKind === 'text_video')
             || (editForm.targetSection === 'library' && editForm.contentType === 'video');
+        const normalizedContentType = editForm.targetSection === 'lessons'
+            ? (editForm.lessonKind === 'homework'
+                ? 'template'
+                : editForm.lessonKind === 'quiz'
+                    ? 'checklist'
+                    : editForm.lessonKind === 'text_video'
+                        ? (editForm.contentType === 'text' ? 'text' : 'video')
+                        : editForm.contentType)
+            : editForm.contentType;
         const payload = {
             title: editForm.title.trim(),
             shortDescription: editForm.shortDescription,
             fullDescription: editForm.fullDescriptionHtml,
             description: editForm.fullDescriptionHtml,
-            contentType: editForm.contentType,
+            contentType: normalizedContentType,
             targetSection: editForm.targetSection,
             lessonKind: editForm.lessonKind,
             lessonQuiz: editForm.targetSection === 'lessons' && editForm.lessonKind === 'quiz' ? normalizedQuiz : undefined,
@@ -5178,7 +5202,8 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             const parsed = parseImportedPvlDocWithFileName(text, file.name);
             setDraft((d) => ({
                 ...d,
-                title: d.title || parsed.title,
+                title: parsed.title,
+                shortDescription: parsed.summary || d.shortDescription,
                 fullDescriptionHtml: parsed.html,
                 lessonTextBody: d.targetSection === 'lessons' && d.lessonKind === 'text_video' ? parsed.html : d.lessonTextBody,
                 lessonHomeworkPrompt: d.targetSection === 'lessons' && d.lessonKind === 'homework' ? parsed.html : d.lessonHomeworkPrompt,
@@ -5646,7 +5671,43 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 </span>
                                 <div className="min-w-0">
                                     <div className="text-sm font-medium text-slate-800">{i.title}</div>
-                                    <div className="text-xs text-slate-500 mt-0.5">{labelTargetSection(i.targetSection)} · {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole} · модуль {clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)} · размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}</div>
+                                    <div className="text-xs text-slate-500 mt-0.5">
+                                        {labelTargetSection(i.targetSection)}
+                                        {' · '}
+                                        {TARGET_ROLE_LABELS[i.targetRole] || i.targetRole}
+                                        {i.targetSection === 'library' ? (
+                                            <>
+                                                {' · '}
+                                                <span className="text-slate-600">{i.categoryTitle || i.libraryCategoryTitle || 'Без категории'}</span>
+                                                {i.targetCohort ? (
+                                                    <>
+                                                        {' · '}
+                                                        поток <span className="font-medium text-slate-600">{i.targetCohort}</span>
+                                                    </>
+                                                ) : null}
+                                            </>
+                                        ) : i.targetSection === 'glossary' ? (
+                                            i.targetCohort ? (
+                                                <>
+                                                    {' · '}
+                                                    поток <span className="font-medium text-slate-600">{i.targetCohort}</span>
+                                                </>
+                                            ) : null
+                                        ) : (
+                                            <>
+                                                {' · '}
+                                                модуль {clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)}
+                                                {i.targetCohort ? (
+                                                    <>
+                                                        {' · '}
+                                                        поток <span className="font-medium text-slate-600">{i.targetCohort}</span>
+                                                    </>
+                                                ) : null}
+                                            </>
+                                        )}
+                                        {' · '}
+                                        размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex flex-wrap gap-2">

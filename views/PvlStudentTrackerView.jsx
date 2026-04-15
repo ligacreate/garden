@@ -35,20 +35,6 @@ function tagPillClass(tag) {
     return 'bg-slate-50 text-slate-600 border-slate-100';
 }
 
-function stepLessonStatus(isDone, tag) {
-    const t = tag || 'task';
-    if (t === 'video' || t === 'pdf') {
-        if (isDone) return 'просмотрено';
-        return 'не начато';
-    }
-    if (t === 'task' || t === 'quiz') {
-        if (isDone) return 'выполнено';
-        return 'не начато';
-    }
-    if (isDone) return 'просмотрено';
-    return 'не начато';
-}
-
 function trackerStepKey(moduleId, item, index) {
     const extId = String(item?.id || '').trim();
     if (extId) return `sid:${extId}`;
@@ -58,22 +44,6 @@ function trackerStepKey(moduleId, item, index) {
         .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-+|-+$/g, '');
     return `m:${moduleId}:s:${textSlug || index}`;
-}
-
-function TrackerStatusBadge({ children }) {
-    const s = String(children || '').toLowerCase();
-    let cls = 'bg-slate-100 text-slate-700 border-slate-200';
-    if (s.includes('просмотрено') || s === 'принято' || s === 'выполнено') cls = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-    else if (s.includes('проверено') || s.includes('оценку')) cls = 'bg-indigo-50 text-indigo-900 border-indigo-200';
-    else if (s.includes('проверке') || s.includes('отправлено')) cls = 'bg-sky-50 text-sky-900 border-sky-200';
-    else if (s.includes('доработке')) cls = 'bg-amber-50 text-amber-900 border-amber-200';
-    else if (s.includes('просроч')) cls = 'bg-rose-50 text-rose-800 border-rose-200';
-    else if (s.includes('работе') || s.includes('черновик')) cls = 'bg-violet-50 text-violet-900 border-violet-200';
-    return (
-        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cls}`}>
-            {children}
-        </span>
-    );
 }
 
 function computePlatformStepStats(checked) {
@@ -261,7 +231,6 @@ export function PlatformCourseModulesGrid({
                                     const key = trackerStepKey(mod.id, item, i);
                                     const isDone = !!checked[key];
                                     const tag = item.tag || 'task';
-                                    const stLabel = stepLessonStatus(isDone, tag);
                                     const quizCard = tag === 'quiz';
                                     return (
                                         <li key={key}>
@@ -282,6 +251,7 @@ export function PlatformCourseModulesGrid({
                                             >
                                                 <span
                                                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
+                                                    aria-label={isDone ? 'Шаг отмечен' : 'Шаг не отмечен'}
                                                 >
                                                     {isDone ? '✓' : ''}
                                                 </span>
@@ -289,7 +259,6 @@ export function PlatformCourseModulesGrid({
                                                 <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
                                                     {tagLabelFor(tag)}
                                                 </span>
-                                                <TrackerStatusBadge>{stLabel}</TrackerStatusBadge>
                                             </button>
                                         </li>
                                     );
@@ -311,7 +280,6 @@ export function PlatformCourseModulesGrid({
 export function StudentCourseTracker({
     studentId,
     modules: modulesProp = null,
-    navigate = null,
     routePrefix = '/student',
 }) {
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
@@ -353,7 +321,6 @@ export function StudentCourseTracker({
         ? moduleOrderedSteps[activeModuleStepIndex + 1]
         : null;
     const activeTagLabel = activeStep ? (PVL_TRACKER_TAG_LABEL[activeStep.item?.tag] || activeStep.item?.tag || 'материал') : 'материал';
-    const activeStatus = activeStep ? stepLessonStatus(!!checked[activeStep.key], activeStep.item?.tag) : '';
     const firstStepKeyInActiveModule = activeStep
         ? (orderedSteps.find((s) => s.module?.id === activeStep.module?.id)?.key || '')
         : '';
@@ -432,7 +399,8 @@ export function StudentCourseTracker({
                             <div className="text-[10px] uppercase tracking-wider text-slate-400">Материал</div>
                             <h3 className="font-display text-2xl text-slate-800 mt-1">{activeStep.item?.text}</h3>
                             <p className="text-xs text-slate-500 mt-2">
-                                {activeStep.module?.title} · {activeTagLabel} · {linkedItem?.completed ? 'пройдено' : activeStatus}
+                                {activeStep.module?.title} · {activeTagLabel}
+                                {linkedItem?.completed || (activeStep.key && checked[activeStep.key]) ? ' · пройдено' : ''}
                             </p>
                             {contentItemId && !linkedItem ? (
                                 <div className="mt-4 text-sm text-amber-800 leading-relaxed rounded-xl border border-amber-200 bg-amber-50/60 p-4">
@@ -447,17 +415,6 @@ export function StudentCourseTracker({
                                             : 'mt-4 max-h-[min(70vh,640px)] overflow-y-auto pr-1'
                                     }
                                 >
-                                    {contentItemId && navigate ? (
-                                        <div className="mb-3 flex flex-wrap gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => navigate(`${routePrefix}/library/${contentItemId}`)}
-                                                className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-900 hover:bg-emerald-100"
-                                            >
-                                                Открыть урок полностью (как в библиотеке)
-                                            </button>
-                                        </div>
-                                    ) : null}
                                     <PvlLibraryMaterialBody
                                         key={linkedItem.id}
                                         variant="tracker"

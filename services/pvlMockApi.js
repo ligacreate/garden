@@ -176,6 +176,31 @@ function newPvlPersistedEntityId() {
     return `pvl-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
+/** Согласовано с CHECK pvl_content_items_content_type_check (миграция 002_pvl_runtime_content.sql). */
+const PVL_DB_CONTENT_TYPES = new Set(['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle']);
+
+/**
+ * В БД content_type — базовый тип материала; lesson_kind отдельно (text_video | quiz | homework).
+ * Не допускаем значения вроде «homework» в content_type — иначе падает CHECK при INSERT/PATCH.
+ */
+function normalizePvlContentTypeForDb(item) {
+    const raw = String(item.contentType || 'text').trim();
+    const lk = item.lessonKind || null;
+    /** Смысл урока в lesson_kind; в content_type в БД только допустимые значения CHECK (не «quiz»). */
+    if (lk === 'quiz') return 'checklist';
+    if (lk === 'homework') return 'template';
+    const section = item.targetSection || 'library';
+    if (section === 'lessons' && lk === 'text_video') {
+        if (raw === 'text' || raw === 'video') return raw;
+        return 'video';
+    }
+    if (PVL_DB_CONTENT_TYPES.has(raw)) return raw;
+    if (raw === 'quiz') return 'checklist';
+    if (raw === 'homework') return 'template';
+    if (raw === 'article' || raw === 'lesson') return 'text';
+    return 'text';
+}
+
 function contentItemToDbPayload(item) {
     const status = contentStatusToDb(item.status);
     const links = Array.isArray(item.externalLinks) ? item.externalLinks : [];
@@ -183,7 +208,7 @@ function contentItemToDbPayload(item) {
         title: item.title || '',
         short_description: item.shortDescription || '',
         body_html: item.fullDescription || item.description || '',
-        content_type: item.contentType || 'text',
+        content_type: normalizePvlContentTypeForDb(item),
         target_section: item.targetSection || 'library',
         target_role: item.targetRole || 'both',
         visibility: item.visibility || 'all',
@@ -1435,14 +1460,38 @@ function persistSubmissionToDb(studentId, taskId) {
     }, { table: 'pvl_student_homework_submissions', endpoint: '/pvl_student_homework_submissions', id: `${studentId}:${taskId}` });
 }
 
+function placementTargetRoleMatchesStudentOrMentor(p, role) {
+    const pr = String(p?.targetRole ?? 'both').toLowerCase();
+    const want = String(role ?? '').toLowerCase();
+    return pr === want || pr === 'both';
+}
+
+function contentItemIdFromPlacement(p) {
+    const raw = p?.contentItemId ?? p?.contentId;
+    return raw == null ? '' : String(raw);
+}
+
+/**
+ * Опубликованные материалы раздела для роли и потока.
+ * Важно: искать материал по contentItemId || contentId (как в hasPublishedPlacementForStudentContent);
+ * isPublished — не строгая truthy-проверка; роль — безопасное сравнение.
+ */
 function getPublishedContentFor(role, section, cohortId) {
-    return db.contentPlacements
-        .filter((p) => p.targetSection === section && p.isPublished)
+    return (db.contentPlacements || [])
+        .filter((p) => p && String(p.targetSection || '') === String(section || ''))
+        .filter((p) => p.isPublished !== false)
         .filter((p) => pvlPlacementVisibleForCohort(p.cohortId, cohortId))
-        .filter((p) => p.targetRole === role || p.targetRole === 'both')
-        .map((p) => ({ placement: p, item: db.contentItems.find((ci) => ci.id === p.contentItemId) }))
-        .filter((x) => x.item && x.item.status === CONTENT_STATUS.PUBLISHED)
-        .sort((a, b) => a.placement.orderIndex - b.placement.orderIndex)
+        .filter((p) => placementTargetRoleMatchesStudentOrMentor(p, role))
+        .map((p) => {
+            const cid = contentItemIdFromPlacement(p);
+            const item = cid ? (db.contentItems || []).find((ci) => String(ci.id) === cid) : null;
+            return { placement: p, item };
+        })
+        .filter((x) => {
+            if (!x.item || x.item.status !== CONTENT_STATUS.PUBLISHED) return false;
+            return publishedContentVisibleToRole(x.item, cohortId, role);
+        })
+        .sort((a, b) => Number(a.placement.orderIndex ?? 0) - Number(b.placement.orderIndex ?? 0))
         .map((x) => x.item);
 }
 
@@ -1454,11 +1503,14 @@ function getVisibleContentItems(userId, role, section) {
 
 /** Согласовано с getPublishedContentBySection в PvlPrototypeApp.jsx */
 function publishedContentVisibleToRole(item, cohortId, role) {
-    const roleAllowed = item.targetRole === role || item.targetRole === 'both';
+    const vis = item.visibility || 'all';
+    const ir = String(item.targetRole ?? 'both').toLowerCase();
+    const want = String(role ?? '').toLowerCase();
+    const roleAllowed = ir === want || ir === 'both';
     return (
-        item.visibility === 'all'
-        || (item.visibility === 'by_role' && roleAllowed)
-        || ((item.visibility === 'by_cohort' || item.visibility === 'cohort')
+        vis === 'all'
+        || (vis === 'by_role' && roleAllowed)
+        || ((vis === 'by_cohort' || vis === 'cohort')
             && (!item.targetCohort || pvlCohortIdsEquivalent(item.targetCohort, cohortId)))
     );
 }
@@ -1467,13 +1519,14 @@ function publishedContentVisibleToRole(item, cohortId, role) {
 const STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS = new Set(['lessons', 'library', 'glossary']);
 
 function hasPublishedPlacementForStudentContent(contentId, cohortId) {
+    const want = String(contentId ?? '');
     return (db.contentPlacements || []).some((p) => {
         const pid = p.contentItemId || p.contentId;
-        if (pid !== contentId) return false;
+        if (String(pid ?? '') !== want) return false;
         if (p.isPublished === false) return false;
-        if (!(p.targetRole === ROLES.STUDENT || p.targetRole === 'both')) return false;
+        if (!placementTargetRoleMatchesStudentOrMentor(p, ROLES.STUDENT)) return false;
         if (!pvlPlacementVisibleForCohort(p.cohortId, cohortId)) return false;
-        if (!STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS.has(p.targetSection)) return false;
+        if (!STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS.has(String(p.targetSection || ''))) return false;
         return true;
     });
 }

@@ -179,42 +179,78 @@ function newPvlPersistedEntityId() {
 /** Согласовано с CHECK pvl_content_items_content_type_check (миграция 002_pvl_runtime_content.sql). */
 const PVL_DB_CONTENT_TYPES = new Set(['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle']);
 
+/** CamelCase и snake_case (ответ PostgREST / частичный merge) — одна точка правды для полей материала. */
+function resolvePvlTargetSection(item) {
+    const s = item?.targetSection ?? item?.target_section;
+    return (s != null && String(s).trim() !== '' ? String(s).trim() : null) || 'library';
+}
+
+function resolvePvlLessonKind(item) {
+    const lk = item?.lessonKind ?? item?.lesson_kind;
+    if (lk == null || lk === '') return null;
+    const s = String(lk).trim().toLowerCase();
+    if (s === 'quiz' || s === 'homework' || s === 'text_video') return s;
+    return null;
+}
+
+function resolvePvlContentTypeRaw(item) {
+    const v = item?.contentType ?? item?.content_type;
+    if (v == null || v === '') return 'text';
+    return String(v).trim();
+}
+
+function matchPvlDbContentTypeToken(raw) {
+    const s = String(raw || '').trim();
+    if (PVL_DB_CONTENT_TYPES.has(s)) return s;
+    const lower = s.toLowerCase();
+    if (lower === 'filebundle') return 'fileBundle';
+    for (const t of PVL_DB_CONTENT_TYPES) {
+        if (t.toLowerCase() === lower) return t;
+    }
+    return null;
+}
+
 /**
  * В БД content_type — базовый тип материала; lesson_kind отдельно (text_video | quiz | homework).
  * Не допускаем значения вроде «homework» в content_type — иначе падает CHECK при INSERT/PATCH.
+ * Последняя линия защиты: всегда значение из PVL_DB_CONTENT_TYPES.
  */
 function normalizePvlContentTypeForDb(item) {
-    const raw = String(item.contentType || 'text').trim();
-    const lk = item.lessonKind || null;
-    /** Смысл урока в lesson_kind; в content_type в БД только допустимые значения CHECK (не «quiz»). */
+    const section = resolvePvlTargetSection(item);
+    const lk = resolvePvlLessonKind(item);
+    const raw = resolvePvlContentTypeRaw(item);
+    const rawLc = raw.toLowerCase();
+
     if (lk === 'quiz') return 'checklist';
     if (lk === 'homework') return 'template';
-    const section = item.targetSection || 'library';
     if (section === 'lessons' && lk === 'text_video') {
-        if (raw === 'text' || raw === 'video') return raw;
+        if (rawLc === 'text' || rawLc === 'video') return rawLc;
         return 'video';
     }
-    if (PVL_DB_CONTENT_TYPES.has(raw)) return raw;
-    if (raw === 'quiz') return 'checklist';
-    if (raw === 'homework') return 'template';
-    if (raw === 'article' || raw === 'lesson') return 'text';
+    const matched = matchPvlDbContentTypeToken(raw);
+    if (matched) return matched;
+    if (rawLc === 'quiz') return 'checklist';
+    if (rawLc === 'homework') return 'template';
+    if (rawLc === 'article' || rawLc === 'lesson') return 'text';
     return 'text';
 }
 
 function contentItemToDbPayload(item) {
     const status = contentStatusToDb(item.status);
     const links = Array.isArray(item.externalLinks) ? item.externalLinks : [];
+    const targetSection = resolvePvlTargetSection(item);
+    const lessonKindForDb = targetSection === 'lessons' ? resolvePvlLessonKind(item) : null;
     return {
         title: item.title || '',
         short_description: item.shortDescription || '',
         body_html: item.fullDescription || item.description || '',
         content_type: normalizePvlContentTypeForDb(item),
-        target_section: item.targetSection || 'library',
+        target_section: targetSection,
         target_role: item.targetRole || 'both',
         visibility: item.visibility || 'all',
         target_cohort_id: seedCohortIdToSqlUuid(item.targetCohort),
         module_number:
-            item.targetSection === 'library' || item.targetSection === 'glossary'
+            targetSection === 'library' || targetSection === 'glossary'
                 ? null
                 : (item.moduleNumber != null ? Number(item.moduleNumber) : null),
         week_number: item.weekNumber != null ? Number(item.weekNumber) : null,
@@ -233,7 +269,7 @@ function contentItemToDbPayload(item) {
         homework_config: item.lessonHomework || null,
         glossary_payload: item.glossaryPayload || null,
         library_payload: item.libraryPayload || null,
-        lesson_kind: item.targetSection === 'lessons' ? (item.lessonKind || null) : null,
+        lesson_kind: lessonKindForDb,
         status,
         updated_by: uuidOrNull(item.updatedBy) || uuidOrNull(item.createdBy),
     };

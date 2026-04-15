@@ -131,9 +131,25 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pvl_garden_mentor_links TO web_anon;
 
 ---
 
+## Фаза 6: Исправление CHECK-constraint для content_type [x]
+
+**Проблема:** тесты (quiz) и домашние задания (homework) не сохраняются/не публикуются.
+Ошибка: `pvl_content_items_content_type_check violates check constraint`.
+
+**Причина:** Продакшн-база данных содержит СТАРУЮ версию CHECK-constraint, в которой нет значений 'checklist' и 'template'. Миграция 002 была обновлена (добавлены эти значения), но не была повторно применена к существующей БД.
+
+JS-нормализация корректна: quiz → checklist, homework → template. Проблема только в БД.
+
+**Исправление:** создана миграция `database/pvl/migrations/009_pvl_content_type_constraint_fix.sql`.
+Применить на Timeweb SQL-консоли:
+1. Открыть `database/pvl/migrations/009_pvl_content_type_constraint_fix.sql`
+2. Скопировать и выполнить в SQL-консоли Timeweb
+3. Проверить через `database/pvl/diagnostics/check_pvl_schema.sql` (раздел 5) — в `check_clause` должны появиться 'checklist' и 'template'
+
+---
+
 ## Итог
 
-- [ ] Реализован полностью
-- [ ] Частично (что осталось: ______)
+- [x] Частично (что осталось: применить миграцию 009 на продакшн)
 
-**Корневая причина (заполнить после диагностики):** ___________
+**Корневая причина:** CHECK constraint `pvl_content_items_content_type_check` в продакшн-БД не содержит 'checklist' и 'template' — эти значения были добавлены в migration 002 уже после первого применения.

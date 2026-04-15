@@ -46,7 +46,14 @@ WHERE table_name IN ('pvl_content_items', 'pvl_garden_mentor_links', 'pvl_conten
   AND table_schema = 'public'
 ORDER BY table_name, grantee;
 
--- 5. Количество записей (проверка: сохранялось ли что-то раньше)
+-- 5. Проверка CHECK constraint для content_type (ключевая!)
+-- Если в check_clause нет 'checklist' или 'template' → нужна миграция 009
+SELECT constraint_name, check_clause
+FROM information_schema.check_constraints
+WHERE constraint_schema = 'public'
+  AND constraint_name = 'pvl_content_items_content_type_check';
+
+-- 6. Количество записей (проверка: сохранялось ли что-то раньше)
 SELECT 'pvl_content_items' AS tbl, COUNT(*) AS cnt
 FROM pvl_content_items
 UNION ALL

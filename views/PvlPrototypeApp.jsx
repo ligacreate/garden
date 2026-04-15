@@ -52,7 +52,6 @@ import {
     PVL_PLATFORM_MODULES,
     PVL_TRACKER_GLOSSARY,
     PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS,
-    PVL_TRACKER_RULES,
     getPvlCourseModulePickerOptions,
     pvlPlatformModuleTitleFromInternal,
 } from '../data/pvlReferenceContent';
@@ -327,19 +326,6 @@ function adminSectionForRoute(allowedRoute) {
     return map[seg] || null;
 }
 
-function szPipelineStatusRu(v) {
-    const m = {
-        not_started: 'не начато',
-        in_progress: 'в процессе',
-        ready_for_review: 'на проверке у ментора',
-        red_flag: 'есть критические отметки',
-        admitted: 'допуск',
-        not_admitted: 'нет допуска',
-        certified: 'сертифицирована',
-    };
-    return m[String(v || '').toLowerCase()] || v || '—';
-}
-
 const STATUS_TONE = (status) => {
     const s = String(status || '').toLowerCase();
     if (s === 'принято' || s === 'done') return 'bg-emerald-50 text-emerald-700 border-emerald-600/30';
@@ -450,47 +436,6 @@ function printMaterialSheet(title, bodyText) {
 
 const RiskBadge = ({ level }) => <StatusBadge>{level}</StatusBadge>;
 const DeadlineBadge = ({ value }) => <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#9B8B80]">{value}</span>;
-const PointsProgressBar = ({ value, max, tone = 'bg-blue-600/80' }) => {
-    const pct = max ? Math.max(0, Math.min(100, Math.round((value / max) * 100))) : 0;
-    return <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} /></div>;
-};
-
-const PointsBreakdownList = ({ items }) => (
-    <div className="grid gap-1">
-        {items.map((x) => (
-            <div key={x.label} className="text-xs text-[#2C1810] flex items-center justify-between">
-                <span>{x.label}</span><span>{x.value}</span>
-            </div>
-        ))}
-    </div>
-);
-
-const CoursePointsCard = ({ points }) => (
-    <article className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4">
-        <div className="text-xs font-medium text-slate-500">Курсовые баллы</div>
-        <div className="font-display text-2xl md:text-3xl text-slate-800 mt-1 tabular-nums">{points.coursePointsTotal}/400</div>
-        <div className="mt-3"><PointsProgressBar value={points.coursePointsTotal} max={400} tone="bg-emerald-600/70" /></div>
-        <div className="mt-2">
-            <PointsBreakdownList items={[
-                { label: 'Модули 1-3', value: points.weeksPoints },
-                { label: 'КТ', value: points.controlPointsTotal },
-                { label: 'Бонус ментора', value: `${points.mentorBonusTotal}/50` },
-            ]} />
-        </div>
-    </article>
-);
-
-const SzPointsCard = ({ points, redFlags = [] }) => (
-    <article className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 shadow-sm shadow-slate-200/30">
-        <div className="text-xs font-medium text-blue-800/90">Самооценка и сертификация (до 54 баллов)</div>
-        <div className="grid md:grid-cols-2 gap-4 mt-2 text-sm text-slate-700">
-            <div>Ваша самооценка: <span className="font-medium tabular-nums">{points.szSelfAssessmentTotal}/54</span></div>
-            <div>Оценка ментора: <span className="font-medium tabular-nums">{points.szMentorAssessmentTotal}/54</span></div>
-        </div>
-        <div className="mt-3"><PointsProgressBar value={points.szSelfAssessmentTotal} max={54} tone="bg-blue-600/80" /></div>
-        {redFlags.length ? <div className="mt-3 text-xs text-rose-700">Внимание: {redFlags.join(', ')}</div> : null}
-    </article>
-);
 
 const PointsHistoryList = ({ items = [] }) => (
     <div className="grid gap-1">
@@ -505,12 +450,6 @@ const PointsHistoryList = ({ items = [] }) => (
 
 const MentorBonusUsageBadge = ({ used }) => <StatusBadge>{`Бонус ${used}/50`}</StatusBadge>;
 const ControlPointsSummary = ({ accepted }) => <StatusBadge>{`КТ ${accepted}/9`}</StatusBadge>;
-const AssessmentComparisonCard = ({ selfPoints, mentorPoints }) => (
-    <div className="rounded-xl border border-slate-100 bg-white p-3 text-sm text-slate-600 shadow-sm">
-        Сравнение: ваша оценка <span className="font-medium tabular-nums text-slate-800">{selfPoints}/54</span>
-        {' · '}оценка ментора <span className="font-medium tabular-nums text-slate-800">{mentorPoints}/54</span>
-    </div>
-);
 
 function pvlSidebarNavClass(active) {
     return `group w-full text-left rounded-2xl px-4 py-3 text-[15px] transition-all duration-200 ${active
@@ -2231,21 +2170,6 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student', cmsItems = [
                     </div>
                     <p className="mt-4 text-xs text-slate-500 border-t border-[#E8D5C4]/40 pt-4">Технические вопросы можно задавать Анастасии.</p>
                 </section>
-
-                <section className="rounded-2xl border border-emerald-200/50 bg-white p-5 md:p-6 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Route className="h-5 w-5 text-emerald-800/80" strokeWidth={1.75} aria-hidden />
-                        <h4 className="font-display text-lg text-slate-800">Правила траектории</h4>
-                    </div>
-                    <ul className="space-y-2.5 text-sm text-slate-700">
-                        {PVL_TRACKER_RULES.map((line) => (
-                            <li key={line.slice(0, 40)} className="flex gap-2">
-                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/80" aria-hidden />
-                                <span className="leading-relaxed">{line}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </section>
             </div>
         );
     }
@@ -2320,15 +2244,6 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student', cmsItems = [
                         ))}
                     </ul>
                 </div>
-            </div>
-
-            <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                <h4 className="font-display text-lg text-slate-800 mb-3">Правила траектории</h4>
-                <ul className="space-y-2 text-sm text-slate-600 list-disc pl-5">
-                    {PVL_TRACKER_RULES.map((line) => (
-                        <li key={line.slice(0, 40)}>{line}</li>
-                    ))}
-                </ul>
             </div>
         </div>
     );
@@ -3115,34 +3030,10 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/certification' || route === '/student/self-assessment') {
-        const cert = pvlDomainApi.studentApi.getStudentCertification(studentId);
         return (
             <div className="space-y-6">
                 <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
                     <h2 className="font-display text-xl text-slate-800">Сертификация и самооценка</h2>
-                </div>
-                <SzPointsCard points={cert.points} redFlags={cert.redFlags || []} />
-                <AssessmentComparisonCard selfPoints={cert.points.szSelfAssessmentTotal} mentorPoints={cert.points.szMentorAssessmentTotal} />
-                {cert.szScores ? (
-                    <div className="rounded-3xl bg-white p-5 text-sm tabular-nums text-slate-600 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
-                        <div className="text-xs font-medium text-slate-500 mb-2">Данные из бланка самооценки и контура сертификации</div>
-                        <div>Самооценка (всего): <span className="font-medium text-slate-800">{cert.szScores.self_score_total}/54</span></div>
-                        <div>Оценка ментора (всего): <span className="font-medium text-slate-800">{cert.szScores.mentor_score_total}/54</span></div>
-                        <div>Критические отметки в бланке: <span className="font-medium text-slate-800">{cert.szScores.critical_flags_count}</span></div>
-                        {cert.szScores.package_red_flags_count > 0 ? (
-                            <div className="text-xs text-rose-700 mt-2">Регламентные предупреждения: {(cert.redFlags || []).join('; ') || 'есть'}</div>
-                        ) : null}
-                        <div className="mt-2">Статус контура СЗ: <span className="font-medium text-slate-800">{szPipelineStatusRu(cert.szScores.certification_status)}</span></div>
-                    </div>
-                ) : null}
-                <div className="rounded-3xl bg-white p-5 text-sm text-slate-600 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
-                    Курсовые баллы:
-                    {' '}
-                    <span className="font-medium text-slate-800 tabular-nums">{cert.points.coursePointsTotal}/400</span>
-                    <span className="text-slate-300 mx-2">·</span>
-                    Срок записи самооценки:
-                    {' '}
-                    {formatPvlDateTime(cert?.deadlineAt || '2026-06-30')}
                 </div>
                 <StudentCertificationReference navigate={navigate} />
                 <div id="pvl-sz-flow" className="scroll-mt-4 rounded-3xl border border-amber-200 bg-amber-50 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">

@@ -14,6 +14,8 @@ import {
     GripVertical,
     Info,
     KanbanSquare,
+    Leaf,
+    Sprout,
     Languages,
     LayoutGrid,
     Library,
@@ -2117,55 +2119,133 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student', cmsItems = [
     const goTracker = () => navigate(`${routePrefix}/tracker`);
 
     if (materials.length === 0) {
+        const mustDoItems = [
+            'слушать уроки',
+            'выполнять тесты',
+            'делать домашние задания',
+            'приходить на практикумы',
+            'посетить встречу с письменными практиками',
+            'участвовать в сборных завтраках',
+            'получать удовольствие',
+            'пробовать практики на себе',
+        ];
+        const mentors = ['Юлия Габрух', 'Василина Лузина', 'Елена Федотова'];
         return (
-            <div className="space-y-6">
-                <div className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы курса</p>
-                    <h2 className="font-display text-2xl md:text-3xl text-slate-800 mt-1">О курсе «Пиши, веди, люби»</h2>
-                </div>
-                <div className="rounded-3xl bg-white p-6 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] text-sm text-slate-700 leading-relaxed space-y-4">
-                    <p>
-                        Вы начинаете обучение на курсе «Пиши, веди, люби». Курс состоит из трёх модулей: Пиши, Веди, Люби. Отдельный курс — социальная психология (его можно слушать в любое время).
-                    </p>
-                    <p>
-                        Финалом курса будет сертификационный завтрак, вы его соберёте и проведёте, а ментор прослушает и даст обратную связь. После нас ждёт защита проектов. Курс — это только начало, после него мы будем ждать вас в Лиге развивающих практиков.
-                    </p>
-                    <div>
-                        <h4 className="font-display text-base text-slate-800 mb-2">Что обязательно нужно делать на курсе</h4>
-                        <ul className="space-y-1 list-disc pl-5">
-                            <li>слушать уроки</li>
-                            <li>выполнять тесты</li>
-                            <li>делать домашние задания</li>
-                            <li>приходить на практикумы</li>
-                            <li>посетить встречу с письменными практиками</li>
-                            <li>участвовать в сборных завтраках</li>
-                            <li>получать удовольствие</li>
-                            <li>пробовать практики на себе</li>
-                        </ul>
+            <div className="space-y-5 md:space-y-6">
+                <header className="relative overflow-hidden rounded-[1.75rem] border border-[#E8D5C4]/60 bg-gradient-to-br from-[#FAF6F2] via-white to-emerald-50/40 p-6 md:p-8 shadow-[0_14px_44px_-18px_rgba(27,77,62,0.12)]">
+                    <div className="pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full bg-emerald-200/25 blur-2xl" aria-hidden />
+                    <div className="pointer-events-none absolute -bottom-8 left-1/3 h-24 w-24 rounded-full bg-[#C4956A]/10 blur-xl" aria-hidden />
+                    <div className="relative flex flex-wrap items-start gap-4">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200/80 bg-white/90 text-emerald-800 shadow-sm">
+                            <Sprout className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7A6758]">Материалы курса</p>
+                            <h2 className="font-display text-2xl md:text-3xl text-[#2C1810] mt-1">О курсе «Пиши, веди, люби»</h2>
+                            <p className="mt-2 text-sm text-[#5C4D42] leading-relaxed max-w-2xl">
+                                Добро пожаловать в сад ведущих — здесь растёт ваша траектория: три модуля, практики и поддержка команды.
+                            </p>
+                        </div>
                     </div>
-                    <p>Все встречи мы будем вносить в календарь на платформе и анонсировать в канале. Записи будем размещать на платформе.</p>
-                    <p>Мы очень рекомендуем вам не копить долги, делать все вовремя и планировать сертификационный завтрак заранее. Ведь он состоит не только из подготовки сценария, но и сбора группы. На платформе есть отдельный раздел о сертификации, где мы описали все требования к сертификационному завтраку.</p>
-                    <p>Чуть позже там появится тест самооценки, который вы сможете пройти уже после того, как проведёте сертификационный завтрак. Точно такой же тест о вашем завтраке заполнит ваш ментор, и вы сравните результаты.</p>
-                    <div>
-                        <h4 className="font-display text-base text-slate-800 mb-2">Команда</h4>
-                        <p><span className="font-medium">Куратор курса:</span> Ирина Одинцова</p>
-                        <p className="font-medium mt-2">Менторы курса:</p>
-                        <ul className="list-disc pl-5 mt-1">
-                            <li>Юлия Габрух</li>
-                            <li>Василина Лузина</li>
-                            <li>Елена Федотова</li>
-                        </ul>
-                        <p className="mt-2">Технические вопросы можно задавать Анастасии.</p>
-                    </div>
+                </header>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                    <article className="rounded-2xl border border-[#E8D5C4]/50 bg-white p-5 md:p-6 shadow-[0_10px_36px_-16px_rgba(15,23,42,0.08)]">
+                        <div className="flex items-center gap-2 text-[#4A3728] mb-3">
+                            <Leaf className="h-4 w-4 text-emerald-700/80" strokeWidth={2} aria-hidden />
+                            <h3 className="font-display text-lg">Три опоры курса</h3>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed">
+                            Вы начинаете обучение на курсе «Пиши, веди, люби». Курс состоит из трёх модулей: <strong className="font-semibold text-[#3D342B]">Пиши</strong>, <strong className="font-semibold text-[#3D342B]">Веди</strong>, <strong className="font-semibold text-[#3D342B]">Люби</strong>. Отдельный курс — социальная психология (его можно слушать в любое время).
+                        </p>
+                    </article>
+                    <article className="rounded-2xl border border-emerald-200/60 bg-gradient-to-b from-emerald-50/50 to-white p-5 md:p-6 shadow-[0_10px_36px_-16px_rgba(15,23,42,0.06)]">
+                        <div className="flex items-center gap-2 text-[#1B4D3E] mb-3">
+                            <GraduationCap className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+                            <h3 className="font-display text-lg">Финал и дальше</h3>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed">
+                            Финалом курса будет сертификационный завтрак: вы его соберёте и проведёте, а ментор прослушает и даст обратную связь. После нас ждёт защита проектов. Курс — только начало: дальше мы ждём вас в Лиге развивающих практиков.
+                        </p>
+                    </article>
                 </div>
-                <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                    <h4 className="font-display text-lg text-slate-800 mb-3">Правила траектории</h4>
-                    <ul className="space-y-2 text-sm text-slate-600 list-disc pl-5">
-                        {PVL_TRACKER_RULES.map((line) => (
-                            <li key={line.slice(0, 40)}>{line}</li>
+
+                <section className="rounded-2xl border border-[#D4C4B4]/70 bg-[#FFFCF8] p-5 md:p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9)]">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8D5C4]/50 pb-4 mb-4">
+                        <h3 className="font-display text-lg text-[#4A3728]">Что важно делать на курсе</h3>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8B7355] rounded-full border border-[#E8D5C4] bg-white px-3 py-1">ваша грядка привычек</span>
+                    </div>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                        {mustDoItems.map((line) => (
+                            <li
+                                key={line}
+                                className="flex items-start gap-2.5 rounded-xl border border-[#F0E6DC] bg-white/80 px-3 py-2.5 text-sm text-[#3D342B] shadow-sm"
+                            >
+                                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] text-emerald-800" aria-hidden>✓</span>
+                                <span>{line}</span>
+                            </li>
                         ))}
                     </ul>
+                </section>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                    <article className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm">
+                        <div className="flex items-center gap-2 text-slate-800 mb-2">
+                            <CalendarDays className="h-4 w-4 text-emerald-700" strokeWidth={2} aria-hidden />
+                            <h4 className="font-display text-base text-[#3D342B]">Календарь и записи</h4>
+                        </div>
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                            Все встречи мы вносим в календарь на платформе и анонсируем в канале. Записи размещаем на платформе.
+                        </p>
+                    </article>
+                    <article className="rounded-2xl border border-amber-200/70 bg-amber-50/35 p-5 shadow-sm">
+                        <div className="flex items-center gap-2 text-amber-950/90 mb-2">
+                            <Info className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                            <h4 className="font-display text-base">Рекомендации</h4>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed">
+                            Не копите долги: делайте всё вовремя и планируйте сертификационный завтрак заранее — он включает и сценарий, и сбор группы. В разделе о сертификации описаны требования к завтраку.
+                        </p>
+                        <p className="text-sm text-slate-600 leading-relaxed mt-3">
+                            Позже появится тест самооценки после вашего завтрака; такой же тест заполнит ментор — вы сравните результаты.
+                        </p>
+                    </article>
                 </div>
+
+                <section className="rounded-2xl border border-[#E8D5C4]/60 bg-gradient-to-br from-white to-[#FAF6F2]/80 p-5 md:p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Users className="h-5 w-5 text-[#4A3728]" strokeWidth={1.75} aria-hidden />
+                        <h3 className="font-display text-lg text-[#2C1810]">Команда курса</h3>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="rounded-xl border border-[#E8D5C4]/80 bg-white p-4 shadow-sm">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8B7355]">Куратор</p>
+                            <p className="mt-1 font-medium text-[#3D342B]">Ирина Одинцова</p>
+                        </div>
+                        {mentors.map((name) => (
+                            <div key={name} className="rounded-xl border border-emerald-200/50 bg-emerald-50/30 p-4 shadow-sm">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900/70">Ментор</p>
+                                <p className="mt-1 font-medium text-[#3D342B]">{name}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="mt-4 text-xs text-slate-500 border-t border-[#E8D5C4]/40 pt-4">Технические вопросы можно задавать Анастасии.</p>
+                </section>
+
+                <section className="rounded-2xl border border-emerald-200/50 bg-white p-5 md:p-6 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Route className="h-5 w-5 text-emerald-800/80" strokeWidth={1.75} aria-hidden />
+                        <h4 className="font-display text-lg text-slate-800">Правила траектории</h4>
+                    </div>
+                    <ul className="space-y-2.5 text-sm text-slate-700">
+                        {PVL_TRACKER_RULES.map((line) => (
+                            <li key={line.slice(0, 40)} className="flex gap-2">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/80" aria-hidden />
+                                <span className="leading-relaxed">{line}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
             </div>
         );
     }

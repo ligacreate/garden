@@ -1771,6 +1771,79 @@ function getLibraryItemsByCategory(studentId, categoryId) {
     return items.filter((i) => i.categoryId === categoryId || (i.categoryTitle || '').toLowerCase() === categoryId);
 }
 
+function ensureTaskForContentItem(studentId, contentItem) {
+    let task = db.homeworkTasks.find(t => t.linkedContentItemId === contentItem.id);
+
+    if (!task && contentItem.linkedLessonId) {
+        task = db.homeworkTasks.find(t =>
+            (t.linkedLessonIds || []).includes(contentItem.linkedLessonId)
+        );
+    }
+
+    if (task && !task.linkedContentItemId) {
+        task.linkedContentItemId = contentItem.id;
+    }
+
+    if (!task) {
+        task = {
+            id: `task-ci-${contentItem.id}`,
+            linkedContentItemId: contentItem.id,
+            linkedLessonIds: contentItem.linkedLessonId ? [contentItem.linkedLessonId] : [],
+            weekId: contentItem.weekId || null,
+            title: contentItem.title || 'Домашнее задание',
+            description: contentItem.lessonHomework?.prompt || contentItem.shortDescription || '',
+            artifact: contentItem.lessonHomework?.expectedResult || 'Текст',
+            criteria: [],
+            uploadTypes: contentItem.lessonHomework?.allowFile ? ['text', 'file'] : ['text'],
+            taskType: 'homework',
+            isControlPoint: false,
+            controlPointId: null,
+            deadlineAt: contentItem.deadlineAt || null,
+            scoreMax: 0,
+            scoreType: 'course_points',
+            linkedPracticumIds: [],
+            linkedCertificationStage: null,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+        };
+        db.homeworkTasks.push(task);
+    }
+
+    let state = db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
+    if (!state) {
+        state = {
+            id: uid('sts'),
+            studentId,
+            taskId: task.id,
+            status: 'not_started',
+            totalTaskPoints: 0,
+            autoPoints: 0,
+            mentorBonusPoints: 0,
+            revisionCycles: 0,
+            submittedAt: null,
+            acceptedAt: null,
+            lastStatusChangedAt: null,
+            currentVersionId: null,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+        };
+        db.studentTaskStates.push(state);
+
+        const submission = {
+            id: uid('sub'),
+            studentId,
+            taskId: task.id,
+            currentVersionId: null,
+            draftVersionId: null,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+        };
+        db.submissions.push(submission);
+    }
+
+    return task;
+}
+
 export const studentApi = {
     getTrackerChecklist(studentId) {
         return { ...(db.studentTrackerChecks?.[studentId] || {}) };
@@ -1877,6 +1950,7 @@ export const studentApi = {
     getStudentTaskDetail(studentId, taskId) {
         return getTaskDetail(studentId, taskId);
     },
+    ensureTaskForContentItem: (studentId, contentItem) => ensureTaskForContentItem(studentId, contentItem),
     saveStudentDraft(studentId, taskId, payload) {
         const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
         if (!submission) return null;

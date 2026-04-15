@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
+import { pvlDomainApi } from '../services/pvlMockApi.js';
 
 export function stripMaterialNumbering(title) {
     const source = String(title || '').trim();
@@ -271,8 +272,11 @@ const materialBodyClass = pvlMaterialBodyClass;
 /**
  * Тело карточки материала: тест / видео+конспект / текст — как в библиотеке.
  */
-export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, onQuizPassed, variant = 'library' }) {
+export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, onQuizPassed, variant = 'library', studentId = null, navigate = null }) {
     if (!selectedItem) return null;
+    if (selectedItem.lessonKind === 'homework' && studentId) {
+        return <HomeworkInlineForm selectedItem={selectedItem} studentId={studentId} navigate={navigate} />;
+    }
     if (
         selectedItem.contentType === 'checklist'
         && selectedItem.lessonQuiz
@@ -365,5 +369,113 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
                 <p className="text-xs text-slate-500 mt-1">Вложения: {(selectedItem.attachments || []).join(', ')}</p>
             ) : null}
         </>
+    );
+}
+
+function HomeworkInlineForm({ selectedItem, studentId, navigate }) {
+    const [draft, setDraft] = React.useState('');
+    const [saved, setSaved] = React.useState(false);
+    const [submitted, setSubmitted] = React.useState(false);
+
+    const task = React.useMemo(() => {
+        return pvlDomainApi.studentApi.ensureTaskForContentItem(studentId, selectedItem);
+    }, [studentId, selectedItem]);
+
+    React.useEffect(() => {
+        if (!task) return;
+        const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, task.id);
+        const currentVersion = detail?.versions?.find(v => v.isDraft) || detail?.versions?.find(v => v.isCurrent);
+        if (currentVersion?.textContent) setDraft(currentVersion.textContent);
+        if (detail?.state?.status === 'PENDING_REVIEW' || detail?.state?.status === 'ACCEPTED') {
+            setSubmitted(true);
+        }
+    }, [studentId, task]);
+
+    if (!task) return null;
+
+    const state = pvlDomainApi.db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
+    const STATUS_LABELS = {
+        not_started: { label: 'Не начато', color: 'bg-slate-100 text-slate-500' },
+        PENDING_REVIEW: { label: 'На проверке', color: 'bg-amber-100 text-amber-700' },
+        REVISION_REQUESTED: { label: 'На доработке', color: 'bg-orange-100 text-orange-700' },
+        ACCEPTED: { label: 'Принято', color: 'bg-emerald-100 text-emerald-700' },
+    };
+    const statusInfo = STATUS_LABELS[state?.status] || STATUS_LABELS.not_started;
+    const isAccepted = state?.status === 'ACCEPTED';
+    const isPending = state?.status === 'PENDING_REVIEW';
+
+    const handleSaveDraft = () => {
+        pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+    };
+
+    const handleSubmit = () => {
+        if (!draft.trim()) return;
+        pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
+        setSubmitted(true);
+    };
+
+    const handleOpenFull = () => {
+        if (navigate) navigate(`/student/results/${task.id}`);
+    };
+
+    return (
+        <div className="mt-4 space-y-4">
+            <div className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5">
+                <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-display text-lg text-[#4A3728]">Домашнее задание</h4>
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusInfo.color}`}>
+                        {statusInfo.label}
+                    </span>
+                </div>
+                {(selectedItem.lessonHomework?.prompt || selectedItem.shortDescription) && (
+                    <p className="text-sm text-slate-600 leading-relaxed mb-3">
+                        {selectedItem.lessonHomework?.prompt || selectedItem.shortDescription}
+                    </p>
+                )}
+                {selectedItem.lessonHomework?.expectedResult && (
+                    <p className="text-xs text-slate-400">Ожидаемый результат: {selectedItem.lessonHomework.expectedResult}</p>
+                )}
+            </div>
+
+            {!isAccepted && (
+                <div className="space-y-3">
+                    <textarea
+                        className="w-full min-h-[140px] rounded-xl border border-[#E8D5C4] bg-white p-3 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#C4956A]/30 resize-y"
+                        placeholder={isPending ? 'Работа отправлена на проверку…' : 'Напишите ваш ответ…'}
+                        value={draft}
+                        onChange={e => setDraft(e.target.value)}
+                        disabled={isPending}
+                    />
+                    {!isPending && (
+                        <div className="flex gap-2 flex-wrap">
+                            <button
+                                onClick={handleSaveDraft}
+                                className="px-4 py-2 rounded-xl border border-[#E8D5C4] bg-white text-sm text-[#4A3728] hover:bg-[#FAF6F2] transition-colors"
+                            >
+                                {saved ? 'Сохранено ✓' : 'Сохранить черновик'}
+                            </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={!draft.trim()}
+                                className="px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Отправить на проверку
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {(submitted || isAccepted || isPending) && navigate && (
+                <button
+                    onClick={handleOpenFull}
+                    className="text-sm text-[#C4956A] underline-offset-2 hover:underline"
+                >
+                    Открыть полную карточку задания →
+                </button>
+            )}
+        </div>
     );
 }

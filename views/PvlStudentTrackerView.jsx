@@ -175,6 +175,7 @@ export function PlatformCourseModulesGrid({
     interactionMode = 'toggle',
     /** Показать один модуль (шаги уроков/тестов) — после выбора карточки на корне трекера */
     onlyModuleId = null,
+    navigate = null,
 }) {
     const hookState = usePlatformStepChecklist(studentId);
     const checked = checkedOverride || hookState.checked;
@@ -182,6 +183,27 @@ export function PlatformCourseModulesGrid({
     const tagLabelFor = (tag) => {
         const t = tag || 'task';
         return variant === 'lessons' ? (PVL_TRACKER_TAG_LABEL[t] || t) : (CHECKLIST_TAG_LABEL[t] || t);
+    };
+
+    const getHomeworkStatus = (item) => {
+        if (!studentId || item.tag !== 'task') return null;
+        const linkedLessonId = item.lessonId || item.linkedLessonId || null;
+        const matchedTask = pvlDomainApi.db.homeworkTasks.find(t =>
+            (linkedLessonId && (t.linkedLessonIds || []).includes(linkedLessonId)) ||
+            (t.linkedContentItemId && t.title === item.text)
+        );
+        if (!matchedTask) return null;
+        const state = pvlDomainApi.db.studentTaskStates.find(
+            s => s.studentId === studentId && s.taskId === matchedTask.id
+        );
+        return { task: matchedTask, status: state?.status || 'not_started' };
+    };
+
+    const HW_STATUS_BADGE = {
+        not_started:        { label: 'Не начато',    cls: 'bg-slate-100 text-slate-400 border-slate-200' },
+        PENDING_REVIEW:     { label: 'На проверке',  cls: 'bg-amber-50 text-amber-600 border-amber-200' },
+        REVISION_REQUESTED: { label: 'На доработке', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
+        ACCEPTED:           { label: 'Принято',      cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
     };
     const articleClass = variant === 'lessons'
         ? 'rounded-2xl border border-slate-100/90 bg-white/90 shadow-sm shadow-slate-200/20 overflow-hidden'
@@ -232,11 +254,18 @@ export function PlatformCourseModulesGrid({
                                     const isDone = !!checked[key];
                                     const tag = item.tag || 'task';
                                     const quizCard = tag === 'quiz';
+                                    const hwInfo = getHomeworkStatus(item);
+                                    const isHwStep = tag === 'task' && !!hwInfo;
+                                    const hwBadge = hwInfo ? (HW_STATUS_BADGE[hwInfo.status] || HW_STATUS_BADGE.not_started) : null;
                                     return (
                                         <li key={key}>
                                             <button
                                                 type="button"
                                                 onClick={() => {
+                                                    if (isHwStep && navigate && hwInfo?.task) {
+                                                        navigate(`/student/results/${hwInfo.task.id}`);
+                                                        return;
+                                                    }
                                                     if (interactionMode === 'open' && onOpenItem) {
                                                         onOpenItem({ key, item, module: mod, index: i, isDone });
                                                         return;
@@ -246,19 +275,40 @@ export function PlatformCourseModulesGrid({
                                                 className={`w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors ${
                                                     quizCard
                                                         ? 'border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 to-white shadow-[0_8px_24px_-14px_rgba(15,23,42,0.08)] hover:from-emerald-50 hover:to-emerald-50/50'
-                                                        : 'rounded-lg px-1 hover:bg-slate-50/80'
+                                                        : isHwStep
+                                                            ? 'border border-[#E8D5C4]/60 bg-gradient-to-br from-[#FAF6F2]/60 to-white hover:from-[#FAF6F2] hover:border-[#C4956A]/30'
+                                                            : 'rounded-lg px-1 hover:bg-slate-50/80'
                                                 }`}
                                             >
-                                                <span
-                                                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
-                                                    aria-label={isDone ? 'Шаг отмечен' : 'Шаг не отмечен'}
-                                                >
-                                                    {isDone ? '✓' : ''}
-                                                </span>
+                                                {isHwStep ? (
+                                                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] ${
+                                                        hwInfo.status === 'ACCEPTED'
+                                                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                                                            : hwInfo.status === 'PENDING_REVIEW'
+                                                                ? 'border-amber-400 bg-amber-50 text-amber-600'
+                                                                : hwInfo.status === 'REVISION_REQUESTED'
+                                                                    ? 'border-orange-400 bg-orange-50 text-orange-600'
+                                                                    : 'border-[#C4956A]/40 bg-white text-[#C4956A]'
+                                                    }`}>
+                                                        {hwInfo.status === 'ACCEPTED' ? '✓' : hwInfo.status === 'PENDING_REVIEW' ? '…' : hwInfo.status === 'REVISION_REQUESTED' ? '!' : '✏'}
+                                                    </span>
+                                                ) : (
+                                                    <span
+                                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
+                                                        aria-label={isDone ? 'Шаг отмечен' : 'Шаг не отмечен'}
+                                                    >
+                                                        {isDone ? '✓' : ''}
+                                                    </span>
+                                                )}
                                                 <span className={`text-sm flex-1 min-w-0 leading-snug ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
                                                 <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
                                                     {tagLabelFor(tag)}
                                                 </span>
+                                                {isHwStep && hwBadge && (
+                                                    <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${hwBadge.cls}`}>
+                                                        {hwBadge.label}
+                                                    </span>
+                                                )}
                                             </button>
                                         </li>
                                     );
@@ -281,6 +331,7 @@ export function StudentCourseTracker({
     studentId,
     modules: modulesProp = null,
     routePrefix = '/student',
+    navigate = null,
 }) {
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
     const { checked, toggleItem } = usePlatformStepChecklist(studentId);
@@ -341,6 +392,26 @@ export function StudentCourseTracker({
         const item = pvlDomainApi.studentApi.getPublishedContentItemForStudent(studentId, contentItemId);
         pvlDomainApi.studentApi.updateLibraryProgress(studentId, contentItemId, Math.max(10, item?.progressPercent || 10));
     }, [activeStep?.key, contentItemId, studentId]);
+
+    useEffect(() => {
+        if (!studentId) return;
+        pvlDomainApi.db.homeworkTasks.forEach(task => {
+            const state = pvlDomainApi.db.studentTaskStates.find(
+                s => s.studentId === studentId && s.taskId === task.id
+            );
+            if (state?.status !== 'ACCEPTED') return;
+            resolvedModules.forEach((mod) => {
+                mod.items.forEach((item, i) => {
+                    if (item.tag !== 'task') return;
+                    const linkedLessonId = item.lessonId || item.linkedLessonId;
+                    const matches = linkedLessonId && (task.linkedLessonIds || []).includes(linkedLessonId);
+                    if (!matches) return;
+                    const key = trackerStepKey(mod.id, item, i);
+                    if (!checked[key]) toggleItem(key);
+                });
+            });
+        });
+    }, [studentId]);
 
     const syncLibraryAndStepComplete = useCallback(() => {
         if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
@@ -504,6 +575,7 @@ export function StudentCourseTracker({
                 onToggleItem={toggleItem}
                 interactionMode="open"
                 onOpenItem={({ key }) => setActiveStepKey(key)}
+                navigate={navigate}
             />
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">

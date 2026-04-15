@@ -1697,6 +1697,8 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                         setLibraryTick((v) => v + 1);
                                         refresh?.();
                                     }}
+                                    studentId={studentId}
+                                    navigate={navigate}
                                 />
                             </section>
                         )}
@@ -2043,7 +2045,7 @@ function StudentLessonsLive({ studentId, navigate }) {
                     </div>
                 </div>
             </div>
-            <PlatformCourseModulesGrid studentId={studentId} variant="lessons" />
+            <PlatformCourseModulesGrid studentId={studentId} variant="lessons" navigate={navigate} />
         </div>
     );
 }
@@ -2957,6 +2959,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 studentId={studentId}
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
                 routePrefix={routePrefix}
+                navigate={navigate}
             />
         );
     }
@@ -2981,6 +2984,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 studentId={studentId}
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
                 routePrefix={routePrefix}
+                navigate={navigate}
             />
         );
     }
@@ -3560,6 +3564,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                 studentId={mentorMirrorStudentId}
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
                 routePrefix="/mentor"
+                navigate={navigate}
             />
         );
     }

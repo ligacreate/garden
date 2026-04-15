@@ -185,18 +185,18 @@ function resolvePvlTargetSection(item) {
     return (s != null && String(s).trim() !== '' ? String(s).trim() : null) || 'library';
 }
 
+/**
+ * После Object.assign на item могут одновременно быть lessonKind и lesson_kind с разным смыслом.
+ * Не используем ?? (первый выигрывает): для уроков приоритет quiz/homework над text_video.
+ */
 function resolvePvlLessonKind(item) {
-    const lk = item?.lessonKind ?? item?.lesson_kind;
-    if (lk == null || lk === '') return null;
-    const s = String(lk).trim().toLowerCase();
-    if (s === 'quiz' || s === 'homework' || s === 'text_video') return s;
+    const raw = [item?.lessonKind, item?.lesson_kind].filter((v) => v != null && v !== '');
+    if (raw.length === 0) return null;
+    const lowered = raw.map((v) => String(v).trim().toLowerCase());
+    if (lowered.includes('quiz')) return 'quiz';
+    if (lowered.includes('homework')) return 'homework';
+    if (lowered.includes('text_video')) return 'text_video';
     return null;
-}
-
-function resolvePvlContentTypeRaw(item) {
-    const v = item?.contentType ?? item?.content_type;
-    if (v == null || v === '') return 'text';
-    return String(v).trim();
 }
 
 function matchPvlDbContentTypeToken(raw) {
@@ -210,6 +210,66 @@ function matchPvlDbContentTypeToken(raw) {
     return null;
 }
 
+/** Из строки с запятой, массива или одного токена — одно сырое значение для нормализации. */
+function pickBestRawContentTypeParts(parts) {
+    const list = parts.map((p) => String(p).trim()).filter(Boolean);
+    if (list.length === 0) return 'text';
+    if (list.length === 1) return list[0];
+    const lower = list.map((p) => p.toLowerCase());
+    if (lower.includes('checklist')) return 'checklist';
+    if (lower.includes('template')) return 'template';
+    for (const p of list) {
+        const m = matchPvlDbContentTypeToken(p);
+        if (m && m !== 'text') return m;
+    }
+    for (const p of list) {
+        const m = matchPvlDbContentTypeToken(p);
+        if (m) return m;
+    }
+    return list[list.length - 1];
+}
+
+function coalesceScalarContentTypeValue(v) {
+    if (v == null || v === '') return '';
+    if (Array.isArray(v)) {
+        const flat = v.map((x) => (x == null ? '' : String(x).trim())).filter(Boolean);
+        return pickBestRawContentTypeParts(flat.length ? flat : ['text']);
+    }
+    const s = String(v).trim();
+    if (s.includes(',')) {
+        return pickBestRawContentTypeParts(s.split(','));
+    }
+    return s;
+}
+
+/**
+ * Нельзя использовать contentType ?? content_type: часто остаётся устаревший contentType: "text",
+ * а актуальный тип приходит вторым полем из PostgREST — тогда в нормализацию попадало "text" и строки вида "text,checklist".
+ */
+function resolvePvlContentTypeRaw(item) {
+    const camel = coalesceScalarContentTypeValue(item?.contentType);
+    const snake = coalesceScalarContentTypeValue(item?.content_type);
+    if (!camel && !snake) return 'text';
+    if (!camel) return snake || 'text';
+    if (!snake) return camel || 'text';
+    if (camel === snake) return camel;
+    const mc = matchPvlDbContentTypeToken(camel);
+    const ms = matchPvlDbContentTypeToken(snake);
+    if (mc && !ms) return camel;
+    if (ms && !mc) return snake;
+    if (camel !== 'text' && snake === 'text') return camel;
+    if (snake !== 'text' && camel === 'text') return snake;
+    return snake;
+}
+
+function sanitizeMetadataForDbPayload(meta) {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+    const out = { ...meta };
+    delete out.content_type;
+    delete out.contentType;
+    return out;
+}
+
 /**
  * В БД content_type — базовый тип материала; lesson_kind отдельно (text_video | quiz | homework).
  * Не допускаем значения вроде «homework» в content_type — иначе падает CHECK при INSERT/PATCH.
@@ -221,18 +281,22 @@ function normalizePvlContentTypeForDb(item) {
     const raw = resolvePvlContentTypeRaw(item);
     const rawLc = raw.toLowerCase();
 
-    if (lk === 'quiz') return 'checklist';
-    if (lk === 'homework') return 'template';
-    if (section === 'lessons' && lk === 'text_video') {
-        if (rawLc === 'text' || rawLc === 'video') return rawLc;
-        return 'video';
+    let out;
+    if (lk === 'quiz') out = 'checklist';
+    else if (lk === 'homework') out = 'template';
+    else if (section === 'lessons' && lk === 'text_video') {
+        if (rawLc === 'text' || rawLc === 'video') out = rawLc;
+        else out = 'video';
+    } else {
+        const matched = matchPvlDbContentTypeToken(raw);
+        if (matched) out = matched;
+        else if (rawLc === 'quiz') out = 'checklist';
+        else if (rawLc === 'homework') out = 'template';
+        else if (rawLc === 'article' || rawLc === 'lesson') out = 'text';
+        else out = 'text';
     }
-    const matched = matchPvlDbContentTypeToken(raw);
-    if (matched) return matched;
-    if (rawLc === 'quiz') return 'checklist';
-    if (rawLc === 'homework') return 'template';
-    if (rawLc === 'article' || rawLc === 'lesson') return 'text';
-    return 'text';
+    if (!PVL_DB_CONTENT_TYPES.has(out)) out = 'text';
+    return out;
 }
 
 function contentItemToDbPayload(item) {
@@ -240,11 +304,14 @@ function contentItemToDbPayload(item) {
     const links = Array.isArray(item.externalLinks) ? item.externalLinks : [];
     const targetSection = resolvePvlTargetSection(item);
     const lessonKindForDb = targetSection === 'lessons' ? resolvePvlLessonKind(item) : null;
+    /** Одно значение для колонки content_type; без spread из item (там могли быть дубли ключей). */
+    const content_type = normalizePvlContentTypeForDb(item);
+    const metadata = sanitizeMetadataForDbPayload(item.metadata && typeof item.metadata === 'object' ? item.metadata : {});
     return {
         title: item.title || '',
         short_description: item.shortDescription || '',
         body_html: item.fullDescription || item.description || '',
-        content_type: normalizePvlContentTypeForDb(item),
+        content_type,
         target_section: targetSection,
         target_role: item.targetRole || 'both',
         visibility: item.visibility || 'all',
@@ -261,7 +328,7 @@ function contentItemToDbPayload(item) {
         cover_image: item.coverImage || null,
         external_links: links,
         estimated_duration: item.estimatedDuration || null,
-        metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : {},
+        metadata,
         lesson_video_url: item.lessonVideoUrl || null,
         lesson_rutube_url: item.lessonRutubeUrl || null,
         lesson_video_embed: item.lessonVideoEmbed || null,

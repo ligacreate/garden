@@ -422,6 +422,12 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
 
     return (
         <div className="mt-4 space-y-4">
+            {selectedItem.fullDescription ? (
+                <div
+                    className={`${materialBodyClass}`}
+                    dangerouslySetInnerHTML={{ __html: normalizeMaterialHtml(selectedItem.fullDescription) }}
+                />
+            ) : null}
             <div className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5">
                 <div className="flex items-center justify-between mb-3">
                     <h4 className="font-display text-lg text-[#4A3728]">Домашнее задание</h4>

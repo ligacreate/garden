@@ -4,7 +4,7 @@ import { pvlCohortIdsEquivalent, pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
 /** Согласовано с прототипом дедлайнов ПВЛ */
-const PVL_TODAY = '2026-06-03';
+const PVL_TODAY = '2026-04-15';
 
 const CALENDAR_UI_PREFS_KEY = 'admin.calendar';
 

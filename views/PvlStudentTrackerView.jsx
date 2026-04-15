@@ -276,9 +276,7 @@ export function PlatformCourseModulesGrid({
                                                 className={`w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors ${
                                                     quizCard
                                                         ? 'border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 to-white shadow-[0_8px_24px_-14px_rgba(15,23,42,0.08)] hover:from-emerald-50 hover:to-emerald-50/50'
-                                                        : isHwStep
-                                                            ? 'border border-[#E8D5C4]/60 bg-gradient-to-br from-[#FAF6F2]/60 to-white hover:from-[#FAF6F2] hover:border-[#C4956A]/30'
-                                                            : 'rounded-lg px-1 hover:bg-slate-50/80'
+                                                        : 'rounded-lg px-1 hover:bg-slate-50/80'
                                                 }`}
                                             >
                                                 {isHwStep ? (

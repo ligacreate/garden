@@ -3,6 +3,12 @@ const USE_LOCAL_ONLY = import.meta.env.VITE_USE_LOCAL_DB === 'true';
 const IS_DEV = import.meta.env.DEV;
 let didWarnMockMode = false;
 
+/**
+ * После PGRST300/PGRST302 («Server lacks JWT secret») больше не шлём JWT на этой вкладке,
+ * чтобы не ломать каждый запрос повторными ошибками — аналогично dataService.js.
+ */
+let pvlJwtDisabledAfterError = false;
+
 function getAuthToken() {
     try {
         return localStorage.getItem('garden_auth_token') || '';
@@ -13,6 +19,17 @@ function getAuthToken() {
 
 function isEnabled() {
     return !USE_LOCAL_ONLY && !!POSTGREST_URL;
+}
+
+function isPgrstJwtError(bodyText) {
+    const t = String(bodyText || '');
+    if (t.includes('PGRST300') || t.includes('PGRST302') || t.includes('JWT secret')) return true;
+    try {
+        const code = JSON.parse(t)?.code || '';
+        return code === 'PGRST300' || code === 'PGRST302';
+    } catch {
+        return false;
+    }
 }
 
 function logDb(tag, payload = {}) {
@@ -39,6 +56,20 @@ function warnMockMode(reason = '') {
     }
 }
 
+function buildHeaders(prefer, withToken) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'Accept-Profile': 'public',
+        'Content-Profile': 'public',
+    };
+    if (withToken) {
+        const token = getAuthToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    if (prefer) headers.Prefer = prefer;
+    return headers;
+}
+
 async function request(table, { method = 'GET', params = {}, body, prefer } = {}) {
     if (!isEnabled()) {
         warnMockMode(!POSTGREST_URL ? 'VITE_POSTGREST_URL is not set.' : 'VITE_USE_LOCAL_DB=true.');
@@ -55,38 +86,38 @@ async function request(table, { method = 'GET', params = {}, body, prefer } = {}
     Object.entries(params || {}).forEach(([k, v]) => {
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     });
-    const headers = {
-        'Content-Type': 'application/json',
-        'Accept-Profile': 'public',
-        'Content-Profile': 'public',
-    };
-    const token = getAuthToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (prefer) headers.Prefer = prefer;
-    const response = await fetch(url.toString(), {
+
+    const tryWithToken = !pvlJwtDisabledAfterError && Boolean(getAuthToken());
+    let response = await fetch(url.toString(), {
         method,
-        headers,
+        headers: buildHeaders(prefer, tryWithToken),
         body: body ? JSON.stringify(body) : undefined,
     });
-    const logTag = method === 'GET' ? '[PVL DB READ]' : '[PVL DB WRITE]';
-    logDb(logTag, {
-        endpoint: url.toString(),
-        status: response.status,
-        table,
-        id: body?.id || null,
-        error: null,
-    });
+
+    /* Если PostgREST не имеет jwt-secret — повторяем запрос без токена */
     if (!response.ok) {
         const text = await response.text().catch(() => '');
-        logDb('[PVL DB FALLBACK]', {
-            endpoint: url.toString(),
-            status: response.status,
-            table,
-            id: body?.id || null,
-            error: text || `PostgREST error (${response.status})`,
-        });
-        throw new Error(text || `PostgREST error (${response.status})`);
+        if (tryWithToken && isPgrstJwtError(text)) {
+            pvlJwtDisabledAfterError = true;
+            response = await fetch(url.toString(), {
+                method,
+                headers: buildHeaders(prefer, false),
+                body: body ? JSON.stringify(body) : undefined,
+            });
+            if (!response.ok) {
+                const text2 = await response.text().catch(() => '');
+                logDb('[PVL DB FALLBACK]', { endpoint: url.toString(), status: response.status, table, id: body?.id || null, error: text2 });
+                throw new Error(text2 || `PostgREST error (${response.status})`);
+            }
+        } else {
+            logDb('[PVL DB FALLBACK]', { endpoint: url.toString(), status: response.status, table, id: body?.id || null, error: text });
+            throw new Error(text || `PostgREST error (${response.status})`);
+        }
     }
+
+    const logTag = method === 'GET' ? '[PVL DB READ]' : '[PVL DB WRITE]';
+    logDb(logTag, { endpoint: url.toString(), status: response.status, table, id: body?.id || null, error: null });
+
     if (response.status === 204) return [];
     return response.json().catch(() => []);
 }

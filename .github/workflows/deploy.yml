@@ -27,6 +27,7 @@ jobs:
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
           echo "VITE_PUSH_URL=${{ secrets.VITE_PUSH_URL }}" >> .env
           echo "VITE_WEB_PUSH_PUBLIC_KEY=${{ secrets.VITE_WEB_PUSH_PUBLIC_KEY }}" >> .env
+          echo "VITE_POSTGREST_URL=${{ secrets.VITE_POSTGREST_URL }}" >> .env
 
       - name: Build
         run: npm run build

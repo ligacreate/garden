@@ -271,9 +271,23 @@ function sanitizeMetadataForDbPayload(meta) {
 }
 
 /**
+ * Колонка content_type в PostgreSQL НЕ содержит 'quiz' / 'homework' (см. CHECK в 002_pvl_runtime_content.sql).
+ * Семантика «тест» = checklist, «ДЗ» = template; слово quiz допустимо только в lesson_kind.
+ */
+function finalizePvlContentTypeColumnForPostgres(candidate) {
+    let s = String(candidate ?? 'text').trim();
+    const lower = s.toLowerCase();
+    if (lower === 'quiz') return 'checklist';
+    if (lower === 'homework') return 'template';
+    if (PVL_DB_CONTENT_TYPES.has(s)) return s;
+    const m = matchPvlDbContentTypeToken(s);
+    if (m) return m;
+    return 'text';
+}
+
+/**
  * В БД content_type — базовый тип материала; lesson_kind отдельно (text_video | quiz | homework).
- * Не допускаем значения вроде «homework» в content_type — иначе падает CHECK при INSERT/PATCH.
- * Последняя линия защиты: всегда значение из PVL_DB_CONTENT_TYPES.
+ * Последняя линия защиты: только whitelist CHECK + запрет quiz/homework в колонке content_type.
  */
 function normalizePvlContentTypeForDb(item) {
     const section = resolvePvlTargetSection(item);
@@ -295,8 +309,7 @@ function normalizePvlContentTypeForDb(item) {
         else if (rawLc === 'article' || rawLc === 'lesson') out = 'text';
         else out = 'text';
     }
-    if (!PVL_DB_CONTENT_TYPES.has(out)) out = 'text';
-    return out;
+    return finalizePvlContentTypeColumnForPostgres(out);
 }
 
 function contentItemToDbPayload(item) {

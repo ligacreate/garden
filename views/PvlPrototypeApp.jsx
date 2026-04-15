@@ -4271,7 +4271,10 @@ function AdminContentItemScreen({
             targetRole: 'both',
             targetCohort: editForm.targetCohort,
             weekNumber: clampPvlModule(editForm.moduleNumber),
-            moduleNumber: clampPvlModule(editForm.moduleNumber),
+            moduleNumber:
+                editForm.targetSection === 'library' || editForm.targetSection === 'glossary'
+                    ? null
+                    : clampPvlModule(editForm.moduleNumber),
             estimatedDuration: editForm.estimatedDuration,
             tags,
             lessonVideoUrl: videoSummaryMode ? editForm.lessonVideoUrl : undefined,
@@ -5107,6 +5110,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             coverImage: draft.targetSection === 'library' ? (draft.coverImage || '') : '',
             externalLinks: [draft.externalUrl, draft.fileUrl].filter(Boolean),
             createdBy: 'u-adm-1',
+            ...(draft.targetSection === 'library' || draft.targetSection === 'glossary' ? { moduleNumber: null } : {}),
         };
         try {
             const created = await pvlDomainApi.adminApi.createContentItem(record);

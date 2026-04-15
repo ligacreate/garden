@@ -188,7 +188,10 @@ function contentItemToDbPayload(item) {
         target_role: item.targetRole || 'both',
         visibility: item.visibility || 'all',
         target_cohort_id: seedCohortIdToSqlUuid(item.targetCohort),
-        module_number: item.moduleNumber != null ? Number(item.moduleNumber) : null,
+        module_number:
+            item.targetSection === 'library' || item.targetSection === 'glossary'
+                ? null
+                : (item.moduleNumber != null ? Number(item.moduleNumber) : null),
         week_number: item.weekNumber != null ? Number(item.weekNumber) : null,
         order_index: Number(item.orderIndex) || 999,
         category_id: item.categoryId || null,
@@ -1449,6 +1452,55 @@ function getVisibleContentItems(userId, role, section) {
     return getPublishedContentFor(role, section, cohortId);
 }
 
+/** Согласовано с getPublishedContentBySection в PvlPrototypeApp.jsx */
+function publishedContentVisibleToRole(item, cohortId, role) {
+    const roleAllowed = item.targetRole === role || item.targetRole === 'both';
+    return (
+        item.visibility === 'all'
+        || (item.visibility === 'by_role' && roleAllowed)
+        || ((item.visibility === 'by_cohort' || item.visibility === 'cohort')
+            && (!item.targetCohort || pvlCohortIdsEquivalent(item.targetCohort, cohortId)))
+    );
+}
+
+/** Разделы, в которых размещение даёт ученице доступ к материалу для трекера / чтения (не весь список разделов CMS). */
+const STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS = new Set(['lessons', 'library', 'glossary']);
+
+function hasPublishedPlacementForStudentContent(contentId, cohortId) {
+    return (db.contentPlacements || []).some((p) => {
+        const pid = p.contentItemId || p.contentId;
+        if (pid !== contentId) return false;
+        if (p.isPublished === false) return false;
+        if (!(p.targetRole === ROLES.STUDENT || p.targetRole === 'both')) return false;
+        if (!pvlPlacementVisibleForCohort(p.cohortId, cohortId)) return false;
+        if (!STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS.has(p.targetSection)) return false;
+        return true;
+    });
+}
+
+/**
+ * Опубликованный материал по id для ученицы: published + visibility + placement (lessons/library/glossary).
+ * Не заменяет getPublishedLibraryItemById для списка библиотеки.
+ */
+function getPublishedContentItemForStudent(studentId, contentId) {
+    if (!contentId) return null;
+    const profile = db.studentProfiles.find((p) => p.userId === studentId);
+    if (!profile) return null;
+    const cohortId = profile.cohortId;
+    const item = (db.contentItems || []).find((ci) => ci.id === contentId);
+    if (!item || item.status !== CONTENT_STATUS.PUBLISHED) return null;
+    if (!publishedContentVisibleToRole(item, cohortId, ROLES.STUDENT)) return null;
+    if (!hasPublishedPlacementForStudentContent(contentId, cohortId)) return null;
+    const pr = db.studentLibraryProgress.find((x) => x.studentId === studentId && x.libraryItemId === item.id);
+    return {
+        ...item,
+        progressPercent: pr?.progressPercent || 0,
+        completed: !!pr?.completed,
+        completedAt: pr?.completedAt || null,
+        lastOpenedAt: pr?.lastOpenedAt || null,
+    };
+}
+
 function ensureLibrarySeedInDb() {
     if (!LIBRARY_MOCK_ITEMS.length) return;
     const hasPublishedLibraryContent = (db.contentPlacements || []).some((p) => {
@@ -1817,12 +1869,14 @@ export const studentApi = {
     getStudentChecklist(studentId) {
         return db.courseWeeks.map((w) => ({ weekNumber: w.weekNumber, progress: 0, studentId }));
     },
-    /** Материал из опубликованной библиотеки потока (для трекера по contentItemId). */
+    /** Материал из опубликованной библиотеки потока (список библиотеки / deep link в разделе библиотеки). */
     getPublishedLibraryItemById(studentId, contentId) {
         if (!contentId) return null;
         const items = getPublishedLibraryContentForStudent(studentId);
         return items.find((i) => i.id === contentId) || null;
     },
+    /** Опубликованный материал по id: уроки (lessons) и при необходимости library/glossary, без обязательной library-выдачи. */
+    getPublishedContentItemForStudent,
     getStudentLibrary(studentId, filters = {}) {
         let items = getLibraryUiItemsForStudent(studentId);
         if (filters.categoryId) items = items.filter((i) => i.categoryId === filters.categoryId || i.categoryTitle === filters.categoryId);

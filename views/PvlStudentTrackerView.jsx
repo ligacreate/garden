@@ -361,7 +361,7 @@ export function StudentCourseTracker({
     const contentItemId = activeStep?.item?.contentItemId ? String(activeStep.item.contentItemId).trim() : '';
     const linkedItem = useMemo(() => {
         if (!contentItemId || !studentId) return null;
-        return pvlDomainApi.studentApi.getPublishedLibraryItemById(studentId, contentItemId);
+        return pvlDomainApi.studentApi.getPublishedContentItemForStudent(studentId, contentItemId);
     }, [studentId, contentItemId, checked[activeStep?.key || '']]);
 
     const lessonVideoPlayerHtml = useMemo(
@@ -371,7 +371,7 @@ export function StudentCourseTracker({
 
     useEffect(() => {
         if (!activeStep?.key || !contentItemId || !studentId) return;
-        const item = pvlDomainApi.studentApi.getPublishedLibraryItemById(studentId, contentItemId);
+        const item = pvlDomainApi.studentApi.getPublishedContentItemForStudent(studentId, contentItemId);
         pvlDomainApi.studentApi.updateLibraryProgress(studentId, contentItemId, Math.max(10, item?.progressPercent || 10));
     }, [activeStep?.key, contentItemId, studentId]);
 

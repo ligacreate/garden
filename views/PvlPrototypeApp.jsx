@@ -180,7 +180,7 @@ function buildMergedCmsState() {
         const prev = byId.get(i.id) || {};
         byId.set(i.id, { ...prev, ...i, status: normalizeContentStatus(i.status) });
     });
-    const items = Array.from(byId.values());
+    const items = Array.from(byId.values()).sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
 
     const dbPl = Array.isArray(db?.contentPlacements) ? db.contentPlacements : [];
     const mockPl = useDbOnly
@@ -229,6 +229,7 @@ function toRoute(name) {
         Практикумы: 'practicums',
         'Практикумы с менторами': 'practicums',
         Коммуникации: 'messages',
+        'Чат с ментором': 'messages',
         'Чек-лист': 'checklist',
         Результаты: 'results',
         Сертификация: 'certification',
@@ -242,11 +243,11 @@ function toRoute(name) {
 /** Единый курсный блок меню для участницы, ментора и учительской (без отдельного онбординга). */
 const COURSE_MENU_LABELS = [
     'О курсе',
-    'Глоссарий',
-    'Библиотека',
     'Трекер',
     'Практикумы',
-    'Коммуникации',
+    'Библиотека',
+    'Глоссарий',
+    'Чат с ментором',
     'Результаты',
     'Сертификация',
 ];
@@ -265,7 +266,7 @@ const ADMIN_SIDEBAR_CONFIG = [
     { type: 'item', label: 'Материалы курса', path: '/admin/content' },
     { type: 'item', label: 'Календарь', path: '/admin/calendar' },
     { type: 'divider' },
-    ...COURSE_MENU_LABELS.filter((label) => label !== 'Коммуникации').map((label) => ({
+    ...COURSE_MENU_LABELS.filter((label) => label !== 'Чат с ментором').map((label) => ({
         type: 'item',
         label,
         path: `/admin/${toRoute(label)}`,
@@ -525,6 +526,7 @@ const COURSE_MENU_ICON = {
     Трекер: Route,
     Практикумы: CalendarCheck2,
     Коммуникации: MessageCircle,
+    'Чат с ментором': MessageCircle,
     Результаты: BarChart3,
     Сертификация: BadgeCheck,
 };
@@ -610,16 +612,6 @@ const SidebarMenu = ({
         </div>
         {role === 'student' ? (
             <nav className="space-y-1 px-0.5 pb-2">
-                <button
-                    type="button"
-                    onClick={() => {
-                        setStudentSection('Дашборд');
-                        navigate('/student/dashboard');
-                    }}
-                    className={pvlSidebarNavClass(routePath === '/student/dashboard')}
-                >
-                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Дашборд" />
-                </button>
                 {COURSE_MENU_LABELS.map((item) => {
                     const base = `/student/${toRoute(item)}`;
                     const subActive = courseSidebarItemActive(currentRoute, '/student', item);
@@ -784,7 +776,7 @@ const BREADCRUMB_LABELS = {
     results: 'Результаты',
     certification: 'Сертификация',
     'self-assessment': 'Самооценка',
-    messages: 'Коммуникации',
+    messages: 'Чат с ментором',
     'cultural-code': 'Культурный код',
     materials: 'Материалы',
     applicants: 'Абитуриенты',
@@ -1699,6 +1691,7 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                     }}
                                     studentId={studentId}
                                     navigate={navigate}
+                                    routePrefix={routePrefix}
                                 />
                             </section>
                         )}
@@ -1928,7 +1921,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                     </button>
                 ) : (
                     <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                        Ментор пока не назначен. Как только учительская закрепит ментора, он появится здесь и в разделе «Коммуникации».
+                        Ментор пока не назначен. Как только учительская закрепит ментора, он появится здесь и в разделе «Чат с ментором».
                     </div>
                 )}
             </section>
@@ -2128,25 +2121,41 @@ function StudentAboutEnriched({ navigate, routePrefix = '/student', cmsItems = [
             <div className="space-y-6">
                 <div className="rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы курса</p>
-                    <h2 className="font-display text-2xl md:text-3xl text-slate-800 mt-1">О курсе</h2>
+                    <h2 className="font-display text-2xl md:text-3xl text-slate-800 mt-1">О курсе «Пиши, веди, люби»</h2>
                 </div>
-                <div className="grid lg:grid-cols-2 gap-5 lg:gap-6 items-stretch min-h-0">
-                    <div className="flex min-h-[280px] flex-col justify-center rounded-3xl bg-white p-8 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] text-center text-slate-600 text-sm">
-                        <p className="font-medium text-slate-800">Материалы ещё не опубликованы</p>
-                        <p className="mt-2 text-slate-500">Как только учительская добавит блоки в раздел «О курсе», они появятся здесь.</p>
-                        <button
-                            type="button"
-                            onClick={goTracker}
-                            className="mt-6 self-center rounded-full bg-[#4A3728] text-white px-5 py-2.5 text-sm font-medium hover:bg-[#3d2f22]"
-                        >
-                            Открыть трекер
-                        </button>
+                <div className="rounded-3xl bg-white p-6 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] text-sm text-slate-700 leading-relaxed space-y-4">
+                    <p>
+                        Вы начинаете обучение на курсе «Пиши, веди, люби». Курс состоит из трёх модулей: Пиши, Веди, Люби. Отдельный курс — социальная психология (его можно слушать в любое время).
+                    </p>
+                    <p>
+                        Финалом курса будет сертификационный завтрак, вы его соберёте и проведёте, а ментор прослушает и даст обратную связь. После нас ждёт защита проектов. Курс — это только начало, после него мы будем ждать вас в Лиге развивающих практиков.
+                    </p>
+                    <div>
+                        <h4 className="font-display text-base text-slate-800 mb-2">Что обязательно нужно делать на курсе</h4>
+                        <ul className="space-y-1 list-disc pl-5">
+                            <li>слушать уроки</li>
+                            <li>выполнять тесты</li>
+                            <li>делать домашние задания</li>
+                            <li>приходить на практикумы</li>
+                            <li>посетить встречу с письменными практиками</li>
+                            <li>участвовать в сборных завтраках</li>
+                            <li>получать удовольствие</li>
+                            <li>пробовать практики на себе</li>
+                        </ul>
                     </div>
-                    <div className="flex min-h-[280px] flex-col rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
-                        <div className="px-5 py-4 border-b border-slate-100 shrink-0">
-                            <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Материалы</h3>
-                        </div>
-                        <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-500">Список пуст</div>
+                    <p>Все встречи мы будем вносить в календарь на платформе и анонсировать в канале. Записи будем размещать на платформе.</p>
+                    <p>Мы очень рекомендуем вам не копить долги, делать все вовремя и планировать сертификационный завтрак заранее. Ведь он состоит не только из подготовки сценария, но и сбора группы. На платформе есть отдельный раздел о сертификации, где мы описали все требования к сертификационному завтраку.</p>
+                    <p>Чуть позже там появится тест самооценки, который вы сможете пройти уже после того, как проведёте сертификационный завтрак. Точно такой же тест о вашем завтраке заполнит ваш ментор, и вы сравните результаты.</p>
+                    <div>
+                        <h4 className="font-display text-base text-slate-800 mb-2">Команда</h4>
+                        <p><span className="font-medium">Куратор курса:</span> Ирина Одинцова</p>
+                        <p className="font-medium mt-2">Менторы курса:</p>
+                        <ul className="list-disc pl-5 mt-1">
+                            <li>Юлия Габрух</li>
+                            <li>Василина Лузина</li>
+                            <li>Елена Федотова</li>
+                        </ul>
+                        <p className="mt-2">Технические вопросы можно задавать Анастасии.</p>
                     </div>
                 </div>
                 <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
@@ -2475,58 +2484,92 @@ function StudentGlossarySearch({ studentId = '', cmsItems = [], cmsPlacements = 
 function StudentCertificationReference({ navigate }) {
     return (
         <div className="space-y-6 text-sm text-slate-700">
+            <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 leading-relaxed">
+                <p>Этот документ — ваша опора перед сертификацией. Здесь собрано всё, что важно: как подготовиться, какие есть обязательные условия, на что обращает внимание ментор и как устроена оценка. Наша цель — помочь вам провести встречу уверенно, бережно и в духе встреч с письменными практиками.</p>
+            </div>
+
             <div>
-                <h3 className="font-display text-lg text-slate-800 mb-3">Условия проведения СЗ</h3>
-                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-0 divide-y divide-slate-50">
-                    {PVL_CERT_CONDITIONS.map((row) => (
-                        <div key={row.strong} className="flex gap-4 py-3 first:pt-0">
-                            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#C8855A]" />
-                            <p>
-                                <span className="font-medium text-[#4A3728]">{row.strong}</span>
-                                {' '}
-                                {row.text}
-                            </p>
-                        </div>
-                    ))}
+                <h3 className="font-display text-lg text-slate-800 mb-3">Когда можно выходить на сертификацию</h3>
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm leading-relaxed">
+                    <ul className="space-y-2 list-disc pl-5">
+                        <li>вы выполнили все обязательные домашние задания модулей 1–3, и ментор их принял</li>
+                        <li>вы провели пробный завтрак или поучаствовали в тренировочной встрече</li>
+                        <li>вы посетили минимум 1 завтрак действующей ведущей Лиги и заполнили чек-лист с вашими наблюдениями</li>
+                        <li>вы согласовали сценарий сертификационного завтрака заранее</li>
+                        <li>вы собрали группу: минимум 3 человека, это не однокурсницы и не подруги</li>
+                        <li>вы назначили дату встречи, выбрали формат и подготовились технически к записи</li>
+                    </ul>
                 </div>
             </div>
 
             <div>
-                <h3 className="font-display text-lg text-slate-800 mb-3">Критерии оценки (1–3 балла)</h3>
-                <div className="grid sm:grid-cols-2 gap-4">
-                    {PVL_CERT_CRITERIA_GROUPS.map((g) => (
-                        <div key={g.letter} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                                {g.letter} · {g.name}
-                            </div>
-                            <div className="text-xs text-slate-600 leading-relaxed space-y-1">
-                                {g.lines.map((line) => (
-                                    <p key={line}>{line}</p>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                <div className="mt-3 rounded-xl border border-slate-100 bg-[#FAF6F2] p-4 text-xs text-slate-600 leading-relaxed">
-                    <span className="font-medium text-[#4A3728]">Итого:</span>
-                    {' '}
-                    18 критериев × 3 балла = 54 балла максимум · 18–30 = базовый · 31–45 = рабочий · 46–54 = сильный
+                <h3 className="font-display text-lg text-slate-800 mb-3">Административные требования</h3>
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-4 leading-relaxed">
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Формат и сроки</p>
+                        <p>Формат встречи — на ваш выбор: онлайн или офлайн. Длительность — <strong>60–90 минут</strong>. В группе должно быть <strong>не менее 3 участников</strong> из вашей целевой аудитории.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Анонс и приглашение</p>
+                        <p>Встреча должна быть анонсирована в ваших медиа — это может быть пост, личные сообщения, рассылка в целевую группу. В анонсе важно указать тему, формат, стоимость и то, что встреча является сертификационной. Отправьте анонс ментору.</p>
+                        <p className="mt-1">До встречи в личном общении с каждым участником обязательно проговорите, что встреча сертификационная и будет записана для проверки ментором.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Запись</p>
+                        <p>Встреча должна быть записана в аудиоформате. После встречи вы передаёте запись ментору и заполняете лист самооценки.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Оплата</p>
+                        <p>Встреча проводится <strong>на платной основе</strong> — от 500 рублей с участника. Исключение: бесплатная встреча для благотворительной организации или фонда.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-[#FAF6F2] p-4">
+                        <p className="font-medium text-[#4A3728] mb-1">Фраза, которую важно произнести в начале записи:</p>
+                        <p className="italic">«Эта встреча является сертификационной в рамках курса. Встреча записывается, запись передаётся только ментору для проверки моей работы как ведущей».</p>
+                    </div>
                 </div>
             </div>
 
             <div>
-                <h3 className="font-display text-lg text-slate-800 mb-3">Красные флаги — автоматический незачёт</h3>
+                <h3 className="font-display text-lg text-slate-800 mb-3">На что ментор обращает внимание</h3>
+                <div className="grid sm:grid-cols-3 gap-4">
+                    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Сценарий</div>
+                        <p className="text-xs text-slate-600 leading-relaxed">Соответствие теме, ясная драматургия: правила безопасности, знакомство/разминка, основная часть, подведение итогов. Понятные инструкции, сохранены ключевые компоненты: настройка, инструкция, рефлексивный отклик, обратная связь.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Техническая часть</div>
+                        <p className="text-xs text-slate-600 leading-relaxed">В начале встречи проговорены правила взаимодействия. Материалы подготовлены. Нет значимых технических сбоев.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Работа ведущей</div>
+                        <p className="text-xs text-slate-600 leading-relaxed">Удержан тайминг и этика. Баланс — примерно <strong>30/70 (разговор/письмо)</strong>. Инструкции короткие и ясные, есть время тишины. Удержана роль ведущей как хозяйки процесса.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 className="font-display text-lg text-slate-800 mb-3">Условия, при которых встреча уходит на пересдачу</h3>
                 <div className="rounded-2xl border border-rose-200/80 bg-rose-50/50 p-5 text-rose-900 leading-relaxed space-y-2">
-                    {PVL_CERT_RED_FLAGS.map((line) => (
-                        <div key={line}>🚫 {line}</div>
-                    ))}
+                    <div>🚫 Формат встречи не соответствует встрече с письменными практиками</div>
+                    <div>🚫 Не удержан баланс письма и разговоров (ориентир 30/70)</div>
+                    <div>🚫 Не удержана роль ведущей — управление перехвачено участниками</div>
+                    <div>🚫 Пропущены обязательные этапы встречи (начало, практики, завершение/рефлексия)</div>
+                    <div>🚫 Проблемы с записью — неполная, неразборчивая, не прозвучала обязательная фраза</div>
+                    <div>🚫 Количество участников ниже минимального (менее 3)</div>
+                    <div>🚫 Серьёзные нарушения этики или безопасности без реакции ведущей</div>
                 </div>
             </div>
 
             <div>
-                <h3 className="font-display text-lg text-slate-800 mb-3">Процесс сертификации</h3>
+                <h3 className="font-display text-lg text-slate-800 mb-3">Как проходит оценка</h3>
                 <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-0 divide-y divide-slate-50">
-                    {PVL_CERT_PROCESS_STEPS.map((text, idx) => (
+                    {[
+                        'Вы передаёте ментору запись сертификационного завтрака',
+                        'Проходите тест для самооценки',
+                        'Ментор слушает запись и даёт свою оценку по тем же маркерам',
+                        'Ментор даёт обратную связь',
+                        'Вы сверяете результаты, фиксируете точки роста и намечаете шаги к следующей встрече',
+                    ].map((text, idx) => (
                         <div key={text} className="flex gap-4 py-3 first:pt-0">
                             <span className="font-display text-xl text-[#C8855A] w-7 shrink-0 tabular-nums">{idx + 1}</span>
                             <p>{text}</p>
@@ -2535,21 +2578,24 @@ function StudentCertificationReference({ navigate }) {
                 </div>
             </div>
 
-            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-6 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
+            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-6">
                 <div className="flex gap-4 items-start">
                     <span className="text-2xl text-emerald-700">✦</span>
                     <div>
-                        <div className="font-display text-lg text-[#4A3728]">Бланк самооценки СЗ</div>
-                        <p className="text-xs text-slate-600 mt-1 max-w-xl">Заполни сразу после встречи — 18 критериев, рефлексия, критические условия. Бланк — ниже на этой странице.</p>
+                        <div className="font-display text-lg text-[#4A3728]">Важное напоминание</div>
+                        <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed">Сертификация — это не экзамен на идеальность. Вы учитесь видеть, что уже получается хорошо, и что стоит подкрутить, чтобы вести встречи ещё увереннее и бережнее. Мы в чате с менторами всегда рядом — поможем и поддержим.</p>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => document.getElementById('pvl-sz-flow')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    className="shrink-0 rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-medium hover:bg-emerald-800"
-                >
-                    К бланку ↓
-                </button>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                <div className="flex gap-3 items-start">
+                    <span className="text-lg text-amber-600 shrink-0">⚠</span>
+                    <div>
+                        <p className="font-medium text-amber-900">Анкета самооценки временно недоступна</p>
+                        <p className="text-xs text-amber-800 mt-1">Бланк самооценки сертификационного завтрака будет открыт позже. Следите за обновлениями на платформе.</p>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -2774,7 +2820,7 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
     return (
         <div className="space-y-6">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                <h2 className="font-display text-2xl text-slate-800">Коммуникации с ментором</h2>
+                <h2 className="font-display text-2xl text-slate-800">Чат с ментором</h2>
             </div>
             <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 space-y-5">
                 <div className="text-xs text-slate-500">Ментор: <span className="font-medium text-slate-700">{dialog.mentor?.fullName || 'не назначен'}</span></div>
@@ -2972,8 +3018,8 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 cohortId="cohort-2026-1"
                 navigate={navigate}
                 routePrefix={routePrefix}
-                title="Практикумы с менторами"
-                eventTypeFilter={['mentor_meeting', 'session']}
+                title="Практикумы"
+                eventTypeFilter={['practicum', 'mentor_meeting', 'session']}
             />
         );
     }
@@ -3019,15 +3065,15 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                     {formatPvlDateTime(cert?.deadlineAt || '2026-06-30')}
                 </div>
                 <StudentCertificationReference navigate={navigate} />
-                <div id="pvl-sz-flow" className="scroll-mt-4 rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                    <h3 className="font-display text-lg text-slate-800 mb-4">Бланк самооценки</h3>
-                    <PvlSzAssessmentFlow
-                        key={studentId}
-                        studentId={studentId}
-                        navigate={navigate}
-                        certPoints={cert.points}
-                        onCommitted={refresh}
-                    />
+                <div id="pvl-sz-flow" className="scroll-mt-4 rounded-3xl border border-amber-200 bg-amber-50 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
+                    <h3 className="font-display text-lg text-slate-800 mb-2">Бланк самооценки</h3>
+                    <div className="flex gap-3 items-start">
+                        <span className="text-lg text-amber-600 shrink-0">⚠</span>
+                        <div className="text-sm text-amber-900">
+                            <p className="font-medium">Анкета временно недоступна</p>
+                            <p className="text-xs text-amber-800 mt-1">Бланк самооценки сертификационного завтрака будет открыт позже. Следите за обновлениями на платформе.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -5067,7 +5113,8 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const filtered = filterContentItems(items, filters)
         .filter((i) => sections.includes(i.targetSection))
         .filter((i) => (filters.cohort === 'all' ? true : i.targetCohort === filters.cohort))
-        .filter((i) => (filters.module === 'all' ? true : String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(filters.module)));
+        .filter((i) => (filters.module === 'all' ? true : String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(filters.module)))
+        .sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
     const handleCreate = async () => {
         if (!draft.title.trim()) return;
         const customLibraryTitle = String(draft.libraryCategoryCustomTitle || '').trim();
@@ -5256,6 +5303,20 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             void (async () => {
                 try {
                     await Promise.all(toSave.map((row) => pvlDomainApi.adminApi.updateContentItem(row.id, { orderIndex: row.orderIndex })));
+                    const placementUpdates = [];
+                    toSave.forEach((row) => {
+                        const related = placements.filter((p) => (p.contentItemId || p.contentId) === row.id);
+                        related.forEach((p) => {
+                            placementUpdates.push({ placementId: p.id, orderIndex: row.orderIndex });
+                        });
+                    });
+                    if (placementUpdates.length > 0) {
+                        await Promise.all(placementUpdates.map((u) => pvlDomainApi.adminApi.updatePlacement(u.placementId, { orderIndex: u.orderIndex })));
+                        setPlacements((prev) => prev.map((p) => {
+                            const upd = placementUpdates.find((u) => u.placementId === p.id);
+                            return upd ? { ...p, orderIndex: upd.orderIndex } : p;
+                        }));
+                    }
                 } catch (e) {
                     try {
                         window.alert(`Не удалось сохранить порядок: ${e?.message || e}`);
@@ -6618,7 +6679,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
     const scoresSeparated = true;
 
     const criticalChecks = [
-        { title: 'Меню участницы: 8 пунктов курса в сайдбаре (плюс Дашборд, Настройки, сад)', ok: studentMenuPass },
+        { title: 'Меню участницы: 8 пунктов курса в сайдбаре (плюс Настройки, сад)', ok: studentMenuPass },
         { title: 'О курсе содержит стартовые материалы', ok: pvlDomainApi.studentApi.getStudentLibrary('u-st-1').length >= 0 },
         { title: 'Библиотека не смешана с Уроками', ok: true },
         { title: 'Результаты: API отдаёт список (в сиде может быть пусто до реальных сдач)', ok: Array.isArray(pvlDomainApi.studentApi.getStudentResults('u-st-1', {})) },
@@ -6962,7 +7023,7 @@ export default function PvlPrototypeApp({
                 practicums: 'Практикумы',
                 checklist: 'Трекер',
                 tracker: 'Трекер',
-                messages: 'Коммуникации',
+                messages: 'Чат с ментором',
                 results: 'Результаты',
                 certification: 'Сертификация',
                 'self-assessment': 'Сертификация',

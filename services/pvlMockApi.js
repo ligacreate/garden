@@ -416,13 +416,16 @@ function mapDbPlacementToRuntime(row) {
 
 function mapDbEventToRuntime(row) {
     const eventTypeMap = {
-        mentor_meeting: 'mentor_meeting',
-        lesson_release: 'lesson_release',
+        lesson: 'lesson',
+        practicum: 'practicum',
+        breakfast: 'breakfast',
         deadline: 'deadline',
         other: 'other',
-        // live schema aliases/legacy values:
-        live_stream: 'lesson_release',
-        session: 'mentor_meeting',
+        // legacy types → new types:
+        mentor_meeting: 'practicum',
+        lesson_release: 'lesson',
+        live_stream: 'breakfast',
+        session: 'practicum',
         week_closure: 'deadline',
     };
     const normalizedEventType = eventTypeMap[String(row.event_type || '').toLowerCase()] || 'other';
@@ -451,12 +454,16 @@ function mapDbEventToRuntime(row) {
 function normalizeCalendarEventTypeForDb(value) {
     const raw = String(value || '').toLowerCase().trim();
     const map = {
-        mentor_meeting: 'mentor_meeting',
-        lesson_release: 'lesson_release',
+        lesson: 'lesson',
+        practicum: 'practicum',
+        breakfast: 'breakfast',
         deadline: 'deadline',
         other: 'other',
-        live_stream: 'lesson_release',
-        session: 'mentor_meeting',
+        // legacy types:
+        mentor_meeting: 'practicum',
+        lesson_release: 'lesson',
+        live_stream: 'breakfast',
+        session: 'practicum',
         week_closure: 'deadline',
     };
     return map[raw] || 'other';
@@ -1464,7 +1471,10 @@ function getTaskDetail(studentId, taskId) {
     const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
     const versions = db.submissionVersions.filter((v) => v.submissionId === submission?.id).sort((a, b) => a.versionNumber - b.versionNumber);
     const history = db.statusHistory.filter((h) => h.studentId === studentId && h.taskId === taskId);
-    const thread = db.threadMessages.filter((m) => m.studentId === studentId && m.taskId === taskId);
+    const thread = db.threadMessages
+        .filter((m) => m.studentId === studentId && m.taskId === taskId)
+        .slice()
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
     return {
         task,
         state,
@@ -2910,7 +2920,7 @@ export const adminApi = {
         return true;
     },
     createCalendarEvent(payload = {}) {
-        const et = normalizeCalendarEventTypeForDb(payload.eventType || 'mentor_meeting');
+        const et = normalizeCalendarEventTypeForDb(payload.eventType || 'practicum');
         const row = {
             id: uid('pvl-cal'),
             title: 'Новое событие',

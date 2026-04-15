@@ -272,10 +272,10 @@ const materialBodyClass = pvlMaterialBodyClass;
 /**
  * Тело карточки материала: тест / видео+конспект / текст — как в библиотеке.
  */
-export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, onQuizPassed, variant = 'library', studentId = null, navigate = null }) {
+export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, onQuizPassed, variant = 'library', studentId = null, navigate = null, routePrefix = '/student' }) {
     if (!selectedItem) return null;
     if (selectedItem.lessonKind === 'homework' && studentId) {
-        return <HomeworkInlineForm selectedItem={selectedItem} studentId={studentId} navigate={navigate} />;
+        return <HomeworkInlineForm selectedItem={selectedItem} studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     }
     if (
         selectedItem.contentType === 'checklist'
@@ -372,7 +372,7 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
     );
 }
 
-function HomeworkInlineForm({ selectedItem, studentId, navigate }) {
+function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '/student' }) {
     const [draft, setDraft] = React.useState('');
     const [saved, setSaved] = React.useState(false);
     const [submitted, setSubmitted] = React.useState(false);
@@ -386,7 +386,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate }) {
         const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, task.id);
         const currentVersion = detail?.versions?.find(v => v.isDraft) || detail?.versions?.find(v => v.isCurrent);
         if (currentVersion?.textContent) setDraft(currentVersion.textContent);
-        if (detail?.state?.status === 'PENDING_REVIEW' || detail?.state?.status === 'ACCEPTED') {
+        if (detail?.state?.status === 'pending_review' || detail?.state?.status === 'accepted') {
             setSubmitted(true);
         }
     }, [studentId, task]);
@@ -396,13 +396,13 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate }) {
     const state = pvlDomainApi.db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
     const STATUS_LABELS = {
         not_started: { label: 'Не начато', color: 'bg-slate-100 text-slate-500' },
-        PENDING_REVIEW: { label: 'На проверке', color: 'bg-amber-100 text-amber-700' },
-        REVISION_REQUESTED: { label: 'На доработке', color: 'bg-orange-100 text-orange-700' },
-        ACCEPTED: { label: 'Принято', color: 'bg-emerald-100 text-emerald-700' },
+        pending_review: { label: 'На проверке', color: 'bg-amber-100 text-amber-700' },
+        revision_requested: { label: 'На доработке', color: 'bg-orange-100 text-orange-700' },
+        accepted: { label: 'Принято', color: 'bg-emerald-100 text-emerald-700' },
     };
     const statusInfo = STATUS_LABELS[state?.status] || STATUS_LABELS.not_started;
-    const isAccepted = state?.status === 'ACCEPTED';
-    const isPending = state?.status === 'PENDING_REVIEW';
+    const isAccepted = state?.status === 'accepted';
+    const isPending = state?.status === 'pending_review';
 
     const handleSaveDraft = () => {
         pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
@@ -417,7 +417,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate }) {
     };
 
     const handleOpenFull = () => {
-        if (navigate) navigate(`/student/results/${task.id}`);
+        if (navigate) navigate(`${routePrefix}/results/${task.id}`);
     };
 
     return (

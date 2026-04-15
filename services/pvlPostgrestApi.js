@@ -139,9 +139,9 @@ function normalizeCalendarEventTypeForDb(value) {
         lesson_release: 'lesson_release',
         deadline: 'deadline',
         other: 'other',
+        live_stream: 'live_stream',
         session: 'mentor_meeting',
         week_closure: 'deadline',
-        live_stream: 'lesson_release',
     };
     return map[raw] || 'other';
 }

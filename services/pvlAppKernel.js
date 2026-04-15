@@ -13,7 +13,7 @@ export const ROUTE_ACCESS_MAP = Object.freeze({
 export function getHomeRouteByRole(role) {
     if (role === 'mentor') return '/mentor/dashboard';
     if (role === 'admin') return '/admin/pvl';
-    return '/student/dashboard';
+    return '/student/about';
 }
 
 function isPvlCabinetRoute(route) {
@@ -42,11 +42,11 @@ export function redirectToAllowedRoute(role, attemptedRoute) {
 /** Синхронизировать с COURSE_MENU_LABELS в PvlPrototypeApp.jsx */
 const PVL_COURSE_SIDEBAR_LABELS = [
     'О курсе',
-    'Глоссарий курса',
-    'Библиотека курса',
     'Трекер курса',
     'Практикумы с менторами',
-    'Коммуникации',
+    'Библиотека курса',
+    'Глоссарий курса',
+    'Чат с ментором',
     'Результаты',
     'Сертификация и самооценка',
 ];
@@ -59,7 +59,7 @@ export function buildSidebarByRole(role) {
             'Менторы',
             'Материалы курса',
             'Календарь',
-            ...PVL_COURSE_SIDEBAR_LABELS.filter((label) => label !== 'Коммуникации'),
+            ...PVL_COURSE_SIDEBAR_LABELS.filter((label) => label !== 'Чат с ментором'),
             'Настройки',
         ];
     }
@@ -73,7 +73,7 @@ export function buildSidebarByRole(role) {
             'Настройки',
         ];
     }
-    return ['Дашборд', ...PVL_COURSE_SIDEBAR_LABELS, 'Настройки'];
+    return [...PVL_COURSE_SIDEBAR_LABELS, 'Настройки'];
 }
 
 export function saveAppSession(payload) {

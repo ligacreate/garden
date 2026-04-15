@@ -150,14 +150,53 @@ function renderAboutPage() {
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728] mb-2">О курсе и онбординг</h3>
-                <p className="text-sm text-[#2C1810] leading-6">3 месяца, 110 часов, контрольные точки, правила баллов, безопасность, связь и расписание. Стартовые материалы и видео встроены сюда, без отдельного пункта меню.</p>
+                <h3 className="font-display text-2xl text-[#4A3728] mb-2">О курсе «Пиши, веди, люби»</h3>
+                <p className="text-sm text-[#2C1810] leading-6">
+                    Вы начинаете обучение на курсе «Пиши, веди, люби». Курс состоит из трёх модулей: Пиши, Веди, Люби. Отдельный курс — социальная психология (его можно слушать в любое время).
+                </p>
+                <p className="text-sm text-[#2C1810] leading-6 mt-2">
+                    Финалом курса будет сертификационный завтрак, вы его соберёте и проведёте, а ментор прослушает и даст обратную связь. После нас ждёт защита проектов. Курс — это только начало, после него мы будем ждать вас в Лиге развивающих практиков.
+                </p>
             </div>
-            <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Как пользоваться платформой: уроки, задания, дедлайны, личная страница.</div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Экран "Старт": видео + красные флаги + критерии зачета.</div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Как не копить долги: антидолги D+1 / D+3 / D+7 / D+10.</div>
-                <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm">Матрица ответственности: методолог, ментор, куратор, техподдержка.</div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">Что обязательно нужно делать на курсе</h4>
+                <ul className="text-sm text-[#2C1810] leading-6 space-y-1 list-disc pl-5">
+                    <li>слушать уроки</li>
+                    <li>выполнять тесты</li>
+                    <li>делать домашние задания</li>
+                    <li>приходить на практикумы</li>
+                    <li>посетить встречу с письменными практиками</li>
+                    <li>участвовать в сборных завтраках</li>
+                    <li>получать удовольствие</li>
+                    <li>пробовать практики на себе</li>
+                </ul>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm text-[#2C1810] leading-6">
+                Все встречи мы будем вносить в календарь на платформе и анонсировать в канале. Записи будем размещать на платформе.
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm text-[#2C1810] leading-6">
+                Мы очень рекомендуем вам не копить долги, делать все вовремя и планировать сертификационный завтрак заранее. Ведь он состоит не только из подготовки сценария, но и сбора группы. На платформе есть отдельный раздел о сертификации, где мы описали все требования к сертификационному завтраку.
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4 text-sm text-[#2C1810] leading-6">
+                Чуть позже там появится тест самооценки, который вы сможете пройти уже после того, как проведёте сертификационный завтрак. Точно такой же тест о вашем завтраке заполнит ваш ментор, и вы сравните результаты.
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">Команда</h4>
+                <div className="text-sm text-[#2C1810] leading-6 space-y-1">
+                    <p><span className="font-medium">Куратор курса:</span> Ирина Одинцова</p>
+                    <p className="font-medium mt-2">Менторы курса:</p>
+                    <ul className="list-disc pl-5">
+                        <li>Юлия Габрух</li>
+                        <li>Василина Лузина</li>
+                        <li>Елена Федотова</li>
+                    </ul>
+                    <p className="mt-2">Технические вопросы можно задавать Анастасии.</p>
+                </div>
             </div>
         </div>
     );
@@ -314,14 +353,98 @@ export function renderCertificationPage() {
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728]">Сертификация</h3>
-                <p className="text-sm text-[#2C1810] mt-1">Условия СЗ, критерии, красные флаги, дедлайн записи СЗ.</p>
-                <div className="grid md:grid-cols-2 gap-2 mt-3">
-                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3 text-sm">Курсовые баллы: <strong>{studentProfile.coursePoints}/400</strong></div>
-                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3 text-sm">Самооценка СЗ: <strong>{studentProfile.szSelfAssessmentPoints}/54</strong></div>
+                <h3 className="font-display text-2xl text-[#4A3728]">Сертификационный завтрак — критерии и подготовка</h3>
+                <p className="text-sm text-[#2C1810] mt-1 leading-6">Этот документ — ваша опора перед сертификацией. Здесь собрано всё, что важно: как подготовиться, какие есть обязательные условия, на что обращает внимание ментор и как устроена оценка.</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">Когда можно выходить на сертификацию</h4>
+                <ul className="text-sm text-[#2C1810] leading-6 space-y-1 list-disc pl-5">
+                    <li>вы выполнили все обязательные домашние задания модулей 1–3, и ментор их принял</li>
+                    <li>вы провели пробный завтрак или поучаствовали в тренировочной встрече</li>
+                    <li>вы посетили минимум 1 завтрак действующей ведущей Лиги и заполнили чек-лист с вашими наблюдениями</li>
+                    <li>вы согласовали сценарий сертификационного завтрака заранее</li>
+                    <li>вы собрали группу: минимум 3 человека, это не однокурсницы и не подруги</li>
+                    <li>вы назначили дату встречи, выбрали формат и подготовились технически к записи</li>
+                </ul>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">Административные требования</h4>
+                <div className="text-sm text-[#2C1810] leading-6 space-y-3">
+                    <div>
+                        <p className="font-medium">Формат и сроки</p>
+                        <p>Формат встречи — на ваш выбор: онлайн или офлайн. Длительность — <strong>60–90 минут</strong>. В группе должно быть <strong>не менее 3 участников</strong> из вашей целевой аудитории.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium">Анонс и приглашение</p>
+                        <p>Встреча должна быть анонсирована в ваших медиа. В анонсе важно указать тему, формат, стоимость и то, что встреча является сертификационной. Отправьте анонс ментору. До встречи обязательно проговорите с каждым участником, что встреча сертификационная и будет записана.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium">Запись</p>
+                        <p>Встреча должна быть записана в аудиоформате. После встречи вы передаёте запись ментору и заполняете лист самооценки.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium">Оплата</p>
+                        <p>Встреча проводится <strong>на платной основе</strong> — от 500 рублей с участника. Исключение: бесплатная встреча для благотворительной организации или фонда.</p>
+                    </div>
+                    <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">
+                        <p className="font-medium mb-1">Фраза, которую важно произнести в начале записи:</p>
+                        <p className="italic">«Эта встреча является сертификационной в рамках курса. Встреча записывается, запись передаётся только ментору для проверки моей работы как ведущей».</p>
+                    </div>
                 </div>
-                {/* Open question: методологический конфликт источников */}
-                {/* TODO(methodology): В canvas фигурировал порог допуска к СЗ 500, в брифе зафиксирован потолок курсовых 400. Требуется решение методолога, не решаем в коде самостоятельно. */}
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">На что ментор обращает внимание</h4>
+                <div className="text-sm text-[#2C1810] leading-6 space-y-3">
+                    <div>
+                        <p className="font-medium">Сценарий</p>
+                        <p>Соответствие теме, ясная драматургия: правила безопасности, знакомство/разминка, основная часть, подведение итогов, финальные оргмоменты. Понятные инструкции к практикам, сохранены ключевые компоненты: настройка, инструкция, рефлексивный отклик, обратная связь.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium">Техническая и организационная часть</p>
+                        <p>В начале проговорены правила. Материалы подготовлены. Нет значимых технических сбоев.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium">Работа ведущей</p>
+                        <p>Удержан тайминг, соблюдена этика. Ориентир по балансу — примерно <strong>30/70 (разговор/письмо)</strong>. Инструкции короткие и ясные, есть время тишины. Удержана роль ведущей как хозяйки процесса.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="rounded-2xl border border-rose-200/80 bg-rose-50/50 p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">Условия, при которых встреча уходит на пересдачу</h4>
+                <ul className="text-sm text-rose-900 leading-6 space-y-2 list-none">
+                    <li>🚫 Формат встречи не соответствует встрече с письменными практиками</li>
+                    <li>🚫 Не удержан баланс письма и разговоров (ориентир 30/70)</li>
+                    <li>🚫 Не удержана роль ведущей — управление перехвачено участниками</li>
+                    <li>🚫 Пропущены обязательные этапы встречи</li>
+                    <li>🚫 Проблемы с записью (неполная, неразборчивая, не прозвучала фраза)</li>
+                    <li>🚫 Количество участников ниже минимального (менее 3)</li>
+                    <li>🚫 Серьёзные нарушения этики или безопасности без реакции ведущей</li>
+                </ul>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                <h4 className="font-display text-lg text-[#4A3728] mb-2">Как проходит оценка</h4>
+                <ol className="text-sm text-[#2C1810] leading-6 space-y-1 list-decimal pl-5">
+                    <li>Вы передаёте ментору запись сертификационного завтрака</li>
+                    <li>Проходите тест для самооценки</li>
+                    <li>Ментор слушает запись и даёт свою оценку по тем же маркерам</li>
+                    <li>Ментор даёт обратную связь</li>
+                    <li>Вы сверяете результаты, фиксируете точки роста и намечаете шаги к следующей встрече</li>
+                </ol>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 text-sm text-[#2C1810] leading-6">
+                <p className="font-medium text-[#4A3728]">Важное напоминание</p>
+                <p className="mt-1">Сертификация — это не экзамен на идеальность. Вы учитесь видеть, что уже получается хорошо, и что стоит подкрутить, чтобы вести встречи ещё увереннее и бережнее. Мы в чате с менторами всегда рядом — поможем и поддержим.</p>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">Анкета самооценки временно недоступна</p>
+                <p className="mt-1">Бланк самооценки сертификационного завтрака будет открыт позже. Следите за обновлениями на платформе.</p>
             </div>
         </div>
     );

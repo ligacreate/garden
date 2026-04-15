@@ -176,6 +176,7 @@ export function PlatformCourseModulesGrid({
     /** Показать один модуль (шаги уроков/тестов) — после выбора карточки на корне трекера */
     onlyModuleId = null,
     navigate = null,
+    routePrefix = '/student',
 }) {
     const hookState = usePlatformStepChecklist(studentId);
     const checked = checkedOverride || hookState.checked;
@@ -201,9 +202,9 @@ export function PlatformCourseModulesGrid({
 
     const HW_STATUS_BADGE = {
         not_started:        { label: 'Не начато',    cls: 'bg-slate-100 text-slate-400 border-slate-200' },
-        PENDING_REVIEW:     { label: 'На проверке',  cls: 'bg-amber-50 text-amber-600 border-amber-200' },
-        REVISION_REQUESTED: { label: 'На доработке', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
-        ACCEPTED:           { label: 'Принято',      cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+        pending_review:     { label: 'На проверке',  cls: 'bg-amber-50 text-amber-600 border-amber-200' },
+        revision_requested: { label: 'На доработке', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
+        accepted:           { label: 'Принято',      cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
     };
     const articleClass = variant === 'lessons'
         ? 'rounded-2xl border border-slate-100/90 bg-white/90 shadow-sm shadow-slate-200/20 overflow-hidden'
@@ -263,7 +264,7 @@ export function PlatformCourseModulesGrid({
                                                 type="button"
                                                 onClick={() => {
                                                     if (isHwStep && navigate && hwInfo?.task) {
-                                                        navigate(`/student/results/${hwInfo.task.id}`);
+                                                        navigate(`${routePrefix}/results/${hwInfo.task.id}`);
                                                         return;
                                                     }
                                                     if (interactionMode === 'open' && onOpenItem) {
@@ -282,15 +283,15 @@ export function PlatformCourseModulesGrid({
                                             >
                                                 {isHwStep ? (
                                                     <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] ${
-                                                        hwInfo.status === 'ACCEPTED'
+                                                        hwInfo.status === 'accepted'
                                                             ? 'border-emerald-500 bg-emerald-500 text-white'
-                                                            : hwInfo.status === 'PENDING_REVIEW'
+                                                            : hwInfo.status === 'pending_review'
                                                                 ? 'border-amber-400 bg-amber-50 text-amber-600'
-                                                                : hwInfo.status === 'REVISION_REQUESTED'
+                                                                : hwInfo.status === 'revision_requested'
                                                                     ? 'border-orange-400 bg-orange-50 text-orange-600'
                                                                     : 'border-[#C4956A]/40 bg-white text-[#C4956A]'
                                                     }`}>
-                                                        {hwInfo.status === 'ACCEPTED' ? '✓' : hwInfo.status === 'PENDING_REVIEW' ? '…' : hwInfo.status === 'REVISION_REQUESTED' ? '!' : '✏'}
+                                                        {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' ? '…' : hwInfo.status === 'revision_requested' ? '!' : '✏'}
                                                     </span>
                                                 ) : (
                                                     <span
@@ -399,7 +400,7 @@ export function StudentCourseTracker({
             const state = pvlDomainApi.db.studentTaskStates.find(
                 s => s.studentId === studentId && s.taskId === task.id
             );
-            if (state?.status !== 'ACCEPTED') return;
+            if (state?.status !== 'accepted') return;
             resolvedModules.forEach((mod) => {
                 mod.items.forEach((item, i) => {
                     if (item.tag !== 'task') return;
@@ -492,6 +493,9 @@ export function StudentCourseTracker({
                                         selectedItem={linkedItem}
                                         lessonVideoPlayerHtml={lessonVideoPlayerHtml}
                                         onQuizPassed={syncLibraryAndStepComplete}
+                                        studentId={studentId}
+                                        navigate={navigate}
+                                        routePrefix={routePrefix}
                                     />
                                 </div>
                             ) : !contentItemId ? (
@@ -576,6 +580,7 @@ export function StudentCourseTracker({
                 interactionMode="open"
                 onOpenItem={({ key }) => setActiveStepKey(key)}
                 navigate={navigate}
+                routePrefix={routePrefix}
             />
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">

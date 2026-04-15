@@ -16,6 +16,7 @@ export const pvlMockData = {
     submissions: [],
     submissionVersions: [],
     statusHistory: [],
+    /** @deprecated Лента по заданиям живёт в runtime (`pvlDomainApi.db.threadMessages`), не в PostgREST. */
     threadMessages: [],
     mentorMeetings: [],
     libraryItems: [],

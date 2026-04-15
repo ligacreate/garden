@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS pvl_calendar_events (
   CONSTRAINT pvl_calendar_events_visibility_role_check
     CHECK (visibility_role IN ('all', 'student', 'mentor', 'admin')),
   CONSTRAINT pvl_calendar_events_event_type_check
-    CHECK (event_type IN ('mentor_meeting', 'live_stream', 'lesson_release', 'deadline', 'other'))
+    CHECK (event_type IN ('lesson', 'practicum', 'breakfast', 'mentor_meeting', 'live_stream', 'lesson_release', 'deadline', 'other'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pvl_calendar_events_cohort_start

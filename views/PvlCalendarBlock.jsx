@@ -25,19 +25,25 @@ function monthDateFromPrefsYm(ym) {
 }
 
 export const PVL_CAL_EVENT_LABELS = {
-    mentor_meeting: 'Встреча с менторами',
-    live_stream: 'Прямой эфир',
-    lesson_release: 'Выход урока',
+    lesson: 'Урок',
+    practicum: 'Практикум',
+    breakfast: 'Завтрак',
+    mentor_meeting: 'Практикум',
+    live_stream: 'Завтрак',
+    lesson_release: 'Урок',
 };
 
 export function calendarEventDotClass(eventType) {
     switch (String(eventType || '').toLowerCase()) {
-        case 'mentor_meeting':
-            return 'bg-teal-400/90';
-        case 'live_stream':
-            return 'bg-violet-400/85';
+        case 'lesson':
         case 'lesson_release':
             return 'bg-amber-400/90';
+        case 'practicum':
+        case 'mentor_meeting':
+            return 'bg-teal-400/90';
+        case 'breakfast':
+        case 'live_stream':
+            return 'bg-violet-400/85';
         default:
             return 'bg-slate-300';
     }
@@ -99,11 +105,11 @@ function openEventNavigation(ev, navigate, routePrefix) {
         navigate('/admin/calendar');
         return;
     }
-    if (ev.eventType === 'lesson_release' && ev.linkedLessonId) {
+    if ((ev.eventType === 'lesson' || ev.eventType === 'lesson_release') && ev.linkedLessonId) {
         navigate(`${routePrefix}/lessons`);
         return;
     }
-    if (ev.eventType === 'mentor_meeting') {
+    if (ev.eventType === 'practicum' || ev.eventType === 'mentor_meeting' || ev.eventType === 'breakfast' || ev.eventType === 'live_stream') {
         navigate(`${routePrefix}/practicums`);
     }
 }
@@ -239,16 +245,16 @@ export function PvlDashboardCalendarBlock({
 
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-[#7A6B5C]">
                 <span className="inline-flex items-center gap-2">
-                    <CalendarLegendDot eventType="mentor_meeting" />
-                    Встречи
+                    <CalendarLegendDot eventType="lesson" />
+                    Урок
                 </span>
                 <span className="inline-flex items-center gap-2">
-                    <CalendarLegendDot eventType="live_stream" />
-                    Эфиры
+                    <CalendarLegendDot eventType="practicum" />
+                    Практикум
                 </span>
                 <span className="inline-flex items-center gap-2">
-                    <CalendarLegendDot eventType="lesson_release" />
-                    Уроки
+                    <CalendarLegendDot eventType="breakfast" />
+                    Завтрак
                 </span>
             </div>
 
@@ -483,9 +489,9 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                 <div className="flex flex-wrap gap-2">
                 <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white">
                     <option value="all">Все типы</option>
-                    <option value="mentor_meeting">Встречи с менторами</option>
-                    <option value="live_stream">Прямые эфиры</option>
-                    <option value="lesson_release">Выход уроков</option>
+                    <option value="lesson">Урок</option>
+                    <option value="practicum">Практикум</option>
+                    <option value="breakfast">Завтрак</option>
                 </select>
                 <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white">
                     <option value="all">Все роли видимости</option>
@@ -510,16 +516,16 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-slate-600">
                     <span className="inline-flex items-center gap-2">
-                        <CalendarLegendDot eventType="mentor_meeting" />
-                        Встречи
+                        <CalendarLegendDot eventType="lesson" />
+                        Урок
                     </span>
                     <span className="inline-flex items-center gap-2">
-                        <CalendarLegendDot eventType="live_stream" />
-                        Эфиры
+                        <CalendarLegendDot eventType="practicum" />
+                        Практикум
                     </span>
                     <span className="inline-flex items-center gap-2">
-                        <CalendarLegendDot eventType="lesson_release" />
-                        Уроки
+                        <CalendarLegendDot eventType="breakfast" />
+                        Завтрак
                     </span>
                 </div>
             </div>
@@ -553,9 +559,9 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                     bump();
                                 }}
                             >
-                                <option value="mentor_meeting">Встреча с менторами</option>
-                                <option value="live_stream">Прямой эфир</option>
-                                <option value="lesson_release">Выход урока</option>
+                                <option value="lesson">Урок</option>
+                                <option value="practicum">Практикум</option>
+                                <option value="breakfast">Завтрак</option>
                             </select>
                         </label>
                         <label className="block text-xs text-slate-500 md:col-span-3">Описание

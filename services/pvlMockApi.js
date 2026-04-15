@@ -2738,19 +2738,61 @@ export const sharedApi = {
     sendDirectMessage({ mentorId, studentId, authorUserId, text }) {
         const body = String(text || '').trim();
         if (!mentorId || !studentId || !authorUserId || !body) return null;
+        const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : uid('dm');
+        const now = nowIso();
         const row = {
-            id: uid('dm'),
+            id,
             mentorId,
             studentId,
             authorUserId,
             text: body,
-            createdAt: nowIso(),
-            updatedAt: nowIso(),
+            createdAt: now,
+            updatedAt: now,
         };
         if (!Array.isArray(db.directMessages)) db.directMessages = [];
         db.directMessages.push(row);
         addAuditEvent(authorUserId, 'system', 'direct_message_send', 'direct_message', row.id, 'Direct message sent', { mentorId, studentId });
+        if (isUuidString(mentorId) && isUuidString(studentId) && isUuidString(authorUserId)) {
+            const dbRow = {
+                id: isUuidString(id) ? id : undefined,
+                mentor_id: mentorId,
+                student_id: studentId,
+                author_user_id: authorUserId,
+                text: body,
+            };
+            if (!isUuidString(id)) delete dbRow.id;
+            fireAndForget(
+                () => pvlPostgrestApi.createDirectMessage(dbRow),
+                { table: 'pvl_direct_messages', endpoint: '/pvl_direct_messages', id: row.id },
+            );
+        }
         return row;
+    },
+    async loadDirectMessagesFromDb(mentorId, studentId) {
+        if (!pvlPostgrestApi.isEnabled()) return;
+        if (!isUuidString(mentorId) || !isUuidString(studentId)) return;
+        let rows;
+        try {
+            rows = await pvlPostgrestApi.listDirectMessages(mentorId, studentId);
+        } catch {
+            return;
+        }
+        if (!Array.isArray(db.directMessages)) db.directMessages = [];
+        const existingIds = new Set(db.directMessages.map((m) => m.id));
+        for (const row of rows || []) {
+            if (!row?.id || existingIds.has(row.id)) continue;
+            db.directMessages.push({
+                id: row.id,
+                mentorId: row.mentor_id,
+                studentId: row.student_id,
+                authorUserId: row.author_user_id,
+                text: row.text,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at,
+            });
+        }
     },
     getStudentDirectDialog(studentId) {
         const profile = db.studentProfiles.find((p) => p.userId === studentId);

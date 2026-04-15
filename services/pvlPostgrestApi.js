@@ -546,6 +546,26 @@ export const pvlPostgrestApi = {
         }
     },
 
+    // Direct messages (ментор ↔ ученица)
+    async listDirectMessages(mentorId, studentId) {
+        return request('pvl_direct_messages', {
+            params: {
+                select: '*',
+                mentor_id: `eq.${mentorId}`,
+                student_id: `eq.${studentId}`,
+                order: 'created_at.asc',
+            },
+        });
+    },
+    async createDirectMessage(payload) {
+        const rows = await request('pvl_direct_messages', {
+            method: 'POST',
+            body: [payload],
+            prefer: 'return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
     // Backward compatibility with current integration points
     async loadRuntimeSnapshot() {
         const [items, placements, events, faq] = await Promise.all([

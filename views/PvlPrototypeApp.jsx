@@ -2727,6 +2727,7 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
     const dialog = useMemo(() => {
         void tick;
         const dialogFromApi = pvlDomainApi.sharedApi.getStudentDirectDialog(studentId);
+
         if (dialogFromApi?.mentorId && dialogFromApi?.mentor) return dialogFromApi;
         if (profile?.mentorId) {
             return {
@@ -2736,6 +2737,13 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
         }
         return dialogFromApi;
     }, [studentId, tick, profile]);
+    const mentorIdForEffect = dialog.mentorId;
+    useEffect(() => {
+        if (!mentorIdForEffect || !studentId) return;
+        pvlDomainApi.sharedApi.loadDirectMessagesFromDb(mentorIdForEffect, studentId)
+            .then(() => setTick((v) => v + 1))
+            .catch(() => {});
+    }, [mentorIdForEffect, studentId]);
     const onSend = () => {
         const body = String(text || '').trim();
         if (!body || !dialog.mentorId) return;
@@ -2796,6 +2804,12 @@ function MentorDirectMessages({ mentorId = 'u-men-1' }) {
         if (!selectedStudentId) return [];
         return pvlDomainApi.sharedApi.getDirectMessages(mentorId, selectedStudentId);
     }, [mentorId, selectedStudentId, tick]);
+    useEffect(() => {
+        if (!mentorId || !selectedStudentId) return;
+        pvlDomainApi.sharedApi.loadDirectMessagesFromDb(mentorId, selectedStudentId)
+            .then(() => setTick((v) => v + 1))
+            .catch(() => {});
+    }, [mentorId, selectedStudentId]);
     const onSend = () => {
         const body = String(text || '').trim();
         if (!body || !selectedStudentId) return;

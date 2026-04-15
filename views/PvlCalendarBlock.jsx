@@ -235,9 +235,6 @@ export function PvlDashboardCalendarBlock({
         <section className="space-y-4">
             <div>
                 <h3 className="font-display text-xl text-[#3D342B]">{title}</h3>
-                {Array.isArray(eventTypeFilter) && eventTypeFilter.length > 0 ? (
-                    <p className="mt-1 text-sm text-[#7A6B5C]">События потока по выбранному типу</p>
-                ) : null}
             </div>
 
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-[#7A6B5C]">

@@ -5294,9 +5294,6 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                             onChange={handleImportContentDocument}
                         />
                     </label>
-                    <span className="text-[11px] text-slate-500">
-                        Документ автоматически форматируется в единый стиль ПВЛ и подставляется в текст материала.
-                    </span>
                     {importedDocName ? <span className="text-xs text-emerald-700">Загружен: {importedDocName}</span> : null}
                     {docImportError ? <span className="text-xs text-rose-700">{docImportError}</span> : null}
                 </section>
@@ -6048,7 +6045,6 @@ function AdminMentors() {
                                 <div className="text-base font-semibold text-slate-800">{resolveActorDisplayName(m.mentorUserId) || m.user?.fullName || m.mentorUserId}</div>
                                 <StatusBadge>{m.statusLabel}</StatusBadge>
                             </div>
-                            <div className="text-xs text-slate-500 mt-0.5">ID: {m.mentorUserId}</div>
                         </div>
                         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5 xl:items-stretch">
                             <div className="flex min-h-[4.25rem] flex-col justify-center gap-1 rounded-xl bg-slate-50/90 px-3 py-2.5 shadow-sm">

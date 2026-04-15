@@ -538,9 +538,6 @@ export function StudentCourseTracker({
 
             <div className="flex flex-wrap items-end justify-between gap-2">
                 <h3 className="font-display text-lg text-slate-800">Модули курса</h3>
-                <p className="text-xs text-slate-500 max-w-xl">
-                    Модульный контур: шаги каждого модуля доступны сразу внизу. Клик по шагу открывает урок справа в рабочем режиме трекера.
-                </p>
             </div>
             <PlatformCourseModulesGrid
                 studentId={studentId}

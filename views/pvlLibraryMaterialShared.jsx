@@ -435,11 +435,15 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
                         {statusInfo.label}
                     </span>
                 </div>
-                {(selectedItem.lessonHomework?.prompt || selectedItem.shortDescription) && (
+                {selectedItem.lessonHomework?.prompt ? (
                     <p className="text-sm text-slate-600 leading-relaxed mb-3">
-                        {selectedItem.lessonHomework?.prompt || selectedItem.shortDescription}
+                        {selectedItem.lessonHomework.prompt}
                     </p>
-                )}
+                ) : !selectedItem.fullDescription && selectedItem.shortDescription ? (
+                    <p className="text-sm text-slate-600 leading-relaxed mb-3">
+                        {selectedItem.shortDescription}
+                    </p>
+                ) : null}
                 {selectedItem.lessonHomework?.expectedResult && (
                     <p className="text-xs text-slate-400">Ожидаемый результат: {selectedItem.lessonHomework.expectedResult}</p>
                 )}

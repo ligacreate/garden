@@ -258,28 +258,45 @@ export function PlatformCourseModulesGrid({
                                     const hwInfo = getHomeworkStatus(item);
                                     const isHwStep = tag === 'task' && !!hwInfo;
                                     const hwBadge = hwInfo ? (HW_STATUS_BADGE[hwInfo.status] || HW_STATUS_BADGE.not_started) : null;
-                                    return (
-                                        <li key={key}>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (isHwStep && navigate && hwInfo?.task) {
-                                                        navigate(`${routePrefix}/results/${hwInfo.task.id}`);
-                                                        return;
-                                                    }
-                                                    if (interactionMode === 'open' && onOpenItem) {
-                                                        onOpenItem({ key, item, module: mod, index: i, isDone });
-                                                        return;
-                                                    }
-                                                    toggleItem(key);
-                                                }}
-                                                className={`w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors ${
-                                                    quizCard
-                                                        ? 'border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 to-white shadow-[0_8px_24px_-14px_rgba(15,23,42,0.08)] hover:from-emerald-50 hover:to-emerald-50/50'
-                                                        : 'rounded-lg px-1 hover:bg-slate-50/80'
-                                                }`}
-                                            >
-                                                {isHwStep ? (
+                                    /** Видео/PDF/живое и шаги без привязанного ДЗ: галочка = «изучил», не квиз и не карточка ДЗ с задачей */
+                                    const canToggleStudied = !quizCard && !isHwStep;
+                                    const openStudyStep = () => {
+                                        if (interactionMode === 'open' && onOpenItem) {
+                                            onOpenItem({ key, item, module: mod, index: i, isDone });
+                                        }
+                                    };
+                                    const studyCheckbox = (
+                                        <span
+                                            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
+                                            aria-hidden
+                                        >
+                                            {isDone ? '✓' : ''}
+                                        </span>
+                                    );
+                                    const titleClass = `text-sm flex-1 min-w-0 leading-snug ${
+                                        isDone && canToggleStudied ? 'text-slate-500 line-through decoration-slate-400' : isDone ? 'text-slate-500' : 'text-slate-800'
+                                    }`;
+                                    const tagPills = (
+                                        <>
+                                            <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
+                                                {tagLabelFor(tag)}
+                                            </span>
+                                            {isHwStep && hwBadge && (
+                                                <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${hwBadge.cls}`}>
+                                                    {hwBadge.label}
+                                                </span>
+                                            )}
+                                        </>
+                                    );
+
+                                    if (isHwStep && navigate && hwInfo?.task) {
+                                        return (
+                                            <li key={key}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => navigate(`${routePrefix}/results/${hwInfo.task.id}`)}
+                                                    className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-1 rounded-lg text-left transition-colors hover:bg-slate-50/80"
+                                                >
                                                     <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] ${
                                                         hwInfo.status === 'accepted'
                                                             ? 'border-emerald-500 bg-emerald-500 text-white'
@@ -291,23 +308,76 @@ export function PlatformCourseModulesGrid({
                                                     }`}>
                                                         {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' ? '…' : hwInfo.status === 'revision_requested' ? '!' : '✏'}
                                                     </span>
-                                                ) : (
+                                                    <span className={`text-sm flex-1 min-w-0 leading-snug ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
+                                                    {tagPills}
+                                                </button>
+                                            </li>
+                                        );
+                                    }
+
+                                    if (quizCard) {
+                                        return (
+                                            <li key={key}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (interactionMode === 'open' && onOpenItem) {
+                                                            onOpenItem({ key, item, module: mod, index: i, isDone });
+                                                            return;
+                                                        }
+                                                        if (navigate) navigate(`${routePrefix}/tracker`);
+                                                    }}
+                                                    className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 to-white shadow-[0_8px_24px_-14px_rgba(15,23,42,0.08)] hover:from-emerald-50 hover:to-emerald-50/50"
+                                                >
                                                     <span
-                                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
-                                                        aria-label={isDone ? 'Шаг отмечен' : 'Шаг не отмечен'}
+                                                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 border-emerald-200 bg-white"
+                                                        aria-hidden
+                                                    />
+                                                    <span className="text-sm flex-1 min-w-0 leading-snug text-slate-800">{item.text}</span>
+                                                    {tagPills}
+                                                </button>
+                                            </li>
+                                        );
+                                    }
+
+                                    if (canToggleStudied && interactionMode === 'open' && onOpenItem) {
+                                        return (
+                                            <li key={key}>
+                                                <div className="flex w-full flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-1 rounded-lg transition-colors hover:bg-slate-50/80">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleItem(key)}
+                                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-emerald-500/40 ${
+                                                            isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200 hover:border-emerald-400/80'
+                                                        }`}
+                                                        aria-label={isDone ? 'Снять отметку «изучено»' : 'Отметить как изучено'}
+                                                        aria-pressed={isDone}
                                                     >
                                                         {isDone ? '✓' : ''}
-                                                    </span>
-                                                )}
-                                                <span className={`text-sm flex-1 min-w-0 leading-snug ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
-                                                <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
-                                                    {tagLabelFor(tag)}
-                                                </span>
-                                                {isHwStep && hwBadge && (
-                                                    <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${hwBadge.cls}`}>
-                                                        {hwBadge.label}
-                                                    </span>
-                                                )}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={openStudyStep}
+                                                        className="flex min-w-0 flex-1 flex-wrap items-start gap-2 sm:gap-3 text-left"
+                                                    >
+                                                        <span className={titleClass}>{item.text}</span>
+                                                        {tagPills}
+                                                    </button>
+                                                </div>
+                                            </li>
+                                        );
+                                    }
+
+                                    return (
+                                        <li key={key}>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleItem(key)}
+                                                className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-1 rounded-lg text-left transition-colors hover:bg-slate-50/80"
+                                            >
+                                                {studyCheckbox}
+                                                <span className={titleClass}>{item.text}</span>
+                                                {tagPills}
                                             </button>
                                         </li>
                                     );

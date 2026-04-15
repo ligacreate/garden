@@ -695,7 +695,11 @@ export async function syncPvlRuntimeFromDb() {
     /** Состояние рантайма = ответ PostgREST (включая пустые списки — источник правды в БД). */
     db.contentItems = mappedItems;
     db.contentPlacements = mappedPlacements;
-    db.calendarEvents = mappedEvents;
+    if (mappedEvents.length) {
+        const dbIds = new Set(mappedEvents.map((e) => e.id));
+        const seedOnly = (db.calendarEvents || []).filter((e) => !dbIds.has(e.id));
+        db.calendarEvents = [...mappedEvents, ...seedOnly];
+    }
     db.faqItems = mappedFaq;
     await syncTrackerAndHomeworkFromDb();
     return { synced: true };

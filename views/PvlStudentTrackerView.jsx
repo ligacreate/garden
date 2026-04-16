@@ -202,6 +202,8 @@ export function PlatformCourseModulesGrid({
 
     const HW_STATUS_BADGE = {
         not_started:        { label: 'Не начато',    cls: 'bg-slate-100 text-slate-400 border-slate-200' },
+        draft:              { label: 'Черновик',     cls: 'bg-violet-50 text-violet-600 border-violet-200' },
+        submitted:          { label: 'Отправлено',   cls: 'bg-sky-50 text-sky-600 border-sky-200' },
         pending_review:     { label: 'На проверке',  cls: 'bg-amber-50 text-amber-600 border-amber-200' },
         revision_requested: { label: 'На доработке', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
         accepted:           { label: 'Принято',      cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
@@ -543,6 +545,7 @@ export function StudentCourseTracker({
                                     Этот шаг пока без привязанного материала. Изучите материал по программе курса и отметьте прохождение кнопкой ниже.
                                 </div>
                             ) : null}
+                            {activeStep.item?.tag !== 'task' && (
                             <div className="mt-4 flex flex-wrap items-center gap-2">
                                 <button
                                     type="button"
@@ -581,6 +584,7 @@ export function StudentCourseTracker({
                                     {checked[activeStep.key] ? 'Отмечено как изучено' : 'Отметить как изучено'}
                                 </button>
                             </div>
+                            )}
                         </section>
                     </div>
                 </div>

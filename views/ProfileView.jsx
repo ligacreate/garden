@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, LogOut, Trash2, X, Plus, MapPin, Briefcase, Bell } from 'lucide-react';
+import { Camera, LogOut, Trash2, X, Plus, MapPin, Briefcase } from 'lucide-react';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import Input from '../components/Input';
@@ -129,7 +129,7 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
     );
 };
 
-const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage, onEnablePushNotifications, pushStatus = {} }) => {
+const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ next: '', confirm: '', loading: false });
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -496,35 +496,6 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                             </div>
                         </Card>
 
-                        <Card title="Уведомления" className="!rounded-[2rem]">
-                            <div className="space-y-4">
-                                <div className="text-sm text-slate-600">
-                                    Для iPhone уведомления работают, когда сайт добавлен на экран "Домой" и открыт как приложение.
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                                        <div className="text-slate-400 uppercase tracking-wider mb-1">Поддержка</div>
-                                        <div className="text-slate-700 font-medium">{pushStatus.supported ? 'Да' : 'Нет'}</div>
-                                    </div>
-                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                                        <div className="text-slate-400 uppercase tracking-wider mb-1">Режим PWA</div>
-                                        <div className="text-slate-700 font-medium">{pushStatus.isStandalone ? 'Да' : 'Нет'}</div>
-                                    </div>
-                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                                        <div className="text-slate-400 uppercase tracking-wider mb-1">Разрешение</div>
-                                        <div className="text-slate-700 font-medium">{pushStatus.permission || 'default'}</div>
-                                    </div>
-                                </div>
-                                <Button
-                                    variant="secondary"
-                                    icon={Bell}
-                                    onClick={onEnablePushNotifications}
-                                    disabled={Boolean(pushStatus.loading)}
-                                >
-                                    {pushStatus.loading ? 'Включаем...' : (pushStatus.enabled ? 'Переустановить push' : 'Включить push-уведомления')}
-                                </Button>
-                            </div>
-                        </Card>
                     </div>
 
                     {isEditing && (

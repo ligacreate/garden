@@ -1056,6 +1056,38 @@ function practicumEventTypeRu(t) {
     return map[k] || t;
 }
 
+/**
+ * Дата из <input type="date">, время из <input type="time"> (часто «HH:mm:ss»).
+ * Собираем валидные ISO для календаря без конкатенации вида …T19:00:00:00.000Z.
+ */
+function buildPracticumCalendarIsoRange(isoDate, timeRaw) {
+    const dStr = String(isoDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
+        return { ok: false, error: 'Укажите дату практикума (поле «Дата практикума»).' };
+    }
+    const y = Number(dStr.slice(0, 4));
+    const mo = Number(dStr.slice(5, 7));
+    const da = Number(dStr.slice(8, 10));
+    if (![y, mo, da].every((n) => Number.isFinite(n))) {
+        return { ok: false, error: 'Некорректная дата практикума.' };
+    }
+    const rawT = String(timeRaw || '').trim();
+    const seg = (rawT || '19:00').split(':');
+    let hh = parseInt(String(seg[0] || '').replace(/\D/g, ''), 10);
+    let mm = seg[1] != null && String(seg[1]).length ? parseInt(String(seg[1]).replace(/\D/g, ''), 10) : 0;
+    if (!Number.isFinite(hh)) hh = 19;
+    if (!Number.isFinite(mm)) mm = 0;
+    hh = Math.min(23, Math.max(0, hh));
+    mm = Math.min(59, Math.max(0, mm));
+    const start = new Date(Date.UTC(y, mo - 1, da, hh, mm, 0));
+    if (Number.isNaN(start.getTime())) {
+        return { ok: false, error: 'Некорректная дата или время практикума.' };
+    }
+    const end = new Date(start);
+    end.setUTCMinutes(end.getUTCMinutes() + 90);
+    return { ok: true, startAt: start.toISOString(), endAt: end.toISOString() };
+}
+
 const SECTION_ROUTE_TO_KEY = {
     '/student/about': 'about',
     '/student/glossary': 'glossary',
@@ -4778,23 +4810,19 @@ function AdminContentItemScreen({
                 ? [editForm.practicumVideoUrl, editForm.practicumDocumentUrl].filter(Boolean)
                 : undefined,
         };
+        if (editForm.targetSection === 'practicums' && String(editForm.practicumDate || '').trim()) {
+            const calProbe = buildPracticumCalendarIsoRange(editForm.practicumDate, editForm.practicumTime);
+            if (!calProbe.ok) {
+                window.alert(calProbe.error);
+                return;
+            }
+        }
         try {
             await pvlDomainApi.adminApi.updateContentItem(contentId, payload);
             const patchForState = { ...payload };
             if (editForm.targetSection === 'practicums') {
                 if (editForm.practicumDate) {
-                    const hhmm = String(editForm.practicumTime || '19:00');
-                    const startAt = `${editForm.practicumDate}T${hhmm}:00.000Z`;
-                    const [hh, mm] = hhmm.split(':').map((x) => Number(x) || 0);
-                    const end = new Date(Date.UTC(
-                        Number(editForm.practicumDate.slice(0, 4)),
-                        Number(editForm.practicumDate.slice(5, 7)) - 1,
-                        Number(editForm.practicumDate.slice(8, 10)),
-                        hh,
-                        mm,
-                    ));
-                    end.setUTCMinutes(end.getUTCMinutes() + 90);
-                    const endAt = end.toISOString();
+                    const { startAt, endAt } = buildPracticumCalendarIsoRange(editForm.practicumDate, editForm.practicumTime);
                     let eventId = editForm.linkedPracticumEventId || '';
                     if (eventId) {
                         pvlDomainApi.adminApi.updateCalendarEvent(eventId, {
@@ -5715,6 +5743,17 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 return;
             }
         }
+        if (publish && draft.targetSection === 'practicums') {
+            if (!String(draft.practicumDate || '').trim()) {
+                window.alert('Укажите дату практикума перед публикацией.');
+                return;
+            }
+            const calProbe = buildPracticumCalendarIsoRange(draft.practicumDate, draft.practicumTime);
+            if (!calProbe.ok) {
+                window.alert(calProbe.error);
+                return;
+            }
+        }
         const { tagsText, ...rest } = draft;
         let normalizedContentType = draft.contentType;
         if (draft.targetSection === 'lessons') {
@@ -5777,18 +5816,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             const created = await pvlDomainApi.adminApi.createContentItem(record);
             const createdPatch = {};
             if (publish && draft.targetSection === 'practicums' && draft.practicumDate) {
-                const hhmm = String(draft.practicumTime || '19:00');
-                const startAt = `${draft.practicumDate}T${hhmm}:00.000Z`;
-                const [hh, mm] = hhmm.split(':').map((x) => Number(x) || 0);
-                const end = new Date(Date.UTC(
-                    Number(draft.practicumDate.slice(0, 4)),
-                    Number(draft.practicumDate.slice(5, 7)) - 1,
-                    Number(draft.practicumDate.slice(8, 10)),
-                    hh,
-                    mm,
-                ));
-                end.setUTCMinutes(end.getUTCMinutes() + 90);
-                const endAt = end.toISOString();
+                const { startAt, endAt } = buildPracticumCalendarIsoRange(draft.practicumDate, draft.practicumTime);
                 const ev = pvlDomainApi.adminApi.createCalendarEvent({
                     title: draft.title,
                     description: draft.fullDescriptionHtml || draft.shortDescription || '',

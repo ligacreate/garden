@@ -419,9 +419,9 @@ export function StudentCourseTracker({
     const linkedItem = useMemo(() => {
         if (!contentItemId || !studentId) return null;
         return pvlDomainApi.studentApi.getPublishedContentItemForStudent(studentId, contentItemId);
-    // refreshKey меняется после async-синхронизации db (syncPvlRuntimeFromDb + syncPvlActorsFromGarden)
+    // refreshKey — после sync БД/Сада; cohortId профиля — тот же поток, что и buildTrackerModulesFromCms
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [studentId, contentItemId, checked[activeStep?.key || ''], refreshKey]);
+    }, [studentId, contentItemId, checked[activeStep?.key || ''], refreshKey, studentProfile?.cohortId]);
 
     const lessonVideoPlayerHtml = useMemo(
         () => (linkedItem ? buildLessonVideoPlayerHtml(linkedItem) : ''),

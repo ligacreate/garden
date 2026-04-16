@@ -215,6 +215,13 @@ function syncCmsStateFromDb(setItems, setPlacements) {
     setPlacements(next.placements);
 }
 
+/** Тот же cohortId, что в профиле ученицы для API материалов — иначе шаги трекера и getPublishedContentItemForStudent расходятся. */
+function resolveStudentCohortIdForPvl(studentId) {
+    if (!studentId) return 'cohort-2026-1';
+    const p = (pvlDomainApi.db.studentProfiles || []).find((x) => String(x.userId) === String(studentId));
+    return p?.cohortId || 'cohort-2026-1';
+}
+
 /** В демо `actingUserId` часто остаётся ученицей при переключении на кабинет ментора — подставляем реального ментора из профилей. */
 function resolvePvlMentorActorId(actingUserId) {
     const profiles = pvlDomainApi.db?.mentorProfiles || [];
@@ -3147,7 +3154,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         return (
             <StudentCourseTracker
                 studentId={studentId}
-                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(studentId))}
                 routePrefix={routePrefix}
                 navigate={navigate}
                 gardenBridgeRef={gardenBridgeRef}
@@ -3175,7 +3182,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         return (
             <StudentCourseTracker
                 studentId={studentId}
-                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(studentId))}
                 routePrefix={routePrefix}
                 navigate={navigate}
                 gardenBridgeRef={gardenBridgeRef}
@@ -3749,7 +3756,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         return (
             <StudentCourseTracker
                 studentId={mentorMirrorStudentId}
-                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(mentorMirrorStudentId))}
                 routePrefix="/mentor"
                 navigate={navigate}
                 refreshKey={refreshKey}

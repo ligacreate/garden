@@ -135,6 +135,13 @@ function isUuidString(v) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
+/** Сопоставление id карточек и размещений из PostgREST и строк в UI (регистр UUID). */
+function normalizePvlEntityId(id) {
+    if (id == null || id === '') return '';
+    const s = String(id).trim();
+    return isUuidString(s) ? s.toLowerCase() : s;
+}
+
 /** PostgREST: created_by/updated_by — UUID; строки вида u-adm-1 в колонку UUID не пишем. */
 function uuidOrNull(v) {
     return isUuidString(v) ? String(v).trim() : null;
@@ -1692,7 +1699,8 @@ function getPublishedContentFor(role, section, cohortId) {
         .filter((p) => placementTargetRoleMatchesStudentOrMentor(p, role))
         .map((p) => {
             const cid = contentItemIdFromPlacement(p);
-            const item = cid ? (db.contentItems || []).find((ci) => String(ci.id) === cid) : null;
+            const want = cid ? normalizePvlEntityId(cid) : '';
+            const item = want ? (db.contentItems || []).find((ci) => normalizePvlEntityId(ci.id) === want) : null;
             return { placement: p, item };
         })
         .filter((x) => {
@@ -1765,10 +1773,11 @@ function publishedContentVisibleToRole(item, cohortId, role) {
 const STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS = new Set(['lessons', 'library', 'glossary']);
 
 function hasPublishedPlacementForStudentContent(contentId, cohortId) {
-    const want = String(contentId ?? '');
+    const want = normalizePvlEntityId(contentId);
+    if (!want) return false;
     return (db.contentPlacements || []).some((p) => {
-        const pid = p.contentItemId || p.contentId;
-        if (String(pid ?? '') !== want) return false;
+        const pid = normalizePvlEntityId(p.contentItemId ?? p.contentId);
+        if (pid !== want) return false;
         if (p.isPublished === false) return false;
         if (!placementTargetRoleMatchesStudentOrMentor(p, ROLES.STUDENT)) return false;
         if (!pvlPlacementVisibleForCohort(p.cohortId, cohortId)) return false;
@@ -1778,7 +1787,20 @@ function hasPublishedPlacementForStudentContent(contentId, cohortId) {
 }
 
 /**
- * Опубликованный материал по id для ученицы: published + visibility + placement (lessons/library/glossary).
+ * Доступ ученицы к материалу по id: опубликованная привязка в content_placements ИЛИ
+ * та же логика «карточка в разделе без отдельного placement», что в getPublishedContentBySection
+ * (views/PvlPrototypeApp.jsx): `inSection = item.targetSection === sectionKey || hasPlacement`.
+ * Иначе новые уроки без строки размещения попадают в трекер/списки, но не открываются по id.
+ */
+function publishedStudentContentAccessibleByPlacementOrCard(item, cohortId) {
+    if (!item?.id) return false;
+    if (hasPublishedPlacementForStudentContent(item.id, cohortId)) return true;
+    const sec = String(item.targetSection || '');
+    return STUDENT_CONTENT_RESOLVER_PLACEMENT_SECTIONS.has(sec);
+}
+
+/**
+ * Опубликованный материал по id для ученицы: published + visibility + (placement или карточка в уроках/библиотеке/глоссарии).
  * Не заменяет getPublishedLibraryItemById для списка библиотеки.
  */
 function getPublishedContentItemForStudent(studentId, contentId) {
@@ -1790,10 +1812,11 @@ function getPublishedContentItemForStudent(studentId, contentId) {
      * материалы без cohortId видны всем, а cohort-2026-1 — текущий активный поток.
      */
     const cohortId = profile?.cohortId || 'cohort-2026-1';
-    const item = (db.contentItems || []).find((ci) => ci.id === contentId);
+    const wantId = normalizePvlEntityId(contentId);
+    const item = wantId ? (db.contentItems || []).find((ci) => normalizePvlEntityId(ci.id) === wantId) : null;
     if (!item || item.status !== CONTENT_STATUS.PUBLISHED) return null;
     if (!publishedContentVisibleToRole(item, cohortId, ROLES.STUDENT)) return null;
-    if (!hasPublishedPlacementForStudentContent(contentId, cohortId)) return null;
+    if (!publishedStudentContentAccessibleByPlacementOrCard(item, cohortId)) return null;
     const pr = db.studentLibraryProgress.find((x) => x.studentId === studentId && x.libraryItemId === item.id);
     const lp = item.libraryPayload && typeof item.libraryPayload === 'object' ? item.libraryPayload : {};
     const libraryLessonGroupTitle = String(item.libraryLessonGroupTitle || lp.lessonGroupTitle || '').trim();
@@ -1838,6 +1861,7 @@ function ensureLibrarySeedInDb() {
 }
 
 function getPublishedLibraryContentForStudent(studentId) {
+    if (!studentId) return [];
     ensureLibrarySeedInDb();
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
     /**
@@ -2387,8 +2411,9 @@ export const studentApi = {
     /** Материал из опубликованной библиотеки потока (список библиотеки / deep link в разделе библиотеки). */
     getPublishedLibraryItemById(studentId, contentId) {
         if (!contentId) return null;
+        const want = normalizePvlEntityId(contentId);
         const items = getPublishedLibraryContentForStudent(studentId);
-        return items.find((i) => i.id === contentId) || null;
+        return items.find((i) => normalizePvlEntityId(i.id) === want) || null;
     },
     /** Опубликованный материал по id: уроки (lessons) и при необходимости library/glossary, без обязательной library-выдачи. */
     getPublishedContentItemForStudent,

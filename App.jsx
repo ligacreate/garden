@@ -105,16 +105,16 @@ export default function App() {
                 }
                 setCurrentUser(user);
 
-                const allUsers = await api.getUsers();
+                const [allUsers, kb, settings, newsData] = await Promise.all([
+                    api.getUsers(),
+                    api.getKnowledgeBase(),
+                    api.getLibrarySettings(),
+                    api.getNews(),
+                ]);
+
                 setUsers(allUsers || []);
-
-                const kb = await api.getKnowledgeBase();
                 if (kb && kb.length > 0) setKnowledgeBase(kb);
-
-                const settings = await api.getLibrarySettings();
                 if (settings) setLibrarySettings(settings);
-
-                const newsData = await api.getNews();
                 setNews(newsData || []);
             } catch (e) {
                 console.error("Init error:", e);
@@ -169,14 +169,16 @@ export default function App() {
 
             setCurrentUser(user);
             setAccessBlock(null);
-            // Refresh users list
-            const allUsers = await api.getUsers();
+
+            const [allUsers, kb, settings, newsData] = await Promise.all([
+                api.getUsers(),
+                api.getKnowledgeBase(),
+                api.getLibrarySettings(),
+                api.getNews(),
+            ]);
             setUsers(allUsers || []);
-            const kb = await api.getKnowledgeBase();
             if (kb && kb.length > 0) setKnowledgeBase(kb);
-            const settings = await api.getLibrarySettings();
             if (settings) setLibrarySettings(settings);
-            const newsData = await api.getNews();
             setNews(newsData || []);
             return true;
         } catch (e) {

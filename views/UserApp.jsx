@@ -62,6 +62,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [leaderUser, setLeaderUser] = useState(null);
     const [birthdayTemplates, setBirthdayTemplates] = useState([]);
     const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', enabled: false, isStandalone: false, loading: false });
+    const [libraryOpenRequest, setLibraryOpenRequest] = useState(0);
     const mergedUsers = useMemo(
         () => users.map(u => (u.id === user.id ? { ...u, ...user } : u)),
         [users, user]
@@ -70,11 +71,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const isAdmin = normalizedRole === ROLES.ADMIN;
     const canOpenTeacherCabinet = hasAccess(normalizedRole, ROLES.MENTOR);
     const openTeacherCabinet = () => {
-        try {
-            localStorage.setItem('garden_library_open_course', 'pvl');
-        } catch {
-            /* ignore */
-        }
+        setLibraryOpenRequest((n) => n + 1);
         handleViewChange('library');
         setMobileMenuOpen(false);
     };
@@ -873,6 +870,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 user={user}
                                 knowledgeBase={knowledgeBase}
                                 librarySettings={librarySettings}
+                                openPvlRequest={libraryOpenRequest}
                                 onCompleteLesson={handleLessonCompleted}
                                 onNotify={onNotify}
                                 onBackToGarden={() => handleViewChange('dashboard')}

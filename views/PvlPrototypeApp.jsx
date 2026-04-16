@@ -895,7 +895,7 @@ function exportMaterialMarkdown(title = '', html = '') {
 }
 
 /** Переключатель роли: всегда на виду при сборке; при смене — домашний маршрут и актуальное меню. */
-const CabinetSwitcher = ({ role, setRole, navigate, onEmbeddedDemoRoleChange }) => {
+const CabinetSwitcher = ({ role, setRole, navigate, onEmbeddedDemoRoleChange, includeStudent = true }) => {
     const tab = (r, label, home) => (
         <button
             type="button"
@@ -916,9 +916,9 @@ const CabinetSwitcher = ({ role, setRole, navigate, onEmbeddedDemoRoleChange }) 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Роль</span>
             <div className="inline-flex items-center rounded-xl bg-slate-100/90 p-0.5 gap-0.5" role="group" aria-label="Роль в ПВЛ">
-                {tab('student', 'Ученица', '/student/dashboard')}
+                {includeStudent ? tab('student', 'Ученица', '/student/dashboard') : null}
                 {tab('mentor', 'Ментор', '/mentor/dashboard')}
-                {tab('admin', 'Учительская', '/admin/pvl')}
+                {tab('admin', 'Админ', '/admin/pvl')}
             </div>
         </div>
     );
@@ -6886,6 +6886,7 @@ export default function PvlPrototypeApp({
     onGardenExit,
     onEmbeddedDemoRoleChange,
     hideEmbeddedRoleSwitch = false,
+    hideEmbeddedStudentRoleSwitch = false,
 } = {}) {
     const session = loadAppSession() || {};
     const [role, setRole] = useState(session.role || 'student');
@@ -7157,7 +7158,7 @@ export default function PvlPrototypeApp({
                                     </button>
                                     {shouldShowSubtleTrail(route) ? <SubtleTrail path={route} /> : <div />}
                                 </div>
-                                {showCabinetSwitcher ? <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} /> : <div />}
+                                {showCabinetSwitcher ? <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} includeStudent={!hideEmbeddedStudentRoleSwitch} /> : <div />}
                                 {devToolsBar}
                             </div>
                             {pvlDevToolsEnabled() ? (
@@ -7196,7 +7197,7 @@ export default function PvlPrototypeApp({
                         <>
                             {showEmbeddedTopBar ? (
                                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4">
-                                    {showCabinetSwitcher ? <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} /> : <div />}
+                                    {showCabinetSwitcher ? <CabinetSwitcher role={role} setRole={setRole} navigate={navigate} onEmbeddedDemoRoleChange={onEmbeddedDemoRoleChange} includeStudent={!hideEmbeddedStudentRoleSwitch} /> : <div />}
                                     {devToolsBar}
                                 </div>
                             ) : null}

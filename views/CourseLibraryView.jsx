@@ -135,7 +135,6 @@ const COURSES = [
 /** id карточки входа в ПВЛ в списке курсов библиотеки */
 const PVL_ENTRY_COURSE_ID = 6;
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
-const LIBRARY_AUTO_OPEN_COURSE_KEY = 'garden_library_open_course';
 
 function normalizeStyledHtmlToSemantic(html) {
     const parser = new DOMParser();
@@ -199,7 +198,8 @@ const CourseLibraryView = ({
     onBackToGarden,
     onCourseSidebarChange,
     gardenPvlBridgeRef,
-    resetToken = 0
+    resetToken = 0,
+    openPvlRequest = 0
 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
@@ -362,6 +362,9 @@ const CourseLibraryView = ({
     const role = user?.role || ROLES.APPLICANT;
     const pvlResolvedRole = resolvePvlRoleFromGardenProfile(user);
     const pvlEntryRole = pvlResolvedRole === 'admin' ? 'mentor' : pvlResolvedRole;
+    const pvlEmbeddedResolvedRole = pvlResolvedRole === 'admin'
+        ? (aiCampSession?.role === 'mentor' ? 'mentor' : 'admin')
+        : pvlResolvedRole;
     const canSeePvlCourse = canSeePvlInGarden(user);
     const hiddenCourses = librarySettings?.hiddenCourses || [];
     const materialOrder = librarySettings?.materialOrder || {};
@@ -460,19 +463,11 @@ const CourseLibraryView = ({
         setSelectedMaterial(null);
     }, [availableCourses, selectedCourseId]);
     useEffect(() => {
-        if (selectedCourseId != null) return;
-        let shouldOpenPvl = false;
-        try {
-            shouldOpenPvl = localStorage.getItem(LIBRARY_AUTO_OPEN_COURSE_KEY) === 'pvl';
-            if (shouldOpenPvl) localStorage.removeItem(LIBRARY_AUTO_OPEN_COURSE_KEY);
-        } catch {
-            shouldOpenPvl = false;
-        }
-        if (!shouldOpenPvl || !canSeePvlCourse) return;
+        if (!openPvlRequest || !canSeePvlCourse) return;
         setSelectedCourseId(PVL_ENTRY_COURSE_ID);
         setSelectedTag('Все');
         setSelectedMaterial(null);
-    }, [canSeePvlCourse, selectedCourseId]);
+    }, [openPvlRequest, canSeePvlCourse]);
     useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) return;
         if (canSeePvlCourse) return;
@@ -848,7 +843,8 @@ const CourseLibraryView = ({
                                         <PvlPrototypeApp
                                             key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.linkedUserId || 'anon'}`}
                                             embeddedInGarden
-                                            gardenResolvedRole={pvlResolvedRole}
+                                            gardenResolvedRole={pvlEmbeddedResolvedRole}
+                                            hideEmbeddedStudentRoleSwitch={pvlResolvedRole === 'admin'}
                                             gardenBridgeRef={gardenPvlBridgeRef}
                                             onGardenRouteChange={setPvlGardenRoute}
                                             onGardenExit={onBackToGarden}

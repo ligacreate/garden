@@ -2900,9 +2900,10 @@ export const adminApi = {
                 orderIndex: Number(item.orderIndex) || 999,
                 isPublished: true,
             });
-        } else if (!relatedPlacements.some((p) => p.isPublished !== false)) {
-            const first = relatedPlacements[0];
-            await this.updatePlacement(first.id, { isPublished: true });
+        } else {
+            for (const p of relatedPlacements) {
+                await this.updatePlacement(p.id, { isPublished: true });
+            }
         }
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'publish_content', 'content_item', contentId, 'Published content item', {});
         addNotification('u-adm-1', ROLES.ADMIN, 'content_published', 'Материал опубликован', { contentId });

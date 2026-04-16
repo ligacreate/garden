@@ -208,6 +208,13 @@ function buildMergedCmsState() {
     return { items, placements };
 }
 
+/** После публикации/размещения в API обновляем React из снимка БД (иначе кнопки «Опубликовать» у привязок не исчезают до F5). */
+function syncCmsStateFromDb(setItems, setPlacements) {
+    const next = buildMergedCmsState();
+    setItems(next.items);
+    setPlacements(next.placements);
+}
+
 /** В демо `actingUserId` часто остаётся ученицей при переключении на кабинет ментора — подставляем реального ментора из профилей. */
 function resolvePvlMentorActorId(actingUserId) {
     const profiles = pvlDomainApi.db?.mentorProfiles || [];
@@ -1089,8 +1096,9 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
 
 /**
  * Строит модули трекера из опубликованных уроков CMS.
- * Если уроков нет — возвращает PVL_PLATFORM_MODULES с пустыми items (заглушка).
- * Поле moduleNumber из placement маппится на id модуля (1=Пиши, 2=Веди, 3=Люби; 0 → 1).
+ * Источник шагов — тот же контур, что список «Уроки» у ученицы (getPublishedContentBySection),
+ * а не только строки content_placements: иначе карточки без отдельного размещения не попадали в трекер.
+ * Модуль: из размещения (если есть), иначе moduleNumber/weekNumber карточки (0–1 → Пиши, 2 → Веди, 3 → Люби).
  */
 /** Временная фильтрация явного QA/CI-мусора в названиях уроков (данные потом чистятся в БД). */
 function isPvlNoiseTrackerLessonTitle(title) {
@@ -1102,26 +1110,71 @@ function isPvlNoiseTrackerLessonTitle(title) {
     return false;
 }
 
-function buildTrackerModulesFromCms(cmsItems = [], cmsPlacements = []) {
-    const lessonPlacements = cmsPlacements
-        .filter((p) => p.targetSection === 'lessons' && p.isPublished !== false)
-        .sort((a, b) => (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0));
-    if (!lessonPlacements.length) return PVL_PLATFORM_MODULES;
-    const byModule = {};
-    lessonPlacements.forEach((p) => {
-        const rawMod = Number(p.moduleNumber) || 0;
-        const modId = rawMod <= 1 ? 1 : rawMod === 2 ? 2 : 3;
-        if (!byModule[modId]) byModule[modId] = [];
-        const item = cmsItems.find((x) => x.id === (p.contentItemId || p.contentId));
-        if (!item) return;
-        if (isPvlNoiseTrackerLessonTitle(item.title)) return;
-        const tagMap = { video: 'video', pdf: 'pdf', quiz: 'quiz', text: 'task', audio: 'task', template: 'task', checklist: 'quiz' };
-        byModule[modId].push({
-            text: item.title || `Урок ${byModule[modId].length + 1}`,
-            tag: tagMap[item.contentType] || 'task',
-            contentItemId: String(item.id),
-        });
+function trackerModuleIdFromScheduleValue(rawMod) {
+    const raw = Number(rawMod) || 0;
+    return raw <= 1 ? 1 : raw === 2 ? 2 : 3;
+}
+
+function buildTrackerModulesFromCms(cmsItems = [], cmsPlacements = [], cohortId = 'cohort-2026-1') {
+    const tagMap = {
+        video: 'video',
+        pdf: 'pdf',
+        quiz: 'quiz',
+        text: 'task',
+        audio: 'task',
+        template: 'task',
+        checklist: 'quiz',
+        link: 'task',
+        fileBundle: 'task',
+    };
+    const lessonItems = getPublishedContentBySection('lessons', 'student', cmsItems, cmsPlacements, cohortId);
+
+    const relevantPlacements = cmsPlacements
+        .filter((p) => p.targetSection === 'lessons')
+        .filter((p) => p.targetRole === 'student' || p.targetRole === 'both')
+        .filter((p) => p.isPublished !== false)
+        .filter((p) => pvlPlacementVisibleForCohort(p.cohortId, cohortId));
+    const placementByItemId = new Map();
+    relevantPlacements.forEach((p) => {
+        const itemId = p.contentId || p.contentItemId;
+        if (!itemId) return;
+        const existing = placementByItemId.get(itemId);
+        const order = Number(p.orderIndex ?? p.sortOrder ?? p.sort_order ?? 999);
+        if (!existing || order < existing.order) placementByItemId.set(itemId, { order, placement: p });
     });
+
+    const rows = lessonItems
+        .filter((item) => !isPvlNoiseTrackerLessonTitle(item.title))
+        .map((item) => {
+            const pm = placementByItemId.get(item.id);
+            const p = pm?.placement;
+            const modId = p
+                ? trackerModuleIdFromScheduleValue(p.moduleNumber)
+                : trackerModuleIdFromScheduleValue(item.moduleNumber ?? item.weekNumber ?? 0);
+            const order = pm ? pm.order : Number(item.orderIndex ?? 999) || 999;
+            return {
+                modId,
+                order,
+                text: item.title || 'Урок',
+                tag: tagMap[item.contentType] || 'task',
+                contentItemId: String(item.id),
+            };
+        })
+        .sort((a, b) => (a.modId - b.modId) || (a.order - b.order));
+
+    const byModule = { 1: [], 2: [], 3: [] };
+    const seen = new Set();
+    for (const row of rows) {
+        const key = `${row.modId}::${row.contentItemId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        byModule[row.modId].push({
+            text: row.text,
+            tag: row.tag,
+            contentItemId: row.contentItemId,
+        });
+    }
+
     const hasAny = Object.values(byModule).some((arr) => arr.length > 0);
     if (!hasAny) return PVL_PLATFORM_MODULES;
     return PVL_PLATFORM_MODULES.map((mod) => ({
@@ -4803,7 +4856,7 @@ function AdminContentItemScreen({
         }
         try {
             await pvlDomainApi.adminApi.publishContentItem(contentId);
-            setCmsItems((prev) => publishContentItem(prev, contentId));
+            syncCmsStateFromDb(setCmsItems, setCmsPlacements);
             forceRefresh?.();
             cancelEdit();
         } catch (e) {
@@ -4865,7 +4918,7 @@ function AdminContentItemScreen({
                 moduleNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
                 orderIndex: item.orderIndex || 999,
             });
-            if (pl) setCmsPlacements((prev) => [...prev, pl]);
+            if (pl) syncCmsStateFromDb(setCmsItems, setCmsPlacements);
             forceRefresh?.();
         } catch (e) {
             try {
@@ -4910,7 +4963,7 @@ function AdminContentItemScreen({
         };
         try {
             await pvlDomainApi.adminApi.updatePlacement(placementEditId, patch);
-            setCmsPlacements((prev) => prev.map((x) => (x.id === placementEditId ? { ...x, ...patch } : x)));
+            syncCmsStateFromDb(setCmsItems, setCmsPlacements);
             cancelPlacementEdit();
             forceRefresh?.();
         } catch (e) {
@@ -4926,7 +4979,7 @@ function AdminContentItemScreen({
         if (!window.confirm('Удалить это размещение?')) return;
         try {
             await pvlDomainApi.adminApi.deletePlacement(pid);
-            setCmsPlacements((prev) => prev.filter((x) => x.id !== pid));
+            syncCmsStateFromDb(setCmsItems, setCmsPlacements);
             if (placementEditId === pid) cancelPlacementEdit();
             forceRefresh?.();
         } catch (e) {
@@ -5333,23 +5386,6 @@ function AdminContentItemScreen({
                 </div>
             )}
 
-            <div ref={previewCardRef} className="rounded-2xl border border-emerald-100/90 bg-white p-5 shadow-sm shadow-emerald-900/5 space-y-5">
-                <h3 className="font-display text-lg text-emerald-950">Предпросмотр карточки</h3>
-                <div className="grid md:grid-cols-2 gap-4">
-                    <ParticipantMaterialPreviewCard
-                        roleTitle="Участница"
-                        item={previewSource}
-                        visible={prevStudentSees}
-                        disabledHint="Для участниц материал не показывается при текущей целевой роли."
-                    />
-                    <ParticipantMaterialPreviewCard
-                        roleTitle="Ментор"
-                        item={previewSource}
-                        visible={prevMentorSees}
-                        disabledHint="Для менторов материал не показывается при текущей целевой роли."
-                    />
-                </div>
-            </div>
             <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/30 p-4 shadow-sm shadow-emerald-900/5">
                 <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => navigate('/admin/content')} className={softBtn}>К списку материалов</button>
@@ -5357,7 +5393,30 @@ function AdminContentItemScreen({
                         <>
                             <button type="button" onClick={beginEdit} className={softBtn}>Редактировать</button>
                             {item.status === 'published' ? (
-                                <button type="button" onClick={handleUnpublish} className={softBtn}>Снять с публикации</button>
+                                <>
+                                    <button type="button" onClick={handleUnpublish} className={softBtn}>Снять с публикации</button>
+                                    {unpublishedPlacements.length > 0 ? (
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                try {
+                                                    await pvlDomainApi.adminApi.publishContentItem(contentId);
+                                                    syncCmsStateFromDb(setCmsItems, setCmsPlacements);
+                                                    forceRefresh?.();
+                                                } catch (e) {
+                                                    try {
+                                                        window.alert(`Не удалось выложить привязки: ${e?.message || e}`);
+                                                    } catch {
+                                                        /* noop */
+                                                    }
+                                                }
+                                            }}
+                                            className={primaryBtn}
+                                        >
+                                            Выложить привязки в разделы
+                                        </button>
+                                    ) : null}
+                                </>
                             ) : item.status === 'unpublished' ? (
                                 <>
                                     <button type="button" onClick={commitPublish} className={primaryBtn}>Переопубликовать</button>
@@ -5377,6 +5436,24 @@ function AdminContentItemScreen({
                             <button type="button" onClick={commitPublish} className={primaryBtn}>Сохранить и опубликовать</button>
                         </>
                     )}
+                </div>
+            </div>
+
+            <div ref={previewCardRef} className="rounded-2xl border border-emerald-100/90 bg-white p-5 shadow-sm shadow-emerald-900/5 space-y-5">
+                <h3 className="font-display text-lg text-emerald-950">Предпросмотр карточки</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                    <ParticipantMaterialPreviewCard
+                        roleTitle="Участница"
+                        item={previewSource}
+                        visible={prevStudentSees}
+                        disabledHint="Для участниц материал не показывается при текущей целевой роли."
+                    />
+                    <ParticipantMaterialPreviewCard
+                        roleTitle="Ментор"
+                        item={previewSource}
+                        visible={prevMentorSees}
+                        disabledHint="Для менторов материал не показывается при текущей целевой роли."
+                    />
                 </div>
             </div>
         </div>
@@ -6319,6 +6396,33 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         Предпросмотр как в ученическом кабинете
                     </label>
                 </div>
+                {filtered.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!window.confirm(`Опубликовать карточки и включить все привязки к разделам для ${filtered.length} материал(ов) в текущем списке?`)) return;
+                                for (const row of filtered) {
+                                    if (row.status === 'draft' && !canPublishItem(row)) {
+                                        window.alert(`Пропуск «${row.title}»: тест заполнен не полностью.`);
+                                        continue;
+                                    }
+                                    try {
+                                        await pvlDomainApi.adminApi.publishContentItem(row.id);
+                                    } catch (e) {
+                                        window.alert(`«${row.title}»: ${e?.message || e}`);
+                                        return;
+                                    }
+                                }
+                                syncCmsStateFromDb(setItems, setPlacements);
+                            }}
+                            className="text-xs rounded-xl border border-emerald-600 bg-emerald-700 px-3 py-1.5 font-medium text-white hover:bg-emerald-800"
+                        >
+                            Опубликовать и выложить всё в списке
+                        </button>
+                        <span className="text-[11px] text-slate-500">Черновики станут опубликованными; у опубликованных включатся привязки.</span>
+                    </div>
+                ) : null}
             </div>
 
             {previewAsStudent ? (
@@ -6403,7 +6507,23 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1 font-medium text-emerald-900 hover:bg-emerald-100/80">Открыть</button>
                                 {i.status === 'published' && (
                                     <>
-                                        <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishContentItem(i.id); setItems((prev) => unpublishToDraftItems(prev, i.id)); } catch (e) { window.alert(`Не удалось снять с публикации: ${e?.message || e}`); } }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
+                                        <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishContentItem(i.id); syncCmsStateFromDb(setItems, setPlacements); } catch (e) { window.alert(`Не удалось снять с публикации: ${e?.message || e}`); } }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
+                                        {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).some((p) => p.isPublished === false) ? (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    try {
+                                                        await pvlDomainApi.adminApi.publishContentItem(i.id);
+                                                        syncCmsStateFromDb(setItems, setPlacements);
+                                                    } catch (e) {
+                                                        window.alert(`Не удалось выложить привязки: ${e?.message || e}`);
+                                                    }
+                                                }}
+                                                className="text-xs rounded-xl bg-emerald-700 px-3 py-1 font-medium text-white hover:bg-emerald-800"
+                                            >
+                                                Выложить привязки
+                                            </button>
+                                        ) : null}
                                         <button type="button" onClick={async () => {
                                             try {
                                                 const copy = await pvlDomainApi.adminApi.createContentItem({ ...i, id: undefined, title: `${i.title} (копия)`, status: 'draft' });
@@ -6439,7 +6559,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                                 }
                                                 try {
                                                     await pvlDomainApi.adminApi.publishContentItem(i.id);
-                                                    setItems((prev) => publishContentItem(prev, i.id));
+                                                    syncCmsStateFromDb(setItems, setPlacements);
                                                 } catch (e) {
                                                     window.alert(`Не удалось опубликовать: ${e?.message || e}`);
                                                 }
@@ -6481,11 +6601,20 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     <div className="text-xs text-slate-500">Пока не привязано к разделам.</div>
                                 ) : placements.filter((p) => p.contentId === i.id || p.contentItemId === i.id).map((p) => (
                                     <article key={p.id} className="rounded-lg border border-emerald-100/90 bg-white p-2 flex flex-wrap items-center justify-between gap-2">
-                                        <span className="text-xs text-slate-600">{labelTargetSection(p.targetSection)} · {TARGET_ROLE_LABELS[p.targetRole] || p.targetRole} · {p.targetCohort || p.cohortId || 'все'} · порядок {p.orderIndex ?? '—'}</span>
-                                        <div className="flex gap-1">
-                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.publishPlacement(p.id); } catch (e) { window.alert(`Не удалось: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-900">Опубликовать</button>
-                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishPlacement(p.id); } catch (e) { window.alert(`Не удалось: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-slate-700">Снять</button>
-                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.deletePlacement(p.id); setPlacements((prev) => prev.filter((x) => x.id !== p.id)); } catch (e) { window.alert(`Не удалось удалить размещение: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-rose-700">Удалить</button>
+                                        <span className="text-xs text-slate-600">
+                                            {labelTargetSection(p.targetSection)} · {TARGET_ROLE_LABELS[p.targetRole] || p.targetRole} · {p.targetCohort || p.cohortId || 'все'} · порядок {p.orderIndex ?? '—'}
+                                            {p.isPublished === false ? (
+                                                <span className="ml-1 text-amber-800 font-medium"> · снято с показа</span>
+                                            ) : (
+                                                <span className="ml-1 text-emerald-700 font-medium"> · в разделе</span>
+                                            )}
+                                        </span>
+                                        <div className="flex gap-1 flex-wrap">
+                                            {p.isPublished === false ? (
+                                                <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.publishPlacement(p.id); syncCmsStateFromDb(setItems, setPlacements); } catch (e) { window.alert(`Не удалось: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-900">Опубликовать</button>
+                                            ) : null}
+                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishPlacement(p.id); syncCmsStateFromDb(setItems, setPlacements); } catch (e) { window.alert(`Не удалось: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-slate-700">Снять</button>
+                                            <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.deletePlacement(p.id); syncCmsStateFromDb(setItems, setPlacements); } catch (e) { window.alert(`Не удалось удалить размещение: ${e?.message || e}`); } }} className="text-[10px] rounded-full border border-slate-200 px-2 py-0.5 text-rose-700">Удалить</button>
                                         </div>
                                     </article>
                                 ))}

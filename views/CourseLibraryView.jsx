@@ -656,28 +656,6 @@ const CourseLibraryView = ({
         syncPvlSessionFromAlCamp(aiCampSession);
     }, [selectedCourse?.id, aiCampSession]);
     useEffect(() => {
-        if (!aiCampSession || pvlResolvedRole !== 'admin') return;
-        const routeRole = String(pvlGardenRoute || '').startsWith('/admin/')
-            ? 'admin'
-            : String(pvlGardenRoute || '').startsWith('/mentor/')
-                ? 'mentor'
-                : String(pvlGardenRoute || '').startsWith('/student/')
-                    ? 'student'
-                    : null;
-        if (!routeRole || routeRole === aiCampSession.role) return;
-        setAiCampSession((prev) => {
-            if (!prev || prev.role === routeRole) return prev;
-            const next = { ...prev, role: routeRole };
-            try {
-                localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(next));
-            } catch {
-                /* ignore */
-            }
-            return next;
-        });
-    }, [aiCampSession, pvlGardenRoute, pvlResolvedRole]);
-
-    useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) {
             setGardenCampPaused(false);
         }

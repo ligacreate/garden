@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { pvlDomainApi } from '../services/pvlMockApi';
+import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared';
 
 function threadEventLabel(messageType) {
     const m = {
@@ -164,9 +165,11 @@ function shortStatusLabel(status) {
     const s = String(status || '').toLowerCase();
     if (s.includes('проверено')) return 'Проверено';
     if (s === 'принято') return 'Проверено';
-    if (s === 'к проверке' || s === 'на проверке' || s === 'отправлено') return 'На проверке';
+    if (s === 'отправлено') return 'Отправлено';
+    if (s === 'к проверке' || s === 'на проверке') return 'На проверке';
     if (s === 'на доработке') return 'На доработке';
-    if (s === 'черновик' || s === 'в работе' || s === 'не начато') return 'Черновик';
+    if (s === 'черновик' || s === 'в работе') return 'Черновик';
+    if (s === 'не начато') return 'Не начато';
     if (s === 'просрочено' || s === 'не принято') return 'Просрочено';
     return status;
 }
@@ -429,7 +432,8 @@ export function TaskDescription({ data, showControlPointNote = false }) {
     );
 }
 
-export function SubmissionVersionCard({ version }) {
+export function SubmissionVersionCard({ version, checklistSections }) {
+    const hasChecklist = version?.answersJson && typeof version.answersJson === 'object' && Object.keys(version.answersJson).length > 0;
     return (
         <article className={`rounded-xl border p-3 ${version.isCurrent ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/70'}`}>
             <div className="flex items-center justify-between gap-2 mb-1">
@@ -437,15 +441,19 @@ export function SubmissionVersionCard({ version }) {
                 {version.isCurrent ? <span className="text-[10px] uppercase tracking-[0.08em] text-emerald-700">текущая</span> : null}
             </div>
             <p className="text-xs text-slate-500">{version.createdAt} · {version.authorRole}</p>
-            <p className="text-sm text-slate-700 mt-1">{version.textContent}</p>
+            {hasChecklist && checklistSections?.length ? (
+                <ChecklistAnswersReadonly sections={checklistSections} answersJson={version.answersJson} />
+            ) : (
+                <p className="text-sm text-slate-700 mt-1">{version.textContent}</p>
+            )}
             {version.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Файлы: {version.attachments.join(', ')}</p> : null}
             {version.links?.length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {version.links.join(', ')}</p> : null}
         </article>
     );
 }
 
-export function renderSubmissionVersions(versions) {
-    return versions.map((version) => <SubmissionVersionCard key={version.id} version={version} />);
+export function renderSubmissionVersions(versions, checklistSections) {
+    return versions.map((version) => <SubmissionVersionCard key={version.id} version={version} checklistSections={checklistSections} />);
 }
 
 export function SubmissionHistory({
@@ -457,39 +465,61 @@ export function SubmissionHistory({
     draftText,
     setDraftText,
     canEditStudentSubmission = true,
+    homeworkAssignmentType = 'standard',
+    checklistSections = [],
+    checklistAnswers = {},
+    setChecklistAnswers,
 }) {
     const currentVersion = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
     const previousVersions = versions.filter((v) => v.id !== currentVersion?.id).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
+    const isChecklist = homeworkAssignmentType === 'checklist' && Array.isArray(checklistSections) && checklistSections.length > 0;
     return (
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <h3 className="font-display text-xl text-slate-800 mb-2">Ответ участницы</h3>
             {currentVersion ? (
                 <div>
                     <p className="text-xs text-slate-500 mb-2">Текущая версия</p>
-                    <SubmissionVersionCard version={currentVersion} />
+                    <SubmissionVersionCard version={currentVersion} checklistSections={checklistSections} />
                 </div>
             ) : null}
             {previousVersions.length > 0 ? (
                 <details className="mt-3">
                     <summary className="text-xs text-slate-600 cursor-pointer">Предыдущие версии ({previousVersions.length})</summary>
-                    <div className="grid gap-2 mt-2">{previousVersions.map((version) => <SubmissionVersionCard key={version.id} version={version} />)}</div>
+                    <div className="grid gap-2 mt-2">{previousVersions.map((version) => <SubmissionVersionCard key={version.id} version={version} checklistSections={checklistSections} />)}</div>
                 </details>
             ) : null}
             {role === 'student' ? (
                 <div className="mt-3 border-t border-slate-100 pt-3">
                     {canEditStudentSubmission ? (
                         <>
-                            <textarea
-                                value={draftText}
-                                onChange={(e) => setDraftText(e.target.value)}
-                                className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                                rows={4}
-                                placeholder="Черновик ответа..."
-                            />
+                            {isChecklist && setChecklistAnswers ? (
+                                <ChecklistFieldsEditor
+                                    sections={checklistSections}
+                                    value={checklistAnswers}
+                                    onChange={setChecklistAnswers}
+                                    disabled={false}
+                                />
+                            ) : (
+                                <textarea
+                                    value={draftText}
+                                    onChange={(e) => setDraftText(e.target.value)}
+                                    className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+                                    rows={4}
+                                    placeholder="Черновик ответа..."
+                                />
+                            )}
                             <div className="flex flex-wrap gap-2 mt-2">
-                                <button onClick={() => onSaveDraft(draftText)} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Сохранить черновик</button>
-                                <button onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800 hover:bg-sky-100">Добавить новую версию</button>
-                                <button onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
+                                <button
+                                    type="button"
+                                    onClick={() => (isChecklist ? onSaveDraft() : onSaveDraft(draftText))}
+                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                >
+                                    Сохранить черновик
+                                </button>
+                                {!isChecklist ? (
+                                    <button type="button" onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800 hover:bg-sky-100">Добавить новую версию</button>
+                                ) : null}
+                                <button type="button" onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
                             </div>
                         </>
                     ) : (
@@ -682,7 +712,7 @@ export function RelatedLinks() {
     );
 }
 
-export function MentorStudentAnswerCompact({ versions = [] }) {
+export function MentorStudentAnswerCompact({ versions = [], checklistSections = [] }) {
     const current = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
     if (!current) {
         return (
@@ -695,7 +725,7 @@ export function MentorStudentAnswerCompact({ versions = [] }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             <h3 className="font-display text-xl text-[#4A3728] mb-2">Ответ участницы</h3>
-            <SubmissionVersionCard version={current} />
+            <SubmissionVersionCard version={current} checklistSections={checklistSections} />
         </div>
     );
 }
@@ -778,7 +808,7 @@ function MentorTaskSlim({
                 <p className="text-xs text-[#9B8B80] max-w-xl">Открывает отдельный урок как материал в библиотеке, а не общий трекер.</p>
             </div>
             <TaskDescription data={state.taskDescription} showControlPointNote={false} />
-            <MentorStudentAnswerCompact versions={state.submissionVersions} />
+            <MentorStudentAnswerCompact versions={state.submissionVersions} checklistSections={state.taskDescription?.checklistSections || []} />
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
                     <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
@@ -846,6 +876,10 @@ export function renderTaskDetail({
     disputeOpen,
     onOpenDispute,
     canEditStudentSubmission,
+    homeworkAssignmentType = 'standard',
+    checklistSections = [],
+    checklistAnswers = {},
+    setChecklistAnswers,
 }) {
     return (
         <div className="space-y-3">
@@ -860,6 +894,10 @@ export function renderTaskDetail({
                 draftText={draftText}
                 setDraftText={setDraftText}
                 canEditStudentSubmission={canEditStudentSubmission}
+                homeworkAssignmentType={homeworkAssignmentType}
+                checklistSections={checklistSections}
+                checklistAnswers={checklistAnswers}
+                setChecklistAnswers={setChecklistAnswers}
             />
             <CommentsThread
                 messages={state.threadMessages}
@@ -902,11 +940,24 @@ export default function PvlTaskDetailView({
     const [draftText, setDraftText] = useState(localStorage.getItem('pvl_task_draft_v1') || '');
     const [mentorForm, setMentorForm] = useState({ ...mentorReview });
 
+    const homeworkAssignmentType = initialData?.taskDescription?.homeworkAssignmentType || 'standard';
+    const checklistSections = initialData?.taskDescription?.checklistSections || [];
+
+    const getInitialChecklistAnswers = (data) => {
+        const vers = data?.submissionVersions || [];
+        const v = vers.find((x) => x.isDraft) || vers.find((x) => x.isCurrent);
+        return v?.answersJson && typeof v.answersJson === 'object' ? { ...v.answersJson } : {};
+    };
+    const [checklistAnswers, setChecklistAnswers] = useState(() => getInitialChecklistAnswers(initialData));
+
     const threadLocked = (state.taskDetail.isAcceptedWork || state.taskDetail.status === 'принято') && !state.taskDetail.disputeOpen;
     const disputeOpen = !!state.taskDetail.disputeOpen;
     const canEditStudentSubmission = useMemo(() => {
         if (role !== 'student') return false;
         const s = String(state.taskDetail.status || '').toLowerCase();
+        if (s.includes('отправлен')) return false;
+        if (s.includes('на проверке') || s.includes('к проверке')) return false;
+        if (s.includes('принят') || s.includes('проверено')) return false;
         return s === 'на доработке' || s === 'черновик' || s === 'в работе' || s === 'не начато';
     }, [role, state.taskDetail.status]);
 
@@ -1030,18 +1081,31 @@ export default function PvlTaskDetailView({
                 onChangeStatus: (status, comment) => changeTaskStatus(setState, status, role === 'mentor' ? 'Ментор' : 'Участница', comment),
                 onSendThreadMessage: handleSendThreadMessage,
                 onUploadVersion: handleUploadVersion,
-                onSaveDraft: (text) => {
+                onSaveDraft: (arg) => {
+                    if (homeworkAssignmentType === 'checklist') {
+                        if (onStudentSaveDraft) onStudentSaveDraft({ textContent: '', answersJson: checklistAnswers });
+                        return;
+                    }
+                    const text = typeof arg === 'string' ? arg : draftText;
                     saveDraftSubmission(setDraftText, text);
-                    if (onStudentSaveDraft) onStudentSaveDraft(text);
+                    if (onStudentSaveDraft) onStudentSaveDraft({ textContent: text });
                 },
                 onSubmitForReview: () => {
                     if (!canEditStudentSubmission) return;
+                    if (homeworkAssignmentType === 'checklist') {
+                        if (onStudentSubmit) onStudentSubmit({ textContent: '', answersJson: checklistAnswers });
+                        return;
+                    }
                     submitForReview(setState);
-                    if (onStudentSubmit) onStudentSubmit(draftText);
+                    if (onStudentSubmit) onStudentSubmit({ textContent: draftText });
                 },
                 draftText,
                 setDraftText,
                 canEditStudentSubmission,
+                homeworkAssignmentType,
+                checklistSections,
+                checklistAnswers,
+                setChecklistAnswers,
                 mentorForm,
                 setMentorForm,
                 onSaveMentorForm: handleSaveMentorForm,

@@ -75,6 +75,7 @@ import {
 } from '../services/pvlMockApi';
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 import { TASK_STATUS } from '../data/pvl/enums';
+import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
     clearAppSession,
@@ -333,7 +334,9 @@ const STATUS_TONE = (status) => {
     if (s === 'на доработке' || s === 'warning' || s === 'скоро') return 'bg-amber-50 text-amber-700 border-amber-600/30';
     if (s === 'просрочено' || s === 'не принято' || s === 'высокий') return 'bg-rose-50 text-rose-700 border-rose-600/30';
     if (s === 'на проверке' || s === 'к проверке' || s === 'запланирована' || s === 'средний') return 'bg-blue-50 text-blue-700 border-blue-600/30';
-    if (s === 'отправлено' || s === 'черновик' || s === 'в работе') return 'bg-violet-50 text-violet-800 border-violet-500/25';
+    if (s === 'отправлено') return 'bg-sky-50 text-sky-800 border-sky-500/25';
+    if (s === 'черновик' || s === 'в работе') return 'bg-violet-50 text-violet-800 border-violet-500/25';
+    if (s === 'не начато') return 'bg-slate-100 text-slate-600 border-slate-300';
     return 'bg-slate-100 text-slate-600 border-slate-300';
 };
 
@@ -348,11 +351,12 @@ const StatusBadge = ({ children, compact = false }) => (
 function shortTaskStatusLabel(status) {
     const s = String(status || '').toLowerCase().trim();
     if (s.includes('проверено') || s === 'принято') return 'Принято';
-    if (s === 'на проверке' || s === 'к проверке' || s === 'отправлено') return 'На проверке';
-    if (s === 'на доработке') return 'На доработке';
     if (s === 'отправлено') return 'Отправлено';
+    if (s === 'на проверке' || s === 'к проверке') return 'На проверке';
+    if (s === 'на доработке') return 'На доработке';
     if (s === 'черновик') return 'Черновик';
-    if (s === 'в работе' || s === 'не начато') return 'Черновик';
+    if (s === 'не начато') return 'Не начато';
+    if (s === 'в работе') return 'В работе';
     if (s === 'просрочено') return 'Просрочено';
     return status;
 }
@@ -1674,6 +1678,8 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, taskId);
     const task = detail.task || {};
     const state = detail.state || {};
+    const hwAssignment = task.homeworkMeta?.assignmentType || 'standard';
+    const checklistSections = task.homeworkMeta?.checklistSections || [];
     const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
     const thread = (detail.thread || []).map((m) => ({
         id: m.id,
@@ -1715,6 +1721,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             linkedLessonId: firstLessonId,
             linkedLessonTitle: linkedLessonRow?.title || null,
             revisionCycles: state.revisionCycles ?? 0,
+            homeworkAssignmentType: hwAssignment,
         },
         taskDescription: {
             summary: task.description || '',
@@ -1722,6 +1729,8 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             criteria: task.criteria || [],
             uploadTypes: task.uploadTypes || [],
             hints: [],
+            homeworkAssignmentType: hwAssignment,
+            checklistSections,
         },
         submissionVersions: (detail.versions || []).map((v) => ({
             id: v.id,
@@ -1729,9 +1738,11 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             createdAt: formatPvlDateTime(v.createdAt),
             authorRole: v.authorRole,
             textContent: v.textContent,
+            answersJson: v.answersJson != null ? v.answersJson : null,
             attachments: v.attachments || [],
             links: v.links || [],
             isCurrent: !!v.isCurrent,
+            isDraft: !!v.isDraft,
         })),
         statusHistory: (detail.history || []).map((h) => ({
             id: h.id,
@@ -1745,7 +1756,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     };
 }
 
-const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'на доработке', 'проверено', 'в работе']);
+const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'к проверке', 'на доработке', 'проверено', 'в работе']);
 
 function StudentDashboard({ studentId, navigate, routePrefix = '/student', gardenBridgeRef = null }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
@@ -2635,7 +2646,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
     const summary = {
         coursePoints: pvlDomainApi.helpers.getStudentPointsSummary(studentId).coursePointsTotal || 0,
         accepted: tasksAll.filter((t) => t.uiStatus === 'Принято').length,
-        inReview: tasksAll.filter((t) => t.uiStatus === 'На проверке').length,
+        inReview: tasksAll.filter((t) => t.uiStatus === 'На проверке' || t.uiStatus === 'Отправлено').length,
         inRevision: tasksAll.filter((t) => t.uiStatus === 'На доработке').length,
     };
     React.useEffect(() => {
@@ -2647,10 +2658,13 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                 <h2 className="font-display text-2xl text-slate-800">Результаты</h2>
                 <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700">
                     <option value="все">Все задания</option>
+                    <option value="Не начато">Не начато</option>
                     <option value="Принято">Принято</option>
+                    <option value="Отправлено">Отправлено</option>
                     <option value="На проверке">На проверке</option>
                     <option value="На доработке">На доработке</option>
                     <option value="Черновик">Черновик</option>
+                    <option value="В работе">В работе</option>
                     <option value="Просрочено">Просрочено</option>
                 </select>
             </div>
@@ -2676,7 +2690,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
             <section className="space-y-2">
                 {!tasks.length ? (
                     <p className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] px-3.5 py-6 text-sm text-slate-500 text-center">
-                        Пока нет заданий с ответами ментора — как только появятся сдачи, они отобразятся здесь.
+                        Нет заданий в выбранном фильтре. Опубликованные домашки появляются здесь автоматически; до первой отправки статус «Не начато».
                     </p>
                 ) : null}
                 {tasks.map((t) => (
@@ -2986,8 +3000,12 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 showHeaderBack={!adminChrome}
                 onBack={() => navigate('/student/results')}
                 initialData={buildTaskDetailStateFromApi(studentId, taskId)}
-                onStudentSaveDraft={(text) => pvlDomainApi.studentApi.saveStudentDraft(studentId, taskId, { textContent: text })}
-                onStudentSubmit={(text) => { pvlDomainApi.studentApi.submitStudentTask(studentId, taskId, { textContent: text }); refresh(); }}
+                onStudentSaveDraft={(payload) => pvlDomainApi.studentApi.saveStudentDraft(studentId, taskId, typeof payload === 'object' && payload && 'textContent' in payload ? payload : { textContent: payload })}
+                onStudentSubmit={(payload) => {
+                    const p = typeof payload === 'object' && payload && 'textContent' in payload ? payload : { textContent: payload };
+                    const v = pvlDomainApi.studentApi.submitStudentTask(studentId, taskId, p);
+                    if (v) refresh();
+                }}
                 onStudentReply={(msg) => { pvlDomainApi.studentApi.addStudentThreadReply(studentId, taskId, { text: msg.text, disputeOnly: msg.disputeOnly }); refresh(); }}
             />
         );
@@ -3140,7 +3158,10 @@ function buildMentorMenteeRows(mentorId) {
         const total = Math.max(1, tasks.length);
         const closed = tasks.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
         const closedPct = Math.round((closed / total) * 100);
-        const pendingReview = tasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('проверк')).length;
+        const pendingReview = tasks.filter((t) => {
+            const u = String(t.displayStatus || '').toLowerCase();
+            return u.includes('проверк') || u.includes('отправлен');
+        }).length;
         const inRevision = tasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('доработ')).length;
         const accepted = tasks.filter((t) => t.status === 'принято');
         const lastDone = accepted.length
@@ -3150,9 +3171,15 @@ function buildMentorMenteeRows(mentorId) {
         const pts = pvlDomainApi.helpers.getStudentPointsSummary(m.userId);
         const risks = pvlDomainApi.mentorApi.getMentorMenteeCard(mentorId, m.userId).risks || [];
         const revisionCyclesTotal = tasks.reduce((acc, t) => acc + (Number(t.revisionCycles) || 0), 0);
+        const notStartedHw = tasks.filter((t) => {
+            if (t.isControlPoint) return false;
+            const u = String(t.displayStatus || t.status || '').toLowerCase();
+            return u.includes('не начат');
+        }).length;
         let stateLine = 'в ритме';
         if (overdueN > 0) stateLine = 'есть долги';
         else if (pendingReview > 0 || inRevision > 0) stateLine = 'нужна проверка';
+        else if (notStartedHw > 0) stateLine = 'ДЗ не начаты';
         const cohortLine = `ПВЛ 2026 · ${cohortTitle}`;
         const moduleWeekLine = `Модуль ${clampPvlModule(profile?.currentModule ?? profile?.currentWeek ?? 0)}`;
         const city = profile?.city || '';
@@ -3171,6 +3198,7 @@ function buildMentorMenteeRows(mentorId) {
             stateLine,
             overdueN,
             revisionCyclesTotal,
+            notStartedHw,
             coursePoints: pts.coursePointsTotal ?? 0,
             coursePointsMax: SCORING_RULES.COURSE_POINTS_MAX,
             riskCount: risks.length,
@@ -3189,6 +3217,7 @@ function menteeStatusSurface(stateLine) {
     if (stateLine === 'есть долги') return 'bg-rose-50/90 text-rose-900';
     if (stateLine === 'нужна проверка') return 'bg-amber-50/90 text-amber-950';
     if (stateLine === 'есть доработки') return 'bg-orange-50/90 text-orange-950';
+    if (stateLine === 'ДЗ не начаты') return 'bg-slate-50/90 text-slate-800';
     return 'bg-emerald-50/90 text-emerald-900';
 }
 
@@ -3262,6 +3291,11 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                             {row.overdueN > 0 && row.stateLine !== 'есть долги' ? (
                                 <span className="text-[10px] rounded-full bg-rose-50 px-2 py-0.5 text-rose-900">
                                     Просрочки: {row.overdueN}
+                                </span>
+                            ) : null}
+                            {row.notStartedHw > 0 ? (
+                                <span className="text-[10px] rounded-full bg-slate-100 px-2 py-0.5 text-slate-800 tabular-nums">
+                                    Не начато ДЗ: {row.notStartedHw}
                                 </span>
                             ) : null}
                         </div>
@@ -4077,6 +4111,8 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
 
 function createDefaultLessonHomework() {
     return {
+        assignmentType: 'standard',
+        checklistSections: JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS)),
         responseFormat: {
             artifactType: 'text',
             allowText: true,
@@ -4087,6 +4123,8 @@ function createDefaultLessonHomework() {
         criteria: [''],
         hints: [''],
         mentorComment: '',
+        prompt: '',
+        expectedResult: '',
         scoring: { enabled: false, maxScore: 20 },
         deadline: { type: 'fixed_date', at: '', weekBasedLabel: '', note: '' },
         revisions: {
@@ -4106,7 +4144,15 @@ function normalizeLessonHomework(raw) {
     const scoring = { ...base.scoring, ...(src.scoring || {}) };
     const deadline = { ...base.deadline, ...(src.deadline || {}) };
     const revisions = { ...base.revisions, ...(src.revisions || {}) };
+    const rawType = String(src.assignmentType || src.assignment_type || base.assignmentType || 'standard').toLowerCase();
+    const assignmentType = rawType === 'checklist' ? 'checklist' : 'standard';
+    let checklistSections = Array.isArray(src.checklistSections) ? src.checklistSections : base.checklistSections;
+    if (assignmentType === 'checklist' && (!checklistSections || checklistSections.length === 0)) {
+        checklistSections = JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS));
+    }
     return {
+        assignmentType,
+        checklistSections: assignmentType === 'checklist' ? checklistSections : base.checklistSections,
         responseFormat: {
             artifactType: responseFormat.artifactType || 'text',
             allowText: !!responseFormat.allowText,
@@ -4117,6 +4163,8 @@ function normalizeLessonHomework(raw) {
         criteria: (Array.isArray(src.criteria) && src.criteria.length ? src.criteria : ['']).map((x) => String(x || '')),
         hints: (Array.isArray(src.hints) && src.hints.length ? src.hints : ['']).map((x) => String(x || '')),
         mentorComment: src.mentorComment || '',
+        prompt: src.prompt || '',
+        expectedResult: src.expectedResult || '',
         scoring: {
             enabled: !!scoring.enabled,
             maxScore: Math.max(1, Number(scoring.maxScore) || 20),
@@ -4140,7 +4188,7 @@ function normalizeLessonHomework(raw) {
 function validateLessonHomework(hw, opts = {}) {
     const errors = {};
     const d = normalizeLessonHomework(hw);
-    if (!d.responseFormat.allowText && !d.responseFormat.allowFile && !d.responseFormat.allowLink) {
+    if (d.assignmentType !== 'checklist' && !d.responseFormat.allowText && !d.responseFormat.allowFile && !d.responseFormat.allowLink) {
         errors.responseFormat = 'Нужно разрешить хотя бы один формат ответа: текст, файл или ссылка.';
     }
     if (d.scoring.enabled && (!Number.isFinite(Number(d.scoring.maxScore)) || Number(d.scoring.maxScore) <= 0)) {
@@ -4201,6 +4249,23 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
     return (
         <div className="space-y-3">
             <input type="hidden" value={hw.responseFormat.artifactType} readOnly />
+
+            <section className="space-y-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Тип задания</div>
+                <select
+                    value={hw.assignmentType}
+                    onChange={(e) => setHw((prev) => ({ ...prev, assignmentType: e.target.value === 'checklist' ? 'checklist' : 'standard' }))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                >
+                    <option value="standard">Обычная домашка (один ответ)</option>
+                    <option value="checklist">Чек-лист (ответы по пунктам в одной сдаче)</option>
+                </select>
+                {hw.assignmentType === 'checklist' ? (
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                        Блоки и пункты берутся из шаблона ниже; если список пуст, при сохранении подставится шаблон рефлексии (Контекст · Что наблюдала · Личная рефлексия).
+                    </p>
+                ) : null}
+            </section>
 
             <section className="space-y-2.5 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Настройки дедлайна и доработок</div>

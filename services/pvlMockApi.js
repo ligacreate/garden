@@ -29,6 +29,7 @@ import {
 import { api } from './dataService';
 import { ROLES as GARDEN_ROLES } from '../utils/roles';
 import { classifyGardenProfileForPvlStudent, pvlGardenRoleLabelRu } from '../utils/pvlGardenAdmission';
+import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
 
 /** Согласовано с калькуляторами дедлайнов в прототипе */
 const DASHBOARD_TODAY = '2026-06-03';
@@ -1638,6 +1639,44 @@ function getVisibleContentItems(userId, role, section) {
     return getPublishedContentFor(role, section, cohortId);
 }
 
+/** Неделя курса для материала урока: к `weekId` из CMS или по week/module номеру ученицы. */
+function resolveWeekRowForStudentContentItem(contentItem, studentId) {
+    const profile = db.studentProfiles.find((p) => p.userId === studentId);
+    const cohortId = profile?.cohortId || 'cohort-2026-1';
+    const weeks = (db.courseWeeks || []).filter((w) => w.cohortId === cohortId);
+    if (contentItem?.weekId && weeks.some((w) => w.id === contentItem.weekId)) {
+        return weeks.find((w) => w.id === contentItem.weekId);
+    }
+    const wn = contentItem?.weekNumber != null ? Number(contentItem.weekNumber) : NaN;
+    if (Number.isFinite(wn)) {
+        return weeks.find((w) => Number(w.weekNumber) === wn) || null;
+    }
+    const mn = contentItem?.moduleNumber != null ? Number(contentItem.moduleNumber) : NaN;
+    if (Number.isFinite(mn)) {
+        return weeks.find((w) => Number(w.moduleNumber) === mn) || null;
+    }
+    return null;
+}
+
+/**
+ * Создаёт `homeworkTasks` + `studentTaskStates` + `submissions` для всех опубликованных уроков с lesson_kind = homework.
+ * Единый контур с канбаном и «Результатами» (источник истины — studentTaskStates после синка).
+ */
+function syncPublishedHomeworkTasksForStudent(studentId) {
+    if (!studentId) return;
+    const items = getVisibleContentItems(studentId, ROLES.STUDENT, 'lessons');
+    for (const item of items) {
+        if (resolvePvlLessonKind(item) === 'homework') {
+            ensureTaskForContentItem(studentId, item);
+        }
+    }
+}
+
+function syncPublishedHomeworkTasksForMentorMentees(mentorId) {
+    const ids = getMentorMenteeIds(mentorId);
+    ids.forEach((id) => syncPublishedHomeworkTasksForStudent(id));
+}
+
 /** Согласовано с getPublishedContentBySection в PvlPrototypeApp.jsx */
 function publishedContentVisibleToRole(item, cohortId, role) {
     const vis = item.visibility || 'all';
@@ -1799,6 +1838,38 @@ function getLibraryItemsByCategory(studentId, categoryId) {
     return items.filter((i) => i.categoryId === categoryId || (i.categoryTitle || '').toLowerCase() === categoryId);
 }
 
+/** Метаданные формата ДЗ из homework_config (урок): один контур для обычной домашки и чек-листа. */
+function buildHomeworkMetaFromLessonHw(lessonHomework) {
+    const hw = lessonHomework && typeof lessonHomework === 'object' ? lessonHomework : {};
+    const raw = String(hw.assignmentType || hw.assignment_type || 'standard').toLowerCase();
+    const assignmentType = raw === 'checklist' ? 'checklist' : 'standard';
+    let checklistSections = Array.isArray(hw.checklistSections) ? hw.checklistSections : null;
+    if (assignmentType === 'checklist' && (!checklistSections || checklistSections.length === 0)) {
+        checklistSections = JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS));
+    }
+    return {
+        assignmentType,
+        checklistSections: assignmentType === 'checklist' ? checklistSections : null,
+    };
+}
+
+function flattenChecklistItemIds(sections) {
+    const ids = [];
+    (sections || []).forEach((sec) => {
+        (sec?.items || []).forEach((it) => {
+            if (it?.id) ids.push(String(it.id));
+        });
+    });
+    return ids;
+}
+
+function isChecklistAnswersComplete(sections, answersJson) {
+    const ids = flattenChecklistItemIds(sections);
+    if (!ids.length) return false;
+    const a = answersJson && typeof answersJson === 'object' ? answersJson : {};
+    return ids.every((id) => String(a[id] || '').trim().length > 0);
+}
+
 function ensureTaskForContentItem(studentId, contentItem) {
     let task = db.homeworkTasks.find(t => t.linkedContentItemId === contentItem.id);
 
@@ -1813,11 +1884,14 @@ function ensureTaskForContentItem(studentId, contentItem) {
     }
 
     if (!task) {
+        const weekRow = resolveWeekRowForStudentContentItem(contentItem, studentId);
+        const hwCfg = contentItem.lessonHomework && typeof contentItem.lessonHomework === 'object' ? contentItem.lessonHomework : {};
+        const scoreFromConfig = Number(hwCfg.maxScore ?? hwCfg.scoreMax);
         task = {
             id: `task-ci-${contentItem.id}`,
             linkedContentItemId: contentItem.id,
             linkedLessonIds: contentItem.linkedLessonId ? [contentItem.linkedLessonId] : [],
-            weekId: contentItem.weekId || null,
+            weekId: contentItem.weekId || weekRow?.id || null,
             title: contentItem.title || 'Домашнее задание',
             description: contentItem.lessonHomework?.prompt || contentItem.shortDescription || '',
             artifact: contentItem.lessonHomework?.expectedResult || 'Текст',
@@ -1826,8 +1900,8 @@ function ensureTaskForContentItem(studentId, contentItem) {
             taskType: 'homework',
             isControlPoint: false,
             controlPointId: null,
-            deadlineAt: contentItem.deadlineAt || null,
-            scoreMax: 0,
+            deadlineAt: contentItem.deadlineAt || weekRow?.endDate || null,
+            scoreMax: Number.isFinite(scoreFromConfig) && scoreFromConfig > 0 ? Math.round(scoreFromConfig) : 0,
             scoreType: 'course_points',
             linkedPracticumIds: [],
             linkedCertificationStage: null,
@@ -1836,6 +1910,10 @@ function ensureTaskForContentItem(studentId, contentItem) {
         };
         db.homeworkTasks.push(task);
     }
+
+    const hwMeta = buildHomeworkMetaFromLessonHw(contentItem.lessonHomework);
+    task.homeworkMeta = hwMeta;
+    task.updatedAt = nowIso();
 
     let state = db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
     if (!state) {
@@ -1882,6 +1960,7 @@ export const studentApi = {
         return db.studentTrackerChecks[studentId];
     },
     getStudentDashboard(studentId) {
+        syncPublishedHomeworkTasksForStudent(studentId);
         const pts = calculatePointsSummary(studentId);
         const { user, profile } = getStudentSnapshot(studentId);
         const tasks = db.studentTaskStates.filter((s) => s.studentId === studentId);
@@ -1918,13 +1997,18 @@ export const studentApi = {
         return ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
     },
     getStudentResults(studentId, filters = {}) {
+        syncPublishedHomeworkTasksForStudent(studentId);
         return db.studentTaskStates
             .filter((s) => s.studentId === studentId)
             .map((s) => {
                 const task = db.homeworkTasks.find((t) => t.id === s.taskId);
                 if (!task) return null;
                 const weekRow = db.courseWeeks.find((w) => w.id === task.weekId);
-                const typeLabel = task.isControlPoint || task.taskType === 'control_point' ? 'контрольная точка' : 'домашнее задание';
+                const typeLabel = task.isControlPoint || task.taskType === 'control_point'
+                    ? 'контрольная точка'
+                    : task.homeworkMeta?.assignmentType === 'checklist'
+                      ? 'чек-лист'
+                      : 'домашнее задание';
                 return {
                     id: task.id,
                     title: task.title,
@@ -1979,16 +2063,45 @@ export const studentApi = {
         return getTaskDetail(studentId, taskId);
     },
     ensureTaskForContentItem: (studentId, contentItem) => ensureTaskForContentItem(studentId, contentItem),
-    saveStudentDraft(studentId, taskId, payload) {
+    saveStudentDraft(studentId, taskId, payload = {}) {
         const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
         if (!submission) return null;
+        const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
+        const textContent = payload?.textContent ?? '';
+        const answersJson = payload?.answersJson !== undefined ? payload.answersJson : undefined;
+
+        const touchDraftVersion = (ver) => {
+            ver.textContent = textContent;
+            if (answersJson !== undefined) ver.answersJson = answersJson;
+        };
+
+        if (submission.draftVersionId) {
+            const d = db.submissionVersions.find((v) => v.id === submission.draftVersionId && v.submissionId === submission.id);
+            if (d && d.isDraft) {
+                touchDraftVersion(d);
+                if (state && (state.status === TASK_STATUS.NOT_STARTED || state.status === TASK_STATUS.IN_PROGRESS)) {
+                    state.status = TASK_STATUS.DRAFT;
+                    state.updatedAt = nowIso();
+                }
+                submission.updatedAt = nowIso();
+                persistSubmissionToDb(studentId, taskId);
+                return d;
+            }
+        }
+
+        db.submissionVersions
+            .filter((v) => v.submissionId === submission.id)
+            .forEach((v) => {
+                v.isDraft = false;
+            });
         const versionNumber = db.submissionVersions.filter((v) => v.submissionId === submission.id).length + 1;
         const version = {
             id: uid('ver'),
             submissionId: submission.id,
             versionNumber,
             authorRole: ROLES.STUDENT,
-            textContent: payload?.textContent || '',
+            textContent,
+            answersJson: answersJson !== undefined ? answersJson : null,
             attachments: payload?.attachments || [],
             links: payload?.links || [],
             isDraft: true,
@@ -1998,13 +2111,37 @@ export const studentApi = {
         db.submissionVersions.push(version);
         submission.draftVersionId = version.id;
         submission.updatedAt = nowIso();
+        if (state) {
+            if (state.status === TASK_STATUS.NOT_STARTED || state.status === TASK_STATUS.IN_PROGRESS) {
+                state.status = TASK_STATUS.DRAFT;
+            }
+            state.updatedAt = nowIso();
+        }
         persistSubmissionToDb(studentId, taskId);
         return version;
     },
-    submitStudentTask(studentId, taskId, payload) {
+    submitStudentTask(studentId, taskId, payload = {}) {
         const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
         const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
+        const task = db.homeworkTasks.find((t) => t.id === taskId);
         if (!submission || !state) return null;
+        let textContent = payload?.textContent ?? '';
+        let answersJson = payload?.answersJson !== undefined ? payload.answersJson : undefined;
+        const draftV = submission.draftVersionId ? db.submissionVersions.find((v) => v.id === submission.draftVersionId && v.submissionId === submission.id) : null;
+        if (draftV && draftV.isDraft) {
+            if (!String(textContent).trim() && draftV.textContent) textContent = draftV.textContent;
+            if (answersJson === undefined && draftV.answersJson != null) answersJson = draftV.answersJson;
+        }
+        const meta = task?.homeworkMeta;
+        if (meta?.assignmentType === 'checklist') {
+            if (!isChecklistAnswersComplete(meta.checklistSections, answersJson)) {
+                return null;
+            }
+            textContent = textContent || 'Чек-лист (см. ответы по пунктам)';
+        } else if (!String(textContent).trim()) {
+            return null;
+        }
+
         db.submissionVersions
             .filter((v) => v.submissionId === submission.id)
             .forEach((v) => {
@@ -2012,24 +2149,36 @@ export const studentApi = {
                 v.isDraft = false;
             });
         const versionNumber = db.submissionVersions.filter((v) => v.submissionId === submission.id).length + 1;
-        const version = { id: uid('ver'), submissionId: submission.id, versionNumber, authorRole: ROLES.STUDENT, textContent: payload?.textContent || '', attachments: payload?.attachments || [], links: payload?.links || [], isDraft: false, isCurrent: true, createdAt: nowIso() };
+        const version = {
+            id: uid('ver'),
+            submissionId: submission.id,
+            versionNumber,
+            authorRole: ROLES.STUDENT,
+            textContent,
+            answersJson: answersJson !== undefined ? answersJson : null,
+            attachments: payload?.attachments || [],
+            links: payload?.links || [],
+            isDraft: false,
+            isCurrent: true,
+            createdAt: nowIso(),
+        };
         db.submissionVersions.push(version);
         submission.currentVersionId = version.id;
         submission.draftVersionId = null;
         state.currentVersionId = version.id;
         const fromStatus = state.status;
-        state.status = TASK_STATUS.PENDING_REVIEW;
+        state.status = TASK_STATUS.SUBMITTED;
         state.submittedAt = nowIso().slice(0, 10);
         state.lastStatusChangedAt = nowIso().slice(0, 10);
-        const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus: TASK_STATUS.PENDING_REVIEW, changedByUserId: studentId, comment: 'Отправлено на проверку', createdAt: nowIso() };
+        const history = { id: uid('sh'), studentId, taskId, fromStatus, toStatus: TASK_STATUS.SUBMITTED, changedByUserId: studentId, comment: 'Отправлено на проверку', createdAt: nowIso() };
         db.statusHistory.push(history);
-        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: studentId, authorRole: ROLES.STUDENT, messageType: 'version_submitted', text: 'Отправлена новая версия', attachments: payload?.attachments || [], linkedVersionId: version.id, linkedStatusHistoryId: history.id, isSystem: false, createdAt: nowIso(), readBy: [studentId] });
-        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: 'Статус изменен на к проверке', attachments: [], linkedVersionId: version.id, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
+        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: studentId, authorRole: ROLES.STUDENT, messageType: 'version_submitted', text: 'Отправлена работа', attachments: payload?.attachments || [], linkedVersionId: version.id, linkedStatusHistoryId: history.id, isSystem: false, createdAt: nowIso(), readBy: [studentId] });
+        db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: 'system', authorRole: 'system', messageType: 'status', text: 'Статус: отправлено', attachments: [], linkedVersionId: version.id, linkedStatusHistoryId: history.id, isSystem: true, createdAt: nowIso(), readBy: [] });
         pushEvent('new_submission_version', { studentId, taskId, versionId: version.id });
-        pushEvent('task_status_changed', { studentId, taskId, toStatus: TASK_STATUS.PENDING_REVIEW });
+        pushEvent('task_status_changed', { studentId, taskId, toStatus: TASK_STATUS.SUBMITTED });
         addAuditEvent(studentId, ROLES.STUDENT, 'submit_task', 'task', taskId, 'Student submitted task for review', { versionId: version.id });
         const mentorId = db.studentProfiles.find((p) => p.userId === studentId)?.mentorId;
-        if (mentorId) addNotification(mentorId, ROLES.MENTOR, 'new_submission_version', 'Появилась новая версия задания', { studentId, taskId });
+        if (mentorId) addNotification(mentorId, ROLES.MENTOR, 'new_submission_version', 'Появилась новая работа по заданию', { studentId, taskId });
         persistSubmissionToDb(studentId, taskId);
         return version;
     },
@@ -2248,6 +2397,7 @@ export const studentApi = {
 
 export const mentorApi = {
     getMentorDashboard(mentorId) {
+        syncPublishedHomeworkTasksForMentorMentees(mentorId);
         const menteeIds = getMentorMenteeIds(mentorId);
         return {
             totalMentees: menteeIds.length,
@@ -2324,10 +2474,12 @@ export const mentorApi = {
         });
     },
     getMentorReviewQueue(mentorId) {
+        syncPublishedHomeworkTasksForMentorMentees(mentorId);
         return getPendingReviewTasks(db, mentorId);
     },
     /** Доска проверок: не проверено / на доработке / проверено (все задания менти ментора) */
     getMentorReviewBoard(mentorId) {
+        syncPublishedHomeworkTasksForMentorMentees(mentorId);
         const menteeIds = getMentorMenteeIds(mentorId);
         const nowMs = Date.now();
         const DAY_MS = 24 * 60 * 60 * 1000;

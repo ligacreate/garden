@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { pvlDomainApi } from '../services/pvlMockApi.js';
+import { ChecklistFieldsEditor } from './pvlChecklistShared.jsx';
 
 export function stripMaterialNumbering(title) {
     const source = String(title || '').trim();
@@ -374,6 +375,7 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
 
 function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '/student' }) {
     const [draft, setDraft] = React.useState('');
+    const [answers, setAnswers] = React.useState({});
     const [saved, setSaved] = React.useState(false);
     const [submitted, setSubmitted] = React.useState(false);
 
@@ -381,12 +383,23 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
         return pvlDomainApi.studentApi.ensureTaskForContentItem(studentId, selectedItem);
     }, [studentId, selectedItem]);
 
+    const hwMeta = React.useMemo(() => {
+        const t = pvlDomainApi.db.homeworkTasks.find((x) => x.id === task?.id);
+        return t?.homeworkMeta || null;
+    }, [task?.id]);
+    const isChecklist = hwMeta?.assignmentType === 'checklist';
+    const checklistSections = hwMeta?.checklistSections || [];
+
     React.useEffect(() => {
         if (!task) return;
         const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, task.id);
         const currentVersion = detail?.versions?.find(v => v.isDraft) || detail?.versions?.find(v => v.isCurrent);
         if (currentVersion?.textContent) setDraft(currentVersion.textContent);
-        if (detail?.state?.status === 'pending_review' || detail?.state?.status === 'accepted') {
+        if (currentVersion?.answersJson && typeof currentVersion.answersJson === 'object') {
+            setAnswers({ ...currentVersion.answersJson });
+        }
+        const st = detail?.state?.status;
+        if (st === 'submitted' || st === 'pending_review' || st === 'accepted') {
             setSubmitted(true);
         }
     }, [studentId, task]);
@@ -396,23 +409,35 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
     const state = pvlDomainApi.db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
     const STATUS_LABELS = {
         not_started: { label: 'Не начато', color: 'bg-slate-100 text-slate-500' },
+        draft: { label: 'Черновик', color: 'bg-violet-100 text-violet-800' },
+        submitted: { label: 'Отправлено', color: 'bg-sky-100 text-sky-800' },
         pending_review: { label: 'На проверке', color: 'bg-amber-100 text-amber-700' },
         revision_requested: { label: 'На доработке', color: 'bg-orange-100 text-orange-700' },
         accepted: { label: 'Принято', color: 'bg-emerald-100 text-emerald-700' },
     };
     const statusInfo = STATUS_LABELS[state?.status] || STATUS_LABELS.not_started;
     const isAccepted = state?.status === 'accepted';
-    const isPending = state?.status === 'pending_review';
+    const isPending = state?.status === 'pending_review' || state?.status === 'submitted';
 
     const handleSaveDraft = () => {
-        pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
+        if (isChecklist) {
+            pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: '', answersJson: answers });
+        } else {
+            pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
+        }
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     };
 
     const handleSubmit = () => {
-        if (!draft.trim()) return;
-        pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
+        let ok;
+        if (isChecklist) {
+            ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: '', answersJson: answers });
+        } else {
+            if (!draft.trim()) return;
+            ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
+        }
+        if (!ok) return;
         setSubmitted(true);
     };
 
@@ -451,24 +476,30 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
 
             {!isAccepted && (
                 <div className="space-y-3">
-                    <textarea
-                        className="w-full min-h-[140px] rounded-xl border border-[#E8D5C4] bg-white p-3 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#C4956A]/30 resize-y"
-                        placeholder={isPending ? 'Работа отправлена на проверку…' : 'Напишите ваш ответ…'}
-                        value={draft}
-                        onChange={e => setDraft(e.target.value)}
-                        disabled={isPending}
-                    />
+                    {isChecklist && checklistSections.length ? (
+                        <ChecklistFieldsEditor sections={checklistSections} value={answers} onChange={setAnswers} disabled={isPending} />
+                    ) : (
+                        <textarea
+                            className="w-full min-h-[140px] rounded-xl border border-[#E8D5C4] bg-white p-3 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#C4956A]/30 resize-y"
+                            placeholder={isPending ? 'Работа отправлена на проверку…' : 'Напишите ваш ответ…'}
+                            value={draft}
+                            onChange={e => setDraft(e.target.value)}
+                            disabled={isPending}
+                        />
+                    )}
                     {!isPending && (
                         <div className="flex gap-2 flex-wrap">
                             <button
+                                type="button"
                                 onClick={handleSaveDraft}
                                 className="px-4 py-2 rounded-xl border border-[#E8D5C4] bg-white text-sm text-[#4A3728] hover:bg-[#FAF6F2] transition-colors"
                             >
                                 {saved ? 'Сохранено ✓' : 'Сохранить черновик'}
                             </button>
                             <button
+                                type="button"
                                 onClick={handleSubmit}
-                                disabled={!draft.trim()}
+                                disabled={isChecklist ? false : !draft.trim()}
                                 className="px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             >
                                 Отправить на проверку

@@ -595,7 +595,6 @@ const CourseLibraryView = ({
             }
             return next;
         });
-        setPvlGardenRoute(getHomeRouteByRole(nextRole));
         const linked = user?.id != null ? String(user.id) : null;
         const actingUserId = linked || (nextRole === 'mentor' ? 'u-men-1' : nextRole === 'admin' ? 'u-adm-1' : 'u-st-1');
         const studentId = nextRole === 'student' ? (linked || 'u-st-1') : (loadAppSession()?.studentId || 'u-st-1');
@@ -613,10 +612,18 @@ const CourseLibraryView = ({
 
     const gardenPvlItems = useMemo(() => {
         if (!aiCampSession) return [];
-        if (aiCampSession.role === 'mentor') return buildGardenPvlMentorNav();
-        if (aiCampSession.role === 'admin') return buildGardenPvlAdminNav();
+        const routeBasedRole = String(pvlGardenRoute || '').startsWith('/admin/')
+            ? 'admin'
+            : String(pvlGardenRoute || '').startsWith('/mentor/')
+                ? 'mentor'
+                : String(pvlGardenRoute || '').startsWith('/student/')
+                    ? 'student'
+                    : null;
+        const roleForNav = routeBasedRole || aiCampSession.role;
+        if (roleForNav === 'mentor') return buildGardenPvlMentorNav();
+        if (roleForNav === 'admin') return buildGardenPvlAdminNav();
         return buildGardenPvlStudentNav();
-    }, [aiCampSession]);
+    }, [aiCampSession, pvlGardenRoute]);
 
     const gardenPvlActiveKey = useMemo(() => {
         if (pvlGardenRoute == null) return null;
@@ -653,6 +660,28 @@ const CourseLibraryView = ({
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !aiCampSession) return;
         syncPvlSessionFromAlCamp(aiCampSession);
     }, [selectedCourse?.id, aiCampSession]);
+    useEffect(() => {
+        if (!aiCampSession || pvlResolvedRole !== 'admin') return;
+        const routeRole = String(pvlGardenRoute || '').startsWith('/admin/')
+            ? 'admin'
+            : String(pvlGardenRoute || '').startsWith('/mentor/')
+                ? 'mentor'
+                : String(pvlGardenRoute || '').startsWith('/student/')
+                    ? 'student'
+                    : null;
+        if (!routeRole || routeRole === aiCampSession.role) return;
+        setAiCampSession((prev) => {
+            if (!prev || prev.role === routeRole) return prev;
+            const next = { ...prev, role: routeRole };
+            try {
+                localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(next));
+            } catch {
+                /* ignore */
+            }
+            return next;
+        });
+    }, [aiCampSession, pvlGardenRoute, pvlResolvedRole]);
+
     useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) {
             setGardenCampPaused(false);
@@ -799,7 +828,7 @@ const CourseLibraryView = ({
                                 <div className="text-sm text-slate-500">
                                     {aiCampSession.name}
                                     <span className="text-slate-400"> · </span>
-                                    {aiCampSession.role === 'mentor' ? 'Ментор' : aiCampSession.role === 'admin' ? 'Админ' : 'Ученик'}
+                                    {aiCampSession.role === 'mentor' ? 'Ментор' : aiCampSession.role === 'admin' ? 'Администратор курса' : 'Ученик'}
                                 </div>
                                 {pvlResolvedRole === 'admin' && aiCampSession.role === 'mentor' ? (
                                     <div className="text-xs rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-1">
@@ -820,7 +849,6 @@ const CourseLibraryView = ({
                                             key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.linkedUserId || 'anon'}`}
                                             embeddedInGarden
                                             gardenResolvedRole={pvlResolvedRole}
-                                            hideEmbeddedStudentRoleSwitch={pvlResolvedRole === 'admin'}
                                             gardenBridgeRef={gardenPvlBridgeRef}
                                             onGardenRouteChange={setPvlGardenRoute}
                                             onGardenExit={onBackToGarden}

@@ -528,7 +528,9 @@ function mapDbFaqToRuntime(row) {
 }
 
 function studentSqlIdByUserId(userId) {
-    return STUDENT_SQL_ID_BY_USER_ID[userId] || null;
+    if (!userId) return null;
+    /** Мок-пользователи (u-st-*) → фиксированный UUID из сида; реальные пользователи → их UUID и есть SQL-идентификатор. */
+    return STUDENT_SQL_ID_BY_USER_ID[userId] || (isUuidString(userId) ? String(userId) : null);
 }
 
 async function ensureDbTrackerHomeworkStructure() {
@@ -575,8 +577,9 @@ async function ensureDbTrackerHomeworkStructure() {
         }
     }
     const byHomeworkExternal = new Map((hwRows || []).map((r) => [String(r.external_key || ''), r]));
-    if (byHomeworkExternal.size === 0) {
-        for (const t of db.homeworkTasks || []) {
+    /** Upsert каждой домашки которой ещё нет в БД (не только при size === 0 — db.homeworkTasks заполняется лениво). */
+    for (const t of db.homeworkTasks || []) {
+        if (!byHomeworkExternal.has(String(t.id))) {
             const sqlWeekId = sqlWeekIdByMockWeekId.get(String(t.weekId));
             // eslint-disable-next-line no-await-in-loop
             await pvlPostgrestApi.upsertHomeworkItem({
@@ -1647,13 +1650,23 @@ function persistTrackerProgressToDb(studentId) {
 
 function persistSubmissionToDb(studentId, taskId) {
     const sqlStudentId = studentSqlIdByUserId(studentId);
-    const sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
-    if (!sqlStudentId || !sqlHomeworkId) return;
+    if (!sqlStudentId) return;
     const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
     const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
     if (!state || !submission) return;
     const payload = buildSubmissionPayload(studentId, taskId, submission.id);
     fireAndForget(async () => {
+        /**
+         * sqlHomeworkIdByMockTaskId заполняется в ensureDbTrackerHomeworkStructure во время syncPvlRuntimeFromDb.
+         * Но db.homeworkTasks заполняется лениво (syncPublishedHomeworkTasksForStudent), поэтому
+         * к моменту первого сабмита карта может быть пустой — вызываем инициализацию повторно.
+         */
+        let sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+        if (!sqlHomeworkId) {
+            await ensureDbTrackerHomeworkStructure();
+            sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+        }
+        if (!sqlHomeworkId) return;
         const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
         const row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
         const patch = {

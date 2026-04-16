@@ -10,21 +10,21 @@ import { ROLES as GARDEN_ROLES } from './roles';
 
 const norm = (v) => String(v ?? '').trim().toLowerCase();
 
-/** Роли персонала платформы — в список учениц ПВЛ не попадают */
+/**
+ * Роли назначаемого персонала платформы — в список учениц ПВЛ не попадают.
+ * Стажер/intern — НЕ персонал: это следующая ступень участника (Абитуриент → Стажер → Ведущая),
+ * поэтому они могут проходить курс ПВЛ и должны синхронизироваться как studentProfiles.
+ */
 const GARDEN_STAFF_ROLES = new Set([
     GARDEN_ROLES.MENTOR,
-    GARDEN_ROLES.INTERN,
     GARDEN_ROLES.LEADER,
     GARDEN_ROLES.ADMIN,
     GARDEN_ROLES.CURATOR,
     'mentor',
-    'intern',
     'leader',
     'admin',
     'curator',
     'ментор',
-    'стажер',
-    'стажёр',
     'ведущая',
     'администратор',
     'куратор',
@@ -56,6 +56,9 @@ export function classifyGardenProfileForPvlStudent(profile) {
     }
     if (roleLabel.includes('битуриент')) {
         return { gardenRole: 'applicant', sourceRole: String(profile.role ?? '') };
+    }
+    if (r === GARDEN_ROLES.INTERN || r === 'intern' || r === 'стажер' || r === 'стажёр') {
+        return { gardenRole: 'student', sourceRole: String(profile.role ?? '') };
     }
     if (r === 'student' || r === 'ученица' || r === 'participant' || r === 'trainee') {
         return { gardenRole: 'student', sourceRole: String(profile.role ?? '') };

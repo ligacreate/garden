@@ -332,6 +332,7 @@ export function StudentCourseTracker({
     routePrefix = '/student',
     navigate = null,
     gardenBridgeRef = null,
+    refreshKey = 0,
 }) {
     const mentorHydrationAttemptedRef = useRef('');
     const [, forceMentorRefreshTick] = useState(0);
@@ -423,7 +424,9 @@ export function StudentCourseTracker({
     const linkedItem = useMemo(() => {
         if (!contentItemId || !studentId) return null;
         return pvlDomainApi.studentApi.getPublishedContentItemForStudent(studentId, contentItemId);
-    }, [studentId, contentItemId, checked[activeStep?.key || '']]);
+    // refreshKey меняется после async-синхронизации db (syncPvlRuntimeFromDb + syncPvlActorsFromGarden)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [studentId, contentItemId, checked[activeStep?.key || ''], refreshKey]);
 
     const lessonVideoPlayerHtml = useMemo(
         () => (linkedItem ? buildLessonVideoPlayerHtml(linkedItem) : ''),

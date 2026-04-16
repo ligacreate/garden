@@ -1673,10 +1673,14 @@ function hasPublishedPlacementForStudentContent(contentId, cohortId) {
  * Не заменяет getPublishedLibraryItemById для списка библиотеки.
  */
 function getPublishedContentItemForStudent(studentId, contentId) {
-    if (!contentId) return null;
+    if (!contentId || !studentId) return null;
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
-    if (!profile) return null;
-    const cohortId = profile.cohortId;
+    /**
+     * Профиль может отсутствовать если синхронизация с Садом ещё не завершена
+     * или пользователь только что сменил роль. Используем потоковый fallback:
+     * материалы без cohortId видны всем, а cohort-2026-1 — текущий активный поток.
+     */
+    const cohortId = profile?.cohortId || 'cohort-2026-1';
     const item = (db.contentItems || []).find((ci) => ci.id === contentId);
     if (!item || item.status !== CONTENT_STATUS.PUBLISHED) return null;
     if (!publishedContentVisibleToRole(item, cohortId, ROLES.STUDENT)) return null;

@@ -8,6 +8,7 @@ function normalizeGardenRoleValue(value) {
     if (raw === ROLES.ADMIN || raw === 'admin' || raw === 'админ' || raw === 'администратор') return ROLES.ADMIN;
     if (raw === ROLES.MENTOR || raw === 'mentor' || raw === 'ментор') return ROLES.MENTOR;
     if (raw === ROLES.APPLICANT || raw === 'applicant' || raw === 'абитуриент') return ROLES.APPLICANT;
+    if (raw === ROLES.INTERN || raw === 'intern' || raw === 'стажер' || raw === 'стажёр') return ROLES.INTERN;
     return raw;
 }
 
@@ -18,6 +19,8 @@ export function resolvePvlRoleFromGardenProfile(user) {
     if (source === ROLES.ADMIN) return 'admin';
     if (source === ROLES.MENTOR) return 'mentor';
     if (source === ROLES.APPLICANT) return 'student';
+    /** Стажер — следующая ступень участника (Абитуриент → Стажер → Ведущая), курс ПВЛ доступен */
+    if (source === ROLES.INTERN) return 'student';
     return 'no_access';
 }
 

@@ -3003,6 +3003,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 routePrefix={routePrefix}
                 navigate={navigate}
                 gardenBridgeRef={gardenBridgeRef}
+                refreshKey={refreshKey}
             />
         );
     }
@@ -3030,6 +3031,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 routePrefix={routePrefix}
                 navigate={navigate}
                 gardenBridgeRef={gardenBridgeRef}
+                refreshKey={refreshKey}
             />
         );
     }
@@ -3586,6 +3588,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
                 routePrefix="/mentor"
                 navigate={navigate}
+                refreshKey={refreshKey}
             />
         );
     }

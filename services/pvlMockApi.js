@@ -803,8 +803,13 @@ export async function syncPvlActorsFromGarden() {
         if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
 
         const roleOnly = (u) => String(u?.role ?? '').trim().toLowerCase();
+        const canActAsCourseMentor = (u) => {
+            const role = roleOnly(u);
+            return role === GARDEN_ROLES.MENTOR || role === GARDEN_ROLES.ADMIN;
+        };
 
-        const mentors = users.filter((u) => roleOnly(u) === GARDEN_ROLES.MENTOR);
+        /** В курсе ПВЛ админ площадки также может выступать как ментор. */
+        const mentors = users.filter((u) => canActAsCourseMentor(u));
 
         /** Участники ПВЛ (абитуриенты и ученицы курса), без персонала — см. utils/pvlGardenAdmission.js */
         const pvlTrackMembers = users
@@ -814,23 +819,24 @@ export async function syncPvlActorsFromGarden() {
         mentors.forEach((u) => {
             if (!u?.id) return;
             const userId = String(u.id);
+            const gardenRole = roleOnly(u);
             const realName = u.name || u.fullName || u.email || userId;
             const existingUser = (db.users || []).find((x) => String(x.id) === userId);
             if (!existingUser) {
                 db.users.push({
                     id: userId,
-                    role: ROLES.MENTOR,
+                    role: gardenRole === GARDEN_ROLES.ADMIN ? ROLES.ADMIN : ROLES.MENTOR,
                     fullName: realName,
                     email: u.email || '',
                     avatar: u.avatar || '',
                     isActive: true,
-                    gardenRole: 'mentor',
+                    gardenRole,
                     createdAt: nowIso(),
                     updatedAt: nowIso(),
                 });
             } else {
                 if (realName && realName !== userId) existingUser.fullName = realName;
-                existingUser.gardenRole = 'mentor';
+                existingUser.gardenRole = gardenRole;
             }
             const existsMentor = (db.mentorProfiles || []).some((x) => String(x.userId) === userId);
             if (!existsMentor) {

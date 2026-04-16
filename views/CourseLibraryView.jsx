@@ -135,6 +135,7 @@ const COURSES = [
 /** id карточки входа в ПВЛ в списке курсов библиотеки */
 const PVL_ENTRY_COURSE_ID = 6;
 const AI_CAMP_SESSION_KEY = "garden_ai_camp_session";
+const LIBRARY_AUTO_OPEN_COURSE_KEY = 'garden_library_open_course';
 
 function normalizeStyledHtmlToSemantic(html) {
     const parser = new DOMParser();
@@ -360,6 +361,7 @@ const CourseLibraryView = ({
 
     const role = user?.role || ROLES.APPLICANT;
     const pvlResolvedRole = resolvePvlRoleFromGardenProfile(user);
+    const pvlEntryRole = pvlResolvedRole === 'admin' ? 'mentor' : pvlResolvedRole;
     const canSeePvlCourse = canSeePvlInGarden(user);
     const hiddenCourses = librarySettings?.hiddenCourses || [];
     const materialOrder = librarySettings?.materialOrder || {};
@@ -458,6 +460,20 @@ const CourseLibraryView = ({
         setSelectedMaterial(null);
     }, [availableCourses, selectedCourseId]);
     useEffect(() => {
+        if (selectedCourseId != null) return;
+        let shouldOpenPvl = false;
+        try {
+            shouldOpenPvl = localStorage.getItem(LIBRARY_AUTO_OPEN_COURSE_KEY) === 'pvl';
+            if (shouldOpenPvl) localStorage.removeItem(LIBRARY_AUTO_OPEN_COURSE_KEY);
+        } catch {
+            shouldOpenPvl = false;
+        }
+        if (!shouldOpenPvl || !canSeePvlCourse) return;
+        setSelectedCourseId(PVL_ENTRY_COURSE_ID);
+        setSelectedTag('Все');
+        setSelectedMaterial(null);
+    }, [canSeePvlCourse, selectedCourseId]);
+    useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) return;
         if (canSeePvlCourse) return;
         setSelectedCourseId(null);
@@ -535,7 +551,7 @@ const CourseLibraryView = ({
     };
 
     const buildGardenAlCampSession = (u) => ({
-        role: resolvePvlRoleFromGardenProfile(u),
+        role: pvlEntryRole,
         name: (u.name && String(u.name).trim()) || u.email || 'Участник',
         linkedUserId: u.id,
         authSource: 'garden',
@@ -785,6 +801,11 @@ const CourseLibraryView = ({
                                     <span className="text-slate-400"> · </span>
                                     {aiCampSession.role === 'mentor' ? 'Ментор' : aiCampSession.role === 'admin' ? 'Администратор курса' : 'Ученик'}
                                 </div>
+                                {pvlResolvedRole === 'admin' && aiCampSession.role === 'mentor' ? (
+                                    <div className="text-xs rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-1">
+                                        Вошли как ментор (роль сада: админ)
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="min-w-0 w-full">
                                 <PvlErrorBoundary

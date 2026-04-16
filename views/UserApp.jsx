@@ -68,6 +68,16 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     );
     const normalizedRole = (user?.role || '').toLowerCase();
     const isAdmin = normalizedRole === ROLES.ADMIN;
+    const canOpenTeacherCabinet = hasAccess(normalizedRole, ROLES.MENTOR);
+    const openTeacherCabinet = () => {
+        try {
+            localStorage.setItem('garden_library_open_course', 'pvl');
+        } catch {
+            /* ignore */
+        }
+        handleViewChange('library');
+        setMobileMenuOpen(false);
+    };
     const skillOptions = useMemo(() => {
         const skillMap = new Map();
         users.forEach((u) => {
@@ -755,6 +765,13 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             ) : (
                                 <div className="h-px bg-slate-100/60 my-3" />
                             )}
+                            {!isCourseSidebarMode && canOpenTeacherCabinet ? (
+                                <SidebarItem
+                                    icon={BadgeCheck}
+                                    label="Учительская"
+                                    onClick={openTeacherCabinet}
+                                />
+                            ) : null}
                             <button
                                 onClick={onLogout}
                                 className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 hover:text-rose-600 hover:bg-rose-50/60 transition-all duration-300 group select-none"
@@ -809,6 +826,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
                             )}
                             <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />
+                            {canOpenTeacherCabinet ? (
+                                <SidebarItem icon={BadgeCheck} label="Учительская" onClick={openTeacherCabinet} />
+                            ) : null}
                             <div onClick={onLogout} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 active:bg-slate-50">
                                 <LogOut size={22} className="stroke-[1.5px]" />
                                 <span className="font-medium tracking-wide text-[15px]">Выйти</span>

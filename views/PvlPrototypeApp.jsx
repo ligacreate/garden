@@ -7105,7 +7105,7 @@ export default function PvlPrototypeApp({
             <button type="button" onClick={() => navigate('/qa')} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A]">Приёмка QA</button>
         </div>
     ) : null;
-    const showCabinetSwitcher = !embeddedInGarden || (pvlDevToolsEnabled() && !hideEmbeddedRoleSwitch);
+    const showCabinetSwitcher = !embeddedInGarden || !hideEmbeddedRoleSwitch;
     const showEmbeddedTopBar = embeddedInGarden && (showCabinetSwitcher || !!devToolsBar);
 
     return (

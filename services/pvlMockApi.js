@@ -90,8 +90,8 @@ function logDbFallback(payload = {}) {
         }
         return;
     }
-    /** В проде иначе «тихие» сбои PostgREST — материалы исчезают после F5. */
-    if (table.includes('pvl_content') || table.includes('pvl_garden')) {
+    /** В проде иначе «тихие» сбои PostgREST — данные исчезают после F5. */
+    if (table.includes('pvl_')) {
         try {
             // eslint-disable-next-line no-console
             console.warn('[PVL DB]', table, err.slice(0, 200), payload.id || '');

@@ -65,6 +65,9 @@ if (!Array.isArray(db.faqItems)) db.faqItems = [];
 if (!db.studentTrackerChecks || typeof db.studentTrackerChecks !== 'object') db.studentTrackerChecks = {};
 const IS_DEV = import.meta.env.DEV;
 
+/** UUID студентов, которых уже вставили/обновили в pvl_students за текущую сессию. */
+const pvlStudentSyncedToDb = new Set();
+
 const STUDENT_SQL_ID_BY_USER_ID = Object.freeze({
     'u-st-1': '33333333-3333-3333-3333-333333333301',
     'u-st-2': '33333333-3333-3333-3333-333333333302',
@@ -531,6 +534,32 @@ function studentSqlIdByUserId(userId) {
     if (!userId) return null;
     /** Мок-пользователи (u-st-*) → фиксированный UUID из сида; реальные пользователи → их UUID и есть SQL-идентификатор. */
     return STUDENT_SQL_ID_BY_USER_ID[userId] || (isUuidString(userId) ? String(userId) : null);
+}
+
+/**
+ * Гарантирует наличие строки студента в pvl_students перед сохранением submission/прогресса.
+ * Без этого INSERT в pvl_student_homework_submissions и pvl_student_course_progress падает
+ * с FK-ошибкой: student_id references pvl_students(id), а реальные Garden-UUID туда не вставляются.
+ */
+async function ensurePvlStudentInDb(userId) {
+    if (!pvlPostgrestApi.isEnabled()) return;
+    const sqlId = studentSqlIdByUserId(userId);
+    if (!sqlId) return;
+    if (pvlStudentSyncedToDb.has(sqlId)) return;
+    pvlStudentSyncedToDb.add(sqlId);
+    const user = (db.users || []).find((u) => String(u.id) === String(userId));
+    const fullName = user?.fullName || user?.name || 'Участница';
+    try {
+        await pvlPostgrestApi.upsertPvlStudent({
+            id: sqlId,
+            full_name: fullName,
+            status: 'active',
+            cohort_id: null,
+            mentor_id: null,
+        });
+    } catch {
+        pvlStudentSyncedToDb.delete(sqlId);
+    }
 }
 
 async function ensureDbTrackerHomeworkStructure() {
@@ -1639,16 +1668,19 @@ function persistTrackerProgressToDb(studentId) {
             || (db.courseWeeks || []).find((w) => Number(w.weekNumber ?? -1) === Number(moduleId));
         const sqlWeekId = week ? sqlWeekIdByMockWeekId.get(String(week.id)) : null;
         if (!sqlWeekId) return;
-        fireAndForget(() => pvlPostgrestApi.upsertStudentCourseProgress(sqlStudentId, {
-            week_id: sqlWeekId,
-            lessons_completed: keys.length,
-            lessons_total: keys.length,
-            homework_completed: 0,
-            homework_total: 0,
-            is_week_closed: keys.length > 0,
-            auto_points_awarded: false,
-            payload: { checkedKeys: keys },
-        }), { table: 'pvl_student_course_progress', endpoint: '/pvl_student_course_progress', id: `${sqlStudentId}:${sqlWeekId}` });
+        fireAndForget(async () => {
+            await ensurePvlStudentInDb(studentId);
+            return pvlPostgrestApi.upsertStudentCourseProgress(sqlStudentId, {
+                week_id: sqlWeekId,
+                lessons_completed: keys.length,
+                lessons_total: keys.length,
+                homework_completed: 0,
+                homework_total: 0,
+                is_week_closed: keys.length > 0,
+                auto_points_awarded: false,
+                payload: { checkedKeys: keys },
+            });
+        }, { table: 'pvl_student_course_progress', endpoint: '/pvl_student_course_progress', id: `${sqlStudentId}:${sqlWeekId}` });
     });
 }
 
@@ -1660,6 +1692,8 @@ function persistSubmissionToDb(studentId, taskId) {
     if (!state || !submission) return;
     const payload = buildSubmissionPayload(studentId, taskId, submission.id);
     fireAndForget(async () => {
+        /** Сначала гарантируем наличие строки студента в pvl_students (FK-ограничение). */
+        await ensurePvlStudentInDb(studentId);
         /**
          * sqlHomeworkIdByMockTaskId заполняется в ensureDbTrackerHomeworkStructure во время syncPvlRuntimeFromDb.
          * Но db.homeworkTasks заполняется лениво (syncPublishedHomeworkTasksForStudent), поэтому

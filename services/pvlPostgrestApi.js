@@ -484,6 +484,14 @@ export const pvlPostgrestApi = {
     async listStudents() {
         return request('pvl_students', { params: { select: '*' } });
     },
+    async upsertPvlStudent(payload) {
+        const rows = await request('pvl_students', {
+            method: 'POST',
+            body: [payload],
+            prefer: 'resolution=merge-duplicates,return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
 
     /** Чтение назначений менторов по списку id учениц (profiles.id). */
     async listGardenMentorLinksByStudentIds(studentIds) {

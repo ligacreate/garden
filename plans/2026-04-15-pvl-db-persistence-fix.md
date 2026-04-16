@@ -148,9 +148,29 @@ JS-нормализация корректна: quiz → checklist, homework →
 
 ---
 
+---
+
+## Фаза 7: Исправление FK-ошибки при сохранении домашних заданий [x]
+
+**Проблема (2026-04-16):** домашние задания и квизы не сохраняются при обновлении страницы.
+
+**Диагноз:** `pvl_student_homework_submissions.student_id` и `pvl_student_course_progress.student_id` — внешние ключи на `pvl_students.id`. Реальные Garden-пользователи (с Garden UUID) **никогда не вставлялись** в `pvl_students`. Поэтому INSERT в submission-таблицы падал с FK-нарушением, ошибка поглощалась `fireAndForget`, данные пропадали.
+
+**Исправление (код):**
+- `pvlPostgrestApi.js`: добавлен метод `upsertPvlStudent(payload)` — upsert по PK через PostgREST
+- `pvlMockApi.js`: добавлены `pvlStudentSyncedToDb` (Set-кэш) и `ensurePvlStudentInDb(userId)`
+- `ensurePvlStudentInDb` вызывается в начале `fireAndForget` в `persistSubmissionToDb` и `persistTrackerProgressToDb`
+- Квизы/тесты: `usePlatformStepChecklist.toggleItem` уже вызывал `saveTrackerChecklist` → `persistTrackerProgressToDb` — теперь работает с FK-фиксом
+
+**Исправление (БД):** создана миграция `012_pvl_student_upsert_permissions.sql` — выдаёт GRANT на INSERT/UPDATE в `pvl_students` для роли `web_anon`.
+
+**Важно:** применить миграцию 012 на продакшн (Timeweb SQL-консоль), заменив `web_anon` на реальную роль PostgREST.
+
+---
+
 ## Итог
 
-- [x] Частично (что осталось: применить миграции 007/009 на продакшн)
+- [x] Частично (что осталось: применить миграции 007/009/012 на продакшн)
 
 **Корневая причина 1 (контент):** CHECK constraint `pvl_content_items_content_type_check` в продакшн-БД не содержит 'checklist' и 'template' — эти значения были добавлены в migration 002 уже после первого применения.
 

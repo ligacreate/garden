@@ -611,7 +611,6 @@ export function renderMenteeCard({
             />
             <MenteeHomeworkResultsList tasks={homeworkResults} onOpenTask={onOpenTask} />
             {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
-            <CertificationProgressPanel progress={certification} />
         </div>
     );
 }

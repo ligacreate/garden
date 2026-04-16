@@ -736,7 +736,7 @@ export function CommentsThread({
             <p className={`text-xs mb-3 ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>
                 Сообщения, проверка и системные события по заданию.
             </p>
-            <div className="grid gap-2">{renderCommentsThread(messages)}</div>
+            <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">{renderCommentsThread(messages)}</div>
             {threadLocked && !disputeMode ? (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
                     <p className="mb-2">Работа принята и закрыта. Обычные сообщения по заданию отключены.</p>
@@ -865,7 +865,9 @@ export function MentorStudentAnswerCompact({
     questionnaireBlocks = [],
     homeworkAssignmentType = 'standard',
 }) {
+    const [showPrev, setShowPrev] = useState(false);
     const current = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
+    const previous = versions.filter((v) => v !== current);
     if (!current) {
         return (
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
@@ -883,6 +885,30 @@ export function MentorStudentAnswerCompact({
                 homeworkAssignmentType={homeworkAssignmentType}
                 questionnaireBlocks={questionnaireBlocks}
             />
+            {previous.length > 0 ? (
+                <div className="mt-3">
+                    <button
+                        type="button"
+                        onClick={() => setShowPrev((v) => !v)}
+                        className="text-xs text-[#9B8B80] hover:text-[#4A3728]"
+                    >
+                        {showPrev ? '▲' : '▶'} Предыдущие версии ({previous.length})
+                    </button>
+                    {showPrev ? (
+                        <div className="mt-2 grid gap-2">
+                            {previous.map((v) => (
+                                <SubmissionVersionCard
+                                    key={v.id}
+                                    version={v}
+                                    checklistSections={checklistSections}
+                                    homeworkAssignmentType={homeworkAssignmentType}
+                                    questionnaireBlocks={questionnaireBlocks}
+                                />
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -899,7 +925,6 @@ function MentorTaskSlim({
 }) {
     const td = state.taskDetail;
     const [reply, setReply] = useState('');
-    const [scoreInput, setScoreInput] = useState(() => String(td.maxScore != null ? td.maxScore : ''));
     const [formError, setFormError] = useState('');
     const accepted = String(td.status || '').toLowerCase() === 'принято';
 
@@ -921,22 +946,12 @@ function MentorTaskSlim({
 
     const sendAccept = () => {
         setFormError('');
-        const sc = Number(String(scoreInput).replace(',', '.'));
-        if (!Number.isFinite(sc) || sc < 0) {
-            setFormError('При принятии работы укажите оценку в баллах.');
-            return;
-        }
-        if (td.maxScore != null && sc > td.maxScore) {
-            setFormError(`Оценка не может быть больше ${td.maxScore}.`);
-            return;
-        }
         onMentorReview?.({
             statusDecision: 'принято',
             generalComment: reply.trim() || 'Принято.',
             nextActions: [],
             strengths: '',
             blockers: '',
-            scoreAwarded: sc,
         });
         onRefresh?.();
     };
@@ -976,6 +991,13 @@ function MentorTaskSlim({
                 questionnaireBlocks={state.taskDescription?.questionnaireBlocks || []}
                 homeworkAssignmentType={state.taskDescription?.homeworkAssignmentType || 'standard'}
             />
+            {state.threadMessages?.length > 0 ? (
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                    <h3 className="font-display text-xl text-[#4A3728] mb-1">Лента по заданию</h3>
+                    <p className="text-xs text-[#7A6758] mb-3">История событий и комментариев.</p>
+                    <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">{renderCommentsThread(state.threadMessages)}</div>
+                </div>
+            ) : null}
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
                     <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
@@ -987,17 +1009,6 @@ function MentorTaskSlim({
                         className="w-full rounded-xl border border-[#E8D5C4] p-3 text-sm"
                         placeholder="Комментарий для участницы…"
                     />
-                    <div>
-                        <label className="text-xs text-[#9B8B80] block mb-1">Оценка при принятии (макс. {td.maxScore ?? '—'})</label>
-                        <input
-                            type="number"
-                            min={0}
-                            max={td.maxScore ?? undefined}
-                            value={scoreInput}
-                            onChange={(e) => setScoreInput(e.target.value)}
-                            className="w-full max-w-[200px] rounded-xl border border-[#E8D5C4] p-2 text-sm tabular-nums"
-                        />
-                    </div>
                     {formError ? <p className="text-sm text-rose-600">{formError}</p> : null}
                     <div className="flex flex-wrap gap-2 pt-1">
                         <button

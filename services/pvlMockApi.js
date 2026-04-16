@@ -1008,6 +1008,23 @@ export async function syncPvlActorsFromGarden() {
             });
         }
 
+        /** Загружаем сабмишны и прогресс для только что добавленных реальных участников.
+         * syncPvlRuntimeFromDb запускается ДО syncPvlActorsFromGarden, поэтому на момент
+         * первого syncTrackerAndHomeworkFromDb в db.studentProfiles ещё нет реальных пользователей. */
+        if (pvlPostgrestApi.isEnabled() && pvlTrackMembers.length > 0) {
+            try {
+                await syncTrackerAndHomeworkFromDb();
+            } catch (e) {
+                logDbFallback({
+                    endpoint: '/pvl_student_homework_submissions',
+                    status: 'error',
+                    table: 'pvl_student_homework_submissions',
+                    id: null,
+                    error: String(e?.message || e || 'syncTrackerAndHomeworkFromDb failed'),
+                });
+            }
+        }
+
         return {
             synced: true,
             mentors: mentors.length,

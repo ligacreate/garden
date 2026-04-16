@@ -70,7 +70,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const normalizedRole = (user?.role || '').toLowerCase();
     const isAdmin = normalizedRole === ROLES.ADMIN;
     const canOpenTeacherCabinet = hasAccess(normalizedRole, ROLES.MENTOR);
-    const openTeacherCabinet = () => {
+    const canOpenPvlButton = normalizedRole === ROLES.APPLICANT;
+    const openPvlCourse = () => {
         setLibraryOpenRequest((n) => n + 1);
         handleViewChange('library');
         setMobileMenuOpen(false);
@@ -753,12 +754,21 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             )}
                             {!isCourseSidebarMode ? <div className="h-px bg-slate-100/60 my-3"></div> : null}
                             {!isCourseSidebarMode ? (
+                                <>
+                                    {canOpenPvlButton ? (
+                                        <SidebarItem
+                                            icon={GraduationCap}
+                                            label="ПВЛ"
+                                            onClick={openPvlCourse}
+                                        />
+                                    ) : null}
                                 <SidebarItem
                                     icon={Settings}
                                     label="Настройки"
                                     active={view === 'profile'}
                                     onClick={() => handleViewChange('profile')}
                                 />
+                                </>
                             ) : (
                                 <div className="h-px bg-slate-100/60 my-3" />
                             )}
@@ -766,7 +776,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem
                                     icon={BadgeCheck}
                                     label="Учительская"
-                                    onClick={openTeacherCabinet}
+                                    onClick={openPvlCourse}
                                 />
                             ) : null}
                             <button
@@ -822,9 +832,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             {isAdmin && (
                                 <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
                             )}
+                            {canOpenPvlButton ? (
+                                <SidebarItem icon={GraduationCap} label="ПВЛ" onClick={openPvlCourse} />
+                            ) : null}
                             <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />
                             {canOpenTeacherCabinet ? (
-                                <SidebarItem icon={BadgeCheck} label="Учительская" onClick={openTeacherCabinet} />
+                                <SidebarItem icon={BadgeCheck} label="Учительская" onClick={openPvlCourse} />
                             ) : null}
                             <div onClick={onLogout} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 active:bg-slate-50">
                                 <LogOut size={22} className="stroke-[1.5px]" />

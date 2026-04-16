@@ -126,10 +126,9 @@ function resolveMentorActorId(db, mentorId) {
 function resolveMentorMenteeIds(db, mentorId) {
     const resolved = resolveMentorActorId(db, mentorId);
     const profile = (db.mentorProfiles || []).find((m) => m.userId === resolved);
-    if (profile && Array.isArray(profile.menteeIds) && profile.menteeIds.length > 0) {
-        return profile.menteeIds;
-    }
-    return db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
+    const fromMentorProfile = Array.isArray(profile?.menteeIds) ? profile.menteeIds : [];
+    const fromStudentProfiles = db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
+    return Array.from(new Set([...fromMentorProfile, ...fromStudentProfiles].map((id) => String(id))));
 }
 
 export function buildMentorRisks(db, mentorId) {

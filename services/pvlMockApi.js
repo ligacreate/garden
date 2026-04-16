@@ -1427,12 +1427,9 @@ function getMentorMenteeIds(mentorId) {
     const resolved = resolveMentorActorId(mentorId);
     if (!resolved) return [];
     const mentorProfile = (db.mentorProfiles || []).find((m) => m.userId === resolved);
-    let ids;
-    if (mentorProfile && Array.isArray(mentorProfile.menteeIds) && mentorProfile.menteeIds.length > 0) {
-        ids = mentorProfile.menteeIds;
-    } else {
-        ids = db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
-    }
+    const fromMentorProfile = Array.isArray(mentorProfile?.menteeIds) ? mentorProfile.menteeIds : [];
+    const fromStudentProfiles = db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
+    let ids = Array.from(new Set([...fromMentorProfile, ...fromStudentProfiles].map((id) => String(id))));
     if (db._pvlGardenApplicantsSynced) {
         ids = ids.filter((id) => !isSeedPvlDemoStudentId(id));
     }

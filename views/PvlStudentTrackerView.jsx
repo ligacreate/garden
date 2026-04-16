@@ -339,7 +339,14 @@ export function StudentCourseTracker({
         () => (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null,
         [studentId]
     );
-    const mentorUserId = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;
+    const mentorUserId = useMemo(() => {
+        const direct = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;
+        if (direct) return direct;
+        const fallbackMentor = (pvlDomainApi.db.mentorProfiles || []).find((m) => (
+            Array.isArray(m?.menteeIds) && m.menteeIds.some((id) => String(id) === String(studentId))
+        ));
+        return fallbackMentor?.userId ? String(fallbackMentor.userId) : null;
+    }, [studentProfile?.mentorId, studentId]);
     const mentorUser = useMemo(() => {
         if (!mentorUserId) return null;
         return (pvlDomainApi.db.users || []).find((u) => String(u.id) === mentorUserId) || null;

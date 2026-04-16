@@ -344,7 +344,15 @@ function contentItemToDbPayload(item) {
     const lessonKindForDb = targetSection === 'lessons' ? resolvePvlLessonKind(item) : null;
     /** Одно значение для колонки content_type; без spread из item (там могли быть дубли ключей). */
     const content_type = normalizePvlContentTypeForDb(item);
-    const metadata = sanitizeMetadataForDbPayload(item.metadata && typeof item.metadata === 'object' ? item.metadata : {});
+    const metadataBase = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+    const metadata = sanitizeMetadataForDbPayload({
+        ...metadataBase,
+        practicumDate: item.practicumDate || '',
+        practicumTime: item.practicumTime || '',
+        practicumVideoUrl: item.practicumVideoUrl || '',
+        practicumDocumentUrl: item.practicumDocumentUrl || '',
+        linkedPracticumEventId: item.linkedPracticumEventId || '',
+    });
     return {
         title: item.title || '',
         short_description: item.shortDescription || '',
@@ -383,6 +391,7 @@ function contentItemToDbPayload(item) {
 function mapDbContentItemToRuntime(row) {
     const targetCohortSeed = row.target_cohort_id ? sqlCohortUuidToSeedId(row.target_cohort_id) : null;
     const extLinks = row.external_links;
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
     return {
         id: row.id,
         title: row.title || '',
@@ -403,7 +412,12 @@ function mapDbContentItemToRuntime(row) {
         coverImage: row.cover_image || '',
         externalLinks: Array.isArray(extLinks) ? extLinks : [],
         estimatedDuration: row.estimated_duration || '',
-        metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+        metadata,
+        practicumDate: metadata.practicumDate || '',
+        practicumTime: metadata.practicumTime || '',
+        practicumVideoUrl: metadata.practicumVideoUrl || '',
+        practicumDocumentUrl: metadata.practicumDocumentUrl || '',
+        linkedPracticumEventId: metadata.linkedPracticumEventId || '',
         lessonVideoUrl: row.lesson_video_url || '',
         lessonRutubeUrl: row.lesson_rutube_url || '',
         lessonVideoEmbed: row.lesson_video_embed || '',

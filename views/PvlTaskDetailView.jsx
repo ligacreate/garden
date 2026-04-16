@@ -4,6 +4,7 @@ import RichEditor from '../components/RichEditor';
 import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared';
 import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly } from './pvlQuestionnaireShared';
 import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText } from '../utils/pvlHomeworkAnswerRichText';
+import { normalizeMaterialHtml, pvlMaterialBodyClass } from './pvlLibraryMaterialShared.jsx';
 
 function threadEventLabel(messageType) {
     const m = {
@@ -177,6 +178,18 @@ function shortStatusLabel(status) {
     return status;
 }
 
+/** Как в HomeworkInlineForm (трекер): бейдж статуса без uppercase. */
+function trackerHomeworkPillClass(status) {
+    const s = String(status || '').toLowerCase();
+    if (s.includes('принят') || s.includes('проверено')) return 'bg-emerald-100 text-emerald-700';
+    if (s.includes('на проверке') || s.includes('к проверке')) return 'bg-amber-100 text-amber-700';
+    if (s.includes('доработ')) return 'bg-orange-100 text-orange-700';
+    if (s.includes('отправлен')) return 'bg-sky-100 text-sky-800';
+    if (s.includes('черновик') || s.includes('в работе')) return 'bg-violet-100 text-violet-800';
+    if (s.includes('не принят') || s.includes('просроч')) return 'bg-rose-100 text-rose-800';
+    return 'bg-slate-100 text-slate-500';
+}
+
 const Pill = ({ children, tone }) => (
     <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${tone}`}>
         {children}
@@ -314,40 +327,78 @@ function buildTaskHeaderDateParts(data) {
     return { deadline, second };
 }
 
-export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»', showBackButton = true }) {
+export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»', showBackButton = true, visualStyle = 'default' }) {
+    const trackerLike = visualStyle === 'tracker';
     const stLower = String(data.status || '').toLowerCase();
     const isDone = stLower.includes('принят') || stLower.includes('проверено');
     const isOverdue = data.deadlineAt && new Date(data.deadlineAt) < new Date() && !isDone;
     const { deadline, second } = buildTaskHeaderDateParts(data);
+    const shell = trackerLike
+        ? 'rounded-2xl border border-[#E8D5C4] bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.06)]'
+        : 'rounded-2xl border border-slate-100 bg-white p-5 shadow-sm';
     return (
-        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+        <div className={shell}>
             {showBackButton ? (
-                <button type="button" onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700 mb-2">{backLabel}</button>
+                <button
+                    type="button"
+                    onClick={onBack}
+                    className={trackerLike ? 'text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2' : 'text-xs text-slate-500 hover:text-slate-700 mb-2'}
+                >
+                    {backLabel}
+                </button>
             ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className="font-display text-3xl text-slate-800">{data.title}</h2>
-                    <p className="text-sm text-slate-500 mt-1">Модуль {data.moduleNumber ?? data.weekNumber} · {data.type}</p>
+                    <h2 className={trackerLike ? 'font-display text-2xl md:text-3xl text-[#4A3728]' : 'font-display text-3xl text-slate-800'}>{data.title}</h2>
+                    <p className={trackerLike ? 'text-sm text-[#7A6758] mt-1' : 'text-sm text-slate-500 mt-1'}>
+                        Модуль {data.moduleNumber ?? data.weekNumber} · {data.type}
+                    </p>
                 </div>
                 <div className="flex w-[132px] flex-col items-end gap-1">
-                    <Pill tone={statusTone(data.status)}>{shortStatusLabel(data.status)}</Pill>
-                    <span className="w-[120px] text-right text-xs tabular-nums text-slate-500">Оценка: {data.score}/{data.maxScore}</span>
+                    {!trackerLike ? (
+                        <Pill tone={statusTone(data.status)}>{shortStatusLabel(data.status)}</Pill>
+                    ) : null}
+                    <span
+                        className={
+                            trackerLike
+                                ? 'w-[120px] text-right text-xs tabular-nums text-[#7A6758]'
+                                : 'w-[120px] text-right text-xs tabular-nums text-slate-500'
+                        }
+                    >
+                        Оценка: {data.score}/{data.maxScore}
+                    </span>
                     <RevisionCyclesMeter revisionCycles={data.revisionCycles} maxCycles={3} />
                 </div>
             </div>
-            <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-600">
+            <div
+                className={
+                    trackerLike
+                        ? 'mt-3 rounded-xl border border-[#F0E6DC] bg-[#FAF6F2]/70 px-3 py-2'
+                        : 'mt-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2'
+                }
+            >
+                <div
+                    className={
+                        trackerLike
+                            ? 'flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-[#7A6758]'
+                            : 'flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-600'
+                    }
+                >
                     <span>
-                        Дедлайн: <span className="font-medium text-slate-800">{deadline}</span>
+                        Дедлайн:{' '}
+                        <span className={trackerLike ? 'font-medium text-[#4A3728]' : 'font-medium text-slate-800'}>{deadline}</span>
                     </span>
                     {second ? (
                         <span>
-                            {second.label}: <span className="font-medium text-slate-800">{second.value}</span>
+                            {second.label}:{' '}
+                            <span className={trackerLike ? 'font-medium text-[#4A3728]' : 'font-medium text-slate-800'}>{second.value}</span>
                         </span>
                     ) : null}
                 </div>
             </div>
-            {isOverdue ? <div className="mt-2 text-xs text-rose-700">Просрочен дедлайн сдачи.</div> : null}
+            {isOverdue ? (
+                <div className={`mt-2 text-xs ${trackerLike ? 'text-rose-700' : 'text-rose-700'}`}>Просрочен дедлайн сдачи.</div>
+            ) : null}
         </div>
     );
 }
@@ -409,25 +460,43 @@ function TaskRevisionSummary({ revisionCyclesFromHistory, storedRevisionCycles }
     );
 }
 
-export function TaskDescription({ data, showControlPointNote = false }) {
+export function TaskDescription({ data, showControlPointNote = false, taskStatus, visualStyle = 'default' }) {
+    const summaryRaw = String(data.summary || '').trim();
+    const bodyHtml = summaryRaw ? normalizeMaterialHtml(summaryRaw) : '';
+
+    if (visualStyle === 'tracker') {
+        return (
+            <div className="mt-1 space-y-4">
+                <div className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <h4 className="font-display text-lg text-[#4A3728] m-0 leading-tight">Домашнее задание</h4>
+                        {taskStatus != null && taskStatus !== '' ? (
+                            <span className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${trackerHomeworkPillClass(taskStatus)}`}>
+                                {shortStatusLabel(taskStatus)}
+                            </span>
+                        ) : null}
+                    </div>
+                    {bodyHtml ? (
+                        <div className={pvlMaterialBodyClass} dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+                    ) : (
+                        <p className="text-sm text-slate-400">Текст задания не указан.</p>
+                    )}
+                    {showControlPointNote ? (
+                        <div className="mt-3 text-xs text-[#9B8B80]">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
+                    ) : null}
+                </div>
+            </div>
+        );
+    }
+
+    const summaryHtml = summaryRaw ? sanitizeHomeworkAnswerHtml(summaryRaw) : '<p class="text-slate-400">Текст задания не указан.</p>';
     return (
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <h3 className="font-display text-xl text-slate-800 mb-2">Задание</h3>
-            <p className="text-sm text-slate-700">{data.summary}</p>
-            <p className="text-sm mt-2"><strong>Ожидаемый артефакт:</strong> {data.artifact}</p>
-            <p className="text-sm mt-2"><strong>Что загружать:</strong> {data.uploadTypes.join(', ')}</p>
-            <div className="mt-2">
-                <p className="text-sm font-medium text-slate-800">Критерии зачета:</p>
-                <ul className="text-sm text-slate-700 list-disc pl-5">
-                    {data.criteria.map((c) => <li key={c}>{c}</li>)}
-                </ul>
-            </div>
-            <div className="mt-2">
-                <p className="text-sm font-medium text-slate-800">Подсказки:</p>
-                <ul className="text-sm text-slate-700 list-disc pl-5">
-                    {data.hints.map((h) => <li key={h}>{h}</li>)}
-                </ul>
-            </div>
+            <div
+                className="text-sm text-slate-700 max-w-none [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:border-slate-200 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600 [&_img]:max-w-full"
+                dangerouslySetInnerHTML={{ __html: summaryHtml }}
+            />
             {showControlPointNote ? (
                 <div className="mt-2 text-xs text-slate-500">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
             ) : null}
@@ -490,18 +559,25 @@ export function SubmissionHistory({
     questionnaireBlocks = [],
     checklistAnswers = {},
     setChecklistAnswers,
+    visualStyle = 'default',
 }) {
+    const trackerLike = visualStyle === 'tracker';
     const currentVersion = versions.find((v) => v.isCurrent) || versions[versions.length - 1];
     const previousVersions = versions.filter((v) => v.id !== currentVersion?.id).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
     const isChecklist = homeworkAssignmentType === 'checklist' && Array.isArray(checklistSections) && checklistSections.length > 0;
     const isQuestionnaire = homeworkAssignmentType === 'questionnaire' && Array.isArray(questionnaireBlocks) && questionnaireBlocks.length > 0;
     const isStructured = isChecklist || isQuestionnaire;
+    const shell = trackerLike
+        ? 'rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]'
+        : 'rounded-2xl border border-slate-100 bg-white p-5 shadow-sm';
     return (
-        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h3 className="font-display text-xl text-slate-800 mb-2">Ответ участницы</h3>
+        <div className={shell}>
+            {role !== 'student' ? (
+                <h3 className={`font-display text-xl mb-2 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Ответ участницы</h3>
+            ) : null}
             {currentVersion ? (
                 <div>
-                    <p className="text-xs text-slate-500 mb-2">Текущая версия</p>
+                    <p className={`text-xs mb-2 ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>Текущая версия</p>
                     <SubmissionVersionCard
                         version={currentVersion}
                         checklistSections={checklistSections}
@@ -512,7 +588,9 @@ export function SubmissionHistory({
             ) : null}
             {previousVersions.length > 0 ? (
                 <details className="mt-3">
-                    <summary className="text-xs text-slate-600 cursor-pointer">Предыдущие версии ({previousVersions.length})</summary>
+                    <summary className={`text-xs cursor-pointer ${trackerLike ? 'text-[#7A6758]' : 'text-slate-600'}`}>
+                        Предыдущие версии ({previousVersions.length})
+                    </summary>
                     <div className="grid gap-2 mt-2">{previousVersions.map((version) => (
                         <SubmissionVersionCard
                             key={version.id}
@@ -525,7 +603,13 @@ export function SubmissionHistory({
                 </details>
             ) : null}
             {role === 'student' ? (
-                <div className="mt-3 border-t border-slate-100 pt-3">
+                <div
+                    className={
+                        currentVersion || previousVersions.length
+                            ? `mt-3 border-t pt-3 ${trackerLike ? 'border-[#E8D5C4]/60' : 'border-slate-100'}`
+                            : 'mt-0'
+                    }
+                >
                     {canEditStudentSubmission ? (
                         <>
                             {isQuestionnaire && setChecklistAnswers ? (
@@ -546,30 +630,45 @@ export function SubmissionHistory({
                                 <RichEditor
                                     value={draftText}
                                     onChange={setDraftText}
-                                    placeholder="Черновик ответа: заголовки, жирный, курсив, подчёркивание, списки, таблица. Картинки — только загрузкой файла."
                                     variant="student"
                                     onUploadImage={pvlReadImageFileAsDataUrl}
                                 />
                             )}
-                            <div className="flex flex-wrap gap-2 mt-2">
+                            <div className="flex flex-wrap gap-2 mt-3">
                                 <button
                                     type="button"
                                     onClick={() => (isStructured ? onSaveDraft() : onSaveDraft(draftText))}
-                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                    className={
+                                        trackerLike
+                                            ? 'px-4 py-2 rounded-xl border border-[#E8D5C4] bg-white text-sm text-[#4A3728] hover:bg-[#FAF6F2] transition-colors'
+                                            : 'text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50'
+                                    }
                                 >
                                     Сохранить черновик
                                 </button>
-                                <button type="button" onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
+                                <button
+                                    type="button"
+                                    onClick={onSubmit}
+                                    className={
+                                        trackerLike
+                                            ? 'px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] transition-colors'
+                                            : 'text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100'
+                                    }
+                                >
+                                    Отправить на проверку
+                                </button>
                             </div>
                         </>
                     ) : (
-                        <p className="text-xs text-slate-500">
+                        <p className={`text-xs ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>
                             Ответ уже отправлен и ожидает решения ментора. Редактирование откроется, если ментор вернет работу на доработку.
                         </p>
                     )}
                 </div>
             ) : (
-                <div className="mt-3 text-xs text-slate-500">Для ментора: доступны просмотр всех версий, скачивание вложений и сравнение последней и предыдущей.</div>
+                <div className={`mt-3 text-xs ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>
+                    Для ментора: доступны просмотр всех версий, скачивание вложений и сравнение последней и предыдущей.
+                </div>
             )}
         </div>
     );
@@ -622,14 +721,21 @@ export function CommentsThread({
     disputeOpen,
     threadLocked,
     onOpenDispute,
+    visualStyle = 'default',
 }) {
+    const trackerLike = visualStyle === 'tracker';
     const [message, setMessage] = useState('');
     const disputeMode = disputeOpen;
     const showComposer = role !== 'student' && (!threadLocked || disputeMode);
+    const shell = trackerLike
+        ? 'rounded-2xl border border-[#E8D5C4]/70 bg-white p-4 md:p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.05)]'
+        : 'rounded-2xl border border-slate-100 bg-white p-5 shadow-sm';
     return (
-        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h3 className="font-display text-xl text-slate-800 mb-1">Лента по заданию</h3>
-            <p className="text-xs text-slate-500 mb-3">Сообщения, проверка и системные события по заданию.</p>
+        <div className={shell}>
+            <h3 className={`font-display text-xl mb-1 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Лента по заданию</h3>
+            <p className={`text-xs mb-3 ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>
+                Сообщения, проверка и системные события по заданию.
+            </p>
             <div className="grid gap-2">{renderCommentsThread(messages)}</div>
             {threadLocked && !disputeMode ? (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
@@ -643,21 +749,20 @@ export function CommentsThread({
                     </button>
                 </div>
             ) : null}
-            {role === 'student' ? (
-                <p className="mt-3 text-xs text-slate-500">
-                    Лента только для уведомлений и ответов ментора по заданию.
-                </p>
-            ) : null}
             {disputeMode ? (
                 <p className="mt-3 text-xs text-slate-600">Открыт спор — пишите только по сути расхождения с оценкой или проверкой.</p>
             ) : null}
             {showComposer ? (
-                <div className="mt-3 border-t border-slate-100 pt-3">
+                <div className={`mt-3 border-t pt-3 ${trackerLike ? 'border-[#E8D5C4]/60' : 'border-slate-100'}`}>
                     <textarea
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         rows={3}
-                        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+                        className={
+                            trackerLike
+                                ? 'w-full rounded-xl border border-[#E8D5C4] bg-[#FAF6F2]/40 p-3 text-sm text-[#2C1810] placeholder:text-[#9B8B80]'
+                                : 'w-full rounded-xl border border-slate-200 p-3 text-sm'
+                        }
                         placeholder={disputeMode ? 'Сообщение в рамках спора…' : 'Написать комментарий…'}
                     />
                     <div className="mt-2">
@@ -674,7 +779,11 @@ export function CommentsThread({
                                 });
                                 setMessage('');
                             }}
-                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                            className={
+                                trackerLike
+                                    ? 'text-xs rounded-xl border border-[#E8D5C4] bg-white px-4 py-2 text-[#4A3728] hover:bg-[#FAF6F2]'
+                                    : 'text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50'
+                            }
                         >
                             {disputeMode ? 'Отправить в споре' : 'Отправить сообщение'}
                         </button>
@@ -855,7 +964,12 @@ function MentorTaskSlim({
                 </button>
                 <p className="text-xs text-[#9B8B80] max-w-xl">Открывает отдельный урок как материал в библиотеке, а не общий трекер.</p>
             </div>
-            <TaskDescription data={state.taskDescription} showControlPointNote={false} />
+            <TaskDescription
+                data={state.taskDescription}
+                showControlPointNote={!!td?.isControlPoint}
+                taskStatus={td?.status}
+                visualStyle="tracker"
+            />
             <MentorStudentAnswerCompact
                 versions={state.submissionVersions}
                 checklistSections={state.taskDescription?.checklistSections || []}
@@ -936,8 +1050,13 @@ export function renderTaskDetail({
 }) {
     return (
         <div className="space-y-3">
-            <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
-            <TaskDescription data={state.taskDescription} showControlPointNote={false} />
+            <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} visualStyle="tracker" />
+            <TaskDescription
+                data={state.taskDescription}
+                showControlPointNote={!!state.taskDetail?.isControlPoint}
+                taskStatus={state.taskDetail?.status}
+                visualStyle="tracker"
+            />
             <SubmissionHistory
                 versions={state.submissionVersions}
                 role={role}
@@ -951,6 +1070,7 @@ export function renderTaskDetail({
                 questionnaireBlocks={questionnaireBlocks}
                 checklistAnswers={checklistAnswers}
                 setChecklistAnswers={setChecklistAnswers}
+                visualStyle="tracker"
             />
             <CommentsThread
                 messages={state.threadMessages}
@@ -959,6 +1079,7 @@ export function renderTaskDetail({
                 threadLocked={threadLocked}
                 disputeOpen={disputeOpen}
                 onOpenDispute={onOpenDispute}
+                visualStyle="tracker"
             />
             <MentorResponseForm role={role} form={mentorForm} setForm={setMentorForm} onSave={onSaveMentorForm} />
         </div>

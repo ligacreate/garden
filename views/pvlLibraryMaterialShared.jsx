@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { pvlDomainApi } from '../services/pvlMockApi.js';
 import { ChecklistFieldsEditor } from './pvlChecklistShared.jsx';
+import RichEditor from '../components/RichEditor.jsx';
+import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl } from '../utils/pvlHomeworkAnswerRichText.js';
 
 export function stripMaterialNumbering(title) {
     const source = String(title || '').trim();
@@ -434,7 +436,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
         if (isChecklist) {
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: '', answersJson: answers });
         } else {
-            if (!draft.trim()) return;
+            if (isHomeworkAnswerEmpty(draft)) return;
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
         }
         if (!ok) return;
@@ -479,12 +481,17 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
                     {isChecklist && checklistSections.length ? (
                         <ChecklistFieldsEditor sections={checklistSections} value={answers} onChange={setAnswers} disabled={isPending} />
                     ) : (
-                        <textarea
-                            className="w-full min-h-[140px] rounded-xl border border-[#E8D5C4] bg-white p-3 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#C4956A]/30 resize-y"
-                            placeholder={isPending ? 'Работа отправлена на проверку…' : 'Напишите ваш ответ…'}
+                        <RichEditor
                             value={draft}
-                            onChange={e => setDraft(e.target.value)}
-                            disabled={isPending}
+                            onChange={setDraft}
+                            placeholder={
+                                isPending
+                                    ? 'Работа отправлена на проверку…'
+                                    : 'Заголовки, жирный, курсив, подчёркивание, списки, таблица. Картинки — только загрузкой файла.'
+                            }
+                            variant="student"
+                            onUploadImage={pvlReadImageFileAsDataUrl}
+                            readOnly={isPending}
                         />
                     )}
                     {!isPending && (
@@ -499,7 +506,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
                             <button
                                 type="button"
                                 onClick={handleSubmit}
-                                disabled={isChecklist ? false : !draft.trim()}
+                                disabled={isChecklist ? false : isHomeworkAnswerEmpty(draft)}
                                 className="px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             >
                                 Отправить на проверку

@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { pvlDomainApi } from '../services/pvlMockApi';
+import RichEditor from '../components/RichEditor';
 import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared';
+import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText } from '../utils/pvlHomeworkAnswerRichText';
 
 function threadEventLabel(messageType) {
     const m = {
@@ -444,7 +446,14 @@ export function SubmissionVersionCard({ version, checklistSections }) {
             {hasChecklist && checklistSections?.length ? (
                 <ChecklistAnswersReadonly sections={checklistSections} answersJson={version.answersJson} />
             ) : (
-                <p className="text-sm text-slate-700 mt-1">{version.textContent}</p>
+                <div
+                    className="text-sm text-slate-700 mt-1 max-w-none [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full"
+                    dangerouslySetInnerHTML={{
+                        __html: homeworkAnswerPlainText(version.textContent)
+                            ? sanitizeHomeworkAnswerHtml(version.textContent)
+                            : '<p class="text-slate-400">—</p>',
+                    }}
+                />
             )}
             {version.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Файлы: {version.attachments.join(', ')}</p> : null}
             {version.links?.length ? <p className="text-xs text-slate-500 mt-1">Ссылки: {version.links.join(', ')}</p> : null}
@@ -500,12 +509,12 @@ export function SubmissionHistory({
                                     disabled={false}
                                 />
                             ) : (
-                                <textarea
+                                <RichEditor
                                     value={draftText}
-                                    onChange={(e) => setDraftText(e.target.value)}
-                                    className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                                    rows={4}
-                                    placeholder="Черновик ответа..."
+                                    onChange={setDraftText}
+                                    placeholder="Черновик ответа: заголовки, жирный, курсив, подчёркивание, списки, таблица. Картинки — только загрузкой файла."
+                                    variant="student"
+                                    onUploadImage={pvlReadImageFileAsDataUrl}
                                 />
                             )}
                             <div className="flex flex-wrap gap-2 mt-2">

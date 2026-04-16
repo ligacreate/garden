@@ -1447,6 +1447,41 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
             'order',
         );
     }, [activeCategoryId, baseItems, contentType, query]);
+
+    const activeCategoryItemGroups = useMemo(() => {
+        const ungrouped = [];
+        const orderKeys = [];
+        const byKey = new Map();
+        for (const i of activeCategoryItems) {
+            const g = String(i.libraryLessonGroupTitle || '').trim();
+            if (!g) {
+                ungrouped.push(i);
+                continue;
+            }
+            if (!byKey.has(g)) {
+                byKey.set(g, []);
+                orderKeys.push(g);
+            }
+            byKey.get(g).push(i);
+        }
+        const groups = orderKeys.map((lessonGroupTitle) => ({
+            lessonGroupTitle,
+            materials: byKey.get(lessonGroupTitle) || [],
+        }));
+        return { ungrouped, groups };
+    }, [activeCategoryItems]);
+
+    const openCategoryMaterial = useCallback(
+        (i) => {
+            setSelectedItemId(i.id);
+            pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
+            setLibraryTick((v) => v + 1);
+            refresh?.();
+            if (navigate) navigate(`${routePrefix}/library/${i.id}`);
+        },
+        [studentId, navigate, routePrefix, refresh],
+    );
+
     useEffect(() => {
         if (!selectedItem || !selectedItem.categoryId) return;
         if (selectedCategoryId !== selectedItem.categoryId) {
@@ -1582,29 +1617,53 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                                 Назад к категориям
                                             </button>
                                         </article>
-                                        <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3 max-h-[520px] overflow-auto">
+                                        <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3 max-h-[520px] overflow-auto space-y-4">
                                             {activeCategoryItems.length === 0 ? (
                                                 <div className="rounded-xl bg-slate-50/90 shadow-sm p-4 text-sm text-slate-500">В этой категории пока нет материалов.</div>
-                                            ) : activeCategoryItems.map((i) => (
-                                                <button
-                                                    key={i.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedItemId(i.id);
-                                                        pvlDomainApi.studentApi.updateLibraryProgress(studentId, i.id, Math.max(10, i.progressPercent || 10));
-                                                        setLibraryTick((v) => v + 1);
-                                                        refresh?.();
-                                                        if (navigate) navigate(`${routePrefix}/library/${i.id}`);
-                                                    }}
-                                                    className="mb-2 w-full rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md"
-                                                >
-                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
-                                                    {i.estimatedDuration ? (
-                                                        <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
+                                            ) : (
+                                                <>
+                                                    {activeCategoryItemGroups.ungrouped.length ? (
+                                                        <div className="space-y-2">
+                                                            {activeCategoryItemGroups.ungrouped.map((i) => (
+                                                                <button
+                                                                    key={i.id}
+                                                                    type="button"
+                                                                    onClick={() => openCategoryMaterial(i)}
+                                                                    className="w-full rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md"
+                                                                >
+                                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                    {i.estimatedDuration ? (
+                                                                        <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
+                                                                    ) : null}
+                                                                </button>
+                                                            ))}
+                                                        </div>
                                                     ) : null}
-                                                </button>
-                                            ))
-                                            }
+                                                    {activeCategoryItemGroups.groups.map((g) => (
+                                                        <div
+                                                            key={g.lessonGroupTitle}
+                                                            className="rounded-3xl border border-slate-200/90 bg-gradient-to-br from-slate-50/95 via-white to-emerald-50/25 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.75)]"
+                                                        >
+                                                            <h4 className="font-display text-base font-semibold text-slate-800 mb-2.5 px-0.5 leading-snug">{g.lessonGroupTitle}</h4>
+                                                            <div className="space-y-2">
+                                                                {g.materials.map((i) => (
+                                                                    <button
+                                                                        key={i.id}
+                                                                        type="button"
+                                                                        onClick={() => openCategoryMaterial(i)}
+                                                                        className="w-full rounded-2xl bg-white/90 px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/40 hover:shadow-md"
+                                                                    >
+                                                                        <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                        {i.estimatedDuration ? (
+                                                                            <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
+                                                                        ) : null}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -4392,6 +4451,11 @@ function AdminContentItemScreen({
             practicumDocumentUrl: item.practicumDocumentUrl || extLinks[1] || '',
             practicumVideoUrl: item.practicumVideoUrl || extLinks[0] || '',
             libraryCategoryId: item.libraryCategoryId || item.categoryId || 'all',
+            libraryLessonGroupTitle: String(
+                item.libraryLessonGroupTitle
+                || (item.libraryPayload && typeof item.libraryPayload === 'object' ? item.libraryPayload.lessonGroupTitle : '')
+                || '',
+            ).trim(),
             targetRole: item.targetRole || 'both',
             targetCohort: item.targetCohort || 'cohort-2026-1',
             weekNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
@@ -4444,6 +4508,7 @@ function AdminContentItemScreen({
             categoryTitle: editForm.targetSection === 'library'
                 ? (libraryCategories.find((c) => c.id === (editForm.libraryCategoryId || item?.categoryId || item?.libraryCategoryId))?.title || item?.categoryTitle || item?.libraryCategoryTitle || '')
                 : undefined,
+            libraryLessonGroupTitle: editForm.targetSection === 'library' ? String(editForm.libraryLessonGroupTitle || '').trim() : undefined,
             targetRole: 'both',
             targetCohort: editForm.targetCohort,
             weekNumber: clampPvlModule(editForm.moduleNumber),
@@ -4939,6 +5004,33 @@ function AdminContentItemScreen({
                                     />
                                 </div>
                             </div>
+                            {editForm.targetSection === 'library' ? (
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="space-y-1 md:col-span-2">
+                                        <label className="text-xs text-slate-500 ml-0.5">Категория библиотеки</label>
+                                        <select
+                                            value={editForm.libraryCategoryId || 'all'}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, libraryCategoryId: e.target.value }))}
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                        >
+                                            <option value="all">Выберите категорию</option>
+                                            {libraryCategories.map((c) => (
+                                                <option key={c.id} value={c.id}>{c.title}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1 md:col-span-2">
+                                        <label className="text-xs text-slate-500 ml-0.5">Название урока (рамка в категории)</label>
+                                        <input
+                                            value={editForm.libraryLessonGroupTitle || ''}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, libraryLessonGroupTitle: e.target.value }))}
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            placeholder="Например: Научные основы письменных практик"
+                                        />
+                                        <p className="text-[11px] text-slate-500 leading-snug">Материалы с одинаковым названием отображаются в одной рамке в библиотеке.</p>
+                                    </div>
+                                </div>
+                            ) : null}
                             <div className="space-y-1">
                                 <label className="text-xs text-slate-500 ml-0.5">Теги через запятую</label>
                                 <input
@@ -5241,6 +5333,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         targetSection: 'library',
         libraryCategoryId: 'all',
         libraryCategoryCustomTitle: '',
+        libraryLessonGroupTitle: '',
         lessonKind: 'text_video',
         lessonVideoUrl: '',
         lessonVideoEmbed: '',
@@ -5383,6 +5476,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             libraryCategoryTitle: draft.targetSection === 'library' ? resolvedCategoryTitle : undefined,
             categoryId: draft.targetSection === 'library' ? resolvedCategoryId : undefined,
             categoryTitle: draft.targetSection === 'library' ? resolvedCategoryTitle : undefined,
+            libraryLessonGroupTitle: draft.targetSection === 'library' ? String(draft.libraryLessonGroupTitle || '').trim() : undefined,
             lessonKind: draft.targetSection === 'lessons' ? draft.lessonKind : undefined,
             lessonVideoUrl: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonVideoUrl : undefined,
             lessonVideoEmbed: draft.targetSection === 'lessons' && draft.lessonKind === 'text_video' ? draft.lessonVideoEmbed : undefined,
@@ -5674,6 +5768,16 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 </select>
                             </div>
                             <div className="min-w-0 space-y-1">
+                                <label className={cmsLbl}>Название урока (рамка в категории)</label>
+                                <input
+                                    value={draft.libraryLessonGroupTitle}
+                                    onChange={(e) => setDraft((d) => ({ ...d, libraryLessonGroupTitle: e.target.value }))}
+                                    className={`w-full ${cmsIn}`}
+                                    placeholder="Например: Научные основы письменных практик"
+                                />
+                                <p className="text-[11px] text-slate-500 leading-snug">Материалы с одинаковым названием отображаются в одной рамке в библиотеке.</p>
+                            </div>
+                            <div className="min-w-0 space-y-1 md:col-span-2">
                                 <label className={cmsLbl}>Теги</label>
                                 <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Теги через запятую" />
                             </div>

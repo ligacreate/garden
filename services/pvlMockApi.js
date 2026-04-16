@@ -30,6 +30,7 @@ import { api } from './dataService';
 import { ROLES as GARDEN_ROLES } from '../utils/roles';
 import { classifyGardenProfileForPvlStudent, pvlGardenRoleLabelRu } from '../utils/pvlGardenAdmission';
 import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
+import { isHomeworkAnswerEmpty } from '../utils/pvlHomeworkAnswerRichText';
 
 /** Согласовано с калькуляторами дедлайнов в прототипе */
 const DASHBOARD_TODAY = '2026-06-03';
@@ -313,6 +314,17 @@ function normalizePvlContentTypeForDb(item) {
     return finalizePvlContentTypeColumnForPostgres(out);
 }
 
+/** Сборка JSON для колонки library_payload: lessonGroupTitle и прочие ключи из CMS. */
+function buildLibraryPayloadColumn(item) {
+    const base = item.libraryPayload && typeof item.libraryPayload === 'object' ? { ...item.libraryPayload } : {};
+    if (item.libraryLessonGroupTitle !== undefined && item.libraryLessonGroupTitle !== null) {
+        const t = String(item.libraryLessonGroupTitle || '').trim();
+        if (t) base.lessonGroupTitle = t;
+        else delete base.lessonGroupTitle;
+    }
+    return Object.keys(base).length ? base : null;
+}
+
 function contentItemToDbPayload(item) {
     const status = contentStatusToDb(item.status);
     const links = Array.isArray(item.externalLinks) ? item.externalLinks : [];
@@ -349,7 +361,7 @@ function contentItemToDbPayload(item) {
         lesson_quiz: item.lessonQuiz || null,
         homework_config: item.lessonHomework || null,
         glossary_payload: item.glossaryPayload || null,
-        library_payload: item.libraryPayload || null,
+        library_payload: buildLibraryPayloadColumn(item),
         lesson_kind: lessonKindForDb,
         status,
         updated_by: uuidOrNull(item.updatedBy) || uuidOrNull(item.createdBy),
@@ -387,6 +399,10 @@ function mapDbContentItemToRuntime(row) {
         lessonHomework: row.homework_config || null,
         glossaryPayload: row.glossary_payload || null,
         libraryPayload: row.library_payload || null,
+        libraryLessonGroupTitle:
+            row.library_payload && typeof row.library_payload === 'object' && row.library_payload.lessonGroupTitle
+                ? String(row.library_payload.lessonGroupTitle).trim()
+                : '',
         lessonKind: row.lesson_kind || undefined,
         status: row.status || 'draft',
         createdBy: row.created_by || 'u-adm-1',
@@ -699,6 +715,7 @@ export async function syncPvlRuntimeFromDb() {
     const mappedFaq = snapshot.faq.map(mapDbFaqToRuntime);
     /** Состояние рантайма = ответ PostgREST (включая пустые списки — источник правды в БД). */
     db.contentItems = mappedItems;
+    applyPvlWritingModuleLibraryLessonGroupPatch();
     db.contentPlacements = mappedPlacements;
     if (mappedEvents.length) {
         const dbIds = new Set(mappedEvents.map((e) => e.id));
@@ -1065,6 +1082,47 @@ const LIBRARY_CATEGORIES = [
 
 /** Демо-наполнение библиотеки отключено — материалы только из учительской / БД. */
 const LIBRARY_MOCK_ITEMS = [];
+
+/** Заголовок рамки для первых материалов модуля «Пиши» (категория доп. материалов). */
+const PVL_WRITING_MODULE_LESSON_GROUP_TITLE = 'Научные основы письменных практик';
+
+function normalizePvlContentTitleKey(title) {
+    return String(title || '').trim().replace(/\s+/g, ' ');
+}
+
+/** Шесть материалов из библиотеки к модулю «Пиши» — общая рамка в UI. */
+const PVL_WRITING_MODULE_LIBRARY_MATERIAL_TITLE_KEYS = new Set(
+    [
+        'Книги о письменных практиках и вокруг них',
+        'Исследования о письменных практиках',
+        'Лестница письменных практик — модель Кэтлин Адамс',
+        'Карта письменных практик',
+        'Польза групповых встреч',
+        'Правила встречи с письменными практиками',
+    ].map(normalizePvlContentTitleKey),
+);
+
+/**
+ * Проставляет lessonGroupTitle для известных материалов (после загрузки из PostgREST и в памяти).
+ * Постоянное хранение — миграция `011_pvl_library_writing_module_lesson_group.sql`.
+ */
+function applyPvlWritingModuleLibraryLessonGroupPatch() {
+    const items = db.contentItems;
+    if (!Array.isArray(items) || !items.length) return;
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (!it || String(it.targetSection || '') !== 'library') continue;
+        const key = normalizePvlContentTitleKey(it.title);
+        if (!PVL_WRITING_MODULE_LIBRARY_MATERIAL_TITLE_KEYS.has(key)) continue;
+        const prevLp = it.libraryPayload && typeof it.libraryPayload === 'object' ? it.libraryPayload : {};
+        const nextLp = { ...prevLp, lessonGroupTitle: PVL_WRITING_MODULE_LESSON_GROUP_TITLE };
+        items[i] = {
+            ...it,
+            libraryPayload: nextLp,
+            libraryLessonGroupTitle: PVL_WRITING_MODULE_LESSON_GROUP_TITLE,
+        };
+    }
+}
 
 const pushEvent = (type, payload = {}) => {
     eventLog.push({ id: uid('evt'), type, payload, createdAt: nowIso() });
@@ -1725,8 +1783,11 @@ function getPublishedContentItemForStudent(studentId, contentId) {
     if (!publishedContentVisibleToRole(item, cohortId, ROLES.STUDENT)) return null;
     if (!hasPublishedPlacementForStudentContent(contentId, cohortId)) return null;
     const pr = db.studentLibraryProgress.find((x) => x.studentId === studentId && x.libraryItemId === item.id);
+    const lp = item.libraryPayload && typeof item.libraryPayload === 'object' ? item.libraryPayload : {};
+    const libraryLessonGroupTitle = String(item.libraryLessonGroupTitle || lp.lessonGroupTitle || '').trim();
     return {
         ...item,
+        libraryLessonGroupTitle,
         progressPercent: pr?.progressPercent || 0,
         completed: !!pr?.completed,
         completedAt: pr?.completedAt || null,
@@ -1775,8 +1836,11 @@ function getPublishedLibraryContentForStudent(studentId) {
     const items = getPublishedContentFor(ROLES.STUDENT, 'library', cohortId);
     return items.map((item) => {
         const pr = db.studentLibraryProgress.find((x) => x.studentId === studentId && x.libraryItemId === item.id);
+        const lp = item.libraryPayload && typeof item.libraryPayload === 'object' ? item.libraryPayload : {};
+        const libraryLessonGroupTitle = String(item.libraryLessonGroupTitle || lp.lessonGroupTitle || '').trim();
         return {
             ...item,
+            libraryLessonGroupTitle,
             progressPercent: pr?.progressPercent || 0,
             completed: !!pr?.completed,
             completedAt: pr?.completedAt || null,
@@ -1867,7 +1931,7 @@ function isChecklistAnswersComplete(sections, answersJson) {
     const ids = flattenChecklistItemIds(sections);
     if (!ids.length) return false;
     const a = answersJson && typeof answersJson === 'object' ? answersJson : {};
-    return ids.every((id) => String(a[id] || '').trim().length > 0);
+    return ids.every((id) => !isHomeworkAnswerEmpty(a[id]));
 }
 
 function ensureTaskForContentItem(studentId, contentItem) {
@@ -2129,7 +2193,7 @@ export const studentApi = {
         let answersJson = payload?.answersJson !== undefined ? payload.answersJson : undefined;
         const draftV = submission.draftVersionId ? db.submissionVersions.find((v) => v.id === submission.draftVersionId && v.submissionId === submission.id) : null;
         if (draftV && draftV.isDraft) {
-            if (!String(textContent).trim() && draftV.textContent) textContent = draftV.textContent;
+            if (isHomeworkAnswerEmpty(textContent) && draftV.textContent) textContent = draftV.textContent;
             if (answersJson === undefined && draftV.answersJson != null) answersJson = draftV.answersJson;
         }
         const meta = task?.homeworkMeta;
@@ -2138,7 +2202,7 @@ export const studentApi = {
                 return null;
             }
             textContent = textContent || 'Чек-лист (см. ответы по пунктам)';
-        } else if (!String(textContent).trim()) {
+        } else if (isHomeworkAnswerEmpty(textContent)) {
             return null;
         }
 
@@ -2668,6 +2732,9 @@ export const adminApi = {
             updatedAt: nowIso(),
             ...payload,
         };
+        if (item.libraryLessonGroupTitle !== undefined) {
+            item.libraryPayload = buildLibraryPayloadColumn(item);
+        }
         if (!pvlPostgrestApi.isEnabled()) {
             db.contentItems.unshift(item);
             addAuditEvent('u-adm-1', ROLES.ADMIN, 'create_content', 'content_item', item.id, 'Created content item', item);
@@ -2709,6 +2776,9 @@ export const adminApi = {
         if (!item) return null;
         const snapshot = { ...item };
         Object.assign(item, payload, { updatedAt: nowIso() });
+        if (payload && (payload.libraryLessonGroupTitle !== undefined || payload.libraryPayload !== undefined)) {
+            item.libraryPayload = buildLibraryPayloadColumn(item);
+        }
         addAuditEvent('u-adm-1', ROLES.ADMIN, 'update_content', 'content_item', contentId, 'Updated content item', payload);
         if (!pvlPostgrestApi.isEnabled()) return item;
         try {

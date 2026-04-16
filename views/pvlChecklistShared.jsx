@@ -1,4 +1,6 @@
 import React from 'react';
+import RichEditor from '../components/RichEditor';
+import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText } from '../utils/pvlHomeworkAnswerRichText';
 
 export function ChecklistFieldsEditor({ sections, value, onChange, disabled }) {
     const v = value && typeof value === 'object' ? value : {};
@@ -7,18 +9,20 @@ export function ChecklistFieldsEditor({ sections, value, onChange, disabled }) {
             {(sections || []).map((sec) => (
                 <div key={sec.id || sec.title} className="rounded-xl border border-[#E8D5C4]/80 bg-white/90 p-3">
                     <h4 className="text-sm font-semibold text-[#4A3728] mb-2">{sec.title}</h4>
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                         {(sec.items || []).map((item) => (
-                            <label key={item.id} className="block">
-                                <span className="text-xs text-slate-600">{item.prompt}</span>
-                                <textarea
+                            <div key={item.id} className="block">
+                                <span className="text-xs text-slate-600 block mb-1">{item.prompt}</span>
+                                <RichEditor
                                     value={v[item.id] || ''}
-                                    onChange={(e) => onChange({ ...v, [item.id]: e.target.value })}
-                                    disabled={disabled}
-                                    rows={3}
-                                    className="mt-1 w-full rounded-lg border border-[#E8D5C4] bg-white p-2 text-sm"
+                                    onChange={(html) => onChange({ ...v, [item.id]: html })}
+                                    placeholder="Ответ по пункту…"
+                                    variant="student"
+                                    onUploadImage={pvlReadImageFileAsDataUrl}
+                                    readOnly={!!disabled}
+                                    editorClassName="!min-h-[120px] !max-h-[320px] p-3"
                                 />
-                            </label>
+                            </div>
                         ))}
                     </div>
                 </div>
@@ -34,11 +38,18 @@ export function ChecklistAnswersReadonly({ sections, answersJson }) {
             {(sections || []).map((sec) => (
                 <div key={sec.id || sec.title}>
                     <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{sec.title}</h5>
-                    <ul className="mt-1 space-y-2">
+                    <ul className="mt-1 space-y-3">
                         {(sec.items || []).map((item) => (
                             <li key={item.id} className="text-sm">
                                 <span className="text-slate-500 text-xs block">{item.prompt}</span>
-                                <p className="text-slate-800 whitespace-pre-wrap mt-0.5">{a[item.id] || '—'}</p>
+                                <div
+                                    className="text-slate-800 mt-1 max-w-none text-sm [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full"
+                                    dangerouslySetInnerHTML={{
+                                        __html: homeworkAnswerPlainText(a[item.id])
+                                            ? sanitizeHomeworkAnswerHtml(a[item.id])
+                                            : '<p class="text-slate-400">—</p>',
+                                    }}
+                                />
                             </li>
                         ))}
                     </ul>

@@ -254,7 +254,6 @@ export function PlatformCourseModulesGrid({
                                     const key = trackerStepKey(mod.id, item, i);
                                     const isDone = !!checked[key];
                                     const tag = item.tag || 'task';
-                                    const quizCard = tag === 'quiz';
                                     const hwInfo = getHomeworkStatus(item);
                                     const isHwStep = tag === 'task' && !!hwInfo;
                                     const hwBadge = hwInfo ? (HW_STATUS_BADGE[hwInfo.status] || HW_STATUS_BADGE.not_started) : null;
@@ -273,11 +272,7 @@ export function PlatformCourseModulesGrid({
                                                     }
                                                     toggleItem(key);
                                                 }}
-                                                className={`w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors ${
-                                                    quizCard
-                                                        ? 'border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 to-white shadow-[0_8px_24px_-14px_rgba(15,23,42,0.08)] hover:from-emerald-50 hover:to-emerald-50/50'
-                                                        : 'rounded-lg px-1 hover:bg-slate-50/80'
-                                                }`}
+                                                className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors rounded-lg px-1 hover:bg-slate-50/80"
                                             >
                                                 {isHwStep ? (
                                                     <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] ${

@@ -487,6 +487,7 @@ export const pvlPostgrestApi = {
     async upsertPvlStudent(payload) {
         const rows = await request('pvl_students', {
             method: 'POST',
+            params: { on_conflict: 'id' },
             body: [payload],
             prefer: 'resolution=merge-duplicates,return=representation',
         });

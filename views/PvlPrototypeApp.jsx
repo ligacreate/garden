@@ -76,6 +76,12 @@ import {
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 import { TASK_STATUS } from '../data/pvl/enums';
 import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
+import {
+    createDefaultQuestionnaireBlocks,
+    normalizeQuestionnaireBlocks,
+    newQuestionnaireBlockId,
+    questionnaireHasAnswerBlocks,
+} from '../utils/pvlQuestionnaireBlocks';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
     clearAppSession,
@@ -1739,6 +1745,8 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     const state = detail.state || {};
     const hwAssignment = task.homeworkMeta?.assignmentType || 'standard';
     const checklistSections = task.homeworkMeta?.checklistSections || [];
+    const questionnaireBlocks = task.homeworkMeta?.questionnaireBlocks || [];
+    const questionnaireTitle = task.homeworkMeta?.questionnaireTitle || '';
     const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
     const thread = (detail.thread || []).map((m) => ({
         id: m.id,
@@ -1790,6 +1798,8 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             hints: [],
             homeworkAssignmentType: hwAssignment,
             checklistSections,
+            questionnaireBlocks,
+            questionnaireTitle,
         },
         submissionVersions: (detail.versions || []).map((v) => ({
             id: v.id,
@@ -4172,6 +4182,8 @@ function createDefaultLessonHomework() {
     return {
         assignmentType: 'standard',
         checklistSections: JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS)),
+        questionnaireTitle: '',
+        questionnaireBlocks: createDefaultQuestionnaireBlocks(),
         responseFormat: {
             artifactType: 'text',
             allowText: true,
@@ -4204,14 +4216,26 @@ function normalizeLessonHomework(raw) {
     const deadline = { ...base.deadline, ...(src.deadline || {}) };
     const revisions = { ...base.revisions, ...(src.revisions || {}) };
     const rawType = String(src.assignmentType || src.assignment_type || base.assignmentType || 'standard').toLowerCase();
-    const assignmentType = rawType === 'checklist' ? 'checklist' : 'standard';
+    let assignmentType = 'standard';
+    if (rawType === 'checklist') assignmentType = 'checklist';
+    else if (rawType === 'questionnaire') assignmentType = 'questionnaire';
     let checklistSections = Array.isArray(src.checklistSections) ? src.checklistSections : base.checklistSections;
     if (assignmentType === 'checklist' && (!checklistSections || checklistSections.length === 0)) {
         checklistSections = JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS));
     }
+    let questionnaireBlocks;
+    if (Array.isArray(src.questionnaireBlocks) && src.questionnaireBlocks.length > 0) {
+        questionnaireBlocks = normalizeQuestionnaireBlocks(src.questionnaireBlocks);
+    } else if (assignmentType === 'questionnaire') {
+        questionnaireBlocks = createDefaultQuestionnaireBlocks();
+    } else {
+        questionnaireBlocks = base.questionnaireBlocks;
+    }
     return {
         assignmentType,
         checklistSections: assignmentType === 'checklist' ? checklistSections : base.checklistSections,
+        questionnaireTitle: String(src.questionnaireTitle || '').trim(),
+        questionnaireBlocks,
         responseFormat: {
             artifactType: responseFormat.artifactType || 'text',
             allowText: !!responseFormat.allowText,
@@ -4247,8 +4271,11 @@ function normalizeLessonHomework(raw) {
 function validateLessonHomework(hw, opts = {}) {
     const errors = {};
     const d = normalizeLessonHomework(hw);
-    if (d.assignmentType !== 'checklist' && !d.responseFormat.allowText && !d.responseFormat.allowFile && !d.responseFormat.allowLink) {
+    if (d.assignmentType !== 'checklist' && d.assignmentType !== 'questionnaire' && !d.responseFormat.allowText && !d.responseFormat.allowFile && !d.responseFormat.allowLink) {
         errors.responseFormat = 'Нужно разрешить хотя бы один формат ответа: текст, файл или ссылка.';
+    }
+    if (d.assignmentType === 'questionnaire' && !questionnaireHasAnswerBlocks(d.questionnaireBlocks)) {
+        errors.questionnaire = 'Добавьте хотя бы один вопрос (краткий или развёрнутый текст).';
     }
     if (d.scoring.enabled && (!Number.isFinite(Number(d.scoring.maxScore)) || Number(d.scoring.maxScore) <= 0)) {
         errors.scoring = 'Для оценивания с баллами укажите корректный максимум.';
@@ -4313,16 +4340,169 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Тип задания</div>
                 <select
                     value={hw.assignmentType}
-                    onChange={(e) => setHw((prev) => ({ ...prev, assignmentType: e.target.value === 'checklist' ? 'checklist' : 'standard' }))}
+                    onChange={(e) => {
+                        const v = e.target.value;
+                        setHw((prev) => {
+                            const assignmentType = v === 'checklist' ? 'checklist' : v === 'questionnaire' ? 'questionnaire' : 'standard';
+                            const next = { ...prev, assignmentType };
+                            if (assignmentType === 'questionnaire' && !questionnaireHasAnswerBlocks(prev.questionnaireBlocks)) {
+                                next.questionnaireBlocks = createDefaultQuestionnaireBlocks();
+                            }
+                            if (assignmentType === 'checklist' && (!prev.checklistSections || !prev.checklistSections.length)) {
+                                next.checklistSections = JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS));
+                            }
+                            return next;
+                        });
+                    }}
                     className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
                 >
                     <option value="standard">Обычная домашка (один ответ)</option>
                     <option value="checklist">Чек-лист (ответы по пунктам в одной сдаче)</option>
+                    <option value="questionnaire">Анкета (текстовые блоки и вопросы)</option>
                 </select>
                 {hw.assignmentType === 'checklist' ? (
                     <p className="text-[11px] text-slate-500 leading-snug">
                         Блоки и пункты берутся из шаблона ниже; если список пуст, при сохранении подставится шаблон рефлексии (Контекст · Что наблюдала · Личная рефлексия).
                     </p>
+                ) : null}
+                {hw.assignmentType === 'questionnaire' ? (
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                        Составьте блоки: информационный текст, краткий и развёрнутый ответ. Ответы ученицы сохраняются в той же сдаче, что и чек-лист (поле answersJson).
+                    </p>
+                ) : null}
+                {validation.questionnaire ? <div className="text-xs text-rose-700">{validation.questionnaire}</div> : null}
+                {hw.assignmentType === 'questionnaire' ? (
+                    <div className="space-y-3 border-t border-slate-100 pt-3">
+                        <label className="block space-y-1">
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Заголовок анкеты (опционально)</span>
+                            <input
+                                value={hw.questionnaireTitle}
+                                onChange={(e) => setHw((prev) => ({ ...prev, questionnaireTitle: e.target.value }))}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                                placeholder="Например: Рефлексия после модуля"
+                            />
+                        </label>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Блоки</div>
+                        <div className="space-y-2">
+                            {(hw.questionnaireBlocks || []).map((b, idx) => (
+                                <div key={b.id} className="rounded-lg border border-slate-200/90 bg-slate-50/50 p-2 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <select
+                                            value={b.type}
+                                            onChange={(e) => {
+                                                const t = e.target.value;
+                                                setHw((prev) => ({
+                                                    ...prev,
+                                                    questionnaireBlocks: prev.questionnaireBlocks.map((row, i) => {
+                                                        if (i !== idx) return row;
+                                                        if (t === 'text') return { id: row.id, type: 'text', content: row.content || '<p></p>' };
+                                                        if (t === 'long_text') return { id: row.id, type: 'long_text', label: row.label || 'Вопрос', required: !!row.required };
+                                                        return { id: row.id, type: 'short_text', label: row.label || 'Вопрос', required: !!row.required };
+                                                    }),
+                                                }));
+                                            }}
+                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+                                        >
+                                            <option value="text">Текст (информация)</option>
+                                            <option value="short_text">Краткий ответ</option>
+                                            <option value="long_text">Развёрнутый ответ</option>
+                                        </select>
+                                        <button
+                                            type="button"
+                                            className="text-[11px] rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50"
+                                            onClick={() => moveListItem('questionnaireBlocks', idx, -1)}
+                                        >
+                                            Вверх
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="text-[11px] rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50"
+                                            onClick={() => moveListItem('questionnaireBlocks', idx, 1)}
+                                        >
+                                            Вниз
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="text-[11px] rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-rose-800 hover:bg-rose-100"
+                                            onClick={() => setHw((prev) => ({
+                                                ...prev,
+                                                questionnaireBlocks: prev.questionnaireBlocks.filter((row) => row.id !== b.id),
+                                            }))}
+                                        >
+                                            Удалить
+                                        </button>
+                                    </div>
+                                    {b.type === 'text' ? (
+                                        <RichEditor
+                                            value={b.content || ''}
+                                            onChange={(html) => setHw((prev) => ({
+                                                ...prev,
+                                                questionnaireBlocks: prev.questionnaireBlocks.map((row) => (row.id === b.id ? { ...row, content: html } : row)),
+                                            }))}
+                                            onUploadImage={pvlRichEditorUploadImage}
+                                            placeholder="Текст для ученицы…"
+                                            variant="default"
+                                        />
+                                    ) : (
+                                        <>
+                                            <input
+                                                value={b.label || ''}
+                                                onChange={(e) => setHw((prev) => ({
+                                                    ...prev,
+                                                    questionnaireBlocks: prev.questionnaireBlocks.map((row) => (row.id === b.id ? { ...row, label: e.target.value } : row)),
+                                                }))}
+                                                className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm"
+                                                placeholder="Формулировка вопроса"
+                                            />
+                                            <label className="flex items-center gap-2 text-xs text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!b.required}
+                                                    onChange={(e) => setHw((prev) => ({
+                                                        ...prev,
+                                                        questionnaireBlocks: prev.questionnaireBlocks.map((row) => (row.id === b.id ? { ...row, required: e.target.checked } : row)),
+                                                    }))}
+                                                />
+                                                Обязательно для отправки
+                                            </label>
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1"
+                                onClick={() => setHw((prev) => ({
+                                    ...prev,
+                                    questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'text', content: '<p></p>' }],
+                                }))}
+                            >
+                                + Текст
+                            </button>
+                            <button
+                                type="button"
+                                className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1"
+                                onClick={() => setHw((prev) => ({
+                                    ...prev,
+                                    questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'short_text', label: 'Вопрос', required: false }],
+                                }))}
+                            >
+                                + Краткий ответ
+                            </button>
+                            <button
+                                type="button"
+                                className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1"
+                                onClick={() => setHw((prev) => ({
+                                    ...prev,
+                                    questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'long_text', label: 'Вопрос', required: false }],
+                                }))}
+                            >
+                                + Развёрнутый ответ
+                            </button>
+                        </div>
+                    </div>
                 ) : null}
             </section>
 
@@ -5083,7 +5263,9 @@ function AdminContentItemScreen({
                                                     : 'без дедлайна'}
                                         </div>
                                         <div className="mt-2 text-xs text-slate-700">
-                                            Формат ответа: {normalizeLessonHomework(editForm.lessonHomework).responseFormat.artifactType}
+                                            {normalizeLessonHomework(editForm.lessonHomework).assignmentType === 'questionnaire'
+                                                ? `Анкета · блоков: ${normalizeLessonHomework(editForm.lessonHomework).questionnaireBlocks?.length || 0}`
+                                                : `Формат ответа: ${normalizeLessonHomework(editForm.lessonHomework).responseFormat.artifactType}`}
                                         </div>
                                     </section>
                                 </>
@@ -6060,8 +6242,14 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                                     : 'без дедлайна'}
                                         </div>
                                         <div className="mt-2 text-xs text-slate-700">
-                                            Формат ответа: {normalizeLessonHomework(draft.lessonHomework).responseFormat.artifactType} ·
-                                            {' '}разрешено: {normalizeLessonHomework(draft.lessonHomework).responseFormat.allowText ? 'текст ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowFile ? 'файл ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowLink ? 'ссылка' : ''}
+                                            {normalizeLessonHomework(draft.lessonHomework).assignmentType === 'questionnaire'
+                                                ? `Анкета · блоков: ${normalizeLessonHomework(draft.lessonHomework).questionnaireBlocks?.length || 0}`
+                                                : (
+                                                    <>
+                                                        Формат ответа: {normalizeLessonHomework(draft.lessonHomework).responseFormat.artifactType} ·
+                                                        {' '}разрешено: {normalizeLessonHomework(draft.lessonHomework).responseFormat.allowText ? 'текст ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowFile ? 'файл ' : ''}{normalizeLessonHomework(draft.lessonHomework).responseFormat.allowLink ? 'ссылка' : ''}
+                                                    </>
+                                                )}
                                         </div>
                                         <div className="mt-2 text-xs text-slate-700">
                                             Лимит доработок: {normalizeLessonHomework(draft.lessonHomework).revisions.limitMode === 'unlimited' ? 'без лимита' : normalizeLessonHomework(draft.lessonHomework).revisions.limit}

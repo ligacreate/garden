@@ -31,6 +31,11 @@ import { ROLES as GARDEN_ROLES } from '../utils/roles';
 import { classifyGardenProfileForPvlStudent, pvlGardenRoleLabelRu } from '../utils/pvlGardenAdmission';
 import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
 import { isHomeworkAnswerEmpty } from '../utils/pvlHomeworkAnswerRichText';
+import {
+    createDefaultQuestionnaireBlocks,
+    normalizeQuestionnaireBlocks,
+    isQuestionnaireAnswersComplete,
+} from '../utils/pvlQuestionnaireBlocks';
 
 /** Согласовано с калькуляторами дедлайнов в прототипе */
 const DASHBOARD_TODAY = '2026-06-03';
@@ -1086,8 +1091,15 @@ const LIBRARY_MOCK_ITEMS = [];
 /** Заголовок рамки для первых материалов модуля «Пиши» (категория доп. материалов). */
 const PVL_WRITING_MODULE_LESSON_GROUP_TITLE = 'Научные основы письменных практик';
 
+/**
+ * Одно и то же название в БД/админке может иметь разные символы тире (U+2013/2014, ASCII -),
+ * из-за чего миграция 011 и патч «шести материалов» не находят строку — материал без lessonGroupTitle.
+ */
 function normalizePvlContentTitleKey(title) {
-    return String(title || '').trim().replace(/\s+/g, ' ');
+    let s = String(title || '').trim().replace(/\s+/g, ' ');
+    s = s.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '\u2014');
+    s = s.replace(/\s-\s/g, ' \u2014 ');
+    return s.trim();
 }
 
 /** Шесть материалов из библиотеки к модулю «Пиши» — общая рамка в UI. */
@@ -1902,18 +1914,29 @@ function getLibraryItemsByCategory(studentId, categoryId) {
     return items.filter((i) => i.categoryId === categoryId || (i.categoryTitle || '').toLowerCase() === categoryId);
 }
 
-/** Метаданные формата ДЗ из homework_config (урок): один контур для обычной домашки и чек-листа. */
+/** Метаданные формата ДЗ из homework_config (урок): standard | checklist | questionnaire. */
 function buildHomeworkMetaFromLessonHw(lessonHomework) {
     const hw = lessonHomework && typeof lessonHomework === 'object' ? lessonHomework : {};
     const raw = String(hw.assignmentType || hw.assignment_type || 'standard').toLowerCase();
-    const assignmentType = raw === 'checklist' ? 'checklist' : 'standard';
+    let assignmentType = 'standard';
+    if (raw === 'checklist') assignmentType = 'checklist';
+    else if (raw === 'questionnaire') assignmentType = 'questionnaire';
+
     let checklistSections = Array.isArray(hw.checklistSections) ? hw.checklistSections : null;
     if (assignmentType === 'checklist' && (!checklistSections || checklistSections.length === 0)) {
         checklistSections = JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS));
     }
+    let questionnaireBlocks = normalizeQuestionnaireBlocks(
+        Array.isArray(hw.questionnaireBlocks) ? hw.questionnaireBlocks : (Array.isArray(hw.blocks) ? hw.blocks : []),
+    );
+    if (assignmentType === 'questionnaire' && (!questionnaireBlocks || questionnaireBlocks.length === 0)) {
+        questionnaireBlocks = createDefaultQuestionnaireBlocks();
+    }
     return {
         assignmentType,
         checklistSections: assignmentType === 'checklist' ? checklistSections : null,
+        questionnaireBlocks: assignmentType === 'questionnaire' ? questionnaireBlocks : null,
+        questionnaireTitle: assignmentType === 'questionnaire' ? String(hw.questionnaireTitle || hw.title || '').trim() : null,
     };
 }
 
@@ -2072,7 +2095,9 @@ export const studentApi = {
                     ? 'контрольная точка'
                     : task.homeworkMeta?.assignmentType === 'checklist'
                       ? 'чек-лист'
-                      : 'домашнее задание';
+                      : task.homeworkMeta?.assignmentType === 'questionnaire'
+                        ? 'анкета'
+                        : 'домашнее задание';
                 return {
                     id: task.id,
                     title: task.title,
@@ -2197,7 +2222,13 @@ export const studentApi = {
             if (answersJson === undefined && draftV.answersJson != null) answersJson = draftV.answersJson;
         }
         const meta = task?.homeworkMeta;
-        if (meta?.assignmentType === 'checklist') {
+        if (meta?.assignmentType === 'questionnaire') {
+            const blocks = meta.questionnaireBlocks || [];
+            if (!isQuestionnaireAnswersComplete(blocks, answersJson)) {
+                return null;
+            }
+            textContent = textContent || 'Анкета (ответы по полям)';
+        } else if (meta?.assignmentType === 'checklist') {
             if (!isChecklistAnswersComplete(meta.checklistSections, answersJson)) {
                 return null;
             }

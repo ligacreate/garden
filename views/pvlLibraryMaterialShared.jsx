@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { pvlDomainApi } from '../services/pvlMockApi.js';
 import { ChecklistFieldsEditor } from './pvlChecklistShared.jsx';
+import { QuestionnaireFieldsEditor } from './pvlQuestionnaireShared.jsx';
 import RichEditor from '../components/RichEditor.jsx';
 import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl } from '../utils/pvlHomeworkAnswerRichText.js';
+import { isQuestionnaireAnswersComplete } from '../utils/pvlQuestionnaireBlocks.js';
 
 export function stripMaterialNumbering(title) {
     const source = String(title || '').trim();
@@ -391,6 +393,8 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
     }, [task?.id]);
     const isChecklist = hwMeta?.assignmentType === 'checklist';
     const checklistSections = hwMeta?.checklistSections || [];
+    const isQuestionnaire = hwMeta?.assignmentType === 'questionnaire';
+    const questionnaireBlocks = hwMeta?.questionnaireBlocks || [];
 
     React.useEffect(() => {
         if (!task) return;
@@ -422,7 +426,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
     const isPending = state?.status === 'pending_review' || state?.status === 'submitted';
 
     const handleSaveDraft = () => {
-        if (isChecklist) {
+        if (isChecklist || isQuestionnaire) {
             pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: '', answersJson: answers });
         } else {
             pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
@@ -433,7 +437,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
 
     const handleSubmit = () => {
         let ok;
-        if (isChecklist) {
+        if (isChecklist || isQuestionnaire) {
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: '', answersJson: answers });
         } else {
             if (isHomeworkAnswerEmpty(draft)) return;
@@ -478,7 +482,9 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
 
             {!isAccepted && (
                 <div className="space-y-3">
-                    {isChecklist && checklistSections.length ? (
+                    {isQuestionnaire && questionnaireBlocks.length ? (
+                        <QuestionnaireFieldsEditor blocks={questionnaireBlocks} value={answers} onChange={setAnswers} disabled={isPending} />
+                    ) : isChecklist && checklistSections.length ? (
                         <ChecklistFieldsEditor sections={checklistSections} value={answers} onChange={setAnswers} disabled={isPending} />
                     ) : (
                         <RichEditor
@@ -506,7 +512,13 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
                             <button
                                 type="button"
                                 onClick={handleSubmit}
-                                disabled={isChecklist ? false : isHomeworkAnswerEmpty(draft)}
+                                disabled={
+                                    isQuestionnaire
+                                        ? !isQuestionnaireAnswersComplete(questionnaireBlocks, answers)
+                                        : isChecklist
+                                            ? false
+                                            : isHomeworkAnswerEmpty(draft)
+                                }
                                 className="px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             >
                                 Отправить на проверку

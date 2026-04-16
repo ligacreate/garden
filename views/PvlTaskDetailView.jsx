@@ -480,7 +480,6 @@ export function renderSubmissionVersions(versions, checklistSections, homeworkAs
 export function SubmissionHistory({
     versions,
     role,
-    onUploadVersion,
     onSaveDraft,
     onSubmit,
     draftText,
@@ -560,9 +559,6 @@ export function SubmissionHistory({
                                 >
                                     Сохранить черновик
                                 </button>
-                                {!isStructured ? (
-                                    <button type="button" onClick={() => onUploadVersion({ textContent: draftText, authorRole: 'student', attachments: ['new_version.docx'] })} className="text-xs rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800 hover:bg-sky-100">Добавить новую версию</button>
-                                ) : null}
                                 <button type="button" onClick={onSubmit} className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100">Отправить на проверку</button>
                             </div>
                         </>
@@ -602,19 +598,17 @@ export function StatusTimeline({ history }) {
 }
 
 export function renderCommentsThread(messages) {
-    const visibleMessages = (messages || []).filter((m) => {
-        return m.authorRole !== 'system';
-    });
+    const visibleMessages = messages || [];
     return visibleMessages.map((m) => (
         <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{threadEventLabel(m.messageType)}</span>
-                    <p className="text-sm font-medium text-slate-800">{m.authorName} <span className="text-xs text-slate-500 font-normal">({m.authorRole})</span></p>
+                    <span className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-[10px] font-semibold uppercase tracking-wider text-slate-500'}`}>{threadEventLabel(m.messageType)}</span>
+                    <p className={`${m.authorRole === 'system' ? 'text-xs text-slate-500' : 'text-sm font-medium text-slate-800'}`}>{m.authorName} <span className="text-xs text-slate-500 font-normal">({m.authorRole})</span></p>
                 </div>
-                <p className="text-xs text-slate-500">{m.createdAt}</p>
+                <p className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-xs text-slate-500'}`}>{m.createdAt}</p>
             </div>
-            <p className="text-sm text-slate-700 mt-1">{m.text}</p>
+            <p className={`mt-1 ${m.authorRole === 'system' ? 'text-xs text-slate-500' : 'text-sm text-slate-700'}`}>{m.text}</p>
             {m.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
             {m.isUnreadForCurrentUser ? <p className="text-xs text-rose-700 mt-1">Новое</p> : null}
         </article>
@@ -921,7 +915,6 @@ export function renderTaskDetail({
     onBack,
     onChangeStatus,
     onSendThreadMessage,
-    onUploadVersion,
     onSaveDraft,
     onSubmitForReview,
     draftText,
@@ -948,7 +941,6 @@ export function renderTaskDetail({
             <SubmissionHistory
                 versions={state.submissionVersions}
                 role={role}
-                onUploadVersion={onUploadVersion}
                 onSaveDraft={onSaveDraft}
                 onSubmit={onSubmitForReview}
                 draftText={draftText}
@@ -1049,10 +1041,6 @@ export default function PvlTaskDetailView({
         addThreadMessage(setState, { ...message, messageType: message.disputeOnly ? 'dispute_comment' : 'comment' });
     };
 
-    const handleUploadVersion = (payload) => {
-        uploadNewSubmissionVersion(setState, payload);
-    };
-
     const handleSaveMentorForm = () => {
         const warningTooManyRevisions = detectTooManyRevisions(mentorForm.nextActions);
         const decision = mentorForm.statusDecision || 'на доработке';
@@ -1142,7 +1130,6 @@ export default function PvlTaskDetailView({
                 onOpenDispute: handleOpenDispute,
                 onChangeStatus: (status, comment) => changeTaskStatus(setState, status, role === 'mentor' ? 'Ментор' : 'Участница', comment),
                 onSendThreadMessage: handleSendThreadMessage,
-                onUploadVersion: handleUploadVersion,
                 onSaveDraft: (arg) => {
                     if (homeworkAssignmentType === 'checklist' || homeworkAssignmentType === 'questionnaire') {
                         if (onStudentSaveDraft) onStudentSaveDraft({ textContent: '', answersJson: checklistAnswers });

@@ -1808,6 +1808,14 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     const questionnaireBlocks = task.homeworkMeta?.questionnaireBlocks || [];
     const questionnaireTitle = task.homeworkMeta?.questionnaireTitle || '';
     const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
+    const db = pvlDomainApi.db;
+    const linkedContentItem = db.contentItems?.find((c) => c.id === task.linkedContentItemId);
+    const taskDescriptionSummary =
+        task.description ||
+        linkedContentItem?.fullDescription ||
+        linkedContentItem?.shortDescription ||
+        linkedContentItem?.lessonHomework?.prompt ||
+        '';
     const thread = (detail.thread || []).map((m) => ({
         id: m.id,
         type: m.isSystem ? 'system' : 'message',
@@ -1851,7 +1859,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             homeworkAssignmentType: hwAssignment,
         },
         taskDescription: {
-            summary: task.description || '',
+            summary: taskDescriptionSummary,
             artifact: task.artifact || '',
             criteria: task.criteria || [],
             uploadTypes: task.uploadTypes || [],

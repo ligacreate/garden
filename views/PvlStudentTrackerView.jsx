@@ -284,7 +284,7 @@ export function PlatformCourseModulesGrid({
                                                                     ? 'border-orange-400 bg-orange-50 text-orange-600'
                                                                     : 'border-[#C4956A]/40 bg-white text-[#C4956A]'
                                                     }`}>
-                                                        {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' ? '…' : hwInfo.status === 'revision_requested' ? '!' : '✏'}
+                                                        {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' ? '…' : hwInfo.status === 'revision_requested' ? '!' : ''}
                                                     </span>
                                                 ) : (
                                                     <span

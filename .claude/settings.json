@@ -9,6 +9,9 @@
       "Bash(wget:*$:*)",
       "Read(.env)",
       "Read(.env.*)"
+    ],
+    "allow": [
+      "Bash(grep -r \"RLS\\\\|POLICY\\\\|pvl_garden_mentor_links\\\\|GRANT\" \"c:\\\\Users\\\\Настенька\\\\Desktop\\\\garden\\\\database\\\\pvl\\\\\" --include=\"*.sql\" -l 2>/dev/null)"
     ]
   },
   "hooks": {

@@ -1354,11 +1354,19 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
         }
     }, [selectedItemId, studentId, navigate, routePrefix]);
 
-    void refreshKey;
-    void libraryTick;
-    const progress = pvlDomainApi.studentApi.getStudentLibraryProgress(studentId);
-    const categories = pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(studentId);
-    const baseItems = pvlDomainApi.studentApi.getStudentLibrary(studentId, {});
+    /** refreshKey — после async-синка профиля/БД; libraryTick — локальные отметки прогресса */
+    const progress = useMemo(
+        () => pvlDomainApi.studentApi.getStudentLibraryProgress(studentId),
+        [studentId, refreshKey, libraryTick],
+    );
+    const categories = useMemo(
+        () => pvlDomainApi.studentApi.getLibraryCategoriesWithCounts(studentId),
+        [studentId, refreshKey, libraryTick],
+    );
+    const baseItems = useMemo(
+        () => pvlDomainApi.studentApi.getStudentLibrary(studentId, {}),
+        [studentId, refreshKey, libraryTick],
+    );
     const filteredItems = sortLibraryItems(
         searchLibraryItems(
             filterLibraryItems(baseItems, {

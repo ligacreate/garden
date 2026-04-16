@@ -1634,7 +1634,7 @@ function getPublishedContentFor(role, section, cohortId) {
 
 function getVisibleContentItems(userId, role, section) {
     const profile = db.studentProfiles.find((p) => p.userId === userId);
-    const cohortId = profile?.cohortId;
+    const cohortId = profile?.cohortId || 'cohort-2026-1';
     return getPublishedContentFor(role, section, cohortId);
 }
 
@@ -1728,8 +1728,11 @@ function ensureLibrarySeedInDb() {
 function getPublishedLibraryContentForStudent(studentId) {
     ensureLibrarySeedInDb();
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
-    if (!profile) return [];
-    const cohortId = profile?.cohortId;
+    /**
+     * Без раннего return []: профиль подтягивается async из Сада; пока его нет,
+     * используем тот же потоковый fallback, что и в getPublishedContentItemForStudent.
+     */
+    const cohortId = profile?.cohortId || 'cohort-2026-1';
     const items = getPublishedContentFor(ROLES.STUDENT, 'library', cohortId);
     return items.map((item) => {
         const pr = db.studentLibraryProgress.find((x) => x.studentId === studentId && x.libraryItemId === item.id);

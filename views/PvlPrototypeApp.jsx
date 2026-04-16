@@ -3001,6 +3001,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
                 routePrefix={routePrefix}
                 navigate={navigate}
+                gardenBridgeRef={gardenBridgeRef}
             />
         );
     }
@@ -3026,6 +3027,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements)}
                 routePrefix={routePrefix}
                 navigate={navigate}
+                gardenBridgeRef={gardenBridgeRef}
             />
         );
     }

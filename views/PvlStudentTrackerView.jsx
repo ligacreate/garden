@@ -331,9 +331,20 @@ export function StudentCourseTracker({
     modules: modulesProp = null,
     routePrefix = '/student',
     navigate = null,
+    gardenBridgeRef = null,
 }) {
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
     const { checked, toggleItem } = usePlatformStepChecklist(studentId);
+    const studentProfile = useMemo(
+        () => (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null,
+        [studentId]
+    );
+    const mentorUserId = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;
+    const mentorUser = useMemo(() => {
+        if (!mentorUserId) return null;
+        return (pvlDomainApi.db.users || []).find((u) => String(u.id) === mentorUserId) || null;
+    }, [mentorUserId]);
+    const mentorLabel = mentorUser?.fullName || mentorUser?.name || 'Ментор';
     const { doneSteps, totalSteps, pct } = useMemo(() => {
         let done = 0;
         let total = 0;
@@ -565,6 +576,31 @@ export function StudentCourseTracker({
                     </div>
                 </div>
             </div>
+
+            <section className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Пиши, веди, люби</div>
+                <h3 className="font-display text-lg text-slate-800 mt-1">Ваш ментор</h3>
+                {mentorUser ? (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (mentorUserId && gardenBridgeRef?.current?.openGardenUserProfile) {
+                                gardenBridgeRef.current.openGardenUserProfile(mentorUserId);
+                            }
+                        }}
+                        disabled={!gardenBridgeRef?.current?.openGardenUserProfile || !mentorUserId}
+                        className={`mt-3 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-colors ${
+                            gardenBridgeRef?.current?.openGardenUserProfile && mentorUserId
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                : 'border-slate-200 bg-slate-50 text-slate-500 cursor-default'
+                        }`}
+                    >
+                        {mentorLabel}
+                    </button>
+                ) : (
+                    <div className="mt-2 text-sm text-slate-500">Ментор пока не назначен.</div>
+                )}
+            </section>
 
             <div className="flex flex-wrap items-end justify-between gap-2">
                 <h3 className="font-display text-lg text-slate-800">Модули курса</h3>

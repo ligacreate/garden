@@ -1024,6 +1024,7 @@ function practicumEventTypeRu(t) {
     const k = String(t || '').toLowerCase();
     const map = {
         mentor_meeting: 'Встреча с ментором',
+        practicum_done: 'Проведенный практикум',
         week_closure: 'Закрытие модуля',
         deadline: 'Дедлайн',
         session: 'Сессия',
@@ -3015,7 +3016,8 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 navigate={navigate}
                 routePrefix={routePrefix}
                 title="Практикумы"
-                eventTypeFilter={['practicum', 'mentor_meeting', 'session']}
+                eventTypeFilter={['practicum', 'mentor_meeting', 'session', 'practicum_done']}
+                showPracticumArchive
             />
         );
     }
@@ -3737,6 +3739,38 @@ function TeacherPvlHome({ navigate }) {
 
 function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint }) {
     const html = String(item?.fullDescription || item?.description || '').trim();
+    const decodedHtml = useMemo(
+        () => html.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&').replaceAll('&quot;', '"'),
+        [html],
+    );
+    const isPracticum = String(item?.targetSection || '').toLowerCase() === 'practicums';
+    const practicumVideoUrl = String(
+        item?.practicumVideoUrl
+        || item?.lessonVideoUrl
+        || (Array.isArray(item?.externalLinks) ? item.externalLinks[0] : '')
+        || '',
+    ).trim();
+    const practicumVideoUrlFromBody = useMemo(() => {
+        const m = decodedHtml.match(/https?:\/\/kinescope\.io\/embed\/[^\s"'<>]+/i);
+        return m ? String(m[0]) : '';
+    }, [decodedHtml]);
+    const practicumVideoPlayerHtml = useMemo(
+        () => buildLessonVideoPlayerHtml({
+            lessonVideoEmbed: decodedHtml,
+            lessonVideoUrl: practicumVideoUrl || practicumVideoUrlFromBody,
+        }),
+        [decodedHtml, practicumVideoUrl, practicumVideoUrlFromBody],
+    );
+    const htmlWithoutIframe = useMemo(() => {
+        if (!isPracticum) return html;
+        return decodedHtml
+            .replace(/<div[^>]*>\s*<iframe[\s\S]*?<\/iframe>\s*<\/div>/gi, '')
+            .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+            .replace(/<div[^>]*>\s*&lt;iframe[\s\S]*?&lt;\/iframe&gt;\s*&lt;\/div&gt;/gi, '')
+            .replace(/&lt;iframe[\s\S]*?&lt;\/iframe&gt;/gi, '')
+            .replace(/https?:\/\/kinescope\.io\/embed\/[^\s"'<>]+/gi, '')
+            .trim();
+    }, [isPracticum, decodedHtml]);
     const tableSummary = useMemo(() => {
         if (!html || !/<table[\s>]/i.test(html) || typeof DOMParser === 'undefined') return null;
         try {
@@ -3758,7 +3792,7 @@ function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint
             return null;
         }
     }, [html]);
-    const safeBodyHtml = useMemo(() => normalizeMaterialHtml(html), [html]);
+    const safeBodyHtml = useMemo(() => normalizeMaterialHtml(htmlWithoutIframe), [htmlWithoutIframe]);
     if (!visible) {
         return (
             <article className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500 leading-snug">
@@ -3775,6 +3809,15 @@ function ParticipantMaterialPreviewCard({ roleTitle, item, visible, disabledHint
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                     Таблица: {tableSummary.rows || 0} строк · {tableSummary.cols || 0} столбцов
                     {tableSummary.tables > 1 ? ` · таблиц: ${tableSummary.tables}` : ''}
+                </div>
+            ) : null}
+            {isPracticum && practicumVideoPlayerHtml ? (
+                <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <div
+                        className="relative w-full pb-[56.25%] [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0"
+                        // eslint-disable-next-line react/no-danger
+                        dangerouslySetInnerHTML={{ __html: practicumVideoPlayerHtml }}
+                    />
                 </div>
             ) : null}
             <div
@@ -4235,7 +4278,7 @@ function AdminContentItemScreen({
         [cmsPlacements, contentId],
     );
 
-    const sections = ['lessons', 'library', 'glossary'];
+    const sections = ['lessons', 'library', 'practicums', 'glossary'];
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
     const libraryCategories = useMemo(() => {
         try {
@@ -4249,6 +4292,10 @@ function AdminContentItemScreen({
 
     const beginEdit = () => {
         if (!item) return;
+        const linkedPracticumEvent = item.linkedPracticumEventId ? pvlDomainApi.calendarApi.getById(item.linkedPracticumEventId) : null;
+        const practicumDateFromEvent = linkedPracticumEvent?.startAt ? String(linkedPracticumEvent.startAt).slice(0, 10) : '';
+        const practicumTimeFromEvent = linkedPracticumEvent?.startAt ? String(linkedPracticumEvent.startAt).slice(11, 16) : '';
+        const extLinks = Array.isArray(item.externalLinks) ? item.externalLinks : [];
         setEditForm({
             title: item.title || '',
             shortDescription: item.shortDescription || '',
@@ -4266,11 +4313,16 @@ function AdminContentItemScreen({
             lessonVideoUrl: item.lessonVideoUrl || '',
             lessonVideoEmbed: item.lessonVideoEmbed || '',
             lessonRutubeUrl: item.lessonRutubeUrl || '',
+            practicumDocumentUrl: item.practicumDocumentUrl || extLinks[1] || '',
+            practicumVideoUrl: item.practicumVideoUrl || extLinks[0] || '',
             libraryCategoryId: item.libraryCategoryId || item.categoryId || 'all',
             targetRole: item.targetRole || 'both',
             targetCohort: item.targetCohort || 'cohort-2026-1',
             weekNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
             moduleNumber: clampPvlModule(item.moduleNumber ?? item.weekNumber ?? 0),
+            practicumDate: item.practicumDate || practicumDateFromEvent || '',
+            practicumTime: item.practicumTime || practicumTimeFromEvent || '',
+            linkedPracticumEventId: item.linkedPracticumEventId || linkedPracticumEvent?.id || '',
             estimatedDuration: item.estimatedDuration || '',
             tagsText: Array.isArray(item.tags) ? item.tags.join(', ') : '',
         });
@@ -4328,10 +4380,74 @@ function AdminContentItemScreen({
             lessonVideoUrl: videoSummaryMode ? editForm.lessonVideoUrl : undefined,
             lessonVideoEmbed: videoSummaryMode ? editForm.lessonVideoEmbed : undefined,
             lessonRutubeUrl: videoSummaryMode ? editForm.lessonRutubeUrl : undefined,
+            practicumDate: editForm.targetSection === 'practicums' ? (editForm.practicumDate || '') : undefined,
+            practicumTime: editForm.targetSection === 'practicums' ? (editForm.practicumTime || '') : undefined,
+            linkedPracticumEventId: editForm.targetSection === 'practicums' ? (editForm.linkedPracticumEventId || '') : undefined,
+            practicumDocumentUrl: editForm.targetSection === 'practicums' ? (editForm.practicumDocumentUrl || '') : undefined,
+            practicumVideoUrl: editForm.targetSection === 'practicums' ? (editForm.practicumVideoUrl || '') : undefined,
+            externalLinks: editForm.targetSection === 'practicums'
+                ? [editForm.practicumVideoUrl, editForm.practicumDocumentUrl].filter(Boolean)
+                : undefined,
         };
         try {
             await pvlDomainApi.adminApi.updateContentItem(contentId, payload);
-            applyPatchToState(payload);
+            const patchForState = { ...payload };
+            if (editForm.targetSection === 'practicums') {
+                if (editForm.practicumDate) {
+                    const hhmm = String(editForm.practicumTime || '19:00');
+                    const startAt = `${editForm.practicumDate}T${hhmm}:00.000Z`;
+                    const [hh, mm] = hhmm.split(':').map((x) => Number(x) || 0);
+                    const end = new Date(Date.UTC(
+                        Number(editForm.practicumDate.slice(0, 4)),
+                        Number(editForm.practicumDate.slice(5, 7)) - 1,
+                        Number(editForm.practicumDate.slice(8, 10)),
+                        hh,
+                        mm,
+                    ));
+                    end.setUTCMinutes(end.getUTCMinutes() + 90);
+                    const endAt = end.toISOString();
+                    let eventId = editForm.linkedPracticumEventId || '';
+                    if (eventId) {
+                        pvlDomainApi.adminApi.updateCalendarEvent(eventId, {
+                            title: editForm.title.trim(),
+                            description: editForm.fullDescriptionHtml || editForm.shortDescription || '',
+                            eventType: 'practicum_done',
+                            date: editForm.practicumDate,
+                            startAt,
+                            endAt,
+                            visibilityRole: 'all',
+                            cohortId: editForm.targetCohort || 'cohort-2026-1',
+                            colorToken: 'practicum_done',
+                            recordingUrl: editForm.practicumVideoUrl || '',
+                            recapText: editForm.fullDescriptionHtml || '',
+                        });
+                    } else {
+                        const ev = pvlDomainApi.adminApi.createCalendarEvent({
+                            title: editForm.title.trim(),
+                            description: editForm.fullDescriptionHtml || editForm.shortDescription || '',
+                            eventType: 'practicum_done',
+                            date: editForm.practicumDate,
+                            startAt,
+                            endAt,
+                            visibilityRole: 'all',
+                            cohortId: editForm.targetCohort || 'cohort-2026-1',
+                            colorToken: 'practicum_done',
+                            recordingUrl: editForm.practicumVideoUrl || '',
+                            recapText: editForm.fullDescriptionHtml || '',
+                        });
+                        eventId = ev?.id || '';
+                    }
+                    if (eventId) {
+                        patchForState.linkedPracticumEventId = eventId;
+                        await pvlDomainApi.adminApi.updateContentItem(contentId, { linkedPracticumEventId: eventId });
+                    }
+                } else if (editForm.linkedPracticumEventId) {
+                    pvlDomainApi.adminApi.deleteCalendarEvent(editForm.linkedPracticumEventId);
+                    patchForState.linkedPracticumEventId = '';
+                    await pvlDomainApi.adminApi.updateContentItem(contentId, { linkedPracticumEventId: '' });
+                }
+            }
+            applyPatchToState(patchForState);
         } catch (e) {
             try {
                 window.alert(`Не удалось сохранить материал: ${e?.message || e}`);
@@ -4516,9 +4632,13 @@ function AdminContentItemScreen({
             shortDescription: editForm.shortDescription,
             fullDescription: editForm.fullDescriptionHtml,
             description: editForm.fullDescriptionHtml,
+            targetSection: editForm.targetSection,
             targetRole: editForm.targetRole,
             lessonVideoEmbed: editForm.lessonVideoEmbed,
             lessonVideoUrl: editForm.lessonVideoUrl,
+            practicumVideoUrl: editForm.practicumVideoUrl,
+            practicumDocumentUrl: editForm.practicumDocumentUrl,
+            externalLinks: [editForm.practicumVideoUrl, editForm.practicumDocumentUrl].filter(Boolean),
         }
         : item;
     const videoSummaryEditor = !!editForm && (
@@ -4662,6 +4782,46 @@ function AdminContentItemScreen({
                                             <option value="homework">Домашнее задание</option>
                                         </select>
                                     </div>
+                                ) : null}
+                                {editForm.targetSection === 'practicums' ? (
+                                    <>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-0.5">Дата практикума</label>
+                                            <input
+                                                type="date"
+                                                value={editForm.practicumDate || ''}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, practicumDate: e.target.value }))}
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-0.5">Время начала</label>
+                                            <input
+                                                type="time"
+                                                value={editForm.practicumTime || ''}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, practicumTime: e.target.value }))}
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-0.5">Ссылка на документ</label>
+                                            <input
+                                                value={editForm.practicumDocumentUrl || ''}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, practicumDocumentUrl: e.target.value }))}
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                                placeholder="Ссылка на документ"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-0.5">Ссылка на видео / запись</label>
+                                            <input
+                                                value={editForm.practicumVideoUrl || ''}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, practicumVideoUrl: e.target.value }))}
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                                placeholder="Ссылка на видео"
+                                            />
+                                        </div>
+                                    </>
                                 ) : null}
                                 <div className="space-y-1">
                                     <label className="text-xs text-slate-500 ml-0.5">Кто видит материал</label>
@@ -4881,6 +5041,7 @@ function ContentNavigator({ items, placements, onOpen }) {
     const SECTIONS = [
         { key: 'library', label: 'Библиотека' },
         { key: 'lessons', label: 'Уроки' },
+        { key: 'practicums', label: 'Практикумы' },
         { key: 'glossary', label: 'Глоссарий' },
     ];
 
@@ -5026,10 +5187,12 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         visibility: 'all',
         weekNumber: 1,
         moduleNumber: 1,
+        practicumDate: '',
+        practicumTime: '',
         estimatedDuration: '',
         tagsText: '',
     });
-    const sections = ['lessons', 'library', 'glossary'];
+    const sections = ['lessons', 'library', 'practicums', 'glossary'];
     const types = ['video', 'text', 'pdf', 'checklist', 'template', 'link', 'audio', 'fileBundle'];
     const baseLibraryCategories = useMemo(() => {
         try {
@@ -5088,7 +5251,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         .filter((i) => (filters.cohort === 'all' ? true : i.targetCohort === filters.cohort))
         .filter((i) => (filters.module === 'all' ? true : String(clampPvlModule(i.moduleNumber ?? i.weekNumber ?? 0)) === String(filters.module)))
         .sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
-    const handleCreate = async () => {
+    const handleCreate = async ({ publish = false } = {}) => {
         if (!draft.title.trim()) return;
         const customLibraryTitle = String(draft.libraryCategoryCustomTitle || '').trim();
         if (draft.targetSection === 'library' && (!draft.libraryCategoryId || draft.libraryCategoryId === 'all') && !customLibraryTitle) {
@@ -5115,7 +5278,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             if (draft.lessonKind === 'text_video') normalizedContentType = 'video';
             if (draft.lessonKind === 'quiz') normalizedContentType = 'checklist';
             if (draft.lessonKind === 'homework') normalizedContentType = 'template';
-        } else if (draft.targetSection === 'glossary') {
+        } else if (draft.targetSection === 'glossary' || draft.targetSection === 'practicums') {
             normalizedContentType = 'text';
         }
         const resolvedCategoryId = draft.targetSection === 'library'
@@ -5135,6 +5298,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         const normalizedDescription = String(draft.fullDescriptionHtml || draft.lessonTextBody || draft.shortDescription || '');
         const record = {
             ...rest,
+            status: publish ? 'published' : 'draft',
             contentType: normalizedContentType,
             tags: String(tagsText || '').split(',').map((x) => x.trim()).filter(Boolean),
             description: normalizedDescription,
@@ -5156,6 +5320,10 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             lessonHomeworkDeadlineRule: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? draft.lessonHomeworkDeadlineRule : undefined,
             lessonHomeworkRevisionLimit: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? Number(draft.lessonHomeworkRevisionLimit) || 0 : undefined,
             lessonHomework: draft.targetSection === 'lessons' && draft.lessonKind === 'homework' ? normalizeLessonHomework(draft.lessonHomework) : undefined,
+            practicumDate: draft.targetSection === 'practicums' ? (draft.practicumDate || '') : undefined,
+            practicumTime: draft.targetSection === 'practicums' ? (draft.practicumTime || '') : undefined,
+            practicumDocumentUrl: draft.targetSection === 'practicums' ? (draft.fileUrl || '') : undefined,
+            practicumVideoUrl: draft.targetSection === 'practicums' ? (draft.externalUrl || '') : undefined,
             coverImage: draft.targetSection === 'library' ? (draft.coverImage || '') : '',
             externalLinks: [draft.externalUrl, draft.fileUrl].filter(Boolean),
             createdBy: 'u-adm-1',
@@ -5163,7 +5331,39 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
         };
         try {
             const created = await pvlDomainApi.adminApi.createContentItem(record);
-            setItems((prev) => [created, ...prev]);
+            const createdPatch = {};
+            if (publish && draft.targetSection === 'practicums' && draft.practicumDate) {
+                const hhmm = String(draft.practicumTime || '19:00');
+                const startAt = `${draft.practicumDate}T${hhmm}:00.000Z`;
+                const [hh, mm] = hhmm.split(':').map((x) => Number(x) || 0);
+                const end = new Date(Date.UTC(
+                    Number(draft.practicumDate.slice(0, 4)),
+                    Number(draft.practicumDate.slice(5, 7)) - 1,
+                    Number(draft.practicumDate.slice(8, 10)),
+                    hh,
+                    mm,
+                ));
+                end.setUTCMinutes(end.getUTCMinutes() + 90);
+                const endAt = end.toISOString();
+                const ev = pvlDomainApi.adminApi.createCalendarEvent({
+                    title: draft.title,
+                    description: draft.fullDescriptionHtml || draft.shortDescription || '',
+                    eventType: 'practicum_done',
+                    date: draft.practicumDate,
+                    startAt,
+                    endAt,
+                    visibilityRole: 'all',
+                    cohortId: draft.targetCohort || 'cohort-2026-1',
+                    colorToken: 'practicum_done',
+                    recordingUrl: draft.externalUrl || '',
+                    recapText: draft.fullDescriptionHtml || '',
+                });
+                if (ev?.id) {
+                    createdPatch.linkedPracticumEventId = ev.id;
+                    await pvlDomainApi.adminApi.updateContentItem(created.id, createdPatch);
+                }
+            }
+            setItems((prev) => [{ ...created, ...createdPatch }, ...prev]);
             setDraft((d) => ({
                 ...d,
                 title: '',
@@ -5181,6 +5381,8 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 coverImage: '',
                 fileUrl: '',
                 externalUrl: '',
+                practicumDate: '',
+                practicumTime: '',
                 libraryCategoryCustomTitle: '',
             }));
             navigate(`/admin/content/${created.id}`);
@@ -5323,7 +5525,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                     <h2 className="font-display text-2xl text-slate-800">Материалы курса</h2>
                     {pvlDevToolsEnabled() ? <p className="text-[11px] text-amber-800 mt-1">Dev: данные в памяти сессии.</p> : null}
                 </div>
-                <button type="button" onClick={handleCreate} className="text-sm rounded-xl bg-emerald-700 px-4 py-2.5 font-medium text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-800 shrink-0">Добавить материал</button>
+                <button type="button" onClick={() => handleCreate({ publish: true })} className="text-sm rounded-xl bg-emerald-700 px-4 py-2.5 font-medium text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-800 shrink-0">Сохранить и опубликовать</button>
             </div>
             <div className="rounded-2xl border border-emerald-100/90 bg-white p-3 md:p-4 shadow-sm shadow-emerald-900/5 space-y-5">
                 <div className="grid md:grid-cols-2 gap-2">
@@ -5337,7 +5539,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     targetSection: nextSection,
                                     contentType: nextSection === 'lessons'
                                         ? (d.lessonKind === 'quiz' ? 'checklist' : d.lessonKind === 'homework' ? 'template' : 'video')
-                                        : nextSection === 'glossary' ? 'text' : d.contentType,
+                                        : (nextSection === 'glossary' || nextSection === 'practicums') ? 'text' : d.contentType,
                                 }));
                             }}
                             className={`${cmsIn} w-full`}
@@ -5478,6 +5680,68 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
                                 onUploadImage={pvlRichEditorUploadImage}
                                 placeholder="Напишите материал для библиотеки..."
+                            />
+                        </div>
+                    </section>
+                ) : null}
+
+                {draft.targetSection === 'practicums' ? (
+                    <section className="space-y-2 rounded-xl border border-emerald-100/90 bg-emerald-50/30 p-2.5 md:p-3">
+                        <div className={cmsFormTitle}>Форма материала для практикумов</div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                            <div className="space-y-1 md:col-span-2">
+                                <label className={cmsLbl}>Название</label>
+                                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Название" />
+                            </div>
+                            <div className="min-w-0 space-y-1">
+                                <label className={cmsLbl}>Теги</label>
+                                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Теги через запятую" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className={cmsLbl}>Поток</label>
+                                <select
+                                    value={draft.targetCohort}
+                                    onChange={(e) => setDraft((d) => ({ ...d, targetCohort: e.target.value }))}
+                                    className={`w-full ${cmsIn}`}
+                                >
+                                    {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className={cmsLbl}>Дата практикума</label>
+                                <input
+                                    type="date"
+                                    value={draft.practicumDate}
+                                    onChange={(e) => setDraft((d) => ({ ...d, practicumDate: e.target.value }))}
+                                    className={`w-full ${cmsIn}`}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className={cmsLbl}>Время начала</label>
+                                <input
+                                    type="time"
+                                    value={draft.practicumTime}
+                                    onChange={(e) => setDraft((d) => ({ ...d, practicumTime: e.target.value }))}
+                                    className={`w-full ${cmsIn}`}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className={cmsLbl}>Ссылка на документ</label>
+                                <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на документ" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className={cmsLbl}>Ссылка на видео</label>
+                                <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на видео" />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className={cmsLbl}>Описание / конспект практикума</label>
+                            <RichEditor
+                                key="create-practicum"
+                                value={draft.fullDescriptionHtml}
+                                onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
+                                onUploadImage={pvlRichEditorUploadImage}
+                                placeholder="Напишите материал для практикума..."
                             />
                         </div>
                     </section>
@@ -5628,12 +5892,29 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         ) : null}
                     </section>
                 ) : null}
+
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-emerald-100 pt-3">
+                    <button
+                        type="button"
+                        onClick={() => handleCreate({ publish: false })}
+                        className="text-sm rounded-xl border border-emerald-300 bg-white px-4 py-2.5 font-medium text-emerald-900 hover:bg-emerald-50"
+                    >
+                        Сохранить черновик
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleCreate({ publish: true })}
+                        className="text-sm rounded-xl bg-emerald-700 px-4 py-2.5 font-medium text-white shadow-sm shadow-emerald-900/20 hover:bg-emerald-800"
+                    >
+                        Сохранить и опубликовать
+                    </button>
+                </div>
             </div>
             
             {/* Фильтры по разделу и статусу */}
             <div className="space-y-2">
                 <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-emerald-50/60 border border-emerald-100">
-                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['glossary', 'Глоссарий']].map(([val, label]) => (
+                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['practicums', 'Практикумы'], ['glossary', 'Глоссарий']].map(([val, label]) => (
                         <button
                             key={val}
                             type="button"

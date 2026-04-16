@@ -135,6 +135,10 @@ function isUuidString(v) {
 function normalizeCalendarEventTypeForDb(value) {
     const raw = String(value || '').toLowerCase().trim();
     const map = {
+        lesson: 'lesson',
+        practicum: 'practicum',
+        practicum_done: 'practicum_done',
+        breakfast: 'breakfast',
         mentor_meeting: 'mentor_meeting',
         lesson_release: 'lesson_release',
         deadline: 'deadline',

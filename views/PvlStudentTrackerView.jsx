@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
 import { buildLessonVideoPlayerHtml, isVideoLessonLayout, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
-import { pvlDomainApi } from '../services/pvlMockApi';
+import { pvlDomainApi, syncPvlActorsFromGarden } from '../services/pvlMockApi';
 
 export function platformStepsStorageKey(studentId) {
     return `pvl_checked_${studentId}`;
@@ -333,24 +333,50 @@ export function StudentCourseTracker({
     navigate = null,
     gardenBridgeRef = null,
 }) {
+    const mentorHydrationAttemptedRef = useRef('');
+    const [, forceMentorRefreshTick] = useState(0);
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
     const { checked, toggleItem } = usePlatformStepChecklist(studentId);
-    const studentProfile = useMemo(
-        () => (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null,
-        [studentId]
-    );
-    const mentorUserId = useMemo(() => {
+    const studentProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null;
+    const mentorUserId = (() => {
         const direct = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;
-        if (direct) return direct;
+        if (direct) {
+            const byDirect = (pvlDomainApi.db.mentorProfiles || []).find((m) => (
+                String(m?.userId) === direct || String(m?.id) === direct
+            ));
+            if (byDirect?.userId) return String(byDirect.userId);
+            return direct;
+        }
         const fallbackMentor = (pvlDomainApi.db.mentorProfiles || []).find((m) => (
             Array.isArray(m?.menteeIds) && m.menteeIds.some((id) => String(id) === String(studentId))
         ));
         return fallbackMentor?.userId ? String(fallbackMentor.userId) : null;
-    }, [studentProfile?.mentorId, studentId]);
-    const mentorUser = useMemo(() => {
-        if (!mentorUserId) return null;
-        return (pvlDomainApi.db.users || []).find((u) => String(u.id) === mentorUserId) || null;
-    }, [mentorUserId]);
+    })();
+    const mentorUser = mentorUserId
+        ? ((pvlDomainApi.db.users || []).find((u) => String(u.id) === mentorUserId) || null)
+        : null;
+    useEffect(() => {
+        const sid = String(studentId || '');
+        if (!sid) return;
+        if (mentorUserId) {
+            mentorHydrationAttemptedRef.current = '';
+            return;
+        }
+        if (mentorHydrationAttemptedRef.current === sid) return;
+        mentorHydrationAttemptedRef.current = sid;
+        let mounted = true;
+        (async () => {
+            try {
+                await syncPvlActorsFromGarden();
+            } catch {
+                /* noop */
+            }
+            if (mounted) forceMentorRefreshTick((x) => x + 1);
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [studentId, mentorUserId]);
     const mentorLabel = mentorUser?.fullName || mentorUser?.name || 'Ментор';
     const { doneSteps, totalSteps, pct } = useMemo(() => {
         let done = 0;

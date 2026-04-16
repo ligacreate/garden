@@ -557,8 +557,10 @@ async function ensurePvlStudentInDb(userId) {
             cohort_id: null,
             mentor_id: null,
         });
-    } catch {
+    } catch (err) {
         pvlStudentSyncedToDb.delete(sqlId);
+        // eslint-disable-next-line no-console
+        console.warn('[PVL DB] ensurePvlStudentInDb failed for', sqlId, String(err?.message || err));
     }
 }
 
@@ -1704,7 +1706,11 @@ function persistSubmissionToDb(studentId, taskId) {
             await ensureDbTrackerHomeworkStructure();
             sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
         }
-        if (!sqlHomeworkId) return;
+        if (!sqlHomeworkId) {
+            // eslint-disable-next-line no-console
+            console.warn('[PVL DB] persistSubmissionToDb: sqlHomeworkId not found for taskId', taskId, '— submission NOT saved');
+            return;
+        }
         const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
         const row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
         const patch = {

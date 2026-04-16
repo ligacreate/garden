@@ -58,7 +58,10 @@ export function classifyGardenProfileForPvlStudent(profile) {
         return { gardenRole: 'applicant', sourceRole: String(profile.role ?? '') };
     }
     if (r === GARDEN_ROLES.INTERN || r === 'intern' || r === 'стажер' || r === 'стажёр') {
-        return { gardenRole: 'student', sourceRole: String(profile.role ?? '') };
+        /** Стажер синхронизируется как отдельный gardenRole='intern', а не 'student':
+         *  — в studentProfiles попадает (→ доступ к урокам ПВЛ сохраняется),
+         *  — но в списке «активных учениц» не отображается (getAdminStudents его фильтрует). */
+        return { gardenRole: 'intern', sourceRole: String(profile.role ?? '') };
     }
     if (r === 'student' || r === 'ученица' || r === 'participant' || r === 'trainee') {
         return { gardenRole: 'student', sourceRole: String(profile.role ?? '') };
@@ -77,6 +80,7 @@ export function pvlGardenRoleLabelRu(gardenRole) {
     const g = String(gardenRole || '').trim();
     if (g === 'student') return 'Ученица';
     if (g === 'applicant') return 'Абитуриент';
+    if (g === 'intern') return 'Стажер';
     if (g === 'preview') return 'Предпросмотр';
     if (!g) return '—';
     return g;

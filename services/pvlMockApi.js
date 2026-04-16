@@ -835,6 +835,10 @@ async function persistGardenMentorLink(studentUserId, mentorUserId) {
             id: sid,
             error: String(error?.message || error || 'upsert failed'),
         });
+        /** Пробрасываем ошибку наверх, чтобы UI мог показать уведомление.
+         *  Без этого ошибка проглатывалась и ментор «сохранялся» только в памяти,
+         *  а при обновлении страницы сбрасывался. */
+        throw error;
     }
 }
 
@@ -3120,6 +3124,9 @@ export const adminApi = {
             list = list.filter((s) => !isSeedPvlDemoStudentId(s.userId));
         }
         list = list.filter((s) => !isPvlPreviewStudentId(s.userId));
+        /** Стажеры (gardenRole='intern') имеют доступ к урокам ПВЛ, но в список
+         *  «активных учениц с ментором» не попадают — они уже прошли курс. */
+        list = list.filter((s) => s.gardenRole !== 'intern');
         return list;
     },
     getAdminMentors() {

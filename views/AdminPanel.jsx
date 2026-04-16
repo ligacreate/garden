@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive } from 'lucide-react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
@@ -245,7 +245,7 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
     );
 };
 
-const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState('stats');
     const [contentTab, setContentTab] = useState('library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
@@ -934,12 +934,14 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                 <tr className="border-b border-slate-100 text-xs uppercase text-slate-400">
                                     <th className="pb-4 pl-2">Пользователь</th>
                                     <th className="pb-4">Роль</th>
+                                    <th className="pb-4">Видимость</th>
                                     <th className="pb-4">Действия</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {[...(users || [])].sort((a, b) => b.id - a.id).map(u => {
                                     const isNew = (Date.now() - u.id) < 24 * 60 * 60 * 1000 && u.id > 1000; // Check if registered in last 24h (and not initial seed data)
+                                    const isHiddenInGarden = hiddenGardenUserIds.includes(String(u.id));
                                     return (
                                         <tr key={u.id} className={isNew ? "bg-blue-50/30" : ""}>
                                             <td className="py-4 pl-2">
@@ -958,6 +960,20 @@ const AdminPanel = ({ users, knowledgeBase, news = [], librarySettings, onSetCou
                                                     <option value="curator">Куратор</option>
                                                     <option value="admin">Администратор</option>
                                                 </select>
+                                            </td>
+                                            <td className="py-4">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onToggleUserVisibilityInGarden?.(u.id)}
+                                                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${isHiddenInGarden
+                                                        ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                                        }`}
+                                                    title={isHiddenInGarden ? 'Сделать видимым в саду' : 'Скрыть из сада'}
+                                                >
+                                                    {isHiddenInGarden ? <EyeOff size={14} /> : <Eye size={14} />}
+                                                    {isHiddenInGarden ? 'Скрыт' : 'Виден'}
+                                                </button>
                                             </td>
                                             <td className="py-4">
                                                 <div className="flex items-center gap-2">

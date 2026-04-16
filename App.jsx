@@ -7,6 +7,8 @@ import SubscriptionExpiredScreen from './views/SubscriptionExpiredScreen';
 import { INITIAL_KNOWLEDGE } from './data/data';
 import { api } from './services/dataService';
 
+const HIDDEN_GARDEN_USERS_KEY = 'garden_hidden_user_ids';
+
 export default function App() {
     const [currentUser, setCurrentUser] = useState(null);
     const [users, setUsers] = useState([]);
@@ -17,8 +19,26 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [librarySettings, setLibrarySettings] = useState({ hiddenCourses: [], materialOrder: {} });
     const [accessBlock, setAccessBlock] = useState(null);
+    const [hiddenGardenUserIds, setHiddenGardenUserIds] = useState(() => {
+        try {
+            const raw = JSON.parse(localStorage.getItem(HIDDEN_GARDEN_USERS_KEY) || '[]');
+            if (!Array.isArray(raw)) return [];
+            return raw.map((id) => String(id));
+        } catch {
+            return [];
+        }
+    });
 
     const showNotification = (msg) => setNotification(msg);
+    const isHiddenInGarden = (userId) => hiddenGardenUserIds.includes(String(userId));
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(HIDDEN_GARDEN_USERS_KEY, JSON.stringify(hiddenGardenUserIds));
+        } catch {
+            /* ignore */
+        }
+    }, [hiddenGardenUserIds]);
 
     const normalizeLegacyRichContent = (rawContent) => {
         const raw = String(rawContent || '');
@@ -244,6 +264,14 @@ export default function App() {
         // Placeholder for notification read status
     };
 
+    const handleToggleUserVisibilityInGarden = (userId) => {
+        const sid = String(userId);
+        setHiddenGardenUserIds((prev) => (
+            prev.includes(sid) ? prev.filter((id) => id !== sid) : [...prev, sid]
+        ));
+        showNotification('Видимость аккаунта в саду обновлена');
+    };
+
     const handleUpdateNews = async (updatedNews) => {
         try {
             await api.updateNews(updatedNews);
@@ -343,6 +371,12 @@ export default function App() {
 
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600 font-sans">Загрузка...</div>;
 
+    const gardenUsers = (users || []).filter((u) => {
+        if (!u) return false;
+        if (currentUser && String(u.id) === String(currentUser.id)) return true;
+        return !isHiddenInGarden(u.id);
+    });
+
     return (
         <div className={`min-h-screen bg-transparent font-sans text-slate-700 selection:bg-blue-100 selection:text-blue-900 flex justify-center relative`}>
             <div className="w-full max-w-[480px] md:max-w-full bg-transparent min-h-screen relative flex flex-col">
@@ -371,7 +405,7 @@ export default function App() {
                         <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
                     )
                 )
-                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
+                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);
                         showNotification("Список пользователей обновлен");
@@ -438,7 +472,7 @@ export default function App() {
                             showNotification(e.message || "Ошибка публикации");
                         }
                     }} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} />
-                        : <UserApp user={currentUser} users={users} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
+                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
             </div>
         </div>
     );

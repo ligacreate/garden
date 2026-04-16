@@ -612,10 +612,18 @@ const CourseLibraryView = ({
 
     const gardenPvlItems = useMemo(() => {
         if (!aiCampSession) return [];
-        if (aiCampSession.role === 'mentor') return buildGardenPvlMentorNav();
-        if (aiCampSession.role === 'admin') return buildGardenPvlAdminNav();
+        const routeBasedRole = String(pvlGardenRoute || '').startsWith('/admin/')
+            ? 'admin'
+            : String(pvlGardenRoute || '').startsWith('/mentor/')
+                ? 'mentor'
+                : String(pvlGardenRoute || '').startsWith('/student/')
+                    ? 'student'
+                    : null;
+        const roleForNav = routeBasedRole || aiCampSession.role;
+        if (roleForNav === 'mentor') return buildGardenPvlMentorNav();
+        if (roleForNav === 'admin') return buildGardenPvlAdminNav();
         return buildGardenPvlStudentNav();
-    }, [aiCampSession]);
+    }, [aiCampSession, pvlGardenRoute]);
 
     const gardenPvlActiveKey = useMemo(() => {
         if (pvlGardenRoute == null) return null;
@@ -652,6 +660,27 @@ const CourseLibraryView = ({
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID || !aiCampSession) return;
         syncPvlSessionFromAlCamp(aiCampSession);
     }, [selectedCourse?.id, aiCampSession]);
+    useEffect(() => {
+        if (!aiCampSession || pvlResolvedRole !== 'admin') return;
+        const routeRole = String(pvlGardenRoute || '').startsWith('/admin/')
+            ? 'admin'
+            : String(pvlGardenRoute || '').startsWith('/mentor/')
+                ? 'mentor'
+                : String(pvlGardenRoute || '').startsWith('/student/')
+                    ? 'student'
+                    : null;
+        if (!routeRole || routeRole === aiCampSession.role) return;
+        setAiCampSession((prev) => {
+            if (!prev || prev.role === routeRole) return prev;
+            const next = { ...prev, role: routeRole };
+            try {
+                localStorage.setItem(AI_CAMP_SESSION_KEY, JSON.stringify(next));
+            } catch {
+                /* ignore */
+            }
+            return next;
+        });
+    }, [aiCampSession, pvlGardenRoute, pvlResolvedRole]);
 
     useEffect(() => {
         if (selectedCourse?.id !== PVL_ENTRY_COURSE_ID) {

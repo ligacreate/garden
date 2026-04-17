@@ -41,7 +41,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-21-bf-sobol',
-  'Яна Соболева — «Ближе к себе» (Zoom)',
+  'Яна Соболева — «Ближе к себе»',
   $d$https://t.me/soboleva_yana
 Если будут участницы из Петербурга, возможна отдельная очная встреча для них.$d$,
   'breakfast',
@@ -60,7 +60,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-23-bf-gromova',
-  'Юлия Громова — «Яркая, как свет» (Яндекс Телемост)',
+  'Юлия Громова — «Яркая, как свет»',
   'https://t.me/gromovayuliya',
   'breakfast',
   TIMESTAMPTZ '2026-04-23 11:00:00+03',
@@ -78,7 +78,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-23-bf-sobol-repeat',
-  'Яна Соболева — «Ближе к себе» (повтор, Zoom)',
+  'Яна Соболева — «Ближе к себе» (повтор)',
   'https://t.me/soboleva_yana',
   'breakfast',
   TIMESTAMPTZ '2026-04-23 11:00:00+03',
@@ -132,9 +132,9 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-19-bf-kulish',
-  'Инна Кулиш — первая встреча: «Мой год — мои правила» (19.04, 11:00)',
+  'Инна Кулиш — «Мой год — мои правила»',
   $d$https://vk.com/psiholog_kulish
-Первая встреча для курса. Очень жду обратную связь.$d$,
+Встреча для курса. Очень жду обратную связь.$d$,
   'breakfast',
   TIMESTAMPTZ '2026-04-19 11:00:00+03',
   TIMESTAMPTZ '2026-04-19 12:30:00+03',
@@ -151,9 +151,9 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-26-bf-kulish',
-  'Инна Кулиш — вторая встреча: «Мне поздно быть идеальной» (26.04, 11:00)',
+  'Инна Кулиш — «Мне поздно быть идеальной»',
   $d$https://vk.com/psiholog_kulish
-Вторая встреча для курса. Очень жду обратную связь.$d$,
+Встреча для курса. Очень жду обратную связь.$d$,
   'breakfast',
   TIMESTAMPTZ '2026-04-26 11:00:00+03',
   TIMESTAMPTZ '2026-04-26 12:30:00+03',
@@ -189,7 +189,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-15-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',
@@ -208,7 +208,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-22-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',
@@ -227,7 +227,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-04-29-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',
@@ -246,7 +246,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-05-06-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',
@@ -265,7 +265,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-05-13-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',
@@ -284,7 +284,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-05-20-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',
@@ -303,7 +303,7 @@ INSERT INTO public.pvl_calendar_events (
 SELECT
   gen_random_uuid(),
   'flow1-2026-05-27-bf-romanova',
-  'Мария Романова — «Грабли», Москва (офлайн)',
+  'Мария Романова — «Грабли», Москва',
   $d$https://t.me/mari_rroma
 Офлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.$d$,
   'breakfast',

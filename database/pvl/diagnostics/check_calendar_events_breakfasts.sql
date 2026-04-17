@@ -1,4 +1,5 @@
 -- Диагностика: есть ли завтраки и прочие события в public.pvl_calendar_events
+-- Актуальные title/description для потока 1: database/pvl/calendar_flow1_breakfasts_sync.sql
 -- Запустите в psql / pgAdmin / DBeaver против вашей БД (не коммитим секреты).
 
 -- 1) Сводка по типам
@@ -58,7 +59,7 @@ WITH expected(legacy_key) AS (
 )
 SELECT
   e.legacy_key,
-  CASE WHEN c.legacy_key IS NULL THEN 'НЕТ — выполните миграцию 014 или вставьте вручную' ELSE 'есть' END AS v_baze
+  CASE WHEN c.legacy_key IS NULL THEN 'НЕТ — миграция 014 и при необходимости calendar_flow1_breakfasts_sync.sql / 022' ELSE 'есть' END AS v_baze
 FROM expected e
 LEFT JOIN public.pvl_calendar_events c ON c.legacy_key = e.legacy_key
 ORDER BY e.legacy_key;

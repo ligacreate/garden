@@ -146,7 +146,7 @@ export const seed = {
         {
             id: 'pvl-cal-bf-sobol-2104',
             legacyKey: 'flow1-2026-04-21-bf-sobol',
-            title: 'Яна Соболева — «Ближе к себе» (Zoom)',
+            title: 'Яна Соболева — «Ближе к себе»',
             description: 'https://t.me/soboleva_yana\nЕсли будут участницы из Петербурга, возможна отдельная очная встреча для них.',
             eventType: 'breakfast',
             startAt: '2026-04-21T14:00:00',
@@ -167,7 +167,7 @@ export const seed = {
         {
             id: 'pvl-cal-bf-gromova-2304',
             legacyKey: 'flow1-2026-04-23-bf-gromova',
-            title: 'Юлия Громова — «Яркая, как свет» (Яндекс Телемост)',
+            title: 'Юлия Громова — «Яркая, как свет»',
             description: 'https://t.me/gromovayuliya',
             eventType: 'breakfast',
             startAt: '2026-04-23T11:00:00',
@@ -188,7 +188,7 @@ export const seed = {
         {
             id: 'pvl-cal-bf-sobol-2304-repeat',
             legacyKey: 'flow1-2026-04-23-bf-sobol-repeat',
-            title: 'Яна Соболева — «Ближе к себе» (повтор, Zoom)',
+            title: 'Яна Соболева — «Ближе к себе» (повтор)',
             description: 'https://t.me/soboleva_yana',
             eventType: 'breakfast',
             startAt: '2026-04-23T11:00:00',
@@ -251,8 +251,8 @@ export const seed = {
         {
             id: 'pvl-cal-bf-kulish-1904',
             legacyKey: 'flow1-2026-04-19-bf-kulish',
-            title: 'Инна Кулиш — первая встреча: «Мой год — мои правила» (19.04, 11:00)',
-            description: 'https://vk.com/psiholog_kulish\nПервая встреча для курса. Очень жду обратную связь.',
+            title: 'Инна Кулиш — «Мой год — мои правила»',
+            description: 'https://vk.com/psiholog_kulish\nВстреча для курса. Очень жду обратную связь.',
             eventType: 'breakfast',
             startAt: '2026-04-19T11:00:00',
             endAt: '2026-04-19T12:30:00',
@@ -272,8 +272,8 @@ export const seed = {
         {
             id: 'pvl-cal-bf-kulish-2604',
             legacyKey: 'flow1-2026-04-26-bf-kulish',
-            title: 'Инна Кулиш — вторая встреча: «Мне поздно быть идеальной» (26.04, 11:00)',
-            description: 'https://vk.com/psiholog_kulish\nВторая встреча для курса. Очень жду обратную связь.',
+            title: 'Инна Кулиш — «Мне поздно быть идеальной»',
+            description: 'https://vk.com/psiholog_kulish\nВстреча для курса. Очень жду обратную связь.',
             eventType: 'breakfast',
             startAt: '2026-04-26T11:00:00',
             endAt: '2026-04-26T12:30:00',
@@ -314,7 +314,7 @@ export const seed = {
         ...['2026-04-15', '2026-04-22', '2026-04-29', '2026-05-06', '2026-05-13', '2026-05-20', '2026-05-27'].map((dateStr) => ({
             id: `pvl-cal-bf-romanova-${dateStr}`,
             legacyKey: `flow1-${dateStr}-bf-romanova`,
-            title: 'Мария Романова — «Грабли», Москва (офлайн)',
+            title: 'Мария Романова — «Грабли», Москва',
             description: 'https://t.me/mari_rroma\nОфлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.',
             eventType: 'breakfast',
             startAt: `${dateStr}T10:00:00`,

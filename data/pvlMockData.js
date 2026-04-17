@@ -50,7 +50,9 @@ export const pvlMockData = {
 export const getStudentProfile = (studentId) => pvlMockData.studentProfiles.find((s) => s.id === studentId);
 export const getUser = (id) => pvlMockData.users.find((u) => u.id === id);
 export const getStudentTasks = (studentId) => pvlMockData.homeworkTasks.filter((t) => t.studentId === studentId);
-export const getStudentRisks = (studentId) => pvlMockData.deadlineRisks.filter((r) => r.studentId === studentId);
+export const getStudentRisks = (studentId) => pvlMockData.deadlineRisks.filter(
+    (r) => r && String(r.studentId) === String(studentId) && r.isResolved !== true,
+);
 export const getStudentMeetings = (studentId) => pvlMockData.mentorMeetings.filter((m) => m.studentId === studentId);
 export const getStudentCertification = (studentId) => pvlMockData.certificationProgress.find((c) => c.studentId === studentId);
 export const getTaskById = (taskId) => pvlMockData.homeworkTasks.find((t) => t.id === taskId);

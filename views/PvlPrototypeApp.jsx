@@ -2500,6 +2500,32 @@ function StudentGlossarySearch({ studentId = '', cmsItems = [], cmsPlacements = 
     const [letter, setLetter] = useState('all');
     const [expandedId, setExpandedId] = useState('');
     const alphabet = useMemo(() => 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЭЮЯ'.split(''), []);
+    const glossaryCohortId = useMemo(() => {
+        const p = pvlDomainApi.db.studentProfiles?.find((x) => String(x.userId) === String(studentId));
+        return p?.cohortId || 'cohort-2026-1';
+    }, [studentId]);
+    const glossaryPublishedItems = useMemo(
+        () => getPublishedContentBySection('glossary', 'student', cmsItems, cmsPlacements, glossaryCohortId),
+        [cmsItems, cmsPlacements, glossaryCohortId],
+    );
+    const glossaryProgressSyncedRef = useRef('');
+    useEffect(() => {
+        if (!studentId || !glossaryPublishedItems.length) return;
+        const sig = `${studentId}:${glossaryPublishedItems.map((i) => String(i.id)).sort().join(',')}`;
+        if (glossaryProgressSyncedRef.current === sig) return;
+        glossaryProgressSyncedRef.current = sig;
+        for (const item of glossaryPublishedItems) {
+            if (!item?.id) continue;
+            const pr = (pvlDomainApi.db.studentLibraryProgress || []).find(
+                (x) => x.studentId === studentId && String(x.libraryItemId) === String(item.id),
+            );
+            pvlDomainApi.studentApi.updateLibraryProgress(
+                studentId,
+                item.id,
+                Math.max(10, Number(pr?.progressPercent) || 10),
+            );
+        }
+    }, [studentId, glossaryPublishedItems]);
     const glossaryItems = useMemo(() => {
         const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const cleanTerm = (value = '') => String(value)
@@ -5112,6 +5138,7 @@ function AdminContentItemScreen({
             targetRole: editForm.targetRole,
             lessonVideoEmbed: editForm.lessonVideoEmbed,
             lessonVideoUrl: editForm.lessonVideoUrl,
+            lessonRutubeUrl: editForm.lessonRutubeUrl,
             practicumVideoUrl: editForm.practicumVideoUrl,
             practicumDocumentUrl: editForm.practicumDocumentUrl,
             externalLinks: [editForm.practicumVideoUrl, editForm.practicumDocumentUrl].filter(Boolean),
@@ -5150,6 +5177,63 @@ function AdminContentItemScreen({
                             </button>
                         ) : null}
                     </div>
+                </div>
+            </div>
+
+            <div
+                className={`rounded-2xl border border-emerald-100/90 bg-emerald-50/30 p-4 shadow-sm shadow-emerald-900/5 ${
+                    panelMode === 'edit' ? 'sticky top-2 z-30 md:top-4 border-emerald-200/90 bg-emerald-50/95 shadow-md backdrop-blur-sm' : ''
+                }`}
+            >
+                <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => navigate('/admin/content')} className={softBtn}>К списку материалов</button>
+                    {panelMode === 'view' ? (
+                        <>
+                            <button type="button" onClick={beginEdit} className={softBtn}>Редактировать</button>
+                            {item.status === 'published' ? (
+                                <>
+                                    <button type="button" onClick={handleUnpublish} className={softBtn}>Снять с публикации</button>
+                                    {unpublishedPlacements.length > 0 ? (
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                try {
+                                                    await pvlDomainApi.adminApi.publishContentItem(contentId);
+                                                    syncCmsStateFromDb(setCmsItems, setCmsPlacements);
+                                                    forceRefresh?.();
+                                                } catch (e) {
+                                                    try {
+                                                        window.alert(`Не удалось выложить привязки: ${e?.message || e}`);
+                                                    } catch {
+                                                        /* noop */
+                                                    }
+                                                }
+                                            }}
+                                            className={primaryBtn}
+                                        >
+                                            Выложить привязки в разделы
+                                        </button>
+                                    ) : null}
+                                </>
+                            ) : item.status === 'unpublished' ? (
+                                <>
+                                    <button type="button" onClick={commitPublish} className={primaryBtn}>Переопубликовать</button>
+                                    <button type="button" onClick={handleArchive} className={dangerBtn}>В архив</button>
+                                </>
+                            ) : (
+                                <button type="button" onClick={commitPublish} className={primaryBtn}>Опубликовать</button>
+                            )}
+                            {item.status === 'draft' && (
+                                <button type="button" onClick={handleArchive} className={dangerBtn}>В архив</button>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <button type="button" onClick={cancelEdit} className={softBtn}>Отменить</button>
+                            <button type="button" onClick={handleSaveDraft} className={softBtn}>Сохранить черновик</button>
+                            <button type="button" onClick={commitPublish} className={primaryBtn}>Сохранить и опубликовать</button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -5487,59 +5571,6 @@ function AdminContentItemScreen({
                     ) : null}
                 </div>
             )}
-
-            <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/30 p-4 shadow-sm shadow-emerald-900/5">
-                <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => navigate('/admin/content')} className={softBtn}>К списку материалов</button>
-                    {panelMode === 'view' ? (
-                        <>
-                            <button type="button" onClick={beginEdit} className={softBtn}>Редактировать</button>
-                            {item.status === 'published' ? (
-                                <>
-                                    <button type="button" onClick={handleUnpublish} className={softBtn}>Снять с публикации</button>
-                                    {unpublishedPlacements.length > 0 ? (
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                try {
-                                                    await pvlDomainApi.adminApi.publishContentItem(contentId);
-                                                    syncCmsStateFromDb(setCmsItems, setCmsPlacements);
-                                                    forceRefresh?.();
-                                                } catch (e) {
-                                                    try {
-                                                        window.alert(`Не удалось выложить привязки: ${e?.message || e}`);
-                                                    } catch {
-                                                        /* noop */
-                                                    }
-                                                }
-                                            }}
-                                            className={primaryBtn}
-                                        >
-                                            Выложить привязки в разделы
-                                        </button>
-                                    ) : null}
-                                </>
-                            ) : item.status === 'unpublished' ? (
-                                <>
-                                    <button type="button" onClick={commitPublish} className={primaryBtn}>Переопубликовать</button>
-                                    <button type="button" onClick={handleArchive} className={dangerBtn}>В архив</button>
-                                </>
-                            ) : (
-                                <button type="button" onClick={commitPublish} className={primaryBtn}>Опубликовать</button>
-                            )}
-                            {item.status === 'draft' && (
-                                <button type="button" onClick={handleArchive} className={dangerBtn}>В архив</button>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <button type="button" onClick={cancelEdit} className={softBtn}>Отменить</button>
-                            <button type="button" onClick={handleSaveDraft} className={softBtn}>Сохранить черновик</button>
-                            <button type="button" onClick={commitPublish} className={primaryBtn}>Сохранить и опубликовать</button>
-                        </>
-                    )}
-                </div>
-            </div>
 
             <div ref={previewCardRef} className="rounded-2xl border border-emerald-100/90 bg-white p-5 shadow-sm shadow-emerald-900/5 space-y-5">
                 <h3 className="font-display text-lg text-emerald-950">Предпросмотр карточки</h3>

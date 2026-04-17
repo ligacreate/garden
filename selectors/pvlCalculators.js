@@ -2,6 +2,23 @@ import { METHOD_QUESTIONS, SCORE_RULES } from '../data/pvl/constants';
 import { RISK_LEVEL, TASK_STATUS } from '../data/pvl/enums';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+/** Единый id для сравнения (UUID / u-st-*) — без ложных несовпадений и «лишних» рисков. */
+function normUserId(id) {
+    return String(id ?? '').trim();
+}
+
+/**
+ * Приводит riskLevel к high | medium | low (enum + RU + частичные строки).
+ */
+export function normalizePvlRiskLevel(raw) {
+    const s = String(raw ?? '').toLowerCase().trim();
+    if (!s) return RISK_LEVEL.LOW;
+    if (s === RISK_LEVEL.HIGH || s === 'high' || s.includes('высок')) return RISK_LEVEL.HIGH;
+    if (s === RISK_LEVEL.MEDIUM || s === 'medium' || s.includes('средн')) return RISK_LEVEL.MEDIUM;
+    if (s === RISK_LEVEL.LOW || s === 'low' || s.includes('низк')) return RISK_LEVEL.LOW;
+    return RISK_LEVEL.LOW;
+}
 const toDate = (x) => new Date(`${x}T00:00:00.000Z`);
 const diffDays = (a, b) => Math.floor((toDate(a) - toDate(b)) / MS_PER_DAY);
 
@@ -106,44 +123,66 @@ export function buildAntiDebtProtocol(db, studentId, today = '2026-06-03') {
 }
 
 export function buildStudentRisks(db, studentId) {
-    return db.deadlineRisks.filter((r) => r.studentId === studentId && !r.isResolved);
+    const sid = normUserId(studentId);
+    if (!sid) return [];
+    return (db.deadlineRisks || []).filter(
+        (r) => r && normUserId(r.studentId) === sid && r.isResolved !== true,
+    );
 }
 
 export function calculateRiskLevel(db, studentId) {
     const risks = buildStudentRisks(db, studentId);
-    if (risks.some((r) => r.riskLevel === RISK_LEVEL.HIGH)) return RISK_LEVEL.HIGH;
-    if (risks.some((r) => r.riskLevel === RISK_LEVEL.MEDIUM)) return RISK_LEVEL.MEDIUM;
+    if (risks.some((r) => normalizePvlRiskLevel(r.riskLevel) === RISK_LEVEL.HIGH)) return RISK_LEVEL.HIGH;
+    if (risks.some((r) => normalizePvlRiskLevel(r.riskLevel) === RISK_LEVEL.MEDIUM)) return RISK_LEVEL.MEDIUM;
     return RISK_LEVEL.LOW;
 }
 
 function resolveMentorActorId(db, mentorId) {
     const profiles = db.mentorProfiles || [];
     if (!mentorId) return profiles[0]?.userId || 'u-men-1';
-    if (profiles.some((m) => m.userId === mentorId)) return mentorId;
-    return profiles[0]?.userId || 'u-men-1';
+    const m = normUserId(mentorId);
+    if (profiles.some((p) => normUserId(p.userId) === m)) return m;
+    /** Не подменяем на «первого ментора» — иначе чужие менти и ложные риски/очередь. */
+    return m;
 }
 
 function resolveMentorMenteeIds(db, mentorId) {
     const resolved = resolveMentorActorId(db, mentorId);
-    const profile = (db.mentorProfiles || []).find((m) => m.userId === resolved);
+    const profile = (db.mentorProfiles || []).find((m) => normUserId(m.userId) === normUserId(resolved));
     const fromMentorProfile = Array.isArray(profile?.menteeIds) ? profile.menteeIds : [];
-    const fromStudentProfiles = db.studentProfiles.filter((p) => p.mentorId === resolved).map((p) => p.userId);
-    return Array.from(new Set([...fromMentorProfile, ...fromStudentProfiles].map((id) => String(id))));
+    const fromStudentProfiles = (db.studentProfiles || [])
+        .filter((p) => normUserId(p.mentorId) === normUserId(resolved))
+        .map((p) => p.userId);
+    return Array.from(new Set([...fromMentorProfile, ...fromStudentProfiles].map((id) => normUserId(id)).filter(Boolean)));
 }
 
 export function buildMentorRisks(db, mentorId) {
-    const menteeIds = resolveMentorMenteeIds(db, mentorId);
-    return db.deadlineRisks.filter((r) => menteeIds.includes(r.studentId) && !r.isResolved);
+    const menteeSet = new Set(resolveMentorMenteeIds(db, mentorId));
+    return (db.deadlineRisks || []).filter(
+        (r) => r && menteeSet.has(normUserId(r.studentId)) && r.isResolved !== true,
+    );
 }
 
 export function buildAdminRisks(db) {
-    return db.deadlineRisks.filter((r) => !r.isResolved);
+    const profileIds = new Set(
+        (db.studentProfiles || []).map((p) => normUserId(p.userId)).filter(Boolean),
+    );
+    return (db.deadlineRisks || []).filter((r) => {
+        if (!r || r.isResolved === true) return false;
+        const rid = normUserId(r.studentId);
+        if (!rid) return false;
+        if (profileIds.size === 0) return true;
+        return profileIds.has(rid);
+    });
 }
 
 export function getPendingReviewTasks(db, mentorId) {
-    const menteeIds = resolveMentorMenteeIds(db, mentorId);
+    const menteeSet = new Set(resolveMentorMenteeIds(db, mentorId));
     return db.studentTaskStates
-        .filter((s) => menteeIds.includes(s.studentId) && (s.status === TASK_STATUS.PENDING_REVIEW || s.status === TASK_STATUS.SUBMITTED))
+        .filter(
+            (s) => menteeSet.has(normUserId(s.studentId))
+                && (s.status === TASK_STATUS.PENDING_REVIEW || s.status === TASK_STATUS.SUBMITTED),
+        )
         .map((s) => ({ ...s, task: db.homeworkTasks.find((t) => t.id === s.taskId) }));
 }
 

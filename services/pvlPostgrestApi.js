@@ -494,6 +494,23 @@ export const pvlPostgrestApi = {
         return asArray(rows)[0] || null;
     },
 
+    // Student content/library progress
+    async listStudentContentProgress(studentId) {
+        return request('pvl_student_content_progress', {
+            params: { select: '*', student_id: `eq.${studentId}` },
+        });
+    },
+    async upsertStudentContentProgress(studentId, payload) {
+        const row = { student_id: studentId, ...payload };
+        const rows = await request('pvl_student_content_progress', {
+            method: 'POST',
+            params: { on_conflict: 'student_id,content_item_id' },
+            body: [row],
+            prefer: 'resolution=merge-duplicates,return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
     /** Чтение назначений менторов по списку id учениц (profiles.id). */
     async listGardenMentorLinksByStudentIds(studentIds) {
         const uuids = asArray(studentIds)

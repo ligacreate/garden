@@ -425,6 +425,34 @@ const makeAccessError = (message, code, extra = {}) => {
     return err;
 };
 
+/** Сжатие аватара в data URL (как в LocalStorageService) — для офлайна и DEV без S3. */
+const buildAvatarDataUrlFromFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 300;
+            const scale = MAX_WIDTH / img.width;
+            const width = (scale < 1) ? MAX_WIDTH : img.width;
+            const height = (scale < 1) ? img.height * scale : img.height;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error('Не удалось обработать изображение.'));
+                return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = () => reject(new Error('Image load error'));
+    };
+    reader.onerror = (err) => reject(err);
+});
+
 class LocalStorageService {
     constructor() {
         this.users = JSON.parse(localStorage.getItem('garden_users')) || INITIAL_USERS;
@@ -1051,33 +1079,7 @@ class LocalStorageService {
     }
 
     async uploadAvatar(file) {
-        // Shared compression helper reused across upload flows.
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 300; // Keep it small for LocalStorage (5MB limit)
-                    const scale = MAX_WIDTH / img.width;
-                    const width = (scale < 1) ? MAX_WIDTH : img.width;
-                    const height = (scale < 1) ? img.height * scale : img.height;
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-
-                    // Return Base64 string as the "URL"
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                    resolve(dataUrl);
-                };
-                img.onerror = (err) => reject(new Error("Image load error"));
-            };
-            reader.onerror = (err) => reject(err);
-        });
+        return buildAvatarDataUrlFromFile(file);
     }
 
     async compressMeetingImage(file) {
@@ -1252,8 +1254,19 @@ class RemoteApiService {
 
     async uploadAvatar(file) {
         if (!file) return null;
-        const fileToUpload = await this.compressMeetingImage(file);
-        return await this._uploadToS3(fileToUpload, 'avatars');
+        try {
+            const fileToUpload = await this.compressMeetingImage(file);
+            return await this._uploadToS3(fileToUpload, 'avatars');
+        } catch (err) {
+            if (IS_DEV_MODE) {
+                console.warn(
+                    '[DEV] uploadAvatar: S3/sign недоступен — используем локальный data URL. Для полного локального режима задайте VITE_USE_LOCAL_DB=true.',
+                    err
+                );
+                return buildAvatarDataUrlFromFile(file);
+            }
+            throw err;
+        }
     }
 
     async compressMeetingImage(file) {

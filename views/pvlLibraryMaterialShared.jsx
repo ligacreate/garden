@@ -36,7 +36,30 @@ function sanitizeLessonVideoEmbedHtml(snippet = '') {
     });
 }
 
-/** Публичная ссылка «открыть на сайте» (RuTube/YouTube и т.д.), не дублируем embed-only Kinescope. */
+/** Из ссылки или iframe: страница просмотра на kinescope.io (не /embed/). */
+function kinescopeWatchPageFromEmbedLike(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    let href = s;
+    if (s.includes('<iframe')) {
+        const m = s.match(/src=["'](https?:\/\/[^"']+)["']/i);
+        if (m) href = m[1];
+    }
+    try {
+        const u = new URL(href);
+        if (!/^https?:$/i.test(u.protocol)) return '';
+        const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        if (host !== 'kinescope.io') return '';
+        const path = u.pathname.replace(/\/$/, '');
+        const embedMatch = path.match(/^\/embed\/(.+)$/i);
+        if (embedMatch) return `https://kinescope.io/${embedMatch[1]}`;
+        return '';
+    } catch {
+        return '';
+    }
+}
+
+/** Публичная ссылка «открыть на сайте» (RuTube, страница Kinescope, YouTube и т.д.). */
 export function getLessonExternalWatchUrl(item) {
     const rutube = String(item?.lessonRutubeUrl || '').trim();
     if (rutube) {
@@ -48,16 +71,26 @@ export function getLessonExternalWatchUrl(item) {
         }
     }
     const vid = String(item?.lessonVideoUrl || '').trim();
-    if (!vid) return '';
-    try {
-        const u = new URL(vid);
-        if (!/^https?:$/i.test(u.protocol)) return '';
-        const host = u.hostname.replace(/^www\./i, '').toLowerCase();
-        if (host === 'kinescope.io' && u.pathname.includes('/embed/')) return '';
-        return vid;
-    } catch {
-        return '';
+    if (vid) {
+        try {
+            const u = new URL(vid);
+            if (!/^https?:$/i.test(u.protocol)) return '';
+            const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+            if (host === 'kinescope.io' && u.pathname.includes('/embed/')) {
+                const w = kinescopeWatchPageFromEmbedLike(vid);
+                return w || '';
+            }
+            return vid;
+        } catch {
+            return '';
+        }
     }
+    const embedHtml = String(item?.lessonVideoEmbed || '').trim();
+    if (embedHtml) {
+        const w = kinescopeWatchPageFromEmbedLike(embedHtml);
+        if (w) return w;
+    }
+    return '';
 }
 
 export function buildLessonVideoPlayerHtml(item) {

@@ -684,7 +684,7 @@ const CourseLibraryView = ({
     }, [selectedCourse?.id, user?.id, user?.role, user?.name, user?.email, gardenCampPaused]);
 
     return (
-        <div className="h-full flex flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
+        <div className="flex min-h-0 flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
             <div className="flex justify-between items-end mb-10">
                 <div>
                     <h1 className="text-4xl font-light text-slate-800 tracking-tight">{selectedCourse ? selectedCourse.title : 'Библиотека'}</h1>

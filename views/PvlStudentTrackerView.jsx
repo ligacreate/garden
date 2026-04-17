@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_TAG_LABEL, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
-import { buildLessonVideoPlayerHtml, isVideoLessonLayout, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
+import { buildLessonVideoPlayerHtml, PvlLibraryMaterialBody } from './pvlLibraryMaterialShared';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import { pvlDomainApi, syncPvlActorsFromGarden } from '../services/pvlMockApi';
 
@@ -115,7 +115,7 @@ export function computePvlTrackerDashboardStats(checked) {
     };
 }
 
-export function usePlatformStepChecklist(studentId) {
+export function usePlatformStepChecklist(studentId, refreshKey = 0) {
     const storageKey = platformStepsStorageKey(studentId);
     const [checked, setChecked] = useState(() => {
         try {
@@ -128,22 +128,24 @@ export function usePlatformStepChecklist(studentId) {
         try {
             const local = JSON.parse(localStorage.getItem(storageKey) || '{}');
             const fromDb = pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {};
-            const source = Object.keys(fromDb).length ? fromDb : local;
-            const migrated = { ...source };
+            // Union: галочка остаётся если она стоит в localStorage ИЛИ в БД.
+            // Это защищает от сброса локально выставленных галочек DB-данными из прошлой сессии.
+            const merged = {};
+            Object.keys(local).forEach((k) => { if (local[k]) merged[k] = true; });
+            Object.keys(fromDb).forEach((k) => { if (fromDb[k]) merged[k] = true; });
             PVL_PLATFORM_MODULES.forEach((mod) => {
                 mod.items.forEach((item, i) => {
                     const oldKey = `${mod.id}-${i}`;
                     const newKey = trackerStepKey(mod.id, item, i);
-                    if (source[oldKey] && !source[newKey]) migrated[newKey] = true;
+                    if (merged[oldKey] && !merged[newKey]) merged[newKey] = true;
                 });
             });
-            const merged = migrated;
             setChecked(merged);
             localStorage.setItem(storageKey, JSON.stringify(merged));
         } catch {
             setChecked({});
         }
-    }, [storageKey, studentId]);
+    }, [storageKey, studentId, refreshKey]);
 
     const toggleItem = useCallback((key) => {
         setChecked((prev) => {
@@ -280,13 +282,13 @@ export function PlatformCourseModulesGrid({
                                                     <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] ${
                                                         hwInfo.status === 'accepted'
                                                             ? 'border-emerald-500 bg-emerald-500 text-white'
-                                                            : hwInfo.status === 'pending_review'
+                                                            : hwInfo.status === 'pending_review' || hwInfo.status === 'submitted'
                                                                 ? 'border-amber-400 bg-amber-50 text-amber-600'
                                                                 : hwInfo.status === 'revision_requested'
                                                                     ? 'border-orange-400 bg-orange-50 text-orange-600'
                                                                     : 'border-[#C4956A]/40 bg-white text-[#C4956A]'
                                                     }`}>
-                                                        {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' ? '…' : hwInfo.status === 'revision_requested' ? '!' : ''}
+                                                        {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' || hwInfo.status === 'submitted' ? '…' : hwInfo.status === 'revision_requested' ? '!' : ''}
                                                     </span>
                                                 ) : (
                                                     <span
@@ -333,8 +335,9 @@ export function StudentCourseTracker({
 }) {
     const mentorHydrationAttemptedRef = useRef('');
     const [, forceMentorRefreshTick] = useState(0);
+    const [syncTick, setSyncTick] = useState(0);
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
-    const { checked, toggleItem } = usePlatformStepChecklist(studentId);
+    const { checked, toggleItem } = usePlatformStepChecklist(studentId, syncTick);
     const studentProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null;
     const mentorUserId = (() => {
         const direct = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;
@@ -369,7 +372,10 @@ export function StudentCourseTracker({
             } catch {
                 /* noop */
             }
-            if (mounted) forceMentorRefreshTick((x) => x + 1);
+            if (mounted) {
+                forceMentorRefreshTick((x) => x + 1);
+                setSyncTick((x) => x + 1);
+            }
         })();
         return () => {
             mounted = false;
@@ -522,13 +528,7 @@ export function StudentCourseTracker({
                                 </div>
                             ) : null}
                             {linkedItem ? (
-                                <div
-                                    className={
-                                        isVideoLessonLayout(linkedItem)
-                                            ? 'mt-4'
-                                            : 'mt-4 max-h-[min(70vh,640px)] overflow-y-auto pr-1'
-                                    }
-                                >
+                                <div className="mt-4 max-h-[min(85vh,56rem)] min-h-0 overflow-y-auto pr-1">
                                     <PvlLibraryMaterialBody
                                         key={linkedItem.id}
                                         variant="tracker"

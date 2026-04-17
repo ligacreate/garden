@@ -706,6 +706,22 @@ async function syncTrackerAndHomeworkFromDb() {
                 }));
             }
         }
+
+        // eslint-disable-next-line no-await-in-loop
+        const contentProgressRows = await pvlPostgrestApi.listStudentContentProgress(sqlStudentId).catch(() => []);
+        for (const row of contentProgressRows || []) {
+            const itemId = row.content_item_id;
+            if (!itemId) continue;
+            let pr = (db.studentLibraryProgress || []).find((x) => x.studentId === userId && x.libraryItemId === itemId);
+            if (!pr) {
+                pr = { id: uid('slp'), studentId: userId, libraryItemId: itemId, progressPercent: 0, completed: false, lastOpenedAt: null, completedAt: null };
+                db.studentLibraryProgress.push(pr);
+            }
+            pr.progressPercent = Number(row.progress_percent || 0);
+            pr.completed = !!row.completed;
+            pr.lastOpenedAt = row.last_opened_at || pr.lastOpenedAt;
+            pr.completedAt = row.completed_at || pr.completedAt;
+        }
     }
 }
 
@@ -1142,6 +1158,7 @@ function openTaskDisputeCore(actorUserId, studentId, taskId, openedByRole) {
         readBy: [],
     });
     addAuditEvent(actorUserId, openedByRole === 'mentor' ? ROLES.MENTOR : ROLES.STUDENT, 'dispute_opened', 'task', taskId, 'Task dispute opened', { studentId });
+    persistSubmissionToDb(studentId, taskId);
     return { ok: true };
 }
 
@@ -1778,6 +1795,27 @@ function persistSubmissionToDb(studentId, taskId) {
             error: String(lastErr?.message || lastErr || 'unknown'),
         });
     }, { table: 'pvl_student_homework_submissions', endpoint: '/pvl_student_homework_submissions', id: `${studentId}:${taskId}` });
+}
+
+function persistContentProgressToDb(studentId, itemId) {
+    if (!pvlPostgrestApi.isEnabled()) return;
+    if (!itemId) return;
+    const sqlStudentId = studentSqlIdByUserId(studentId);
+    if (!sqlStudentId) return;
+    fireAndForget(async () => {
+        await ensurePvlStudentInDb(studentId);
+        const pr = (db.studentLibraryProgress || []).find(
+            (x) => x.studentId === studentId && x.libraryItemId === itemId,
+        );
+        if (!pr) return;
+        await pvlPostgrestApi.upsertStudentContentProgress(sqlStudentId, {
+            content_item_id: itemId,
+            progress_percent: pr.progressPercent || 0,
+            completed: !!pr.completed,
+            last_opened_at: pr.lastOpenedAt || null,
+            completed_at: pr.completedAt || null,
+        });
+    }, { table: 'pvl_student_content_progress', endpoint: '/pvl_student_content_progress', id: `${studentId}:${itemId}` });
 }
 
 function placementTargetRoleMatchesStudentOrMentor(p, role) {
@@ -2434,6 +2472,7 @@ export const studentApi = {
         db.threadMessages.push(msg);
         pushEvent('student_replied', { studentId, taskId, messageId: msg.id });
         addAuditEvent(studentId, ROLES.STUDENT, 'student_reply', 'thread_message', msg.id, 'Student replied in thread', { taskId });
+        persistSubmissionToDb(studentId, taskId);
         return msg;
     },
     openStudentTaskDispute(studentId, taskId) {
@@ -2582,6 +2621,7 @@ export const studentApi = {
             pr.completedAt = nowIso();
         }
         addAuditEvent(studentId, ROLES.STUDENT, 'library_complete', 'library_item', itemId, 'Library item marked completed', {});
+        persistContentProgressToDb(studentId, itemId);
         return pr;
     },
     updateLibraryProgress(studentId, itemId, progress) {
@@ -2594,6 +2634,7 @@ export const studentApi = {
         pr.completed = pr.progressPercent >= 100;
         pr.lastOpenedAt = nowIso();
         if (pr.completed) pr.completedAt = nowIso();
+        persistContentProgressToDb(studentId, itemId);
         return pr;
     },
     acknowledgeStudentTaskReview(studentId, taskId) {
@@ -2822,6 +2863,7 @@ export const mentorApi = {
         pushEvent('mentor_commented', { mentorId, studentId, taskId, messageId: msg.id });
         addAuditEvent(mentorId, ROLES.MENTOR, 'mentor_comment', 'thread_message', msg.id, 'Mentor commented in thread', { taskId });
         addNotification(studentId, ROLES.STUDENT, 'mentor_commented', 'Новый комментарий ментора', { taskId });
+        persistSubmissionToDb(studentId, taskId);
         return msg;
     },
     assignMentorBonus(mentorId, studentId, taskId, points, reason = '') {
@@ -2838,6 +2880,7 @@ export const mentorApi = {
         db.threadMessages.push({ id: uid('tm'), studentId, taskId, authorUserId: mentorId, authorRole: 'system', messageType: 'bonus', text: `Назначен бонус +${awarded}`, attachments: [], linkedVersionId: null, linkedStatusHistoryId: null, isSystem: true, createdAt: nowIso(), readBy: [] });
         addAuditEvent(mentorId, ROLES.MENTOR, 'mentor_bonus', 'task', taskId, `Mentor assigned bonus ${awarded}`, { requested: points, awarded, remainingAfter: Math.max(0, remaining - awarded), reason });
         const pts = calculatePointsSummary(studentId);
+        persistSubmissionToDb(studentId, taskId);
         return { state, awarded, remaining: Math.max(0, SCORING_RULES.MENTOR_BONUS_POOL_MAX - pts.mentorBonusTotal) };
     },
     getRemainingMentorBonusPool(studentId) {
@@ -3450,7 +3493,16 @@ export const sharedApi = {
             updated_at: nowIso(),
         };
         if (!row.question) return null;
-        fireAndForget(() => pvlPostgrestApi.createStudentQuestion(row), { table: 'pvl_student_questions', endpoint: '/public.pvl_student_questions', id: row.id });
+        const sqlStudentId = studentSqlIdByUserId(studentId);
+        if (sqlStudentId) {
+            fireAndForget(async () => {
+                await ensurePvlStudentInDb(studentId);
+                return pvlPostgrestApi.createStudentQuestion({
+                    ...row,
+                    student_id: sqlStudentId,
+                });
+            }, { table: 'pvl_student_questions', endpoint: '/public.pvl_student_questions', id: row.id });
+        }
         addAuditEvent(studentId, ROLES.STUDENT, 'create_student_question', 'student_question', row.id, 'Student created question', {});
         return row;
     },

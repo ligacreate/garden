@@ -152,9 +152,21 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
     });
 
     const fileInputRef = useRef(null);
+    /** Новое фото выбрано вне режима редактирования — на сервер уходит только после «Сохранить фото». */
+    const [avatarPickPending, setAvatarPickPending] = useState(null);
+    const [savingPendingAvatar, setSavingPendingAvatar] = useState(false);
+
+    useEffect(() => {
+        return () => {
+            if (avatarPickPending?.previewUrl) {
+                URL.revokeObjectURL(avatarPickPending.previewUrl);
+            }
+        };
+    }, [avatarPickPending]);
 
     useEffect(() => {
         if (isEditing) return;
+        if (avatarPickPending) return;
         setForm((prev) => ({
             ...prev,
             name: user.name || '',
@@ -171,7 +183,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
             avatar_focus_x: Number.isFinite(Number(user.avatar_focus_x)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_x))) : prev.avatar_focus_x,
             avatar_focus_y: Number.isFinite(Number(user.avatar_focus_y)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_y))) : prev.avatar_focus_y,
         }));
-    }, [user, isEditing]);
+    }, [user, isEditing, avatarPickPending]);
 
     // Calculate Progress
     const calculateProgress = () => {
@@ -192,6 +204,13 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
     // Druid Horoscope Logic
     const druidTree = user.dob ? getDruidTree(user.dob) : null;
 
+    const avatarForDisplay = avatarPickPending
+        ? { ...user, avatar: avatarPickPending.previewUrl, avatar_url: undefined }
+        : user;
+    const showAvatarFocusSliders =
+        (isEditing && (user.avatar || user.avatar_url)) || Boolean(avatarPickPending);
+    const useFormAvatarFocus = isEditing || Boolean(avatarPickPending);
+
     const handleSave = () => {
         // Recalculate tree based on current form DOB
         const treeData = form.dob ? getDruidTree(form.dob) : null;
@@ -208,22 +227,62 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
         setIsEditing(false);
     };
 
+    const handlePendingAvatarSave = async () => {
+        if (!avatarPickPending?.file) return;
+        try {
+            setSavingPendingAvatar(true);
+            const { api } = await import('../services/dataService');
+            const url = await api.uploadAvatar(avatarPickPending.file);
+            onUpdateProfile({
+                ...user,
+                avatar: url,
+                avatar_focus_x: form.avatar_focus_x,
+                avatar_focus_y: form.avatar_focus_y
+            });
+            setAvatarPickPending(null);
+        } catch (e) {
+            console.error(e);
+            alert(`Ошибка загрузки: ${e.message || e.error_description || JSON.stringify(e)}`);
+            onNotify('Ошибка загрузки фото');
+        } finally {
+            setSavingPendingAvatar(false);
+        }
+    };
+
+    const handlePendingAvatarCancel = () => {
+        setAvatarPickPending(null);
+        setForm((prev) => ({
+            ...prev,
+            avatar_focus_x: Number.isFinite(Number(user.avatar_focus_x)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_x))) : 50,
+            avatar_focus_y: Number.isFinite(Number(user.avatar_focus_y)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_y))) : 50
+        }));
+    };
+
     const handlePhotoUpload = async (e) => {
         const file = e.target.files[0];
-        if (file) {
+        const input = e.target;
+        if (input) input.value = '';
+        if (!file) return;
+
+        if (isEditing) {
             try {
-                onNotify("Загружаю фото...");
                 const { api } = await import('../services/dataService');
                 const url = await api.uploadAvatar(file);
                 onUpdateProfile({ ...user, avatar: url, avatar_focus_x: 50, avatar_focus_y: 50 });
                 setForm((f) => ({ ...f, avatar_focus_x: 50, avatar_focus_y: 50 }));
-                onNotify("Фото профиля обновлено");
-            } catch (e) {
-                console.error(e);
-                alert(`Ошибка загрузки: ${e.message || e.error_description || JSON.stringify(e)}`);
-                onNotify("Ошибка загрузки фото");
+            } catch (err) {
+                console.error(err);
+                alert(`Ошибка загрузки: ${err.message || err.error_description || JSON.stringify(err)}`);
+                onNotify('Ошибка загрузки фото');
             }
+            return;
         }
+
+        setAvatarPickPending((prev) => {
+            if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+            return { file, previewUrl: URL.createObjectURL(file) };
+        });
+        setForm((f) => ({ ...f, avatar_focus_x: 50, avatar_focus_y: 50 }));
     };
 
     const handlePasswordUpdate = async () => {
@@ -293,20 +352,19 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                             <div className="absolute bottom-0 left-0 right-0 p-8 text-center flex flex-col items-center">
                                 <div className="relative group/avatar cursor-pointer mb-4" onClick={() => fileInputRef.current.click()}>
                                     <UserAvatar
-                                        user={user}
+                                        user={avatarForDisplay}
                                         size="xl"
                                         className="w-32 h-32 rounded-full border-4 border-white/20 shadow-2xl object-cover"
-                                        focusX={isEditing ? form.avatar_focus_x : undefined}
-                                        focusY={isEditing ? form.avatar_focus_y : undefined}
+                                        focusX={useFormAvatarFocus ? form.avatar_focus_x : undefined}
+                                        focusY={useFormAvatarFocus ? form.avatar_focus_y : undefined}
                                     />
                                     <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity backdrop-blur-[2px]">
                                         <Camera size={24} className="text-white" />
                                     </div>
                                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                                 </div>
-                                {isEditing && (user.avatar || user.avatar_url) ? (
+                                {showAvatarFocusSliders ? (
                                     <div className="w-full max-w-sm mx-auto mb-4 rounded-2xl border border-white/20 bg-black/30 backdrop-blur-sm p-4 text-left space-y-3">
-                                        <div className="text-[10px] font-bold uppercase tracking-widest text-white/70">Кадр фото в круге</div>
                                         <div>
                                             <label className="block text-[11px] font-semibold text-white/90 mb-1">Положение по горизонтали</label>
                                             <input
@@ -329,6 +387,34 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                                 className="w-full accent-emerald-400"
                                             />
                                         </div>
+                                        {avatarPickPending ? (
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                <Button
+                                                    type="button"
+                                                    variant="primary"
+                                                    className="!rounded-xl !text-sm"
+                                                    disabled={savingPendingAvatar}
+                                                    onClick={(ev) => {
+                                                        ev.stopPropagation();
+                                                        handlePendingAvatarSave();
+                                                    }}
+                                                >
+                                                    {savingPendingAvatar ? 'Сохранение…' : 'Сохранить фото'}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="secondary"
+                                                    className="!rounded-xl !text-sm bg-white/15 border-white/30 text-white hover:bg-white/25"
+                                                    disabled={savingPendingAvatar}
+                                                    onClick={(ev) => {
+                                                        ev.stopPropagation();
+                                                        handlePendingAvatarCancel();
+                                                    }}
+                                                >
+                                                    Отмена
+                                                </Button>
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
                                 <h2 className="text-2xl font-bold text-white mb-1 shadow-black/50 drop-shadow-md">{user.name}</h2>
@@ -361,7 +447,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                 <span className="flex items-center gap-1"><Briefcase size={14} /> {user.role === 'admin' ? 'Администратор' : 'Участник Лиги'}</span>
                             </div>
                         </div>
-                        {!isEditing && (
+                        {!isEditing && !avatarPickPending && (
                             <Button
                                 onClick={() => setIsEditing(true)}
                                 variant="secondary"

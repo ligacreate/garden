@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
+import { RISK_LEVEL } from '../data/pvl/enums';
 import { pvlDomainApi } from '../services/pvlMockApi';
+import { normalizePvlRiskLevel } from '../selectors/pvlCalculators';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
 export const menteeProfile = {
@@ -98,13 +100,16 @@ export function filterMessagesByUnread(messages, unreadOnly) {
 }
 
 export function calculateMenteeRiskLevel(risks) {
-    if (risks.some((r) => r.riskLevel === 'высокий')) return 'высокий';
-    if (risks.some((r) => r.riskLevel === 'средний')) return 'средний';
+    const list = risks || [];
+    if (list.some((r) => normalizePvlRiskLevel(r.riskLevel) === RISK_LEVEL.HIGH)) return 'высокий';
+    if (list.some((r) => normalizePvlRiskLevel(r.riskLevel) === RISK_LEVEL.MEDIUM)) return 'средний';
     return 'низкий';
 }
 
 export function getNextRequiredAction(tasks, risks) {
-    const highRisk = risks.find((r) => r.riskLevel === 'высокий' && !r.isResolved);
+    const highRisk = (risks || []).find(
+        (r) => normalizePvlRiskLevel(r.riskLevel) === RISK_LEVEL.HIGH && r.isResolved !== true,
+    );
     if (highRisk) return `Снять высокий риск: ${highRisk.title}`;
     const pending = tasks.find((t) => t.status === 'к проверке');
     if (pending) return `Проверить задание: ${pending.title}`;
@@ -576,9 +581,9 @@ export function MentorQuickActions({ tasks, risks = deadlineRisks, onOpenTask })
 }
 
 function buildRiskHint(risks) {
-    const active = (risks || []).filter((r) => !r.isResolved);
+    const active = (risks || []).filter((r) => r && r.isResolved !== true);
     if (!active.length) return null;
-    const high = active.some((r) => String(r.riskLevel).toLowerCase().includes('высок') || String(r.riskLevel).toLowerCase() === 'high');
+    const high = active.some((r) => normalizePvlRiskLevel(r.riskLevel) === RISK_LEVEL.HIGH);
     return `Риски (${active.length}${high ? ', есть высокий' : ''}) — детали в заданиях и дедлайнах выше.`;
 }
 

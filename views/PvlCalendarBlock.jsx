@@ -421,16 +421,11 @@ export function PvlDashboardCalendarBlock({
         ? `События · ${new Date(`${selectedDayKey}T12:00:00`).toLocaleString('ru-RU', { day: 'numeric', month: 'long' })}`
         : 'Предстоящие события в этом месяце';
 
-    /** Записи проведённых практикумов (past practicum_done) — отдельный блок архива на странице Практикумы. */
+    /** Записи проведённых практикумов (practicum_done) — показываем всегда, т.к. тип уже означает «проведено». */
     const practicumDoneArchiveEntries = useMemo(() => {
         if (!showPracticumArchive) return [];
-        const now = Date.now();
         return events
-            .filter((ev) => {
-                if (String(ev.eventType || '').toLowerCase() !== 'practicum_done') return false;
-                const t = new Date(ev.startAt).getTime();
-                return !Number.isNaN(t) && t < now;
-            })
+            .filter((ev) => String(ev.eventType || '').toLowerCase() === 'practicum_done')
             .sort((a, b) => String(b.startAt || '').localeCompare(String(a.startAt || '')));
     }, [events, showPracticumArchive]);
 

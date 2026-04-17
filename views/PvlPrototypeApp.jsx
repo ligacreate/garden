@@ -3857,7 +3857,9 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         const mp = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId);
         const direct = (mp?.menteeIds || [])[0];
         if (direct) return direct;
-        return getFirstCohortStudentId();
+        const fromStudentProfiles = pvlDomainApi.db.studentProfiles.find((p) => p.mentorId === mentorId);
+        if (fromStudentProfiles) return fromStudentProfiles.userId;
+        return null;
     }, [mentorId, refreshKey]);
     const mentorMirrorUnavailable = (
         <div className="rounded-3xl bg-white p-8 text-center text-slate-600 text-sm shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">

@@ -536,10 +536,40 @@ function studentSqlIdByUserId(userId) {
     return STUDENT_SQL_ID_BY_USER_ID[userId] || (isUuidString(userId) ? String(userId) : null);
 }
 
+/** Статусы в pvl_student_homework_submissions (Postgres) → TASK_STATUS в рантайме (канбан, «Результаты»). */
+function homeworkDbStatusToTaskStatus(dbStatus) {
+    const raw = String(dbStatus || '').toLowerCase().trim();
+    const map = {
+        draft: TASK_STATUS.DRAFT,
+        submitted: TASK_STATUS.SUBMITTED,
+        in_review: TASK_STATUS.PENDING_REVIEW,
+        revision: TASK_STATUS.REVISION_REQUESTED,
+        accepted: TASK_STATUS.ACCEPTED,
+        rejected: TASK_STATUS.REJECTED,
+        overdue: TASK_STATUS.OVERDUE,
+    };
+    if (map[raw]) return map[raw];
+    if (Object.values(TASK_STATUS).includes(raw)) return raw;
+    return TASK_STATUS.PENDING_REVIEW;
+}
+
 /**
- * Гарантирует наличие строки студента в pvl_students перед сохранением submission/прогресса.
- * Без этого INSERT в pvl_student_homework_submissions и pvl_student_course_progress падает
- * с FK-ошибкой: student_id references pvl_students(id), а реальные Garden-UUID туда не вставляются.
+ * Ранняя строка в pvl_students (FK) — для абитуриентов трека: профиль Сада «заявитель», applicant, и т.д.
+ * Ученица/стажёр — не здесь (ensure при сдаче ДЗ / записи прогресса).
+ * Смотрим studentProfiles.gardenRole и fallback на db.users.gardenRole после syncPvlActorsFromGarden.
+ */
+function shouldEarlyEnsurePvlStudentRow(studentProfile) {
+    if (!studentProfile?.userId) return false;
+    const u = (db.users || []).find((x) => String(x.id) === String(studentProfile.userId));
+    const effective = studentProfile.gardenRole ?? u?.gardenRole ?? null;
+    if (effective === 'student' || effective === 'intern') return false;
+    return effective === 'applicant';
+}
+
+/**
+ * Гарантирует строку в pvl_students для Garden UUID (= тот же id, что profiles.id).
+ * Ранняя синхронизация из Сада — только для абитуриентов; иначе — при записи submission/прогресса/вопроса.
+ * Без этого INSERT в pvl_student_* с FK на pvl_students падает, если строку не создали вручную.
  */
 async function ensurePvlStudentInDb(userId) {
     if (!pvlPostgrestApi.isEnabled()) return;
@@ -637,6 +667,10 @@ async function syncTrackerAndHomeworkFromDb() {
     await ensureDbTrackerHomeworkStructure();
     for (const student of db.studentProfiles || []) {
         const userId = student.userId;
+        if (shouldEarlyEnsurePvlStudentRow(student)) {
+            // eslint-disable-next-line no-await-in-loop
+            await ensurePvlStudentInDb(userId);
+        }
         const sqlStudentId = studentSqlIdByUserId(userId);
         if (!sqlStudentId) continue;
         // eslint-disable-next-line no-await-in-loop
@@ -658,14 +692,40 @@ async function syncTrackerAndHomeworkFromDb() {
         });
         db.studentTrackerChecks[userId] = checked;
 
+        /** Чтобы при сабмишне из БД уже были task/state (частично совпадает с уроками CMS). */
+        syncPublishedHomeworkTasksForStudent(userId);
+
         // eslint-disable-next-line no-await-in-loop
         const subs = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
         for (const row of subs || []) {
             const taskId = mockTaskIdBySqlHomeworkId.get(String(row.homework_item_id));
             if (!taskId) continue;
-            const state = db.studentTaskStates.find((s) => s.studentId === userId && s.taskId === taskId);
-            if (state) {
-                state.status = String(row.status || state.status);
+            const mapped = homeworkDbStatusToTaskStatus(row.status);
+            let state = db.studentTaskStates.find((s) => s.studentId === userId && s.taskId === taskId);
+            if (!state) {
+                state = {
+                    id: uid('sts'),
+                    studentId: userId,
+                    taskId,
+                    status: mapped,
+                    totalTaskPoints: 0,
+                    autoPoints: 0,
+                    mentorBonusPoints: 0,
+                    revisionCycles: Number(row.revision_cycles || 0),
+                    submittedAt: row.submitted_at ? String(row.submitted_at).slice(0, 10) : null,
+                    acceptedAt: row.accepted_at ? String(row.accepted_at).slice(0, 10) : null,
+                    lastStatusChangedAt: null,
+                    isOverdue: false,
+                    createdAt: nowIso(),
+                    updatedAt: nowIso(),
+                };
+                if (row.score != null) {
+                    state.autoPoints = Number(row.score);
+                    state.totalTaskPoints = (state.autoPoints || 0) + (state.mentorBonusPoints || 0);
+                }
+                db.studentTaskStates.push(state);
+            } else {
+                state.status = mapped;
                 state.submittedAt = row.submitted_at ? String(row.submitted_at).slice(0, 10) : state.submittedAt;
                 state.acceptedAt = row.accepted_at ? String(row.accepted_at).slice(0, 10) : state.acceptedAt;
                 state.revisionCycles = Number(row.revision_cycles || 0);
@@ -1008,6 +1068,13 @@ export async function syncPvlActorsFromGarden() {
                 sp.updatedAt = nowIso();
             }
         });
+
+        /** Только абитуриенты: ранняя строка в pvl_students (FK). Ученицы/стажёры — через ensure при сдаче ДЗ и т.п. */
+        for (const { profile: u, admission } of pvlTrackMembers) {
+            if (!u?.id || admission?.gardenRole !== 'applicant') continue;
+            // eslint-disable-next-line no-await-in-loop
+            await ensurePvlStudentInDb(String(u.id));
+        }
 
         /** Есть синхронизированные из Сада участники трека — админка и ментор не показывают демо u-st-* */
         db._pvlGardenApplicantsSynced = pvlTrackMembers.length > 0;

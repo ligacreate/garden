@@ -51,10 +51,10 @@ export function classifyGardenProfileForPvlStudent(profile) {
     const r = norm(profile.role);
     const roleLabel = String(profile.roleLabel || profile.role_title || '').trim().toLowerCase();
 
-    if (!r || r === GARDEN_ROLES.APPLICANT || r === 'абитуриент' || r === 'абитуриентка') {
+    if (!r || r === GARDEN_ROLES.APPLICANT || r === 'абитуриент' || r === 'абитуриентка' || r === 'заявитель') {
         return { gardenRole: 'applicant', sourceRole: String(profile.role ?? '') };
     }
-    if (roleLabel.includes('битуриент')) {
+    if (roleLabel.includes('битуриент') || roleLabel.includes('заявит')) {
         return { gardenRole: 'applicant', sourceRole: String(profile.role ?? '') };
     }
     if (r === GARDEN_ROLES.INTERN || r === 'intern' || r === 'стажер' || r === 'стажёр') {

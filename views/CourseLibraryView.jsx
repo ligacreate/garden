@@ -530,8 +530,8 @@ const CourseLibraryView = ({
         const prev = loadAppSession();
         const rolePrefix = `/${pvlRole}/`;
         const prevRouteMatchesRole = String(prev?.route || '').startsWith(rolePrefix);
-        if (prev?.role === pvlRole && prevRouteMatchesRole) return;
         const linked = session.linkedUserId != null ? String(session.linkedUserId) : null;
+        if (prev?.role === pvlRole && prevRouteMatchesRole && (!linked || prev?.actingUserId === linked)) return;
         const actingUserId = linked || (pvlRole === 'mentor' ? 'u-men-1' : pvlRole === 'admin' ? 'u-adm-1' : 'u-st-1');
         const studentId = pvlRole === 'student' ? (linked || 'u-st-1') : (prev?.studentId || 'u-st-1');
         saveAppSession({

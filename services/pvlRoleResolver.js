@@ -7,7 +7,7 @@ function normalizeGardenRoleValue(value) {
     if (!raw) return '';
     if (raw === ROLES.ADMIN || raw === 'admin' || raw === 'админ' || raw === 'администратор') return ROLES.ADMIN;
     if (raw === ROLES.MENTOR || raw === 'mentor' || raw === 'ментор') return ROLES.MENTOR;
-    if (raw === ROLES.APPLICANT || raw === 'applicant' || raw === 'абитуриент') return ROLES.APPLICANT;
+    if (raw === ROLES.APPLICANT || raw === 'applicant' || raw === 'абитуриент' || raw === 'заявитель') return ROLES.APPLICANT;
     if (raw === ROLES.INTERN || raw === 'intern' || raw === 'стажер' || raw === 'стажёр') return ROLES.INTERN;
     return raw;
 }

@@ -1106,6 +1106,23 @@ class LocalStorageService {
 }
 
 class RemoteApiService {
+    _cache = new Map();
+
+    _cachedFetch(key, fetcher, ttl = 30000) {
+        const cached = this._cache.get(key);
+        if (cached && Date.now() - cached.ts < ttl) return cached.promise;
+        const promise = fetcher().catch((e) => {
+            this._cache.delete(key);
+            throw e;
+        });
+        this._cache.set(key, { promise, ts: Date.now() });
+        return promise;
+    }
+
+    _invalidateCache(key) {
+        this._cache.delete(key);
+    }
+
     // --- Security Helpers (Client-side) ---
     checkActionTimer() {
         const now = Date.now();
@@ -1415,8 +1432,10 @@ class RemoteApiService {
 
     /** Все профили: нужен SELECT на `profiles` согласно RLS (см. database/pvl/notes/garden-profiles-rls-for-pvl-sync.md). Источник роли абитуриента: колонка `role`. */
     async getUsers() {
-        const { data } = await postgrestFetch('profiles', { select: '*' });
-        return (data || []).map((profile) => this._normalizeProfile(profile));
+        return this._cachedFetch('users', async () => {
+            const { data } = await postgrestFetch('profiles', { select: '*' });
+            return (data || []).map((profile) => this._normalizeProfile(profile));
+        });
     }
 
     async updateUser(updatedUser) {
@@ -1498,6 +1517,7 @@ class RemoteApiService {
         }
 
         // Return the full object so UI updates optimistically
+        this._invalidateCache('users');
         return updatedUser;
     }
 
@@ -1506,6 +1526,7 @@ class RemoteApiService {
             method: 'DELETE',
             returnRepresentation: true
         });
+        this._invalidateCache('users');
         return true;
     }
 
@@ -1522,8 +1543,10 @@ class RemoteApiService {
 
     // Knowledge Base
     async getKnowledgeBase() {
-        const { data } = await postgrestFetch('knowledge_base', { select: '*', order: 'created_at.desc' });
-        return data || [];
+        return this._cachedFetch('knowledgeBase', async () => {
+            const { data } = await postgrestFetch('knowledge_base', { select: '*', order: 'created_at.desc' });
+            return data || [];
+        });
     }
 
     async addKnowledge(item) {
@@ -1535,6 +1558,7 @@ class RemoteApiService {
         );
         const { id, ...rest } = sanitized;
         await postgrestFetch('knowledge_base', {}, { method: 'POST', body: [rest], returnRepresentation: true });
+        this._invalidateCache('knowledgeBase');
         return true;
     }
 
@@ -1553,6 +1577,7 @@ class RemoteApiService {
             body: rest,
             returnRepresentation: true
         });
+        this._invalidateCache('knowledgeBase');
         return true;
     }
 
@@ -1573,6 +1598,7 @@ class RemoteApiService {
             });
             updated += 1;
         }
+        this._invalidateCache('knowledgeBase');
         return { updated };
     }
 
@@ -1583,6 +1609,7 @@ class RemoteApiService {
 
     async deleteKnowledge(id) {
         await postgrestFetch('knowledge_base', { id: `eq.${id}` }, { method: 'DELETE', returnRepresentation: true });
+        this._invalidateCache('knowledgeBase');
         return true;
     }
 
@@ -1988,8 +2015,10 @@ class RemoteApiService {
 
     // News
     async getNews() {
-        const { data } = await postgrestFetch('news', { select: '*', order: 'created_at.desc' });
-        return data || [];
+        return this._cachedFetch('news', async () => {
+            const { data } = await postgrestFetch('news', { select: '*', order: 'created_at.desc' });
+            return data || [];
+        });
     }
 
     async addNews(item) {
@@ -1997,6 +2026,7 @@ class RemoteApiService {
         const sanitized = this._sanitizeFields(item, { plain: ['title'], rich: ['body'] });
         const { id, ...rest } = sanitized;
         const { data } = await postgrestFetch('news', {}, { method: 'POST', body: [rest], returnRepresentation: true });
+        this._invalidateCache('news');
         return data?.[0] || null;
     }
 
@@ -2004,11 +2034,13 @@ class RemoteApiService {
         const { id, ...rest } = item;
         const sanitized = this._sanitizeFields(rest, { plain: ['title'], rich: ['body'] });
         await postgrestFetch('news', { id: `eq.${id}` }, { method: 'PATCH', body: sanitized, returnRepresentation: true });
+        this._invalidateCache('news');
         return true;
     }
 
     async deleteNews(newsId) {
         await postgrestFetch('news', { id: `eq.${newsId}` }, { method: 'DELETE', returnRepresentation: true });
+        this._invalidateCache('news');
         return true;
     }
 
@@ -2349,21 +2381,19 @@ class RemoteApiService {
         const currentUser = await this.getCurrentUser().catch(() => null);
         const resolvedUserId = await this._resolveGoalsUserId(userId, currentUser);
         const candidateIds = Array.from(new Set([userId, resolvedUserId].filter(Boolean)));
-        const rows = [];
-
-        for (const candidateId of candidateIds) {
-            try {
-                const { data } = await postgrestFetch('goals', {
+        const results = await Promise.all(
+            candidateIds.map((candidateId) =>
+                postgrestFetch('goals', {
                     select: '*',
                     user_id: `eq.${candidateId}`,
                     order: 'created_at.desc'
-                });
-                if (Array.isArray(data)) rows.push(...data);
-            } catch (e) {
-                // Some backends can reject mismatched id types in filters; try next candidate.
-                console.warn('getGoals candidate lookup failed:', candidateId, e);
-            }
-        }
+                }).catch((e) => {
+                    console.warn('getGoals candidate lookup failed:', candidateId, e);
+                    return { data: [] };
+                })
+            )
+        );
+        const rows = results.flatMap(({ data }) => (Array.isArray(data) ? data : []));
 
         const byId = new Map();
         rows.forEach((row) => {

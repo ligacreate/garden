@@ -103,6 +103,20 @@ function groupByDay(list) {
     return m;
 }
 
+/** Первая http(s)-ссылка из текста описания (Telegram и т.д.) — для кнопки «Контакт». */
+function extractFirstHttpUrlFromText(text) {
+    const s = String(text || '').trim();
+    if (!s) return '';
+    const m = s.match(/https?:\/\/[^\s<>"']+/i);
+    if (!m) return '';
+    try {
+        const u = new URL(m[0]);
+        return /^https?:$/i.test(u.protocol) ? u.href : '';
+    } catch {
+        return '';
+    }
+}
+
 function openEventNavigation(ev, navigate, routePrefix) {
     if (!navigate || !routePrefix) return;
     if (routePrefix === '/admin') {
@@ -458,28 +472,43 @@ export function PvlDashboardCalendarBlock({
                             </p>
                         ) : (
                             <ul className="divide-y divide-[#E8E0D4]/50">
-                                {listEvents.map((ev) => (
-                                    <li key={ev.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => openEventNavigation(ev, navigate, routePrefix)}
-                                            className="w-full rounded-md px-1 py-2.5 text-left transition-colors hover:bg-[#EDE6DE]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#8FC4B3]/60"
-                                        >
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <span
-                                                    className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`}
-                                                    title={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                                                />
-                                                <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
-                                            </div>
-                                            <div className="mt-1 text-[11px] text-[#6B5D4F]">
-                                                {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                                                {' · '}
-                                                {formatPvlDateTime(ev.startAt)}
-                                            </div>
-                                        </button>
-                                    </li>
-                                ))}
+                                {listEvents.map((ev) => {
+                                    const contactHref = extractFirstHttpUrlFromText(ev.description);
+                                    return (
+                                        <li key={ev.id} className="flex gap-2 items-stretch py-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => openEventNavigation(ev, navigate, routePrefix)}
+                                                className="min-w-0 flex-1 rounded-md px-1 py-2.5 text-left transition-colors hover:bg-[#EDE6DE]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#8FC4B3]/60"
+                                            >
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span
+                                                        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`}
+                                                        title={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                                    />
+                                                    <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
+                                                </div>
+                                                <div className="mt-1 text-[11px] text-[#6B5D4F]">
+                                                    {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                                    {' · '}
+                                                    {formatPvlDateTime(ev.startAt)}
+                                                </div>
+                                            </button>
+                                            {contactHref ? (
+                                                <a
+                                                    href={contactHref}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title="Контакт или запись по ссылке из описания"
+                                                    className="my-1.5 shrink-0 self-center rounded-lg border border-[#D4C8BC] bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-[#1B4D3E] shadow-sm transition-colors hover:bg-[#EDE6DE]/60 hover:border-[#8FC4B3]/50"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    Контакт
+                                                </a>
+                                            ) : null}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>

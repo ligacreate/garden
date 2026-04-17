@@ -4,7 +4,7 @@ import Button from '../components/Button';
 import { api } from '../services/dataService';
 import { subscribeToMessages } from '../services/realtimeMessages';
 
-const CHAT_POLL_INTERVAL_MS = 2000;
+const CHAT_POLL_INTERVAL_MS = 30000;
 const MAX_MESSAGE_LENGTH = 2000;
 const CHAT_LAST_SEEN_PREFIX = 'garden_chat_last_seen_';
 const CHAT_PAGE_SIZE = 50;

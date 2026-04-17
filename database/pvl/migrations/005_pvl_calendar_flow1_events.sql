@@ -1,10 +1,14 @@
 -- Поток 1 · ключевые даты календаря (апрель 2026, время Europe/Moscow +03).
 -- Идемпотентно без ON CONFLICT: на части деплоев нет UNIQUE(legacy_key), тогда Postgres падает с P0001.
 -- cohort_id — первый поток с year = 2026; при отсутствии строки cohort_id будет NULL.
+-- Явный id: на части деплоев INSERT...SELECT не подставляет DEFAULT gen_random_uuid() для id.
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 BEGIN;
 
 INSERT INTO public.pvl_calendar_events (
+  id,
   legacy_key,
   title,
   description,
@@ -17,6 +21,7 @@ INSERT INTO public.pvl_calendar_events (
   is_published
 )
 SELECT
+  gen_random_uuid(),
   'flow1-2026-04-15-start',
   'Старт курса',
   'Начало потока ПВЛ 2026.',
@@ -32,6 +37,7 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO public.pvl_calendar_events (
+  id,
   legacy_key,
   title,
   description,
@@ -44,6 +50,7 @@ INSERT INTO public.pvl_calendar_events (
   is_published
 )
 SELECT
+  gen_random_uuid(),
   'flow1-2026-04-22-inquiry',
   'Сессия интерактивного вопрошания',
   '',

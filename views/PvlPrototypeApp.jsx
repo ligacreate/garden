@@ -3260,7 +3260,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/practicums') {
-        /** Встречи с менторами: основной тип + legacy `session` из старых данных/БД. */
+        /** Практикумы + завтраки Лиги; legacy `session` из старых данных/БД. */
         const practicumViewerRole = routePrefix === '/admin' ? 'admin' : routePrefix === '/mentor' ? 'mentor' : 'student';
         return (
             <PvlDashboardCalendarBlock
@@ -3269,7 +3269,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 navigate={navigate}
                 routePrefix={routePrefix}
                 title="Практикумы"
-                eventTypeFilter={['practicum', 'mentor_meeting', 'session', 'practicum_done']}
+                eventTypeFilter={['practicum', 'mentor_meeting', 'session', 'practicum_done', 'breakfast', 'live_stream']}
                 showPracticumArchive
             />
         );

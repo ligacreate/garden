@@ -199,6 +199,46 @@ function escapeHtml(source = '') {
         .replaceAll("'", '&#39;');
 }
 
+/** Плоский текст описания → безопасный HTML: переносы строк и кликабельные https-ссылки. */
+function linkifyCalendarDescriptionToHtml(text = '') {
+    const raw = String(text || '');
+    if (!raw.trim()) return '';
+    const lines = raw.split('\n');
+    const urlRe = /(https?:\/\/[^\s<]+)/gi;
+    const lineToHtml = (line) => {
+        const s = String(line || '');
+        const parts = [];
+        let last = 0;
+        let m;
+        const re = new RegExp(urlRe.source, urlRe.flags);
+        while ((m = re.exec(s)) !== null) {
+            if (m.index > last) parts.push(escapeHtml(s.slice(last, m.index)));
+            const url = m[1];
+            try {
+                const u = new URL(url);
+                if (!/^https?:$/i.test(u.protocol)) {
+                    parts.push(escapeHtml(url));
+                } else {
+                    const href = escapeHtml(u.href);
+                    parts.push(
+                        `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:text-blue-700">${href}</a>`,
+                    );
+                }
+            } catch {
+                parts.push(escapeHtml(url));
+            }
+            last = m.index + url.length;
+        }
+        if (last < s.length) parts.push(escapeHtml(s.slice(last)));
+        return parts.join('');
+    };
+    const inner = lines.map(lineToHtml).join('<br/>');
+    return DOMPurify.sanitize(inner, {
+        ALLOWED_TAGS: ['a', 'br'],
+        ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    });
+}
+
 function buildPracticumRecordingEmbedHtml(source = '') {
     const raw = String(source || '')
         .replaceAll('&lt;', '<')
@@ -695,6 +735,18 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                     bump();
                                 }}
                             />
+                            {String(editing.description || '').trim() ? (
+                                <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/90 px-2.5 py-2 text-sm text-slate-800 [&_a]:break-all">
+                                    <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                        Просмотр (ссылки кликабельны)
+                                    </span>
+                                    <div
+                                        className="leading-relaxed"
+                                        // eslint-disable-next-line react/no-danger
+                                        dangerouslySetInnerHTML={{ __html: linkifyCalendarDescriptionToHtml(editing.description) }}
+                                    />
+                                </div>
+                            ) : null}
                         </label>
                         <label className="block text-xs text-slate-500 md:col-span-3">Ссылка на запись (видео)
                             <input

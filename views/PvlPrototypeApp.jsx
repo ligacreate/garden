@@ -1898,7 +1898,9 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     const questionnaireTitle = task.homeworkMeta?.questionnaireTitle || '';
     const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
     const db = pvlDomainApi.db;
-    const linkedContentItem = db.contentItems?.find((c) => c.id === task.linkedContentItemId);
+    const ciIdFallback = !task.linkedContentItemId && String(taskId || '').startsWith('task-ci-')
+        ? taskId.slice('task-ci-'.length) : null;
+    const linkedContentItem = db.contentItems?.find((c) => c.id === (task.linkedContentItemId || ciIdFallback));
     const taskDescriptionSummary =
         task.description ||
         linkedContentItem?.fullDescription ||
@@ -1925,8 +1927,8 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     const linkedLessonRow = firstLessonId ? pvlDomainApi.db.lessons.find((l) => l.id === firstLessonId) : null;
     return {
         taskDetail: {
-            id: task.id,
-            title: task.title,
+            id: task.id || taskId,
+            title: task.title || linkedContentItem?.title || 'Домашнее задание',
             weekNumber: weekRow?.weekNumber ?? Number(String(task.weekId || '').split('w').pop() || 0),
             moduleNumber: weekRow?.moduleNumber ?? 0,
             type: typeLabel,
@@ -2990,36 +2992,6 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                         </div>
                     </article>
                 ))}
-            </section>
-            <section className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4">
-                <details>
-                    <summary className="font-display text-base text-slate-800 cursor-pointer">История баллов</summary>
-                    <p className="text-xs text-slate-500 mt-2">Вторичный блок: начисления сгруппированы по смыслу.</p>
-                    <div className="mt-3 grid gap-4 lg:grid-cols-3">
-                        {[
-                            { key: 'homework', title: 'За домашки', tone: 'border-emerald-100 bg-emerald-50/40' },
-                            { key: 'marks', title: 'За отметки', tone: 'border-sky-100 bg-sky-50/40' },
-                            { key: 'lessons', title: 'За пройденные уроки', tone: 'border-violet-100 bg-violet-50/40' },
-                        ].map((lane) => (
-                            <article key={lane.key} className={`rounded-xl border p-3 ${lane.tone}`}>
-                                <h4 className="text-sm font-medium text-slate-800">{lane.title}</h4>
-                                <div className="mt-2 space-y-2">
-                                    {(pointsLanes[lane.key] || []).length ? (pointsLanes[lane.key] || []).map((it) => (
-                                        <div key={it.id} className="rounded-lg border border-white/70 bg-white/80 px-2.5 py-2">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="text-xs font-medium text-slate-700">{it.sourceLabel || 'Начисление'}</div>
-                                                <span className="text-[11px] rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800 tabular-nums">+{it.pointsDelta}</span>
-                                            </div>
-                                            <div className="text-[11px] text-slate-500 mt-1">{pointsSourceLabel(it.sourceType)} · {formatPvlDateTime(it.createdAt)}</div>
-                                        </div>
-                                    )) : (
-                                        <div className="text-xs text-slate-400">Пока нет начислений</div>
-                                    )}
-                                </div>
-                            </article>
-                        ))}
-                    </div>
-                </details>
             </section>
         </div>
     );

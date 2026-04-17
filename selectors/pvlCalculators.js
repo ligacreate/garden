@@ -13,7 +13,7 @@ function normUserId(id) {
  */
 export function normalizePvlRiskLevel(raw) {
     const s = String(raw ?? '').toLowerCase().trim();
-    if (!s) return RISK_LEVEL.LOW;
+    if (!s) return null;
     if (s === RISK_LEVEL.HIGH || s === 'high' || s.includes('высок')) return RISK_LEVEL.HIGH;
     if (s === RISK_LEVEL.MEDIUM || s === 'medium' || s.includes('средн')) return RISK_LEVEL.MEDIUM;
     if (s === RISK_LEVEL.LOW || s === 'low' || s.includes('низк')) return RISK_LEVEL.LOW;
@@ -138,20 +138,18 @@ export function calculateRiskLevel(db, studentId) {
 }
 
 function resolveMentorActorId(db, mentorId) {
-    const profiles = db.mentorProfiles || [];
-    if (!mentorId) return profiles[0]?.userId || 'u-men-1';
+    if (!mentorId) return null;
     const m = normUserId(mentorId);
-    if (profiles.some((p) => normUserId(p.userId) === m)) return m;
-    /** Не подменяем на «первого ментора» — иначе чужие менти и ложные риски/очередь. */
-    return m;
+    return m || null;
 }
 
 function resolveMentorMenteeIds(db, mentorId) {
     const resolved = resolveMentorActorId(db, mentorId);
-    const profile = (db.mentorProfiles || []).find((m) => normUserId(m.userId) === normUserId(resolved));
+    if (!resolved) return [];
+    const profile = (db.mentorProfiles || []).find((m) => normUserId(m.userId) === resolved);
     const fromMentorProfile = Array.isArray(profile?.menteeIds) ? profile.menteeIds : [];
     const fromStudentProfiles = (db.studentProfiles || [])
-        .filter((p) => normUserId(p.mentorId) === normUserId(resolved))
+        .filter((p) => normUserId(p.mentorId) === resolved)
         .map((p) => p.userId);
     return Array.from(new Set([...fromMentorProfile, ...fromStudentProfiles].map((id) => normUserId(id)).filter(Boolean)));
 }
@@ -171,7 +169,7 @@ export function buildAdminRisks(db) {
         if (!r || r.isResolved === true) return false;
         const rid = normUserId(r.studentId);
         if (!rid) return false;
-        if (profileIds.size === 0) return true;
+        if (profileIds.size === 0) return false;
         return profileIds.has(rid);
     });
 }

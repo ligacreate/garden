@@ -164,6 +164,31 @@ export function usePlatformStepChecklist(studentId, refreshKey = 0) {
     return { checked, toggleItem, stats };
 }
 
+export const HW_STATUS_BADGE = {
+    not_started:        { label: 'Не начато',    cls: 'bg-slate-100 text-slate-400 border-slate-200' },
+    draft:              { label: 'Черновик',     cls: 'bg-violet-50 text-violet-600 border-violet-200' },
+    submitted:          { label: 'Отправлено',   cls: 'bg-amber-50 text-amber-600 border-amber-200' },
+    pending_review:     { label: 'На проверке',  cls: 'bg-amber-50 text-amber-600 border-amber-200' },
+    revision_requested: { label: 'На доработке', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
+    accepted:           { label: 'Принято',      cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+};
+
+export function getHomeworkStatusForItem(studentId, item) {
+    if (!studentId || item.tag !== 'task') return null;
+    const linkedLessonId = item.lessonId || item.linkedLessonId || null;
+    const ciId = item.contentItemId ? String(item.contentItemId) : null;
+    const matchedTask = pvlDomainApi.db.homeworkTasks.find(t =>
+        (linkedLessonId && (t.linkedLessonIds || []).includes(linkedLessonId)) ||
+        (ciId && (t.linkedContentItemId === ciId || t.id === `task-ci-${ciId}`)) ||
+        (t.linkedContentItemId && t.title === item.text)
+    );
+    if (!matchedTask) return null;
+    const state = pvlDomainApi.db.studentTaskStates.find(
+        s => s.studentId === studentId && s.taskId === matchedTask.id
+    );
+    return { task: matchedTask, status: state?.status || 'not_started' };
+}
+
 /**
  * Та же карта модулей и шагов, что в трекере (общее localStorage). variant: tracker — как в трекере; lessons — спокойнее для раздела «Уроки».
  */
@@ -188,28 +213,7 @@ export function PlatformCourseModulesGrid({
         return variant === 'lessons' ? (PVL_TRACKER_TAG_LABEL[t] || t) : (CHECKLIST_TAG_LABEL[t] || t);
     };
 
-    const getHomeworkStatus = (item) => {
-        if (!studentId || item.tag !== 'task') return null;
-        const linkedLessonId = item.lessonId || item.linkedLessonId || null;
-        const matchedTask = pvlDomainApi.db.homeworkTasks.find(t =>
-            (linkedLessonId && (t.linkedLessonIds || []).includes(linkedLessonId)) ||
-            (t.linkedContentItemId && t.title === item.text)
-        );
-        if (!matchedTask) return null;
-        const state = pvlDomainApi.db.studentTaskStates.find(
-            s => s.studentId === studentId && s.taskId === matchedTask.id
-        );
-        return { task: matchedTask, status: state?.status || 'not_started' };
-    };
-
-    const HW_STATUS_BADGE = {
-        not_started:        { label: 'Не начато',    cls: 'bg-slate-100 text-slate-400 border-slate-200' },
-        draft:              { label: 'Черновик',     cls: 'bg-violet-50 text-violet-600 border-violet-200' },
-        submitted:          { label: 'Отправлено',   cls: 'bg-sky-50 text-sky-600 border-sky-200' },
-        pending_review:     { label: 'На проверке',  cls: 'bg-amber-50 text-amber-600 border-amber-200' },
-        revision_requested: { label: 'На доработке', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
-        accepted:           { label: 'Принято',      cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
-    };
+    const getHomeworkStatus = (item) => getHomeworkStatusForItem(studentId, item);
     const articleClass = variant === 'lessons'
         ? 'rounded-2xl border border-slate-100/90 bg-white/90 shadow-sm shadow-slate-200/20 overflow-hidden'
         : 'rounded-2xl border border-slate-100/90 bg-white shadow-sm shadow-slate-200/30 overflow-hidden';
@@ -499,6 +503,8 @@ export function StudentCourseTracker({
                                     const key = trackerStepKey(activeStep.module.id, item, i);
                                     const isActive = key === activeStep.key;
                                     const isDone = !!checked[key];
+                                    const hwInfo = getHomeworkStatusForItem(studentId, item);
+                                    const hwBadge = hwInfo && hwInfo.status !== 'not_started' ? (HW_STATUS_BADGE[hwInfo.status] || null) : null;
                                     return (
                                         <button
                                             key={key}
@@ -508,7 +514,9 @@ export function StudentCourseTracker({
                                         >
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="line-clamp-2">{item.text}</span>
-                                                {isDone ? <span className="text-[10px] text-emerald-700">✓</span> : null}
+                                                {hwBadge ? (
+                                                    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-medium ${hwBadge.cls}`}>{hwBadge.label}</span>
+                                                ) : isDone ? <span className="text-[10px] text-emerald-700">✓</span> : null}
                                             </div>
                                         </button>
                                     );

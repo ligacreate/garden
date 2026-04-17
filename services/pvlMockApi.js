@@ -2322,7 +2322,12 @@ export const studentApi = {
         return db.studentTaskStates
             .filter((s) => s.studentId === studentId)
             .map((s) => {
-                const task = db.homeworkTasks.find((t) => t.id === s.taskId);
+                let task = db.homeworkTasks.find((t) => t.id === s.taskId);
+                if (!task && String(s.taskId || '').startsWith('task-ci-')) {
+                    const ciId = s.taskId.slice('task-ci-'.length);
+                    const ci = (db.contentItems || []).find((c) => c.id === ciId);
+                    if (ci) task = { id: s.taskId, title: ci.title || 'Домашнее задание', linkedContentItemId: ciId, weekId: ci.weekId || null, taskType: 'homework', isControlPoint: false, controlPointId: null, deadlineAt: ci.deadlineAt || null, scoreMax: 0 };
+                }
                 if (!task) return null;
                 const weekRow = db.courseWeeks.find((w) => w.id === task.weekId);
                 const typeLabel = task.isControlPoint || task.taskType === 'control_point'
@@ -2824,7 +2829,12 @@ export const mentorApi = {
         const nowMs = Date.now();
         const DAY_MS = 24 * 60 * 60 * 1000;
         const enrich = (s) => {
-            const task = db.homeworkTasks.find((t) => t.id === s.taskId);
+            let task = db.homeworkTasks.find((t) => t.id === s.taskId);
+            if (!task && String(s.taskId || '').startsWith('task-ci-')) {
+                const ciId = s.taskId.slice('task-ci-'.length);
+                const ci = (db.contentItems || []).find((c) => c.id === ciId);
+                if (ci) task = { id: s.taskId, title: ci.title || 'Домашнее задание', linkedContentItemId: ciId, weekId: ci.weekId || null, scoreMax: 0, deadlineAt: ci.deadlineAt || null };
+            }
             const user = db.users.find((u) => u.id === s.studentId);
             const weekRow = task?.weekId ? db.courseWeeks.find((w) => w.id === task.weekId) : null;
             const lessonHint = (task?.linkedLessonIds || []).length

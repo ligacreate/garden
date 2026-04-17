@@ -113,7 +113,7 @@ function groupByDay(list) {
     return m;
 }
 
-/** Первая http(s)-ссылка из текста описания (Telegram и т.д.) — для кнопки «Записаться». */
+/** Первая http(s)-ссылка из текста (Telegram и т.д.) — для кнопки «Записаться». */
 function extractFirstHttpUrlFromText(text) {
     const s = String(text || '').trim();
     if (!s) return '';
@@ -126,6 +126,16 @@ function extractFirstHttpUrlFromText(text) {
         return '';
     }
 }
+
+/** Ссылка для записи: сначала описание, при необходимости заголовок (если ссылку забыли вынести в описание). */
+function calendarSignupExternalHref(ev) {
+    if (!ev) return '';
+    const blob = [ev.description, ev.title].filter(Boolean).join('\n');
+    return extractFirstHttpUrlFromText(blob);
+}
+
+const signupButtonClassName =
+    'my-1.5 shrink-0 self-center rounded-lg border border-[#D4C8BC] bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-[#1B4D3E] shadow-sm transition-colors hover:bg-[#EDE6DE]/60 hover:border-[#8FC4B3]/50';
 
 function openEventNavigation(ev, navigate, routePrefix) {
     if (!navigate || !routePrefix) return;
@@ -299,6 +309,58 @@ function normalizePracticumRecapHtml(source = '') {
     return `<div>${escapeHtml(raw).replaceAll('\n', '<br/>')}</div>`;
 }
 
+function PvlPastArchiveListItem({ ev }) {
+    const rich =
+        String(ev.eventType || '').toLowerCase() === 'practicum_done'
+        && (ev.recordingUrl || ev.recapText || buildPracticumRecordingEmbedHtml(ev.recordingUrl));
+    if (rich) {
+        return (
+            <li className="rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
+                    <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
+                    <span className="text-[11px] text-[#6B5D4F]">{formatPvlDateTime(ev.startAt)}</span>
+                </div>
+                {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
+                    <div
+                        className="mt-2 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
+                        dangerouslySetInnerHTML={{ __html: buildPracticumRecordingEmbedHtml(ev.recordingUrl) }}
+                    />
+                ) : null}
+                {ev.recordingUrl ? (
+                    <a
+                        href={ev.recordingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex text-xs font-medium text-[#1B4D3E] hover:underline"
+                    >
+                        Смотреть запись
+                    </a>
+                ) : null}
+                {ev.recapText ? (
+                    <div
+                        className="mt-2 text-sm text-[#5C4D42] clean-rich-text"
+                        dangerouslySetInnerHTML={{ __html: normalizePracticumRecapHtml(ev.recapText) }}
+                    />
+                ) : null}
+            </li>
+        );
+    }
+    return (
+        <li className="rounded-xl border border-[#E8E0D4]/50 bg-[#FAF8F5]/80 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
+                <span className="text-sm font-medium text-[#5C4D42]">{ev.title}</span>
+            </div>
+            <div className="mt-1 text-[11px] text-[#8B7D72]">
+                {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                {' · '}
+                {formatPvlDateTime(ev.startAt)}
+            </div>
+        </li>
+    );
+}
+
 export function PvlDashboardCalendarBlock({
     viewerRole,
     cohortId,
@@ -359,11 +421,24 @@ export function PvlDashboardCalendarBlock({
         ? `События · ${new Date(`${selectedDayKey}T12:00:00`).toLocaleString('ru-RU', { day: 'numeric', month: 'long' })}`
         : 'Предстоящие события в этом месяце';
 
-    /** Прошедшие встречи (практикумы, завтраки, эфиры) + записи practicum_done — для блока архива на странице Практикумы. */
+    /** Записи проведённых практикумов (past practicum_done) — отдельный блок архива на странице Практикумы. */
+    const practicumDoneArchiveEntries = useMemo(() => {
+        if (!showPracticumArchive) return [];
+        const now = Date.now();
+        return events
+            .filter((ev) => {
+                if (String(ev.eventType || '').toLowerCase() !== 'practicum_done') return false;
+                const t = new Date(ev.startAt).getTime();
+                return !Number.isNaN(t) && t < now;
+            })
+            .sort((a, b) => String(b.startAt || '').localeCompare(String(a.startAt || '')));
+    }, [events, showPracticumArchive]);
+
+    /** Прошедшие встречи (практикумы, завтраки, эфиры) без practicum_done — второй блок архива. */
     const pastArchiveEntries = useMemo(() => {
         if (!showPracticumArchive) return [];
         const now = Date.now();
-        const allow = new Set(['practicum', 'mentor_meeting', 'breakfast', 'live_stream', 'practicum_done', 'session']);
+        const allow = new Set(['practicum', 'mentor_meeting', 'breakfast', 'live_stream', 'session']);
         return events
             .filter((ev) => {
                 const t = new Date(ev.startAt).getTime();
@@ -498,7 +573,14 @@ export function PvlDashboardCalendarBlock({
                         ) : (
                             <ul className="divide-y divide-[#E8E0D4]/50">
                                 {displayListEvents.map((ev) => {
-                                    const contactHref = extractFirstHttpUrlFromText(ev.description);
+                                    const contactHref = calendarSignupExternalHref(ev);
+                                    const isBreakfast = String(ev.eventType || '').toLowerCase() === 'breakfast';
+                                    const internalBreakfastSignup =
+                                        isBreakfast
+                                        && !contactHref
+                                        && navigate
+                                        && routePrefix
+                                        && routePrefix !== '/admin';
                                     return (
                                         <li key={ev.id} className="flex gap-2 items-stretch py-0.5">
                                             <button
@@ -524,12 +606,24 @@ export function PvlDashboardCalendarBlock({
                                                     href={contactHref}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    title="Запись по ссылке из описания события"
-                                                    className="my-1.5 shrink-0 self-center rounded-lg border border-[#D4C8BC] bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-[#1B4D3E] shadow-sm transition-colors hover:bg-[#EDE6DE]/60 hover:border-[#8FC4B3]/50"
+                                                    title="Запись по ссылке из описания или заголовка события"
+                                                    className={signupButtonClassName}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
                                                     Записаться
                                                 </a>
+                                            ) : internalBreakfastSignup ? (
+                                                <button
+                                                    type="button"
+                                                    title="Открыть раздел «Практикумы»"
+                                                    className={signupButtonClassName}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openEventNavigation(ev, navigate, routePrefix);
+                                                    }}
+                                                >
+                                                    Записаться
+                                                </button>
                                             ) : null}
                                         </li>
                                     );
@@ -541,66 +635,35 @@ export function PvlDashboardCalendarBlock({
                 </div>
             </div>
             {showPracticumArchive ? (
-                <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
-                    <h4 className="text-base font-semibold text-[#3D342B]">Архив: прошедшие встречи</h4>
-                    <p className="mt-1 text-[11px] text-[#8B7D72]">События с прошедшей датой и записи проведённых практикумов.</p>
-                    {pastArchiveEntries.length === 0 ? (
-                        <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет прошедших событий в выбранном потоке.</p>
-                    ) : (
-                        <ul className="mt-3 space-y-3">
-                            {pastArchiveEntries.map((ev) => {
-                                const rich =
-                                    String(ev.eventType || '').toLowerCase() === 'practicum_done'
-                                    && (ev.recordingUrl || ev.recapText || buildPracticumRecordingEmbedHtml(ev.recordingUrl));
-                                if (rich) {
-                                    return (
-                                        <li key={ev.id} className="rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
-                                                <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
-                                                <span className="text-[11px] text-[#6B5D4F]">{formatPvlDateTime(ev.startAt)}</span>
-                                            </div>
-                                            {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
-                                                <div
-                                                    className="mt-2 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
-                                                    dangerouslySetInnerHTML={{ __html: buildPracticumRecordingEmbedHtml(ev.recordingUrl) }}
-                                                />
-                                            ) : null}
-                                            {ev.recordingUrl ? (
-                                                <a
-                                                    href={ev.recordingUrl}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="mt-2 inline-flex text-xs font-medium text-[#1B4D3E] hover:underline"
-                                                >
-                                                    Смотреть запись
-                                                </a>
-                                            ) : null}
-                                            {ev.recapText ? (
-                                                <div
-                                                    className="mt-2 text-sm text-[#5C4D42] clean-rich-text"
-                                                    dangerouslySetInnerHTML={{ __html: normalizePracticumRecapHtml(ev.recapText) }}
-                                                />
-                                            ) : null}
-                                        </li>
-                                    );
-                                }
-                                return (
-                                    <li key={ev.id} className="rounded-xl border border-[#E8E0D4]/50 bg-[#FAF8F5]/80 px-3 py-2.5">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
-                                            <span className="text-sm font-medium text-[#5C4D42]">{ev.title}</span>
-                                        </div>
-                                        <div className="mt-1 text-[11px] text-[#8B7D72]">
-                                            {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                                            {' · '}
-                                            {formatPvlDateTime(ev.startAt)}
-                                        </div>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    )}
+                <div className="space-y-4">
+                    <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
+                        <h4 className="text-base font-semibold text-[#3D342B]">Записи проведённых практикумов</h4>
+                        <p className="mt-1 text-[11px] text-[#8B7D72]">
+                            События календаря с типом «Проведённый практикум» с прошедшей датой — те же точки в сетке выше и список здесь.
+                        </p>
+                        {practicumDoneArchiveEntries.length === 0 ? (
+                            <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет записей проведённых практикумов в выбранном потоке.</p>
+                        ) : (
+                            <ul className="mt-3 space-y-3">
+                                {practicumDoneArchiveEntries.map((ev) => (
+                                    <PvlPastArchiveListItem key={ev.id} ev={ev} />
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                    <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
+                        <h4 className="text-base font-semibold text-[#3D342B]">Архив: прошедшие встречи</h4>
+                        <p className="mt-1 text-[11px] text-[#8B7D72]">Практикумы, завтраки и эфиры с прошедшей датой (без дублирования записей проведённых практикумов).</p>
+                        {pastArchiveEntries.length === 0 ? (
+                            <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет таких прошедших событий в выбранном потоке.</p>
+                        ) : (
+                            <ul className="mt-3 space-y-3">
+                                {pastArchiveEntries.map((ev) => (
+                                    <PvlPastArchiveListItem key={ev.id} ev={ev} />
+                                ))}
+                            </ul>
+                        )}
+                    </div>
                 </div>
             ) : null}
         </section>
@@ -853,7 +916,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, {
                                         date,
                                         startAt: `${date}T12:00:00.000Z`,
-                                        endAt: `${date}T13:00:00.000Z`,
+                                        endAt: `${date}T12:00:00.000Z`,
                                     });
                                     bump();
                                 }}

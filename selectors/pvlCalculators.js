@@ -13,7 +13,7 @@ function normUserId(id) {
  */
 export function normalizePvlRiskLevel(raw) {
     const s = String(raw ?? '').toLowerCase().trim();
-    if (!s) return null;
+    if (!s) return RISK_LEVEL.LOW;
     if (s === RISK_LEVEL.HIGH || s === 'high' || s.includes('высок')) return RISK_LEVEL.HIGH;
     if (s === RISK_LEVEL.MEDIUM || s === 'medium' || s.includes('средн')) return RISK_LEVEL.MEDIUM;
     if (s === RISK_LEVEL.LOW || s === 'low' || s.includes('низк')) return RISK_LEVEL.LOW;

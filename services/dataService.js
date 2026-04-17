@@ -1229,6 +1229,14 @@ class RemoteApiService {
                 });
             }
         }
+        if (created?.id) {
+            try {
+                const refetched = await this._fetchProfile(created.id);
+                if (refetched) return refetched;
+            } catch (e) {
+                console.warn('register: profile refetch failed', e);
+            }
+        }
         return created;
     }
 
@@ -1404,6 +1412,8 @@ class RemoteApiService {
             ? updatedUser.skills.map(String)
             : undefined;
         const safeDob = hasField(updatedUser, 'dob') ? (updatedUser.dob || null) : undefined;
+        const safeAvatarFocusX = hasField(updatedUser, 'avatar_focus_x') ? (updatedUser.avatar_focus_x != null ? Number(updatedUser.avatar_focus_x) : null) : undefined;
+        const safeAvatarFocusY = hasField(updatedUser, 'avatar_focus_y') ? (updatedUser.avatar_focus_y != null ? Number(updatedUser.avatar_focus_y) : null) : undefined;
         const safeJoinDate = hasField(updatedUser, 'join_date') ? (updatedUser.join_date || null) : undefined;
         const clean = {
             name: this._sanitizeIfString(updatedUser.name),
@@ -1462,6 +1472,8 @@ class RemoteApiService {
             if (hasField(updatedUser, 'leader_reviews')) dbUser.leader_reviews = updatedUser.leader_reviews;
             if (hasField(updatedUser, 'telegram')) dbUser.telegram = clean.telegram;
             if (safeJoinDate !== undefined) dbUser.join_date = safeJoinDate;
+            if (safeAvatarFocusX !== undefined) dbUser.avatar_focus_x = Math.max(0, Math.min(100, safeAvatarFocusX));
+            if (safeAvatarFocusY !== undefined) dbUser.avatar_focus_y = Math.max(0, Math.min(100, safeAvatarFocusY));
 
             await postgrestFetch('profiles', { id: `eq.${dbUser.id}` }, {
                 method: 'PATCH',
@@ -2508,6 +2520,8 @@ class RemoteApiService {
             /** жизненный цикл аккаунта; не путать с ролью абитуриента (см. `role`) */
             status: data.status,
             avatar: data.avatar_url || data.avatar,
+            avatar_focus_x: data.avatar_focus_x != null ? Number(data.avatar_focus_x) : undefined,
+            avatar_focus_y: data.avatar_focus_y != null ? Number(data.avatar_focus_y) : undefined,
             treeDesc: data.tree_desc || data.treeDesc,
             role: data.role,
             dob: data.dob,

@@ -697,7 +697,7 @@ export function StatusTimeline({ history }) {
 }
 
 export function renderCommentsThread(messages) {
-    const visibleMessages = messages || [];
+    const visibleMessages = (messages || []).filter((m) => m.authorRole !== 'system');
     return visibleMessages.map((m) => (
         <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -734,7 +734,7 @@ export function CommentsThread({
         <div className={shell}>
             <h3 className={`font-display text-xl mb-1 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Лента по заданию</h3>
             <p className={`text-xs mb-3 ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>
-                Сообщения, проверка и системные события по заданию.
+                Сообщения участницы и ментора по заданию.
             </p>
             <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">{renderCommentsThread(messages)}</div>
             {threadLocked && !disputeMode ? (
@@ -1274,11 +1274,20 @@ export default function PvlTaskDetailView({
                 onSubmitForReview: () => {
                     if (!canEditStudentSubmission) return;
                     if (homeworkAssignmentType === 'checklist' || homeworkAssignmentType === 'questionnaire') {
-                        if (onStudentSubmit) onStudentSubmit({ textContent: '', answersJson: checklistAnswers });
+                        const result = onStudentSubmit ? onStudentSubmit({ textContent: '', answersJson: checklistAnswers }) : null;
+                        if (result?.error) {
+                            try { window.alert(result.message || 'Не удалось отправить задание'); } catch { /* noop */ }
+                            return;
+                        }
+                        submitForReview(setState);
+                        return;
+                    }
+                    const result = onStudentSubmit ? onStudentSubmit({ textContent: draftText }) : null;
+                    if (result?.error) {
+                        try { window.alert(result.message || 'Не удалось отправить задание'); } catch { /* noop */ }
                         return;
                     }
                     submitForReview(setState);
-                    if (onStudentSubmit) onStudentSubmit({ textContent: draftText });
                 },
                 draftText,
                 setDraftText,

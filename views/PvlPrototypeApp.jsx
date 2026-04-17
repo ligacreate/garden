@@ -222,11 +222,16 @@ function resolveStudentCohortIdForPvl(studentId) {
     return p?.cohortId || 'cohort-2026-1';
 }
 
-/** В демо `actingUserId` часто остаётся ученицей при переключении на кабинет ментора — подставляем реального ментора из профилей. */
+/**
+ * В демо (нет реального actingUserId) подставляем первого ментора из профилей.
+ * С реальным UUID (Garden) — всегда возвращаем сам UUID; иначе при нескольких менторах
+ * каждый видел бы менти первого ментора в базе.
+ */
 function resolvePvlMentorActorId(actingUserId) {
     const profiles = pvlDomainApi.db?.mentorProfiles || [];
     if (profiles.some((m) => m.userId === actingUserId)) return actingUserId;
-    return profiles[0]?.userId || actingUserId || null;
+    const isDemoId = !actingUserId || /^u-(men|st|adm)-/.test(String(actingUserId));
+    return isDemoId ? (profiles[0]?.userId || actingUserId || null) : actingUserId;
 }
 
 function pvlPersonInitials(displayName) {
@@ -1767,10 +1772,61 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                 )}
                             </>
                         ) : (
-                            <section>
+                            <div className={activeCategory && !selectedLesson ? 'grid lg:grid-cols-[minmax(260px,340px)_1fr] gap-4 items-start' : ''}>
+                                {activeCategory && !selectedLesson ? (
+                                    <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3 max-h-[min(70vh,560px)] overflow-y-auto space-y-4 lg:sticky lg:top-4">
+                                        {activeCategoryItems.length === 0 ? (
+                                            <div className="rounded-xl bg-slate-50/90 shadow-sm p-4 text-sm text-slate-500">В этой категории пока нет материалов.</div>
+                                        ) : (
+                                            <>
+                                                {activeCategoryItemGroups.ungrouped.length ? (
+                                                    <div className="space-y-2">
+                                                        {activeCategoryItemGroups.ungrouped.map((i) => (
+                                                            <button
+                                                                key={i.id}
+                                                                type="button"
+                                                                onClick={() => openCategoryMaterial(i)}
+                                                                className={`w-full rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md ${String(selectedItem?.id) === String(i.id) ? 'ring-2 ring-emerald-400 ring-offset-1' : ''}`}
+                                                            >
+                                                                <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                {i.estimatedDuration ? (
+                                                                    <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
+                                                                ) : null}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
+                                                {activeCategoryItemGroups.groups.map((g) => (
+                                                    <div
+                                                        key={g.lessonGroupTitle}
+                                                        className="rounded-3xl border border-slate-200/90 bg-gradient-to-br from-slate-50/95 via-white to-emerald-50/25 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.75)]"
+                                                    >
+                                                        <h4 className="font-display text-base font-semibold text-slate-800 mb-2.5 px-0.5 leading-snug">{g.lessonGroupTitle}</h4>
+                                                        <div className="space-y-2">
+                                                            {g.materials.map((i) => (
+                                                                <button
+                                                                    key={i.id}
+                                                                    type="button"
+                                                                    onClick={() => openCategoryMaterial(i)}
+                                                                    className={`w-full rounded-2xl bg-white/90 px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/40 hover:shadow-md ${String(selectedItem?.id) === String(i.id) ? 'ring-2 ring-emerald-400 ring-offset-1' : ''}`}
+                                                                >
+                                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                    {i.estimatedDuration ? (
+                                                                        <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
+                                                                    ) : null}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                    </div>
+                                ) : null}
+                            <section className={activeCategory && !selectedLesson ? 'min-w-0 max-h-[min(85vh,56rem)] overflow-y-auto pr-1' : ''}>
                                 <div className="flex items-center justify-between gap-2">
                                     <h3 className="font-display text-xl text-slate-800">{stripMaterialNumbering(selectedItem.title)}</h3>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-shrink-0">
                                         <button
                                             type="button"
                                             onClick={() => printMaterialSheet(selectedItem.title, selectedItem.fullDescription || selectedItem.shortDescription || '')}
@@ -1805,6 +1861,7 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                     routePrefix={routePrefix}
                                 />
                             </section>
+                            </div>
                         )}
                     </section>
             </div>
@@ -3173,7 +3230,9 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 onStudentSubmit={(payload) => {
                     const p = typeof payload === 'object' && payload && 'textContent' in payload ? payload : { textContent: payload };
                     const v = pvlDomainApi.studentApi.submitStudentTask(studentId, taskId, p);
+                    if (v?.error) return v;
                     if (v) refresh();
+                    return v;
                 }}
                 onStudentReply={(msg) => { pvlDomainApi.studentApi.addStudentThreadReply(studentId, taskId, { text: msg.text, disputeOnly: msg.disputeOnly }); refresh(); }}
             />
@@ -5619,7 +5678,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const setPlacements = setCmsPlacements;
     const [filters, setFilters] = useState({ section: 'library', status: 'all', role: 'all', type: 'all', cohort: 'all', module: 'all', query: '' });
     const [draggingId, setDraggingId] = useState(null);
-    const [previewAsStudent, setPreviewAsStudent] = useState(true);
+    const [expandedMaterialId, setExpandedMaterialId] = useState(null);
     const [isCoverUploading, setIsCoverUploading] = useState(false);
     const [importedDocName, setImportedDocName] = useState('');
     const [docImportError, setDocImportError] = useState('');
@@ -5931,22 +5990,31 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     const handleDropReorder = (targetId) => {
         if (!draggingId || draggingId === targetId) { setDraggingId(null); return; }
         setItems((prev) => {
-            const fromIdx = prev.findIndex((x) => x.id === draggingId);
-            const toIdx = prev.findIndex((x) => x.id === targetId);
-            if (fromIdx === -1 || toIdx === -1) return prev;
-            const next = [...prev];
-            const [moved] = next.splice(fromIdx, 1);
-            next.splice(toIdx, 0, moved);
+            const moved = prev.find((x) => x.id === draggingId);
+            if (!moved) return prev;
             const section = moved.targetSection;
-            let order = 0;
-            const mapped = next.map((item) => {
-                if (item.targetSection !== section) return item;
-                const updated = { ...item, orderIndex: order++ };
-                return updated;
-            });
-            const toSave = mapped
+            const sectionRows = [...prev]
                 .filter((it) => it.targetSection === section)
-                .map((it) => ({ id: it.id, orderIndex: it.orderIndex }));
+                .sort((a, b) => {
+                    const ao = a.orderIndex ?? 999;
+                    const bo = b.orderIndex ?? 999;
+                    if (ao !== bo) return ao - bo;
+                    return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
+                });
+            const fromIdx = sectionRows.findIndex((x) => x.id === draggingId);
+            const toIdx = sectionRows.findIndex((x) => x.id === targetId);
+            if (fromIdx === -1 || toIdx === -1) return prev;
+            const reordered = [...sectionRows];
+            const [row] = reordered.splice(fromIdx, 1);
+            reordered.splice(toIdx, 0, row);
+            const orderById = new Map(reordered.map((it, idx) => [it.id, idx]));
+            const mapped = prev.map((item) => {
+                if (item.targetSection !== section) return item;
+                const oi = orderById.get(item.id);
+                if (oi === undefined) return item;
+                return { ...item, orderIndex: oi };
+            });
+            const toSave = reordered.map((it, idx) => ({ id: it.id, orderIndex: idx }));
             void (async () => {
                 try {
                     await Promise.all(toSave.map((row) => pvlDomainApi.adminApi.updateContentItem(row.id, { orderIndex: row.orderIndex })));
@@ -5959,7 +6027,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                     });
                     if (placementUpdates.length > 0) {
                         await Promise.all(placementUpdates.map((u) => pvlDomainApi.adminApi.updatePlacement(u.placementId, { orderIndex: u.orderIndex })));
-                        setPlacements((prev) => prev.map((p) => {
+                        setPlacements((prevPl) => prevPl.map((p) => {
                             const upd = placementUpdates.find((u) => u.placementId === p.id);
                             return upd ? { ...p, orderIndex: upd.orderIndex } : p;
                         }));
@@ -6428,17 +6496,6 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 {filtered.length > 0 && (
                     <div className="text-xs text-slate-400 pl-1">{filtered.length} материалов</div>
                 )}
-                <div className="flex items-center gap-2 pl-1">
-                    <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-emerald-700"
-                            checked={previewAsStudent}
-                            onChange={(e) => setPreviewAsStudent(e.target.checked)}
-                        />
-                        Предпросмотр как в ученическом кабинете
-                    </label>
-                </div>
                 {filtered.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button
@@ -6468,31 +6525,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 ) : null}
             </div>
 
-            {previewAsStudent ? (
-                <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Предпросмотр раздела: {filters.section === 'all' ? 'выберите раздел' : labelTargetSection(filters.section)}
-                        </h3>
-                        <span className="text-[11px] text-slate-500">
-                            Поток: {filters.cohort === 'all' ? 'по умолчанию' : filters.cohort}
-                        </span>
-                    </div>
-                    <AdminContentSectionPreview
-                        section={filters.section}
-                        items={items}
-                        placements={placements}
-                        cohortId={filters.cohort === 'all' ? 'cohort-2026-1' : filters.cohort}
-                        moduleFilter={filters.module}
-                    />
-                </section>
-            ) : null}
-
             <div className="grid gap-4">
-                {filtered.map((i) => (
+                {filtered.map((i) => {
+                    const isOpen = expandedMaterialId === i.id;
+                    return (
                     <article
                         key={i.id}
-                        className={`rounded-xl border bg-white p-4 shadow-sm shadow-emerald-900/5 transition-colors ${String(draggingId) === String(i.id) ? 'border-emerald-400 bg-emerald-50/30' : 'border-emerald-100/90'}`}
+                        className={`rounded-xl border bg-white p-3 shadow-sm shadow-emerald-900/5 transition-colors ${String(draggingId) === String(i.id) ? 'border-emerald-400 bg-emerald-50/30' : 'border-emerald-100/90'}`}
                         draggable
                         onDragStart={(e) => { setDraggingId(i.id); e.dataTransfer.effectAllowed = 'move'; }}
                         onDragOver={(e) => e.preventDefault()}
@@ -6500,12 +6539,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         onDragEnd={() => setDraggingId(null)}
                     >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <span className="text-slate-300 cursor-grab active:cursor-grabbing flex-shrink-0" title="Перетащите для изменения порядка">
                                     <GripVertical size={16} />
                                 </span>
                                 <div className="min-w-0">
-                                    <div className="text-sm font-medium text-slate-800">{i.title}</div>
+                                    <div className="text-sm font-medium text-slate-800 line-clamp-2">{i.title}</div>
+                                    {isOpen ? (
                                     <div className="text-xs text-slate-500 mt-0.5">
                                         {labelTargetSection(i.targetSection)}
                                         {' · '}
@@ -6543,11 +6583,26 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         {' · '}
                                         размещений: {placements.filter((p) => (p.contentId || p.contentItemId) === i.id).length}
                                     </div>
+                                    ) : null}
                                 </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-shrink-0 items-center gap-2">
                                 <StatusBadge>{CONTENT_STATUS_LABEL[i.status] || i.status}</StatusBadge>
-                                <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1 font-medium text-emerald-900 hover:bg-emerald-100/80">Открыть</button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setExpandedMaterialId((ex) => (ex === i.id ? null : i.id)); }}
+                                    className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50"
+                                    title={isOpen ? 'Свернуть' : 'Действия и размещения'}
+                                    aria-expanded={isOpen}
+                                >
+                                    <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                            </div>
+                        </div>
+                        {isOpen ? (
+                        <>
+                        <div className="mt-3 flex flex-wrap gap-2 border-t border-emerald-100/80 pt-3">
+                                <button type="button" onClick={() => navigate(`/admin/content/${i.id}`)} className="text-xs rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1 font-medium text-emerald-900 hover:bg-emerald-100/80">Редактировать</button>
                                 {i.status === 'published' && (
                                     <>
                                         <button type="button" onClick={async () => { try { await pvlDomainApi.adminApi.unpublishContentItem(i.id); syncCmsStateFromDb(setItems, setPlacements); } catch (e) { window.alert(`Не удалось снять с публикации: ${e?.message || e}`); } }} className="text-xs rounded-xl border border-emerald-200 bg-white px-3 py-1 text-emerald-900 hover:bg-emerald-50/90">Снять с публикации</button>
@@ -6635,7 +6690,6 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         }} className="text-xs rounded-xl border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50">Копировать</button>
                                     </>
                                 )}
-                            </div>
                         </div>
                         <div className="mt-3 rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-3">
                             <div className="text-xs font-medium text-emerald-900/80 mb-2">Размещения в разделах</div>
@@ -6663,8 +6717,10 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 ))}
                             </div>
                         </div>
+                        </>
+                        ) : null}
                     </article>
-                ))}
+                );})}
                 {filtered.length === 0 && (
                     <div className="rounded-xl border border-dashed border-emerald-200 p-8 text-center text-sm text-slate-400">
                         Материалов с такими фильтрами нет

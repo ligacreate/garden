@@ -1,9 +1,11 @@
 import React from 'react';
 
-const UserAvatar = ({ user, size = 'md', className = '' }) => {
+const UserAvatar = ({ user, size = 'md', className = '', focusX, focusY }) => {
     const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-16 h-16 text-2xl', lg: 'w-24 h-24 text-4xl', xl: 'w-32 h-32 text-4xl' };
 
     const imgSrc = user.avatar || user.avatar_url;
+    const fx = focusX != null ? focusX : (user.avatar_focus_x ?? 50);
+    const fy = focusY != null ? focusY : (user.avatar_focus_y ?? 50);
 
     if (imgSrc) {
         return (
@@ -11,6 +13,7 @@ const UserAvatar = ({ user, size = 'md', className = '' }) => {
                 src={imgSrc}
                 alt={user.name}
                 className={`rounded-full object-cover aspect-square flex-shrink-0 border-2 border-white shadow-sm ${sizes[size]} ${className}`}
+                style={{ objectPosition: `${fx}% ${fy}%` }}
             />
         );
     }

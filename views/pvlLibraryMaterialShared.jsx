@@ -36,6 +36,30 @@ function sanitizeLessonVideoEmbedHtml(snippet = '') {
     });
 }
 
+/** Публичная ссылка «открыть на сайте» (RuTube/YouTube и т.д.), не дублируем embed-only Kinescope. */
+export function getLessonExternalWatchUrl(item) {
+    const rutube = String(item?.lessonRutubeUrl || '').trim();
+    if (rutube) {
+        try {
+            const u = new URL(rutube);
+            if (/^https?:$/i.test(u.protocol)) return rutube;
+        } catch {
+            return '';
+        }
+    }
+    const vid = String(item?.lessonVideoUrl || '').trim();
+    if (!vid) return '';
+    try {
+        const u = new URL(vid);
+        if (!/^https?:$/i.test(u.protocol)) return '';
+        const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        if (host === 'kinescope.io' && u.pathname.includes('/embed/')) return '';
+        return vid;
+    } catch {
+        return '';
+    }
+}
+
 export function buildLessonVideoPlayerHtml(item) {
     const embed = sanitizeLessonVideoEmbedHtml(item?.lessonVideoEmbed);
     if (embed) return embed;
@@ -58,8 +82,8 @@ export function buildLessonVideoPlayerHtml(item) {
 
 /** Санитизация HTML конспекта/материала (импорт MD → marked → хранение в fullDescription). */
 const PVL_MATERIAL_HTML_PURIFY = {
-    ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption', 'br', 'hr', 'ol', 'ul', 'li'],
-    ADD_ATTR: ['align', 'colspan', 'rowspan', 'data-pvl-wiki-ref', 'target', 'rel', 'title', 'loading', 'start', 'type', 'reversed'],
+    ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption', 'br', 'hr', 'ol', 'ul', 'li', 'img'],
+    ADD_ATTR: ['align', 'colspan', 'rowspan', 'data-pvl-wiki-ref', 'target', 'rel', 'title', 'loading', 'start', 'type', 'reversed', 'src', 'alt', 'width', 'height', 'class'],
 };
 
 export function normalizeMaterialHtml(source = '') {
@@ -335,6 +359,21 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
                         )}
                     </div>
                 </div>
+                {(() => {
+                    const watchUrl = getLessonExternalWatchUrl(selectedItem);
+                    return watchUrl ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <a
+                                href={watchUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center rounded-full border border-[#C8855A]/50 bg-white px-4 py-2 text-sm font-medium text-[#4A3728] shadow-sm transition-colors hover:bg-[#FAF6F2] hover:border-[#C8855A]"
+                            >
+                                Если не открывается — смотреть урок на сайте
+                            </a>
+                        </div>
+                    ) : null;
+                })()}
                 <section className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]">
                     <div className="flex items-center gap-2.5 mb-3 pb-2 border-b border-[#E8D5C4]/50">
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/80 border border-[#E8D5C4]/60 text-base" aria-hidden>📋</span>

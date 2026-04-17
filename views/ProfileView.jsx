@@ -146,10 +146,32 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
         join_date: user.join_date ? new Date(user.join_date).toISOString().split('T')[0] : '',
         leader_signature: user.leader_signature || '',
         leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : [],
-        telegram: user.telegram || ''
+        telegram: user.telegram || '',
+        avatar_focus_x: Number.isFinite(Number(user.avatar_focus_x)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_x))) : 50,
+        avatar_focus_y: Number.isFinite(Number(user.avatar_focus_y)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_y))) : 50,
     });
 
     const fileInputRef = useRef(null);
+
+    useEffect(() => {
+        if (isEditing) return;
+        setForm((prev) => ({
+            ...prev,
+            name: user.name || '',
+            city: user.city || '',
+            email: user.email || '',
+            dob: user.dob ? new Date(user.dob).toISOString().split('T')[0] : '',
+            skills: normalizeSkills(user.skills),
+            offer: user.offer || '',
+            unique_abilities: user.unique_abilities || '',
+            join_date: user.join_date ? new Date(user.join_date).toISOString().split('T')[0] : '',
+            leader_signature: user.leader_signature || '',
+            leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : [],
+            telegram: user.telegram || '',
+            avatar_focus_x: Number.isFinite(Number(user.avatar_focus_x)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_x))) : prev.avatar_focus_x,
+            avatar_focus_y: Number.isFinite(Number(user.avatar_focus_y)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_y))) : prev.avatar_focus_y,
+        }));
+    }, [user, isEditing]);
 
     // Calculate Progress
     const calculateProgress = () => {
@@ -178,6 +200,8 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
             ...user,
             ...form,
             skills: normalizeSkills(form.skills),
+            avatar_focus_x: form.avatar_focus_x,
+            avatar_focus_y: form.avatar_focus_y,
             tree: treeData ? treeData.name : null,
             treeDesc: treeData ? treeData.description : null
         });
@@ -191,7 +215,8 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                 onNotify("Загружаю фото...");
                 const { api } = await import('../services/dataService');
                 const url = await api.uploadAvatar(file);
-                onUpdateProfile({ ...user, avatar: url }); // Update user immediately with new avatar
+                onUpdateProfile({ ...user, avatar: url, avatar_focus_x: 50, avatar_focus_y: 50 });
+                setForm((f) => ({ ...f, avatar_focus_x: 50, avatar_focus_y: 50 }));
                 onNotify("Фото профиля обновлено");
             } catch (e) {
                 console.error(e);
@@ -267,12 +292,45 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                             {/* Avatar & Info Overlay */}
                             <div className="absolute bottom-0 left-0 right-0 p-8 text-center flex flex-col items-center">
                                 <div className="relative group/avatar cursor-pointer mb-4" onClick={() => fileInputRef.current.click()}>
-                                    <UserAvatar user={user} size="xl" className="w-32 h-32 rounded-full border-4 border-white/20 shadow-2xl object-cover" />
+                                    <UserAvatar
+                                        user={user}
+                                        size="xl"
+                                        className="w-32 h-32 rounded-full border-4 border-white/20 shadow-2xl object-cover"
+                                        focusX={isEditing ? form.avatar_focus_x : undefined}
+                                        focusY={isEditing ? form.avatar_focus_y : undefined}
+                                    />
                                     <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity backdrop-blur-[2px]">
                                         <Camera size={24} className="text-white" />
                                     </div>
                                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
                                 </div>
+                                {isEditing && (user.avatar || user.avatar_url) ? (
+                                    <div className="w-full max-w-sm mx-auto mb-4 rounded-2xl border border-white/20 bg-black/30 backdrop-blur-sm p-4 text-left space-y-3">
+                                        <div className="text-[10px] font-bold uppercase tracking-widest text-white/70">Кадр фото в круге</div>
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-white/90 mb-1">Положение по горизонтали</label>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                value={form.avatar_focus_x}
+                                                onChange={(e) => setForm({ ...form, avatar_focus_x: parseInt(e.target.value, 10) })}
+                                                className="w-full accent-emerald-400"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-white/90 mb-1">Положение по вертикали</label>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                value={form.avatar_focus_y}
+                                                onChange={(e) => setForm({ ...form, avatar_focus_y: parseInt(e.target.value, 10) })}
+                                                className="w-full accent-emerald-400"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : null}
                                 <h2 className="text-2xl font-bold text-white mb-1 shadow-black/50 drop-shadow-md">{user.name}</h2>
                                 <p className="text-white/80 text-sm font-medium mb-4">{user.city || 'Город не указан'}</p>
 

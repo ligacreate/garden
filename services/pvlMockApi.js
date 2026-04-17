@@ -891,7 +891,10 @@ export async function syncPvlActorsFromGarden() {
         const roleOnly = (u) => String(u?.role ?? '').trim().toLowerCase();
         const canActAsCourseMentor = (u) => {
             const role = roleOnly(u);
-            return role === GARDEN_ROLES.MENTOR || role === GARDEN_ROLES.ADMIN;
+            // Принимаем английские и русские варианты, как в pvlRoleResolver.normalizeGardenRoleValue
+            return role === 'mentor' || role === 'ментор'
+                || role === 'admin' || role === 'админ' || role === 'администратор'
+                || role === GARDEN_ROLES.MENTOR || role === GARDEN_ROLES.ADMIN;
         };
 
         /** В курсе ПВЛ админ площадки также может выступать как ментор. */
@@ -1520,33 +1523,6 @@ function buildStudentActivityFeed(studentId, limit = 10) {
             items.push({ id: m.id, kind: 'accepted', text: 'Работа принята', detail: taskHint, at: m.createdAt, taskId: m.taskId });
         }
     }
-    const meeting = db.mentorMeetings
-        .filter((mm) => mm.studentId === studentId && mm.status === 'scheduled')
-        .sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)))[0];
-    if (meeting) {
-        items.push({
-            id: `meet-${meeting.id}`,
-            kind: 'meeting',
-            text: 'Ближайшая встреча с ментором',
-            detail: meeting.title || (() => {
-                const cw = db.courseWeeks.find((row) => row.weekNumber === meeting.weekNumber);
-                return `Модуль ${cw?.moduleNumber ?? meeting.weekNumber}`;
-            })(),
-            at: meeting.scheduledAt,
-            taskId: null,
-        });
-    }
-    const szDays = getDaysToSzDeadline(DASHBOARD_TODAY);
-    if (szDays <= 14 && szDays >= 0) {
-        items.push({
-            id: 'feed-sz',
-            kind: 'cert',
-            text: 'Скоро дедлайн записи самооценки СЗ',
-            detail: `Осталось примерно ${szDays} дн.`,
-            at: DASHBOARD_TODAY,
-            taskId: null,
-        });
-    }
     items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
     const seen = new Set();
     const out = [];
@@ -1566,12 +1542,19 @@ function getStudentSnapshot(studentId) {
     return { user, profile };
 }
 
-/** Демо: в кабинете ментора `actingUserId` часто остаётся ученицей — иначе список менти и канбан пустые. */
+/**
+ * Демо без actingUserId: берём profiles[0] чтобы канбан не был пустым.
+ * В продакшне (реальный UUID передан) — всегда возвращаем сам ID, иначе при наличии
+ * нескольких менторов в базе всегда показывались бы менти первого ментора.
+ */
 function resolveMentorActorId(mentorId) {
     const profiles = db.mentorProfiles || [];
     if (!mentorId) return profiles[0]?.userId || null;
     if (profiles.some((m) => m.userId === mentorId)) return mentorId;
-    return profiles[0]?.userId || null;
+    // Есть ID, но профиль ещё не синхронизирован — возвращаем ID напрямую.
+    // Fallback на profiles[0] допустим только в демо (нет актуального actingUserId).
+    const isDemoId = /^u-(men|st|adm)-/.test(String(mentorId));
+    return isDemoId ? (profiles[0]?.userId || mentorId) : mentorId;
 }
 
 function getMentorMenteeIds(mentorId) {
@@ -1703,63 +1686,97 @@ function persistTrackerProgressToDb(studentId) {
     });
 }
 
-function persistSubmissionToDb(studentId, taskId) {
+async function doPersistSubmissionToDb(studentId, taskId) {
     const sqlStudentId = studentSqlIdByUserId(studentId);
     if (!sqlStudentId) return;
     const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
     const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
     if (!state || !submission) return;
     const payload = buildSubmissionPayload(studentId, taskId, submission.id);
+
+    /** Сначала гарантируем наличие строки студента в pvl_students (FK-ограничение). */
+    await ensurePvlStudentInDb(studentId);
+
+    /**
+     * sqlHomeworkIdByMockTaskId заполняется в ensureDbTrackerHomeworkStructure во время syncPvlRuntimeFromDb.
+     * Но db.homeworkTasks заполняется лениво (syncPublishedHomeworkTasksForStudent), поэтому
+     * к моменту первого сабмита карта может быть пустой — вызываем инициализацию повторно.
+     */
+    let sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+    if (!sqlHomeworkId) {
+        await ensureDbTrackerHomeworkStructure();
+        sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+    }
+    if (!sqlHomeworkId) {
+        throw new Error(`sqlHomeworkId not found for taskId=${taskId}`);
+    }
+
+    const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
+    const row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
+    const patch = {
+        student_id: sqlStudentId,
+        homework_item_id: sqlHomeworkId,
+        status: state.status || 'draft',
+        score: Number.isFinite(Number(state.autoPoints)) ? Number(state.autoPoints) : null,
+        mentor_bonus_score: Number(state.mentorBonusPoints || 0),
+        submitted_at: state.submittedAt ? `${String(state.submittedAt).slice(0, 10)}T00:00:00Z` : null,
+        checked_at: state.lastStatusChangedAt ? `${String(state.lastStatusChangedAt).slice(0, 10)}T00:00:00Z` : null,
+        accepted_at: state.acceptedAt ? `${String(state.acceptedAt).slice(0, 10)}T00:00:00Z` : null,
+        revision_cycles: Number(state.revisionCycles || 0),
+        payload,
+    };
+    if (!row) {
+        await pvlPostgrestApi.createHomeworkSubmission(patch);
+        return;
+    }
+    await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
+    const historyRows = db.statusHistory.filter((h) => h.studentId === studentId && h.taskId === taskId);
+    for (const h of historyRows.slice(-3)) {
+        // eslint-disable-next-line no-await-in-loop
+        await pvlPostgrestApi.appendHomeworkStatusHistory({
+            submission_id: row.id,
+            from_status: h.fromStatus || null,
+            to_status: h.toStatus || null,
+            comment: h.comment || '',
+            changed_by: null,
+            changed_at: h.createdAt || nowIso(),
+            payload: { studentId, taskId },
+        });
+    }
+}
+
+function persistSubmissionToDb(studentId, taskId) {
+    const RETRY_DELAYS_MS = [0, 2000, 5000];
     fireAndForget(async () => {
-        /** Сначала гарантируем наличие строки студента в pvl_students (FK-ограничение). */
-        await ensurePvlStudentInDb(studentId);
-        /**
-         * sqlHomeworkIdByMockTaskId заполняется в ensureDbTrackerHomeworkStructure во время syncPvlRuntimeFromDb.
-         * Но db.homeworkTasks заполняется лениво (syncPublishedHomeworkTasksForStudent), поэтому
-         * к моменту первого сабмита карта может быть пустой — вызываем инициализацию повторно.
-         */
-        let sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
-        if (!sqlHomeworkId) {
-            await ensureDbTrackerHomeworkStructure();
-            sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+        let lastErr;
+        for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt += 1) {
+            if (RETRY_DELAYS_MS[attempt] > 0) {
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+            }
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                await doPersistSubmissionToDb(studentId, taskId);
+                return; // сохранено — выходим
+            } catch (e) {
+                lastErr = e;
+            }
         }
-        if (!sqlHomeworkId) {
-            // eslint-disable-next-line no-console
-            console.warn('[PVL DB] persistSubmissionToDb: sqlHomeworkId not found for taskId', taskId, '— submission NOT saved');
-            return;
-        }
-        const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
-        const row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
-        const patch = {
-            student_id: sqlStudentId,
-            homework_item_id: sqlHomeworkId,
-            status: state.status || 'draft',
-            score: Number.isFinite(Number(state.autoPoints)) ? Number(state.autoPoints) : null,
-            mentor_bonus_score: Number(state.mentorBonusPoints || 0),
-            submitted_at: state.submittedAt ? `${String(state.submittedAt).slice(0, 10)}T00:00:00Z` : null,
-            checked_at: state.lastStatusChangedAt ? `${String(state.lastStatusChangedAt).slice(0, 10)}T00:00:00Z` : null,
-            accepted_at: state.acceptedAt ? `${String(state.acceptedAt).slice(0, 10)}T00:00:00Z` : null,
-            revision_cycles: Number(state.revisionCycles || 0),
-            payload,
-        };
-        if (!row) {
-            await pvlPostgrestApi.createHomeworkSubmission(patch);
-            return;
-        }
-        await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
-        const historyRows = db.statusHistory.filter((h) => h.studentId === studentId && h.taskId === taskId);
-        for (const h of historyRows.slice(-3)) {
-            // eslint-disable-next-line no-await-in-loop
-            await pvlPostgrestApi.appendHomeworkStatusHistory({
-                submission_id: row.id,
-                from_status: h.fromStatus || null,
-                to_status: h.toStatus || null,
-                comment: h.comment || '',
-                changed_by: null,
-                changed_at: h.createdAt || nowIso(),
-                payload: { studentId, taskId },
-            });
-        }
+        // Все попытки исчерпаны — уведомляем ученицу
+        addNotification(
+            studentId,
+            ROLES.STUDENT,
+            'db_save_error',
+            'Не удалось сохранить домашнее задание на сервере. Попробуй обновить страницу и отправить ещё раз.',
+            { taskId, error: String(lastErr?.message || lastErr || 'unknown') },
+        );
+        logDbFallback({
+            endpoint: '/pvl_student_homework_submissions',
+            status: 'error',
+            table: 'pvl_student_homework_submissions',
+            id: `${studentId}:${taskId}`,
+            error: String(lastErr?.message || lastErr || 'unknown'),
+        });
     }, { table: 'pvl_student_homework_submissions', endpoint: '/pvl_student_homework_submissions', id: `${studentId}:${taskId}` });
 }
 
@@ -2261,6 +2278,10 @@ export const studentApi = {
         return [...meetings, ...rhythm].sort((a, b) => String(a.at).localeCompare(String(b.at)));
     },
     getStudentTaskDetail(studentId, taskId) {
+        // Гарантируем наличие task/state/submission до чтения деталей.
+        // Без этого content-item задачи (task-ci-*) не создавались в db,
+        // и submitStudentTask возвращал null молча.
+        syncPublishedHomeworkTasksForStudent(studentId);
         return getTaskDetail(studentId, taskId);
     },
     ensureTaskForContentItem: (studentId, contentItem) => ensureTaskForContentItem(studentId, contentItem),
@@ -2322,10 +2343,13 @@ export const studentApi = {
         return version;
     },
     submitStudentTask(studentId, taskId, payload = {}) {
+        // Защитный синк: если открыли задание до того как syncPublishedHomeworkTasksForStudent
+        // успел отработать, task/state/submission ещё нет в db — создаём их сейчас.
+        syncPublishedHomeworkTasksForStudent(studentId);
         const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
         const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
         const task = db.homeworkTasks.find((t) => t.id === taskId);
-        if (!submission || !state) return null;
+        if (!submission || !state) return { error: 'task_not_found', taskId };
         let textContent = payload?.textContent ?? '';
         let answersJson = payload?.answersJson !== undefined ? payload.answersJson : undefined;
         const draftV = submission.draftVersionId ? db.submissionVersions.find((v) => v.id === submission.draftVersionId && v.submissionId === submission.id) : null;
@@ -2337,16 +2361,16 @@ export const studentApi = {
         if (meta?.assignmentType === 'questionnaire') {
             const blocks = meta.questionnaireBlocks || [];
             if (!isQuestionnaireAnswersComplete(blocks, answersJson)) {
-                return null;
+                return { error: 'incomplete_answers', message: 'Заполни все поля анкеты перед отправкой' };
             }
             textContent = textContent || 'Анкета (ответы по полям)';
         } else if (meta?.assignmentType === 'checklist') {
             if (!isChecklistAnswersComplete(meta.checklistSections, answersJson)) {
-                return null;
+                return { error: 'incomplete_answers', message: 'Заполни все пункты чек-листа перед отправкой' };
             }
             textContent = textContent || 'Чек-лист (см. ответы по пунктам)';
         } else if (isHomeworkAnswerEmpty(textContent)) {
-            return null;
+            return { error: 'empty_answer', message: 'Напиши ответ перед отправкой' };
         }
 
         db.submissionVersions

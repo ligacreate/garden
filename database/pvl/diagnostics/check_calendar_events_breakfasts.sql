@@ -45,6 +45,7 @@ WITH expected(legacy_key) AS (
     ('flow1-2026-04-23-bf-sobol-repeat'),
     ('flow1-2026-04-25-bf-bardina'),
     ('flow1-2026-04-25-bf-skrebeyko'),
+    ('flow1-2026-04-19-bf-kulish'),
     ('flow1-2026-04-26-bf-kulish'),
     ('flow1-2026-05-02-bf-kokorina'),
     ('flow1-2026-04-15-bf-romanova'),

@@ -478,6 +478,7 @@ function mapDbEventToRuntime(row) {
     const normalizedEventType = eventTypeMap[String(row.event_type || '').toLowerCase()] || 'other';
     return {
         id: row.id,
+        legacyKey: row.legacy_key || null,
         title: row.title || 'Событие',
         description: row.description || '',
         eventType: normalizedEventType,
@@ -2976,13 +2977,64 @@ function calendarVisibleToViewer(event, viewerRole) {
     return v === viewerRole;
 }
 
+function normalizeCalendarTitleForDedupe(title) {
+    return String(title || '')
+        .toLowerCase()
+        .replace(/[«»""„"]/g, '')
+        .replace(/[—–-]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function calendarEventDayKeyForDedupe(ev) {
+    const raw = ev.date != null && ev.date !== '' ? String(ev.date).trim() : '';
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 10);
+    const dmY = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (dmY) return `${dmY[3]}-${dmY[2]}-${dmY[1]}`;
+    return String(ev.startAt || '').slice(0, 10);
+}
+
+/** Один логический слот: legacy_key или день+тип+нормализованный заголовок+время старта. */
+function calendarEventDedupeKey(ev) {
+    const lk = ev.legacyKey || ev.legacy_key;
+    if (lk) return `lk:${String(lk)}`;
+    const day = calendarEventDayKeyForDedupe(ev);
+    const type = String(ev.eventType || '').toLowerCase();
+    const st = String(ev.startAt || '');
+    const hm = st.match(/T(\d{2}):(\d{2})/);
+    const timeKey = hm ? `${hm[1]}:${hm[2]}` : '';
+    const title = normalizeCalendarTitleForDedupe(ev.title);
+    return `fp:${day}|${type}|${title}|${timeKey}`;
+}
+
+function calendarEventDedupeRank(ev) {
+    let r = 0;
+    if (ev.legacyKey || ev.legacy_key) r += 32;
+    const id = String(ev.id || '');
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) r += 16;
+    if (id.startsWith('pvl-cal-flow1-') || id.startsWith('pvl-cal-bf-')) r += 8;
+    if (/^pvl-cal-\d{10,}-\d+/i.test(id)) r += 0;
+    else if (id.startsWith('pvl-cal-')) r += 2;
+    return r;
+}
+
+function dedupeCalendarEvents(list) {
+    const m = new Map();
+    for (const ev of list) {
+        const k = calendarEventDedupeKey(ev);
+        const prev = m.get(k);
+        if (!prev || calendarEventDedupeRank(ev) > calendarEventDedupeRank(prev)) m.set(k, ev);
+    }
+    return Array.from(m.values());
+}
+
 export const calendarApi = {
     listForViewer(viewerRole, cohortId) {
-        return (db.calendarEvents || [])
+        const raw = (db.calendarEvents || [])
             .filter((e) => !cohortId || pvlPlacementVisibleForCohort(e.cohortId, cohortId))
-            .filter((e) => calendarVisibleToViewer(e, viewerRole))
-            .slice()
-            .sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
+            .filter((e) => calendarVisibleToViewer(e, viewerRole));
+        const deduped = dedupeCalendarEvents(raw);
+        return deduped.slice().sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
     },
     getById(id) {
         return (db.calendarEvents || []).find((e) => e.id === id) || null;

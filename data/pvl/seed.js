@@ -82,6 +82,7 @@ export const seed = {
     calendarEvents: [
         {
             id: 'pvl-cal-flow1-start',
+            legacyKey: 'flow1-2026-04-15-start',
             title: 'Старт курса',
             description: 'Начало потока ПВЛ 2026.',
             eventType: 'practicum',
@@ -102,6 +103,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-flow1-inquiry',
+            legacyKey: 'flow1-2026-04-22-inquiry',
             title: 'Сессия интерактивного вопрошания',
             description: '',
             eventType: 'practicum',
@@ -122,6 +124,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-bondarenko-1704',
+            legacyKey: 'flow1-2026-04-17-bf-bondarenko',
             title: 'Елена Бондаренко — «Моя невероятная жизнь»',
             description: '',
             eventType: 'breakfast',
@@ -142,6 +145,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-sobol-2104',
+            legacyKey: 'flow1-2026-04-21-bf-sobol',
             title: 'Яна Соболева — «Ближе к себе» (Zoom)',
             description: 'https://t.me/soboleva_yana\nЕсли будут участницы из Петербурга, возможна отдельная очная встреча для них.',
             eventType: 'breakfast',
@@ -162,6 +166,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-gromova-2304',
+            legacyKey: 'flow1-2026-04-23-bf-gromova',
             title: 'Юлия Громова — «Яркая, как свет» (Яндекс Телемост)',
             description: 'https://t.me/gromovayuliya',
             eventType: 'breakfast',
@@ -182,6 +187,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-sobol-2304-repeat',
+            legacyKey: 'flow1-2026-04-23-bf-sobol-repeat',
             title: 'Яна Соболева — «Ближе к себе» (повтор, Zoom)',
             description: 'https://t.me/soboleva_yana',
             eventType: 'breakfast',
@@ -202,6 +208,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-bardina-2504',
+            legacyKey: 'flow1-2026-04-25-bf-bardina',
             title: 'Мария Бардина — «Утренние страницы: Весенняя уборка»',
             description: 'https://t.me/bardina_mariya',
             eventType: 'breakfast',
@@ -222,6 +229,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-skrebeyko-2504',
+            legacyKey: 'flow1-2026-04-25-bf-skrebeyko',
             title: 'Ольга Скребейко — «Неслучайная случайность»',
             description: 'https://t.me/skrebeykoolga',
             eventType: 'breakfast',
@@ -242,6 +250,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-kulish-2604',
+            legacyKey: 'flow1-2026-04-26-bf-kulish',
             title: 'Инна Кулиш — встреча для курса (11:00 МСК)',
             description: 'Две встречи именно для курса; очень жду обратную связь. Контакт в Telegram уточним.',
             eventType: 'breakfast',
@@ -262,6 +271,7 @@ export const seed = {
         },
         {
             id: 'pvl-cal-bf-kokorina-0205',
+            legacyKey: 'flow1-2026-05-02-bf-kokorina',
             title: 'Елена Кокорина — встреча Лиги (тему сообщим позже)',
             description: 'https://t.me/helen_kokorina\nВстреча бесплатная; тема будет объявлена дополнительно.',
             eventType: 'breakfast',
@@ -282,6 +292,7 @@ export const seed = {
         },
         ...['2026-04-15', '2026-04-22', '2026-04-29', '2026-05-06', '2026-05-13', '2026-05-20', '2026-05-27'].map((dateStr) => ({
             id: `pvl-cal-bf-romanova-${dateStr}`,
+            legacyKey: `flow1-${dateStr}-bf-romanova`,
             title: 'Мария Романова — «Грабли», Москва (офлайн)',
             description: 'https://t.me/mari_rroma\nОфлайн, кафе «Грабли» на Пушкинской. Совместный проект московских ведущих; встречи проводим по очереди.',
             eventType: 'breakfast',

@@ -4,8 +4,18 @@ import { loadViewPreferences, saveViewPreferences } from '../services/pvlAppKern
 import { pvlCohortIdsEquivalent, pvlDomainApi } from '../services/pvlMockApi';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 
-/** Согласовано с прототипом дедлайнов ПВЛ */
+/** Согласовано с прототипом дедлайнов ПВЛ (fallback) */
 const PVL_TODAY = '2026-04-15';
+
+/** Реальная сегодняшняя дата YYYY-MM-DD в локальном времени — подсветка «сегодня» и отсечка «прошло». */
+function getCalendarTodayKey() {
+    try {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } catch {
+        return PVL_TODAY;
+    }
+}
 
 const CALENDAR_UI_PREFS_KEY = 'admin.calendar';
 
@@ -103,7 +113,7 @@ function groupByDay(list) {
     return m;
 }
 
-/** Первая http(s)-ссылка из текста описания (Telegram и т.д.) — для кнопки «Контакт». */
+/** Первая http(s)-ссылка из текста описания (Telegram и т.д.) — для кнопки «Записаться». */
 function extractFirstHttpUrlFromText(text) {
     const s = String(text || '').trim();
     if (!s) return '';
@@ -301,7 +311,7 @@ export function PvlDashboardCalendarBlock({
     eventTypeFilter = [],
     showPracticumArchive = false,
 }) {
-    const [currentDate, setCurrentDate] = useState(() => new Date(`${PVL_TODAY}T12:00:00`));
+    const [currentDate, setCurrentDate] = useState(() => new Date());
     /** YYYY-MM-DD в видимом месяце или null — тогда справа список за месяц */
     const [selectedDayKey, setSelectedDayKey] = useState(null);
     const monthNavigatedByUser = useRef(false);
@@ -317,7 +327,7 @@ export function PvlDashboardCalendarBlock({
     useEffect(() => {
         if (monthNavigatedByUser.current || monthInitializedFromEvents.current || !events.length) return;
         const sorted = sortEventsChronologically(events);
-        const anchor = sorted.find((e) => String(eventDayKey(e)) >= PVL_TODAY) || sorted[0];
+        const anchor = sorted.find((e) => String(eventDayKey(e)) >= getCalendarTodayKey()) || sorted[0];
         const k = eventDayKey(anchor);
         if (!k || k.length < 10) return;
         const y = Number(k.slice(0, 4));
@@ -347,13 +357,28 @@ export function PvlDashboardCalendarBlock({
 
     const listTitle = selectedDayKey
         ? `События · ${new Date(`${selectedDayKey}T12:00:00`).toLocaleString('ru-RU', { day: 'numeric', month: 'long' })}`
-        : 'События в этом месяце';
-    const practicumArchive = useMemo(() => {
+        : 'Предстоящие события в этом месяце';
+
+    /** Прошедшие встречи (практикумы, завтраки, эфиры) + записи practicum_done — для блока архива на странице Практикумы. */
+    const pastArchiveEntries = useMemo(() => {
         if (!showPracticumArchive) return [];
+        const now = Date.now();
+        const allow = new Set(['practicum', 'mentor_meeting', 'breakfast', 'live_stream', 'practicum_done', 'session']);
         return events
-            .filter((ev) => String(ev.eventType || '').toLowerCase() === 'practicum_done')
+            .filter((ev) => {
+                const t = new Date(ev.startAt).getTime();
+                if (t >= now || Number.isNaN(t)) return false;
+                return allow.has(String(ev.eventType || '').toLowerCase());
+            })
             .sort((a, b) => String(b.startAt || '').localeCompare(String(a.startAt || '')));
     }, [events, showPracticumArchive]);
+
+    /** В общем списке месяца — только предстоящие; по клику на день показываем все события этого дня. */
+    const displayListEvents = useMemo(() => {
+        if (selectedDayKey) return listEvents;
+        const now = Date.now();
+        return listEvents.filter((ev) => new Date(ev.startAt).getTime() >= now);
+    }, [listEvents, selectedDayKey]);
 
     const handleMonthNav = (delta) => {
         monthNavigatedByUser.current = true;
@@ -426,7 +451,7 @@ export function PvlDashboardCalendarBlock({
                         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
                             const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                             const dayEvts = byDay.get(key) || [];
-                            const isToday = key === PVL_TODAY;
+                            const isToday = key === getCalendarTodayKey();
                             const isSelected = selectedDayKey === key;
                             return (
                                 <CalendarDayButton
@@ -466,13 +491,13 @@ export function PvlDashboardCalendarBlock({
                         ) : null}
                     </div>
                     <div className="min-h-[140px] max-h-[220px] flex-1 overflow-y-auto">
-                        {listEvents.length === 0 ? (
+                        {displayListEvents.length === 0 ? (
                             <p className="py-6 text-center text-sm text-[#6B5D4F]">
-                                {selectedDayKey ? 'В этот день событий нет.' : 'В этом месяце нет событий в выбранном потоке.'}
+                                {selectedDayKey ? 'В этот день событий нет.' : 'Нет предстоящих событий в этом месяце. Прошедшие — в архиве ниже.'}
                             </p>
                         ) : (
                             <ul className="divide-y divide-[#E8E0D4]/50">
-                                {listEvents.map((ev) => {
+                                {displayListEvents.map((ev) => {
                                     const contactHref = extractFirstHttpUrlFromText(ev.description);
                                     return (
                                         <li key={ev.id} className="flex gap-2 items-stretch py-0.5">
@@ -499,11 +524,11 @@ export function PvlDashboardCalendarBlock({
                                                     href={contactHref}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    title="Контакт или запись по ссылке из описания"
+                                                    title="Запись по ссылке из описания события"
                                                     className="my-1.5 shrink-0 self-center rounded-lg border border-[#D4C8BC] bg-white/80 px-2.5 py-1.5 text-[11px] font-semibold text-[#1B4D3E] shadow-sm transition-colors hover:bg-[#EDE6DE]/60 hover:border-[#8FC4B3]/50"
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    Контакт
+                                                    Записаться
                                                 </a>
                                             ) : null}
                                         </li>
@@ -517,42 +542,63 @@ export function PvlDashboardCalendarBlock({
             </div>
             {showPracticumArchive ? (
                 <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
-                    <h4 className="text-base font-semibold text-[#3D342B]">Записи проведенных практикумов</h4>
-                    {practicumArchive.length === 0 ? (
-                        <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет добавленных записей.</p>
+                    <h4 className="text-base font-semibold text-[#3D342B]">Архив: прошедшие встречи</h4>
+                    <p className="mt-1 text-[11px] text-[#8B7D72]">События с прошедшей датой и записи проведённых практикумов.</p>
+                    {pastArchiveEntries.length === 0 ? (
+                        <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет прошедших событий в выбранном потоке.</p>
                     ) : (
                         <ul className="mt-3 space-y-3">
-                            {practicumArchive.map((ev) => (
-                                <li key={ev.id} className="rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
-                                        <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
-                                        <span className="text-[11px] text-[#6B5D4F]">{formatPvlDateTime(ev.startAt)}</span>
-                                    </div>
-                                    {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
-                                        <div
-                                            className="mt-2 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
-                                            dangerouslySetInnerHTML={{ __html: buildPracticumRecordingEmbedHtml(ev.recordingUrl) }}
-                                        />
-                                    ) : null}
-                                    {ev.recordingUrl ? (
-                                        <a
-                                            href={ev.recordingUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="mt-2 inline-flex text-xs font-medium text-[#1B4D3E] hover:underline"
-                                        >
-                                            Смотреть запись
-                                        </a>
-                                    ) : null}
-                                    {ev.recapText ? (
-                                        <div
-                                            className="mt-2 text-sm text-[#5C4D42] clean-rich-text"
-                                            dangerouslySetInnerHTML={{ __html: normalizePracticumRecapHtml(ev.recapText) }}
-                                        />
-                                    ) : null}
-                                </li>
-                            ))}
+                            {pastArchiveEntries.map((ev) => {
+                                const rich =
+                                    String(ev.eventType || '').toLowerCase() === 'practicum_done'
+                                    && (ev.recordingUrl || ev.recapText || buildPracticumRecordingEmbedHtml(ev.recordingUrl));
+                                if (rich) {
+                                    return (
+                                        <li key={ev.id} className="rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
+                                                <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
+                                                <span className="text-[11px] text-[#6B5D4F]">{formatPvlDateTime(ev.startAt)}</span>
+                                            </div>
+                                            {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
+                                                <div
+                                                    className="mt-2 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
+                                                    dangerouslySetInnerHTML={{ __html: buildPracticumRecordingEmbedHtml(ev.recordingUrl) }}
+                                                />
+                                            ) : null}
+                                            {ev.recordingUrl ? (
+                                                <a
+                                                    href={ev.recordingUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="mt-2 inline-flex text-xs font-medium text-[#1B4D3E] hover:underline"
+                                                >
+                                                    Смотреть запись
+                                                </a>
+                                            ) : null}
+                                            {ev.recapText ? (
+                                                <div
+                                                    className="mt-2 text-sm text-[#5C4D42] clean-rich-text"
+                                                    dangerouslySetInnerHTML={{ __html: normalizePracticumRecapHtml(ev.recapText) }}
+                                                />
+                                            ) : null}
+                                        </li>
+                                    );
+                                }
+                                return (
+                                    <li key={ev.id} className="rounded-xl border border-[#E8E0D4]/50 bg-[#FAF8F5]/80 px-3 py-2.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
+                                            <span className="text-sm font-medium text-[#5C4D42]">{ev.title}</span>
+                                        </div>
+                                        <div className="mt-1 text-[11px] text-[#8B7D72]">
+                                            {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                            {' · '}
+                                            {formatPvlDateTime(ev.startAt)}
+                                        </div>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     )}
                 </div>
@@ -912,7 +958,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                             const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                             const dayEvts = byDay.get(key) || [];
                             const isSelected = selectedDayKey === key;
-                            const isToday = key === PVL_TODAY;
+                            const isToday = key === getCalendarTodayKey();
                             return (
                                 <CalendarDayButton
                                     key={key}

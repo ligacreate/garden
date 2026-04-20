@@ -369,12 +369,15 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
         );
     }
     if (isVideoLessonLayout(selectedItem)) {
+        const trackerMobileFlat = variant === 'tracker'
+            ? 'max-lg:rounded-xl max-lg:border-0 max-lg:shadow-none max-lg:bg-[#FAF6F2]/30'
+            : '';
         return (
             <div className="mt-4 space-y-6">
                 {selectedItem.shortDescription ? (
                     <p className="text-sm text-slate-500 leading-relaxed">{selectedItem.shortDescription}</p>
                 ) : null}
-                <div className="overflow-hidden rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/40 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.1)]">
+                <div className={`overflow-hidden rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/40 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.1)] ${trackerMobileFlat}`}>
                     <div className="relative aspect-video w-full bg-slate-900/[0.04]">
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-black/55 to-transparent" aria-hidden />
                         <div className="pointer-events-none absolute left-3 top-2.5 z-10 max-w-[min(100%,20rem)] truncate text-sm font-medium text-white drop-shadow-md">
@@ -407,9 +410,9 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
                         </div>
                     ) : null;
                 })()}
-                <section className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]">
-                    <div className="flex items-center gap-2.5 mb-3 pb-2 border-b border-[#E8D5C4]/50">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/80 border border-[#E8D5C4]/60 text-base" aria-hidden>📋</span>
+                <section className={`rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] ${variant === 'tracker' ? 'max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:pt-2 max-lg:shadow-none' : ''}`}>
+                    <div className={`flex items-center gap-2.5 mb-3 pb-2 border-b border-[#E8D5C4]/50 ${variant === 'tracker' ? 'max-lg:border-[#E8D5C4]/40' : ''}`}>
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/80 border border-[#E8D5C4]/60 text-base ${variant === 'tracker' ? 'max-lg:border-0 max-lg:bg-transparent' : ''}`} aria-hidden>📋</span>
                         <h4 className="font-display text-lg text-[#4A3728] m-0 leading-tight">Конспект</h4>
                     </div>
                     <div

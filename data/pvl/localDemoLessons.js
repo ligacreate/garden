@@ -1,0 +1,98 @@
+/**
+ * Опубликованные уроки для локальной разработки без PostgREST / пустой БД.
+ * Не подставляется в production-сборку как источник правды — только dev-fallback в pvlMockApi.
+ */
+import { CONTENT_STATUS } from './enums';
+
+const DEMO_TS = '2026-03-31T12:00:00.000Z';
+
+/** Карточки раздела «Уроки» + привязки к потоку cohort-2026-1 (как на проде, но в памяти). */
+export const LOCAL_DEMO_LESSON_ITEMS = [
+    {
+        id: 'demo-lesson-pishi-foundations',
+        title: 'Научные основы письменных практик',
+        shortDescription: 'Как устроены письменные практики и зачем им опора в исследованиях',
+        fullDescription: '<p>Письменные практики опираются на идею выразить переживание словом и увидеть его со стороны. В курсе мы не спорим с наукой о «правильных» эмоциях, а используем простые опоры: регулярность, честность формулировки и бережное отношение к себе.</p><p>Дальше в потоке этот блок будет заменён материалом из учительской; пока вы на тестовой сборке без подключённой базы курса, здесь показывается обучающий текст-заглушка.</p>',
+        contentType: 'video',
+        targetSection: 'lessons',
+        status: CONTENT_STATUS.PUBLISHED,
+        visibility: 'all',
+        targetRole: 'both',
+        moduleNumber: 1,
+        weekNumber: 1,
+        orderIndex: 10,
+        lessonKind: 'text_video',
+        tags: [],
+        createdBy: 'u-adm-1',
+        createdAt: DEMO_TS,
+        updatedAt: DEMO_TS,
+    },
+    {
+        id: 'demo-lesson-pishi-rhythm',
+        title: 'Ритм и дисциплина письма',
+        shortDescription: 'Демо',
+        fullDescription: '<p>Практика регулярности.</p>',
+        contentType: 'text',
+        targetSection: 'lessons',
+        status: CONTENT_STATUS.PUBLISHED,
+        visibility: 'all',
+        targetRole: 'both',
+        moduleNumber: 1,
+        weekNumber: 2,
+        orderIndex: 20,
+        tags: [],
+        createdBy: 'u-adm-1',
+        createdAt: DEMO_TS,
+        updatedAt: DEMO_TS,
+    },
+    {
+        id: 'demo-lesson-vedi-scenario',
+        title: 'Каркас сценария встречи',
+        shortDescription: 'Демо · модуль Веди',
+        fullDescription: '<p>Структура сценария для групповой работы.</p>',
+        contentType: 'text',
+        targetSection: 'lessons',
+        status: CONTENT_STATUS.PUBLISHED,
+        visibility: 'all',
+        targetRole: 'both',
+        moduleNumber: 2,
+        weekNumber: 4,
+        orderIndex: 10,
+        tags: [],
+        createdBy: 'u-adm-1',
+        createdAt: DEMO_TS,
+        updatedAt: DEMO_TS,
+    },
+    {
+        id: 'demo-lesson-ljubi-wrap',
+        title: 'Завершение модуля и опоры',
+        shortDescription: 'Демо · модуль Люби',
+        fullDescription: '<p>Рефлексия и перенос в практику.</p>',
+        contentType: 'text',
+        targetSection: 'lessons',
+        status: CONTENT_STATUS.PUBLISHED,
+        visibility: 'all',
+        targetRole: 'both',
+        moduleNumber: 3,
+        weekNumber: 8,
+        orderIndex: 10,
+        tags: [],
+        createdBy: 'u-adm-1',
+        createdAt: DEMO_TS,
+        updatedAt: DEMO_TS,
+    },
+];
+
+export const LOCAL_DEMO_LESSON_PLACEMENTS = LOCAL_DEMO_LESSON_ITEMS.map((item, index) => ({
+    id: `demo-pl-lesson-${index + 1}`,
+    contentItemId: item.id,
+    targetSection: 'lessons',
+    targetRole: 'student',
+    cohortId: 'cohort-2026-1',
+    moduleNumber: item.moduleNumber ?? 0,
+    weekNumber: item.weekNumber ?? 0,
+    orderIndex: item.orderIndex ?? index + 1,
+    isPublished: true,
+    createdAt: DEMO_TS,
+    updatedAt: DEMO_TS,
+}));

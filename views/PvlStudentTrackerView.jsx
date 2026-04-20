@@ -481,9 +481,9 @@ export function StudentCourseTracker({
     if (activeStep) {
         const moduleItems = activeStep.module?.items || [];
         return (
-            <div className="space-y-4 pb-20 md:pb-0">
-                <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
-                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+            <div className="space-y-3 pb-20 md:space-y-4 md:pb-0">
+                <div className="max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none lg:rounded-2xl lg:border lg:border-slate-100/90 lg:bg-white lg:p-4 lg:shadow-sm">
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 sm:text-[11px]">
                         <button
                             type="button"
                             onClick={() => setActiveStepKey('')}
@@ -491,29 +491,31 @@ export function StudentCourseTracker({
                         >
                             Трекер
                         </button>
-                        <span> / </span>
+                        <span aria-hidden> / </span>
                         <button
                             type="button"
                             onClick={() => firstStepKeyInActiveModule && setActiveStepKey(firstStepKeyInActiveModule)}
-                            className="hover:underline"
+                            className="max-w-[40vw] truncate text-left hover:underline sm:max-w-none"
                         >
                             {activeStep.module?.title || 'Модуль'}
                         </button>
-                        <span> / </span>
-                        <span className="text-slate-700">{activeStep.item?.text}</span>
+                        <span className="max-lg:hidden" aria-hidden> / </span>
+                        <span className="max-lg:hidden min-w-0 text-slate-700">{activeStep.item?.text}</span>
                     </div>
-                    <div className="grid lg:grid-cols-[280px_1fr] gap-4">
-                        <aside className="rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
+                    <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:gap-4">
+                        <aside className="max-lg:border-0 max-lg:bg-transparent max-lg:p-0 lg:rounded-2xl lg:border lg:border-slate-100 lg:bg-slate-50/50 lg:p-3">
                             <button
                                 type="button"
-                                className="lg:hidden w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2 py-1"
+                                className="flex w-full items-center justify-between border-b border-slate-200/90 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 lg:hidden"
                                 onClick={() => setAsideOpen((v) => !v)}
                             >
-                                <span>Шаги текущего блока ({activeModuleStepIndex + 1}/{moduleItems.length})</span>
+                                <span>Шаги блока ({activeModuleStepIndex + 1}/{moduleItems.length})</span>
                                 <span className="text-slate-400">{asideOpen ? '▲' : '▼'}</span>
                             </button>
-                            <div className="hidden lg:block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Шаги текущего блока</div>
-                            <div className={`space-y-1.5 ${asideOpen ? 'block' : 'hidden lg:block'}`}>
+                            <div className="mb-2 hidden text-xs font-semibold uppercase tracking-wide text-slate-500 lg:block">Шаги текущего блока</div>
+                            <div
+                                className={`max-lg:divide-y max-lg:divide-slate-200/80 max-lg:rounded-lg max-lg:border max-lg:border-slate-200/70 max-lg:bg-white lg:space-y-1.5 ${asideOpen ? 'block' : 'hidden lg:block'}`}
+                            >
                                 {moduleItems.map((item, i) => {
                                     const key = trackerStepKey(activeStep.module.id, item, i);
                                     const isActive = key === activeStep.key;
@@ -525,7 +527,7 @@ export function StudentCourseTracker({
                                             key={key}
                                             type="button"
                                             onClick={() => { setActiveStepKey(key); setAsideOpen(false); }}
-                                            className={`w-full text-left rounded-xl border px-2.5 py-2 text-xs transition-colors ${isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                            className={`w-full px-2.5 py-2.5 text-left text-xs transition-colors max-lg:rounded-none max-lg:border-0 lg:rounded-xl lg:border ${isActive ? 'max-lg:bg-emerald-50/90 lg:border-emerald-200 lg:bg-emerald-50 lg:text-emerald-900' : 'max-lg:bg-white lg:border-slate-200 lg:bg-white lg:text-slate-700 lg:hover:bg-slate-50'}`}
                                         >
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="line-clamp-2">{item.text}</span>
@@ -538,15 +540,15 @@ export function StudentCourseTracker({
                                 })}
                             </div>
                         </aside>
-                        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                            <div className="text-[10px] uppercase tracking-wider text-slate-400">Материал</div>
-                            <h3 className="font-display text-2xl text-slate-800 mt-1">{activeStep.item?.text}</h3>
+                        <section className="min-w-0 max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none lg:rounded-2xl lg:border lg:border-slate-100 lg:bg-white lg:p-5 lg:shadow-sm">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-400 max-lg:hidden">Материал</div>
+                            <h3 className="font-display mt-1 text-xl leading-snug text-slate-800 max-lg:mt-0 sm:text-2xl lg:mt-1">{activeStep.item?.text}</h3>
                             <p className="text-xs text-slate-500 mt-2">
                                 {activeStep.module?.title} · {activeTagLabel}
                                 {linkedItem?.completed || (activeStep.key && checked[activeStep.key]) ? ' · пройдено' : ''}
                             </p>
                             {contentItemId && !linkedItem ? (
-                                <div className="mt-4 text-sm text-amber-800 leading-relaxed rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm leading-relaxed text-amber-800 max-lg:border-0 max-lg:bg-amber-50/50 sm:p-4">
                                     Материал привязан к шагу, но не найден в данных курса для вашего потока (проверьте seed, БД или учительскую).
                                 </div>
                             ) : null}
@@ -564,16 +566,16 @@ export function StudentCourseTracker({
                                     />
                                 </div>
                             ) : !contentItemId ? (
-                                <div className="mt-4 text-sm text-slate-700 leading-relaxed rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+                                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-sm leading-relaxed text-slate-700 max-lg:border-0 max-lg:bg-slate-50/40 sm:p-4">
                                     Этот шаг пока без привязанного материала. Изучите материал по программе курса и отметьте прохождение кнопкой ниже.
                                 </div>
                             ) : null}
                             {activeStep.item?.tag !== 'task' && (
-                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2">
                                 <button
                                     type="button"
                                     onClick={() => setActiveStepKey('')}
-                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-xs"
                                 >
                                     Назад к модулям
                                 </button>
@@ -581,7 +583,7 @@ export function StudentCourseTracker({
                                     type="button"
                                     disabled={!prevStep}
                                     onClick={() => prevStep && setActiveStepKey(prevStep.key)}
-                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-xs"
                                 >
                                     Предыдущий шаг
                                 </button>
@@ -589,7 +591,7 @@ export function StudentCourseTracker({
                                     type="button"
                                     disabled={!nextStep}
                                     onClick={() => nextStep && setActiveStepKey(nextStep.key)}
-                                    className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-xs"
                                 >
                                     Следующий шаг
                                 </button>
@@ -602,7 +604,7 @@ export function StudentCourseTracker({
                                             toggleItem(activeStep.key);
                                         }
                                     }}
-                                    className="text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-1.5 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-xs"
                                 >
                                     {checked[activeStep.key] ? 'Отмечено как изучено' : 'Отметить как изучено'}
                                 </button>

@@ -75,6 +75,15 @@ const COURSES = [
         hideWhenEmpty: true
     },
     {
+        id: 7,
+        title: "Социальная психология",
+        description: "Курс о групповой динамике, влиянии среды и психологии взаимодействия. Для всех участниц сада.",
+        image: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&q=80&w=800",
+        tag: "Курсы",
+        minRole: ROLES.APPLICANT,
+        hideWhenEmpty: true
+    },
+    {
         id: 6,
         title: PVL_COURSE_DISPLAY_NAME,
         description: "Курс для ведущих встреч с письменными практиками: кабинет ученицы, ментора и учительской — по коду доступа; материалы, уроки и проверка работ.",
@@ -412,14 +421,16 @@ const CourseLibraryView = ({
                 ...k,
                 tags: normalizeTags(k.tags),
                 video_link: k.video_link || (k.type === 'Видео' ? k.link : '') || '',
-                file_link: k.file_link || (k.type === 'PDF' ? k.link : '') || ''
+                file_link: k.file_link || (k.type === 'PDF' ? k.link : '') || '',
+                embed_code: k.embed_code || ''
             }));
         const staticMaterials = (selectedCourse.materials || []).map((m) => ({
             ...m,
             category: selectedCourse.title,
             tags: normalizeTags(m.tags),
             video_link: m.video_link || (m.type === 'Видео' ? m.link : '') || '',
-            file_link: m.file_link || (m.type === 'PDF' ? m.link : '') || ''
+            file_link: m.file_link || (m.type === 'PDF' ? m.link : '') || '',
+            embed_code: m.embed_code || ''
         }));
         const merged = [...base, ...staticMaterials];
 
@@ -500,17 +511,20 @@ const CourseLibraryView = ({
         if (!material?.id || !selectedCourse || !user?.id) return;
         if (completedIds.has(String(material.id))) return;
 
+        const next = new Set(completedIds);
+        next.add(String(material.id));
+        setCompletedIds(next);
+
         api.markCourseLessonCompleted(user.id, material.id, selectedCourse.title)
             .then((res) => {
-                if (!res?.inserted) return;
-                const next = new Set(completedIds);
-                next.add(String(material.id));
-                setCompletedIds(next);
-                if (onCompleteLesson) onCompleteLesson(material, selectedCourse);
-                if (onNotify) onNotify("Отметили как пройденное. +20 семян");
+                if (res?.inserted) {
+                    if (onCompleteLesson) onCompleteLesson(material, selectedCourse);
+                    if (onNotify) onNotify("Отметили как пройденное. +20 семян");
+                }
             })
             .catch((e) => {
                 console.error(e);
+                setCompletedIds(completedIds);
                 if (onNotify) onNotify("Не удалось сохранить прогресс");
             });
     };
@@ -523,6 +537,14 @@ const CourseLibraryView = ({
         () => formatMaterialContent(selectedMaterial?.content),
         [selectedMaterial?.content]
     );
+    const selectedMaterialEmbedHtml = useMemo(() => {
+        const raw = String(selectedMaterial?.embed_code || '').trim();
+        if (!raw) return '';
+        return DOMPurify.sanitize(raw, {
+            ADD_TAGS: ['iframe'],
+            ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'src', 'style', 'title', 'loading'],
+        });
+    }, [selectedMaterial?.embed_code]);
     const syncPvlSessionFromAlCamp = (session) => {
         if (!session) return;
         if (!session.role) return;
@@ -861,6 +883,15 @@ const CourseLibraryView = ({
                         ))}
                     </div>
 
+                    {selectedMaterialEmbedHtml && (
+                        <div className="relative w-full rounded-2xl overflow-hidden mb-6 bg-black" style={{ paddingTop: '56.25%' }}>
+                            <div
+                                className="absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:border-0"
+                                dangerouslySetInnerHTML={{ __html: selectedMaterialEmbedHtml }}
+                            />
+                        </div>
+                    )}
+
                     <div className="prose prose-slate max-w-none text-sm mb-8 clean-rich-text [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:leading-tight [&_h1]:my-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight [&_h2]:my-4 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-3 [&_h4]:text-base [&_h4]:font-semibold [&_h4]:my-3 [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_div]:my-3 [&_div]:leading-relaxed [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200" dangerouslySetInnerHTML={{ __html: selectedMaterialContentHtml }} />
 
                     <div className="border-t border-slate-100 pt-5 flex flex-wrap items-center justify-between gap-3">
@@ -876,13 +907,18 @@ const CourseLibraryView = ({
                                 </a>
                             )}
                         </div>
-                        <Button
-                            variant="secondary"
-                            onClick={() => markCompleted(selectedMaterial)}
-                            disabled={completedIds.has(String(selectedMaterial.id))}
-                        >
-                            {completedIds.has(String(selectedMaterial.id)) ? 'Изучено ✓' : 'Отметить как изученное'}
-                        </Button>
+                        {completedIds.has(String(selectedMaterial.id)) ? (
+                            <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 animate-in fade-in zoom-in-95 duration-300">
+                                <span className="text-base leading-none">✓</span> Изучено
+                            </span>
+                        ) : (
+                            <Button
+                                variant="secondary"
+                                onClick={() => markCompleted(selectedMaterial)}
+                            >
+                                Отметить как изученное
+                            </Button>
+                        )}
                     </div>
                 </div>
             ) : (

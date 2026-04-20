@@ -1194,12 +1194,6 @@ export default function PvlTaskDetailView({
             : '← Назад в «Результаты»'
             );
 
-    const showReviewAck =
-        role === 'student'
-        && taskStudentId
-        && taskId
-        && String(state.taskDetail.status || '').toLowerCase().includes('проверено');
-
     const submittedStatuses = new Set(['отправлено', 'к проверке', 'на проверке']);
     const showSubmittedBanner =
         role === 'student'
@@ -1228,21 +1222,6 @@ export default function PvlTaskDetailView({
                 <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-950 shadow-sm">
                     <p className="font-medium">Работа отправлена ментору ✓</p>
                     <p className="mt-1 text-teal-800">Ментор проверит ваше задание и ответит вам в течение двух дней, а пока вы можете изучать материалы библиотеки.</p>
-                </div>
-            ) : null}
-            {showReviewAck ? (
-                <div className="rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 text-sm text-indigo-950 shadow-sm">
-                    <p className="font-medium">Работа проверена — посмотрите комментарии ментора в ленте ниже.</p>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            pvlDomainApi.studentApi.acknowledgeStudentTaskReview(taskStudentId, taskId);
-                            onRefresh?.();
-                        }}
-                        className="mt-3 text-xs rounded-full bg-indigo-700 text-white px-4 py-2 hover:bg-indigo-800"
-                    >
-                        Ознакомилась
-                    </button>
                 </div>
             ) : null}
             {renderTaskDetail({

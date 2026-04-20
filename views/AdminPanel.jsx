@@ -14,7 +14,8 @@ const COURSE_TITLES = [
     "Начало пути",
     "Расти",
     "Промты, ассистенты, лайфхаки",
-    "Менторский курс"
+    "Менторский курс",
+    "Социальная психология"
 ];
 
 const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
@@ -248,7 +249,7 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
     const [tab, setTab] = useState(() => sessionStorage.getItem('adminTab') || 'stats');
     const [contentTab, setContentTab] = useState(() => sessionStorage.getItem('adminContentTab') || 'library');
-    const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
+    const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '', embed_code: '' });
     const [leagueScenarios, setLeagueScenarios] = useState([]);
     const [newScenario, setNewScenario] = useState({ id: null, title: '', role: 'all', content: '' });
     const [isImportingScenarios, setIsImportingScenarios] = useState(false);
@@ -458,7 +459,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
         }
         onAddContent(payload, { isEdit });
         setEditingMaterialId(null);
-        setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
+        setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '', embed_code: '' });
     };
 
     const confirmAction = (title, message, onConfirm, variant = 'primary') => {
@@ -1195,8 +1196,19 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                             <option value="Расти">Расти</option>
                                             <option value="Промты, ассистенты, лайфхаки">Промты, ассистенты, лайфхаки</option>
                                             <option value="Менторский курс">Менторский курс</option>
+                                            <option value="Социальная психология">Социальная психология</option>
                                         </select>
                                     </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-1">Embed-код / iframe (Kinescope)</label>
+                                    <textarea
+                                        rows={3}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700 text-sm font-mono resize-y"
+                                        placeholder='<iframe src="https://kinescope.io/embed/..." allow="autoplay; fullscreen" allowfullscreen></iframe>'
+                                        value={newContent.embed_code || ''}
+                                        onChange={e => setNewContent({ ...newContent, embed_code: e.target.value })}
+                                    />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div className="space-y-1">
@@ -1227,7 +1239,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                 <div className="flex gap-2">
                                     {editingMaterialId != null && <Button variant="secondary" onClick={() => {
                                         setEditingMaterialId(null);
-                                        setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
+                                        setNewContent({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '', embed_code: '' });
                                     }}>Отмена</Button>}
                                     <Button onClick={handleAdd} className="w-full">{editingMaterialId != null ? 'Сохранить изменения' : 'Опубликовать'}</Button>
                                 </div>

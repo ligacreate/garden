@@ -2253,7 +2253,6 @@ function StudentPracticumsCalendar({ studentId }) {
         <div className="space-y-6">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Практикумы</h2>
-                <p className="mt-1 text-[11px] text-slate-400">🕐 Все встречи — по московскому времени (МСК)</p>
             </div>
             {events.length === 0 ? (
                 <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-6 text-sm text-slate-500 shadow-sm">Запланированных событий пока нет.</div>

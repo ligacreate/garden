@@ -837,14 +837,16 @@ const CourseLibraryView = ({
                 </div>
 
             ) : selectedMaterial ? (
-                <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/50">
-                    <div className="flex items-center justify-between mb-6">
+                <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-[2.5rem] border border-white/50">
+                    <div className="flex flex-col gap-3 mb-6">
                         <div>
                             <div className="text-xs uppercase tracking-wider text-slate-400">Материал</div>
-                            <div className="text-2xl font-medium text-slate-900">{selectedMaterial.title}</div>
+                            <div className="text-xl sm:text-2xl font-medium text-slate-900 leading-snug">{selectedMaterial.title}</div>
                             <div className="text-xs text-slate-400 mt-1">{selectedCourse.title}</div>
                         </div>
-                        <Button variant="secondary" onClick={() => setSelectedMaterial(null)}>Назад к списку</Button>
+                        <div>
+                            <Button variant="secondary" onClick={() => setSelectedMaterial(null)}>Назад к списку</Button>
+                        </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 mb-6">
@@ -879,7 +881,7 @@ const CourseLibraryView = ({
                             onClick={() => markCompleted(selectedMaterial)}
                             disabled={completedIds.has(String(selectedMaterial.id))}
                         >
-                            {completedIds.has(String(selectedMaterial.id)) ? 'Пройдено' : 'Отметить как пройденное'}
+                            {completedIds.has(String(selectedMaterial.id)) ? 'Изучено ✓' : 'Отметить как изученное'}
                         </Button>
                     </div>
                 </div>
@@ -921,22 +923,24 @@ const CourseLibraryView = ({
                             <div className="text-sm text-slate-400 italic py-8 text-center">Нет материалов по выбранному тегу</div>
                         ) : (
                             <div className="space-y-3 max-h-[520px] overflow-y-auto custom-scrollbar pr-2">
-                                {filteredMaterials.map(m => (
+                                {filteredMaterials.map(m => {
+                                    const isDone = completedIds.has(String(m.id));
+                                    return (
                                     <div
                                         key={m.id}
-                                        className="p-4 rounded-2xl border border-slate-100 bg-white/60 hover:bg-white transition-all cursor-pointer"
+                                        className={`p-4 rounded-2xl border transition-all cursor-pointer ${isDone ? 'bg-emerald-50/70 border-emerald-100 hover:bg-emerald-50' : 'border-slate-100 bg-white/60 hover:bg-white'}`}
                                         onClick={() => handleOpenMaterial(m)}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                                            <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isDone ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
                                                 {m.video_link ? <Video size={16} /> : <FileText size={16} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-slate-800 truncate">{m.title}</div>
-                                                <div className="text-xs text-slate-400">Текстовый материал</div>
+                                                <div className={`text-sm font-medium truncate ${isDone ? 'text-emerald-800' : 'text-slate-800'}`}>{m.title}</div>
+                                                <div className="text-xs text-slate-400">{isDone ? 'Изучено' : 'Текстовый материал'}</div>
                                             </div>
-                                            {completedIds.has(String(m.id)) && (
-                                                <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">Пройдено</span>
+                                            {isDone && (
+                                                <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full">✓</span>
                                             )}
                                         </div>
                                         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -951,7 +955,8 @@ const CourseLibraryView = ({
                                             ))}
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

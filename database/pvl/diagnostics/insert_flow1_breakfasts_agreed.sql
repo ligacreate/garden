@@ -1,6 +1,6 @@
 -- Завтраки потока 1 (апрель–май 2026, Europe/Moscow +03) — согласованная версия для ручной выкладки.
 -- В календаре для завтраков имеет значение только время начала; в БД end_at = start_at (колонка обязательна).
--- Условия: без завтрака 15.04; 23.04 — два параллельных формата (одинаковое время — ок);
+-- Условия: без завтрака 15.04; 23.04 — параллельные слоты (утром два в 11:00, вечером Кулиш 20:00);
 -- Бондаренко: в описании только ссылка; повтор Яны без слова «повтор» в заголовке; Кокорина — заголовок с плейсхолдером темы.
 -- Идемпотентно: INSERT ... WHERE NOT EXISTS по legacy_key (как 005/014).
 -- Перед прогоном: при необходимости сначала удалите старые строки (delete_flow1_breakfast_events_by_legacy_key.sql).
@@ -115,6 +115,25 @@ SELECT
   (SELECT c.id FROM public.pvl_cohorts c WHERE c.year = 2026 ORDER BY c.created_at ASC NULLS LAST LIMIT 1),
   TRUE
 WHERE NOT EXISTS (SELECT 1 FROM public.pvl_calendar_events e WHERE e.legacy_key = 'flow1-2026-04-23-bf-sobol-repeat');
+
+INSERT INTO public.pvl_calendar_events (
+  id, legacy_key, title, description, event_type, start_at, end_at, date_hint, visibility_role, cohort_id, is_published
+)
+SELECT
+  gen_random_uuid(),
+  'flow1-2026-04-23-bf-kulish-2000',
+  'Инна Кулиш — «Мне поздно быть идеальной»',
+  $d$https://vk.me/psiholog_kulish
+Не идеальна — да, но какая?
+Встреча для курса. Очень жду обратную связь.$d$,
+  'breakfast',
+  TIMESTAMPTZ '2026-04-23 20:00:00+03',
+  TIMESTAMPTZ '2026-04-23 20:00:00+03',
+  DATE '2026-04-23',
+  'all',
+  (SELECT c.id FROM public.pvl_cohorts c WHERE c.year = 2026 ORDER BY c.created_at ASC NULLS LAST LIMIT 1),
+  TRUE
+WHERE NOT EXISTS (SELECT 1 FROM public.pvl_calendar_events e WHERE e.legacy_key = 'flow1-2026-04-23-bf-kulish-2000');
 
 INSERT INTO public.pvl_calendar_events (
   id, legacy_key, title, description, event_type, start_at, end_at, date_hint, visibility_role, cohort_id, is_published

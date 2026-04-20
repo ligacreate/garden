@@ -479,6 +479,9 @@ export function PvlDashboardCalendarBlock({
                     <CalendarLegendDot eventType="breakfast" />
                     Завтрак
                 </span>
+                <span className="inline-flex items-center gap-1.5 text-[#9B8B80]">
+                    🕐 Все встречи — по московскому времени (МСК)
+                </span>
             </div>
 
             <div className="rounded-2xl border border-[#E8E0D4]/55 bg-[#FAF8F5] p-4 md:p-5">
@@ -820,6 +823,9 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                     <span className="inline-flex items-center gap-2">
                         <CalendarLegendDot eventType="breakfast" />
                         Завтрак
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-slate-400">
+                        🕐 Все встречи — по московскому времени (МСК)
                     </span>
                 </div>
             </div>

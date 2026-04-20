@@ -399,6 +399,7 @@ export function StudentCourseTracker({
     }, [resolvedModules, checked]);
     /** Пусто = сетка карточек модулей; иначе открыт шаг (слева список шага модуля, справа материал). */
     const [activeStepKey, setActiveStepKey] = useState('');
+    const [asideOpen, setAsideOpen] = useState(false);
     const orderedSteps = useMemo(
         () => resolvedModules.flatMap((mod) => mod.items.map((item, i) => ({ key: trackerStepKey(mod.id, item, i), item, module: mod, index: i }))),
         [resolvedModules],
@@ -446,8 +447,9 @@ export function StudentCourseTracker({
         pvlDomainApi.studentApi.updateLibraryProgress(studentId, contentItemId, Math.max(10, item?.progressPercent || 10));
     }, [activeStep?.key, contentItemId, studentId]);
 
+    const totalModuleItems = resolvedModules.reduce((s, m) => s + m.items.length, 0);
     useEffect(() => {
-        if (!studentId) return;
+        if (!studentId || totalModuleItems === 0) return;
         pvlDomainApi.db.homeworkTasks.forEach(task => {
             const state = pvlDomainApi.db.studentTaskStates.find(
                 s => s.studentId === studentId && s.taskId === task.id
@@ -456,25 +458,30 @@ export function StudentCourseTracker({
             resolvedModules.forEach((mod) => {
                 mod.items.forEach((item, i) => {
                     if (item.tag !== 'task') return;
+                    const ciId = item.contentItemId ? String(item.contentItemId) : null;
                     const linkedLessonId = item.lessonId || item.linkedLessonId;
-                    const matches = linkedLessonId && (task.linkedLessonIds || []).includes(linkedLessonId);
-                    if (!matches) return;
+                    const matchesByLesson = linkedLessonId && (task.linkedLessonIds || []).includes(linkedLessonId);
+                    const matchesByCi = ciId && (task.linkedContentItemId === ciId || task.id === `task-ci-${ciId}`);
+                    if (!matchesByLesson && !matchesByCi) return;
                     const key = trackerStepKey(mod.id, item, i);
                     if (!checked[key]) toggleItem(key);
                 });
             });
         });
-    }, [studentId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [studentId, totalModuleItems]);
 
     const syncLibraryAndStepComplete = useCallback(() => {
         if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
         if (activeStep && !checked[activeStep.key]) toggleItem(activeStep.key);
     }, [activeStep, checked, contentItemId, studentId, toggleItem]);
 
+    useEffect(() => { setAsideOpen(false); }, [activeStepKey]);
+
     if (activeStep) {
         const moduleItems = activeStep.module?.items || [];
         return (
-            <div className="space-y-4">
+            <div className="space-y-4 pb-20 md:pb-0">
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
                     <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
                         <button
@@ -497,8 +504,16 @@ export function StudentCourseTracker({
                     </div>
                     <div className="grid lg:grid-cols-[280px_1fr] gap-4">
                         <aside className="rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Шаги текущего блока</div>
-                            <div className="space-y-1.5">
+                            <button
+                                type="button"
+                                className="lg:hidden w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2 py-1"
+                                onClick={() => setAsideOpen((v) => !v)}
+                            >
+                                <span>Шаги текущего блока ({activeModuleStepIndex + 1}/{moduleItems.length})</span>
+                                <span className="text-slate-400">{asideOpen ? '▲' : '▼'}</span>
+                            </button>
+                            <div className="hidden lg:block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Шаги текущего блока</div>
+                            <div className={`space-y-1.5 ${asideOpen ? 'block' : 'hidden lg:block'}`}>
                                 {moduleItems.map((item, i) => {
                                     const key = trackerStepKey(activeStep.module.id, item, i);
                                     const isActive = key === activeStep.key;
@@ -509,7 +524,7 @@ export function StudentCourseTracker({
                                         <button
                                             key={key}
                                             type="button"
-                                            onClick={() => setActiveStepKey(key)}
+                                            onClick={() => { setActiveStepKey(key); setAsideOpen(false); }}
                                             className={`w-full text-left rounded-xl border px-2.5 py-2 text-xs transition-colors ${isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
                                         >
                                             <div className="flex items-center justify-between gap-2">
@@ -601,7 +616,7 @@ export function StudentCourseTracker({
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 pb-20 md:pb-0">
             <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-700/95 via-emerald-800/95 to-teal-900 p-6 text-slate-50 shadow-sm">
                 <h3 className="font-display text-2xl font-light tracking-tight">Трекер курса</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-4 border-t border-white/10">

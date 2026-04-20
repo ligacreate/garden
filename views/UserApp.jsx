@@ -48,7 +48,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
 );
 
 const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onSendRay, onMarkAsRead }) => {
-    const [view, setView] = useState('dashboard');
+    const [view, setView] = useState(() => (user?.role || '').toLowerCase() === ROLES.APPLICANT ? 'library' : 'dashboard');
     const [practices, setPractices] = useState([]);
     const [meetings, setMeetings] = useState([]);
     const [timeline, setTimeline] = useState([]);
@@ -69,8 +69,10 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     );
     const normalizedRole = (user?.role || '').toLowerCase();
     const isAdmin = normalizedRole === ROLES.ADMIN;
+    const isApplicant = normalizedRole === ROLES.APPLICANT;
+    const homeView = isApplicant ? 'library' : 'dashboard';
     const canOpenTeacherCabinet = hasAccess(normalizedRole, ROLES.MENTOR);
-    const canOpenPvlButton = normalizedRole === ROLES.APPLICANT;
+    const canOpenPvlButton = isApplicant;
     const openPvlCourse = () => {
         setLibraryOpenRequest((n) => n + 1);
         handleViewChange('library');
@@ -661,7 +663,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                                         } catch {
                                                             /* ignore */
                                                         }
-                                                        handleViewChange('dashboard');
+                                                        handleViewChange(homeView);
                                                     }}
                                                     className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all duration-300 text-slate-600 hover:bg-white/80 hover:text-slate-900 active:scale-[0.98] select-none"
                                                 >
@@ -689,12 +691,14 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 </>
                             ) : (
                                 <>
-                                    <SidebarItem
-                                        icon={LayoutGrid}
-                                        label="Дашборд"
-                                        active={view === 'dashboard'}
-                                        onClick={() => handleViewChange('dashboard')}
-                                    />
+                                    {!isApplicant && (
+                                        <SidebarItem
+                                            icon={LayoutGrid}
+                                            label="Дашборд"
+                                            active={view === 'dashboard'}
+                                            onClick={() => handleViewChange('dashboard')}
+                                        />
+                                    )}
                                     <SidebarItem
                                         icon={CalendarRange}
                                         label="Встречи"
@@ -792,14 +796,29 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             </div>
 
             {/* Mobile Header - Glass Strip */}
-            <div className="md:hidden fixed top-0 w-full bg-white/90 backdrop-blur-xl border-b border-white/40 z-50 px-6 py-4 flex justify-between items-center shadow-[0_10px_30px_-20px_rgba(21,17,12,0.6)]">
-                <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-[0_10px_20px_-10px_rgba(47,111,84,0.7)]">
-                        <Leaf size={18} strokeWidth={2.5} />
+            <div className="md:hidden fixed top-0 w-full bg-white/90 backdrop-blur-xl border-b border-white/40 z-50 px-4 py-4 flex justify-between items-center shadow-[0_10px_30px_-20px_rgba(21,17,12,0.6)]">
+                {isCourseSidebarMode ? (
+                    <>
+                        <button
+                            onClick={() => { try { gardenPvlBridgeRef.current?.exit?.(); } catch { /* ignore */ } handleViewChange(homeView); }}
+                            className="flex items-center gap-1.5 text-slate-500 active:text-slate-700"
+                        >
+                            <CornerUpLeft size={18} strokeWidth={2} />
+                            <span className="text-sm font-medium">Сад</span>
+                        </button>
+                        <span className="font-display font-semibold text-slate-900 text-base tracking-tight">{courseSidebar.title}</span>
+                        <button onClick={() => setMobileMenuOpen(true)} className="p-1.5 rounded-xl text-slate-400 active:bg-slate-100">
+                            <Menu size={22} strokeWidth={1.5} />
+                        </button>
+                    </>
+                ) : (
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-emerald-700 rounded-2xl flex items-center justify-center text-white shadow-[0_10px_20px_-10px_rgba(47,111,84,0.7)]">
+                            <Leaf size={18} strokeWidth={2.5} />
+                        </div>
+                        <span className="font-display font-semibold text-slate-900 text-lg tracking-tight">Сад ведущих</span>
                     </div>
-                    <span className="font-display font-semibold text-slate-900 text-lg tracking-tight">Сад ведущих</span>
-                </div>
-                {/* Hamburger removed, moved to bottom nav */}
+                )}
             </div>
 
             {/* Mobile Menu Overlay */}
@@ -807,43 +826,84 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                 <div className="fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm animate-in fade-in duration-300 md:hidden">
                     <div className="absolute right-0 top-0 bottom-0 w-3/4 max-w-sm bg-white/95 backdrop-blur-xl shadow-[0_24px_60px_-32px_rgba(21,17,12,0.8)] p-6 flex flex-col animate-in slide-in-from-right duration-300">
                         <div className="flex justify-between items-center mb-8">
-                            <h2 className="text-2xl font-display font-semibold text-slate-900">Меню</h2>
+                            <h2 className="text-2xl font-display font-semibold text-slate-900">
+                                {isCourseSidebarMode ? courseSidebar.title : 'Меню'}
+                            </h2>
                             <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500">
                                 <X size={24} />
                             </button>
                         </div>
-                        <nav className="space-y-2 flex-1 overflow-y-auto">
-                            <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
-                            <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
-                            <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
-                            <div className="h-px bg-slate-100 my-4"></div>
-                            <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
-                            <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
-                            <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
-                            {isAdmin && (
-                                <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
-                            )}
-                            {hasAccess(normalizedRole, 'intern') && (
-                                <>
+
+                        {isCourseSidebarMode ? (
+                            /* ПВЛ-навигация в оверлее */
+                            <nav className="space-y-1 flex-1 overflow-y-auto">
+                                {courseSidebar.items.map((item) => {
+                                    if (item.type === 'divider') {
+                                        return <div key={item.key} className="h-px bg-slate-100/60 my-2 mx-2" />;
+                                    }
+                                    const Icon = courseLabelIconMap[item.label] || courseIconMap[item.iconKey] || GraduationCap;
+                                    if (item.action === 'settings') {
+                                        return (
+                                            <SidebarItem key={item.key} icon={Settings} label={item.label} active={view === 'profile'} onClick={() => handleViewChange('profile')} />
+                                        );
+                                    }
+                                    if (item.action === 'exit_pvl') {
+                                        return (
+                                            <button
+                                                key={item.key}
+                                                type="button"
+                                                onClick={() => { try { gardenPvlBridgeRef.current?.exit?.(); } catch { /* ignore */ } handleViewChange(homeView); }}
+                                                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all duration-300 text-slate-600 hover:bg-white/80 hover:text-slate-900 active:scale-[0.98] select-none"
+                                            >
+                                                <CornerUpLeft size={22} className="stroke-[1.6px]" />
+                                                <span className="font-medium tracking-wide text-[15px]">{item.label}</span>
+                                            </button>
+                                        );
+                                    }
+                                    return (
+                                        <SidebarItem
+                                            key={item.key}
+                                            icon={Icon}
+                                            label={item.label}
+                                            active={courseSidebar.activeKey === item.key}
+                                            onClick={() => { try { gardenPvlBridgeRef.current?.navigate?.(item.route); } catch { /* ignore */ } setMobileMenuOpen(false); }}
+                                        />
+                                    );
+                                })}
+                            </nav>
+                        ) : (
+                            /* Обычная навигация Сада */
+                            <nav className="space-y-2 flex-1 overflow-y-auto">
+                                {!isApplicant && <SidebarItem icon={LayoutGrid} label="Дашборд" active={view === 'dashboard'} onClick={() => handleViewChange('dashboard')} />}
+                                <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
+                                <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
+                                <div className="h-px bg-slate-100 my-4"></div>
+                                <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
+                                <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
+                                <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
+                                {isAdmin && (
+                                    <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
+                                )}
+                                {hasAccess(normalizedRole, 'intern') && (
                                     <SidebarItem icon={Users} label="Люди CRM" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
-                                </>
-                            )}
-                            <div className="h-px bg-slate-100 my-4"></div>
-                            {isAdmin && (
-                                <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
-                            )}
-                            {canOpenPvlButton ? (
-                                <SidebarItem icon={GraduationCap} label="ПВЛ" onClick={openPvlCourse} />
-                            ) : null}
-                            <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />
-                            {canOpenTeacherCabinet ? (
-                                <SidebarItem icon={BadgeCheck} label="Учительская" onClick={openPvlCourse} />
-                            ) : null}
-                            <div onClick={onLogout} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 active:bg-slate-50">
-                                <LogOut size={22} className="stroke-[1.5px]" />
-                                <span className="font-medium tracking-wide text-[15px]">Выйти</span>
-                            </div>
-                        </nav>
+                                )}
+                                <div className="h-px bg-slate-100 my-4"></div>
+                                {isAdmin && (
+                                    <SidebarItem icon={Shield} label="Админка" onClick={onSwitchToAdmin} />
+                                )}
+                                {canOpenPvlButton ? (
+                                    <SidebarItem icon={GraduationCap} label="ПВЛ" onClick={openPvlCourse} />
+                                ) : null}
+                                <SidebarItem icon={Settings} label="Профиль" active={view === 'profile'} onClick={() => handleViewChange('profile')} />
+                                {canOpenTeacherCabinet ? (
+                                    <SidebarItem icon={BadgeCheck} label="Учительская" onClick={openPvlCourse} />
+                                ) : null}
+                                <div onClick={onLogout} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-slate-500 active:bg-slate-50">
+                                    <LogOut size={22} className="stroke-[1.5px]" />
+                                    <span className="font-medium tracking-wide text-[15px]">Выйти</span>
+                                </div>
+                            </nav>
+                        )}
                     </div>
                 </div>
             )}
@@ -886,7 +946,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 openPvlRequest={libraryOpenRequest}
                                 onCompleteLesson={handleLessonCompleted}
                                 onNotify={onNotify}
-                                onBackToGarden={() => handleViewChange('dashboard')}
+                                onBackToGarden={() => handleViewChange(homeView)}
                                 onCourseSidebarChange={setCourseSidebar}
                                 gardenPvlBridgeRef={gardenPvlBridgeRef}
                                 resetToken={libraryResetToken}
@@ -936,39 +996,117 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                 </div>
             </div>
 
-            {/* Mobile Bottom Navigation - Added as requested to show "menu buttons" */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-white/60 z-50 flex justify-around items-center px-4 py-3 pb-6 shadow-[0_-10px_30px_-20px_rgba(21,17,12,0.6)]">
-                <button
-                    onClick={() => handleViewChange('dashboard')}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'dashboard' ? 'text-blue-700' : 'text-slate-400'}`}
-                >
-                    <LayoutGrid size={24} strokeWidth={view === 'dashboard' ? 2 : 1.5} />
-                    <span className="text-[10px] font-medium">Дашборд</span>
-                </button>
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-white/60 z-50 flex justify-around items-end px-2 pt-2 pb-6 shadow-[0_-10px_30px_-20px_rgba(21,17,12,0.6)]">
+                {isCourseSidebarMode ? (
+                    /* ПВЛ-режим: быстрые кнопки курса */
+                    <>
+                        <button
+                            onClick={() => { try { gardenPvlBridgeRef.current?.exit?.(); } catch { /* ignore */ } handleViewChange(homeView); }}
+                            className="flex flex-col items-center gap-1 pb-1 text-slate-400 active:text-slate-600 transition-colors duration-200"
+                        >
+                            <CornerUpLeft size={22} strokeWidth={1.5} />
+                            <span className="text-[10px] font-medium">Сад</span>
+                        </button>
+                        {courseSidebar.items
+                            .filter(item => item.type !== 'divider' && item.action !== 'exit_pvl' && item.action !== 'settings')
+                            .slice(0, 3)
+                            .map((item) => {
+                                const Icon = courseLabelIconMap[item.label] || courseIconMap[item.iconKey] || GraduationCap;
+                                const isActive = courseSidebar.activeKey === item.key;
+                                return (
+                                    <button
+                                        key={item.key}
+                                        onClick={() => { try { gardenPvlBridgeRef.current?.navigate?.(item.route); } catch { /* ignore */ } }}
+                                        className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`}
+                                    >
+                                        <Icon size={22} strokeWidth={isActive ? 2 : 1.5} />
+                                        <span className="text-[10px] font-medium truncate max-w-[56px] text-center leading-tight">{item.label}</span>
+                                    </button>
+                                );
+                            })
+                        }
+                        <button
+                            onClick={() => setMobileMenuOpen(true)}
+                            className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-emerald-700' : 'text-slate-400'}`}
+                        >
+                            <Menu size={22} strokeWidth={1.5} />
+                            <span className="text-[10px] font-medium">Меню</span>
+                        </button>
+                    </>
+                ) : (
+                    /* Обычный режим Сада */
+                    <>
+                        {isApplicant ? (
+                            <button
+                                onClick={() => handleViewChange('library')}
+                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'library' ? 'text-emerald-700' : 'text-slate-400'}`}
+                            >
+                                <GraduationCap size={22} strokeWidth={view === 'library' ? 2 : 1.5} />
+                                <span className="text-[10px] font-medium">Библиотека</span>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => handleViewChange('dashboard')}
+                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'dashboard' ? 'text-emerald-700' : 'text-slate-400'}`}
+                            >
+                                <LayoutGrid size={22} strokeWidth={view === 'dashboard' ? 2 : 1.5} />
+                                <span className="text-[10px] font-medium">Дашборд</span>
+                            </button>
+                        )}
 
-                <button
-                    onClick={() => handleViewChange('meetings')}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'meetings' ? 'text-blue-700' : 'text-slate-400'}`}
-                >
-                    <CalendarRange size={24} strokeWidth={view === 'meetings' ? 2 : 1.5} />
-                    <span className="text-[10px] font-medium">Встречи</span>
-                </button>
+                        <button
+                            onClick={() => handleViewChange('meetings')}
+                            className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'meetings' ? 'text-emerald-700' : 'text-slate-400'}`}
+                        >
+                            <CalendarRange size={22} strokeWidth={view === 'meetings' ? 2 : 1.5} />
+                            <span className="text-[10px] font-medium">Встречи</span>
+                        </button>
 
-                <button
-                    onClick={() => handleViewChange('practices')}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${view === 'practices' ? 'text-blue-700' : 'text-slate-400'}`}
-                >
-                    <BookOpen size={24} strokeWidth={view === 'practices' ? 2 : 1.5} />
-                    <span className="text-[10px] font-medium">Практики</span>
-                </button>
+                        {/* Центральная акцентная кнопка — ПВЛ или Учительская */}
+                        {(canOpenPvlButton || canOpenTeacherCabinet) ? (
+                            <button onClick={openPvlCourse} className="flex flex-col items-center gap-1 -translate-y-3">
+                                <div className="w-14 h-14 rounded-2xl bg-emerald-700 flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(5,150,105,0.55)] transition-transform duration-200 active:scale-95">
+                                    {canOpenTeacherCabinet
+                                        ? <BadgeCheck size={26} color="white" strokeWidth={2} />
+                                        : <GraduationCap size={26} color="white" strokeWidth={2} />
+                                    }
+                                </div>
+                                <span className="text-[10px] font-semibold text-emerald-700">
+                                    {canOpenTeacherCabinet ? 'Учительская' : 'ПВЛ'}
+                                </span>
+                            </button>
+                        ) : null}
 
-                <button
-                    onClick={() => setMobileMenuOpen(true)}
-                    className={`flex flex-col items-center gap-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-blue-700' : 'text-slate-400'}`}
-                >
-                    <Menu size={24} strokeWidth={1.5} />
-                    <span className="text-[10px] font-medium">Меню</span>
-                </button>
+                        {(canOpenPvlButton || canOpenTeacherCabinet) && (
+                            <button
+                                onClick={() => handleViewChange('practices')}
+                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
+                            >
+                                <BookOpen size={22} strokeWidth={view === 'practices' ? 2 : 1.5} />
+                                <span className="text-[10px] font-medium">Практики</span>
+                            </button>
+                        )}
+
+                        {!(canOpenPvlButton || canOpenTeacherCabinet) && (
+                            <button
+                                onClick={() => handleViewChange('practices')}
+                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
+                            >
+                                <BookOpen size={22} strokeWidth={view === 'practices' ? 2 : 1.5} />
+                                <span className="text-[10px] font-medium">Практики</span>
+                            </button>
+                        )}
+
+                        <button
+                            onClick={() => setMobileMenuOpen(true)}
+                            className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-emerald-700' : 'text-slate-400'}`}
+                        >
+                            <Menu size={22} strokeWidth={1.5} />
+                            <span className="text-[10px] font-medium">Меню</span>
+                        </button>
+                    </>
+                )}
             </div>
 
             {/* Notification Modal */}

@@ -358,15 +358,6 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
                     {!trackerLike ? (
                         <Pill tone={statusTone(data.status)}>{shortStatusLabel(data.status)}</Pill>
                     ) : null}
-                    <span
-                        className={
-                            trackerLike
-                                ? 'w-[120px] text-right text-xs tabular-nums text-[#7A6758]'
-                                : 'w-[120px] text-right text-xs tabular-nums text-slate-500'
-                        }
-                    >
-                        Оценка: {data.score}/{data.maxScore}
-                    </span>
                     <RevisionCyclesMeter revisionCycles={data.revisionCycles} maxCycles={3} />
                 </div>
             </div>
@@ -403,7 +394,7 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
     );
 }
 
-/** Компактная шапка задания для ментора: только название, дедлайн, статус, оценка */
+/** Компактная шапка задания для ментора: только название, дедлайн, статус */
 export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButton = true }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
@@ -418,7 +409,6 @@ export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButto
                         <span>Статус</span>
                         <Pill tone={statusTone(data.status)}>{data.status}</Pill>
                     </span>
-                    <span className="tabular-nums">Оценка: <span className="font-medium text-[#4A3728]">{data.score}/{data.maxScore}</span></span>
                     <div className="min-w-[150px]">
                         <RevisionCyclesMeter revisionCycles={data.revisionCycles} maxCycles={3} />
                     </div>
@@ -482,7 +472,7 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
                         <p className="text-sm text-slate-400">Текст задания не указан.</p>
                     )}
                     {showControlPointNote ? (
-                        <div className="mt-3 text-xs text-[#9B8B80]">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
+                        <div className="mt-3 text-xs text-[#9B8B80]">Это контрольная точка: влияет на блок дедлайнов.</div>
                     ) : null}
                 </div>
             </div>
@@ -498,7 +488,7 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
                 dangerouslySetInnerHTML={{ __html: summaryHtml }}
             />
             {showControlPointNote ? (
-                <div className="mt-2 text-xs text-slate-500">Это контрольная точка: влияет на блок баллов и дедлайнов.</div>
+                <div className="mt-2 text-xs text-slate-500">Это контрольная точка: влияет на блок дедлайнов.</div>
             ) : null}
         </div>
     );
@@ -740,17 +730,10 @@ export function CommentsThread({
             {threadLocked && !disputeMode ? (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
                     <p className="mb-2">Работа принята и закрыта. Обычные сообщения по заданию отключены.</p>
-                    <button
-                        type="button"
-                        onClick={() => onOpenDispute?.()}
-                        className="text-xs rounded-full border border-amber-700/40 bg-white px-4 py-2 text-amber-900 hover:bg-amber-100/80"
-                    >
-                        Открыть спор по оценке
-                    </button>
                 </div>
             ) : null}
             {disputeMode ? (
-                <p className="mt-3 text-xs text-slate-600">Открыт спор — пишите только по сути расхождения с оценкой или проверкой.</p>
+                <p className="mt-3 text-xs text-slate-600">Открыт спор — пишите только по сути вопроса.</p>
             ) : null}
             {showComposer ? (
                 <div className={`mt-3 border-t pt-3 ${trackerLike ? 'border-[#E8D5C4]/60' : 'border-slate-100'}`}>
@@ -1217,6 +1200,11 @@ export default function PvlTaskDetailView({
         && taskId
         && String(state.taskDetail.status || '').toLowerCase().includes('проверено');
 
+    const submittedStatuses = new Set(['отправлено', 'к проверке', 'на проверке']);
+    const showSubmittedBanner =
+        role === 'student'
+        && submittedStatuses.has(String(state.taskDetail.status || '').toLowerCase());
+
     if (role === 'mentor') {
         return (
             <div className="space-y-3">
@@ -1236,9 +1224,15 @@ export default function PvlTaskDetailView({
 
     return (
         <div className="space-y-3">
+            {showSubmittedBanner ? (
+                <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-950 shadow-sm">
+                    <p className="font-medium">Работа отправлена ментору ✓</p>
+                    <p className="mt-1 text-teal-800">Ментор проверит ваше задание и ответит вам в течение двух дней, а пока вы можете изучать материалы библиотеки.</p>
+                </div>
+            ) : null}
             {showReviewAck ? (
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 text-sm text-indigo-950 shadow-sm">
-                    <p className="font-medium">Работа проверена — посмотрите оценку и комментарии ментора в ленте ниже.</p>
+                    <p className="font-medium">Работа проверена — посмотрите комментарии ментора в ленте ниже.</p>
                     <button
                         type="button"
                         onClick={() => {
@@ -1247,7 +1241,7 @@ export default function PvlTaskDetailView({
                         }}
                         className="mt-3 text-xs rounded-full bg-indigo-700 text-white px-4 py-2 hover:bg-indigo-800"
                     >
-                        Ознакомилась с оценкой
+                        Ознакомилась
                     </button>
                 </div>
             ) : null}

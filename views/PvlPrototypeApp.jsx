@@ -412,8 +412,7 @@ function deadlineUrgencyTone(deadlineAt) {
 
 function hideDeadlineForAcceptedWithScore(task) {
     const status = shortTaskStatusLabel(task?.displayStatus || task?.status);
-    const hasScore = Number(task?.maxScore) > 0;
-    return status === 'Принято' && hasScore;
+    return status === 'Принято';
 }
 
 function pointsSourceLabel(sourceType) {
@@ -1824,13 +1823,13 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                     </div>
                                 ) : null}
                             <section className={activeCategory && !selectedLesson ? 'min-w-0 max-h-[min(85vh,56rem)] overflow-y-auto pr-1' : ''}>
-                                <div className="flex items-center justify-between gap-2">
-                                    <h3 className="font-display text-xl text-slate-800">{stripMaterialNumbering(selectedItem.title)}</h3>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                <div className="flex flex-col gap-3">
+                                    <h3 className="font-display text-xl text-slate-800 leading-snug">{stripMaterialNumbering(selectedItem.title)}</h3>
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <button
                                             type="button"
                                             onClick={() => printMaterialSheet(selectedItem.title, selectedItem.fullDescription || selectedItem.shortDescription || '')}
-                                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
+                                            className="text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100 min-h-[36px]"
                                         >
                                             Распечатать
                                         </button>
@@ -1841,11 +1840,11 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                                 setLibraryTick((v) => v + 1);
                                                 refresh?.();
                                             }}
-                                            className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50"
+                                            className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]"
                                         >
                                             Отметить как изученное
                                         </button>
-                                        <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50">Назад к списку</button>
+                                        <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]">Назад к списку</button>
                                     </div>
                                 </div>
                                 <PvlLibraryMaterialBody
@@ -2013,7 +2012,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
     const homeworkPct = tr.homeworkTotal ? Math.round((tr.homeworkDone / tr.homeworkTotal) * 100) : 0;
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-5 sm:space-y-8 pb-20 md:pb-0">
             <section className="rounded-[1.35rem] bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 text-white p-5 md:p-7 shadow-lg shadow-emerald-900/15">
                 <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-6">
                     <div className="min-w-0 flex-1">
@@ -2032,7 +2031,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                             Последний урок: <span className="text-white/95">{libraryProgress.lastOpenedMaterial?.title || '—'}</span>
                         </p>
                     </div>
-                    <div className="w-full lg:max-w-[min(100%,300px)] shrink-0 space-y-4 lg:text-right">
+                    <div className="w-full lg:max-w-[min(100%,300px)] shrink-0 space-y-2 lg:space-y-4 lg:text-right">
                         <div>
                             <div className="flex justify-between gap-4 items-baseline text-white/85">
                                 <span className="text-sm">Уроки</span>
@@ -2054,10 +2053,6 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                         <div className="flex justify-between gap-4 items-baseline border-t border-white/15 pt-3 text-white/85">
                             <span className="text-sm">Дней до модуля</span>
                             <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{w?.daysToModuleEnd ?? '—'}</span>
-                        </div>
-                        <div className="flex justify-between gap-4 items-baseline text-white/85">
-                            <span className="text-sm">Курсовые баллы</span>
-                            <span className="tabular-nums font-semibold text-white text-lg md:text-xl">{points.coursePointsTotal}/400</span>
                         </div>
                         <div className="flex justify-between gap-4 items-baseline text-white/85">
                             <span className="text-sm">До конца курса</span>
@@ -2145,7 +2140,6 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                                     <div className="text-sm font-semibold text-slate-800 line-clamp-2 min-h-[40px] pr-1">{t.title}</div>
                                     <div className="flex flex-col items-end gap-0.5">
                                         <StatusBadge compact>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
-                                        {Number(t.maxScore) > 0 ? <span className="text-[10px] tabular-nums text-slate-500">{t.score ?? 0}/{t.maxScore}</span> : null}
                                     </div>
                                 </div>
                                 <div className="text-[11px] text-slate-500">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)}</div>
@@ -2259,6 +2253,7 @@ function StudentPracticumsCalendar({ studentId }) {
         <div className="space-y-6">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
                 <h2 className="font-display text-2xl text-slate-800">Практикумы</h2>
+                <p className="mt-1 text-[11px] text-slate-400">🕐 Все встречи — по московскому времени (МСК)</p>
             </div>
             {events.length === 0 ? (
                 <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-6 text-sm text-slate-500 shadow-sm">Запланированных событий пока нет.</div>
@@ -2907,7 +2902,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
         saveViewPreferences('student.results', { filter });
     }, [filter]);
     return (
-        <div className="space-y-5">
+        <div className="space-y-5 pb-20 md:pb-0">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-display text-2xl text-slate-800">Результаты</h2>
                 <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700">
@@ -2922,11 +2917,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                     <option value="Просрочено">Просрочено</option>
                 </select>
             </div>
-            <section className="grid md:grid-cols-2 xl:grid-cols-4 gap-2">
-                <article className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-3 shadow-sm">
-                    <div className="text-xs text-slate-500">Курсовые баллы</div>
-                    <div className="font-display text-2xl text-slate-800 tabular-nums mt-0.5">{summary.coursePoints}</div>
-                </article>
+            <section className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-2">
                 <article className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3 shadow-sm">
                     <div className="text-xs text-emerald-700">Принято</div>
                     <div className="font-display text-2xl text-emerald-800 tabular-nums mt-0.5">{summary.accepted}</div>
@@ -2956,7 +2947,6 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                             </div>
                             <div className="shrink-0 text-right">
                                 <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
-                                <div className="text-xs tabular-nums text-slate-500 mt-0.5">Оценка: {t.score ?? 0}/{t.maxScore ?? 0}</div>
                             </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
@@ -3073,9 +3063,10 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
                             <textarea
                                 value={text}
                                 onChange={(e) => setText(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); onSend(); } }}
                                 rows={3}
                                 className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                                placeholder="Напишите сообщение ментору..."
+                                placeholder="Напишите сообщение ментору… (Shift+Enter — отправить)"
                             />
                             <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
                                 Отправить
@@ -3152,9 +3143,10 @@ function MentorDirectMessages({ mentorId = 'u-men-1' }) {
                         <textarea
                             value={text}
                             onChange={(e) => setText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); onSend(); } }}
                             rows={3}
                             className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                            placeholder="Ответить ученице..."
+                            placeholder="Ответить ученице… (Shift+Enter — отправить)"
                         />
                         <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
                             Отправить
@@ -3583,9 +3575,6 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
 
     const renderCard = (q, col) => {
         const dl = q.deadlineAt ? formatPvlDateTime(`${String(q.deadlineAt).slice(0, 10)}T12:00:00`) : '—';
-        const maxSc = Number(q.maxScore) || 0;
-        const awarded = Number(q.scoreAwarded) || 0;
-        const hasScore = col === 'done' && maxSc > 0 && (awarded > 0 || q.rawStatus === TASK_STATUS.ACCEPTED);
         return (
             <div
                 key={`${q.studentId}-${q.taskId}-${col}`}
@@ -3625,11 +3614,6 @@ function MentorKanbanBoard({ mentorId, navigate, refreshKey, onStatusChanged }) 
                 </button>
                 <div className="text-[11px] text-slate-500 mt-1">Дедлайн: {dl}</div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                    {hasScore ? (
-                        <span className="text-[10px] tabular-nums rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            {awarded}/{maxSc}
-                        </span>
-                    ) : null}
                     {(q.revisionCycles ?? 0) > 0 ? (
                         <span className="text-[10px] rounded-full bg-amber-50 text-amber-950 px-2 py-0.5">Доработок: {q.revisionCycles}</span>
                     ) : null}

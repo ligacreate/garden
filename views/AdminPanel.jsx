@@ -246,8 +246,8 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 };
 
 const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
-    const [tab, setTab] = useState('stats');
-    const [contentTab, setContentTab] = useState('library');
+    const [tab, setTab] = useState(() => sessionStorage.getItem('adminTab') || 'stats');
+    const [contentTab, setContentTab] = useState(() => sessionStorage.getItem('adminContentTab') || 'library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '' });
     const [leagueScenarios, setLeagueScenarios] = useState([]);
     const [newScenario, setNewScenario] = useState({ id: null, title: '', role: 'all', content: '' });
@@ -493,7 +493,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                         {['stats', 'users', 'content', 'news', 'events'].map(t => (
                             <button
                                 key={t}
-                                onClick={() => setTab(t)}
+                                onClick={() => { setTab(t); sessionStorage.setItem('adminTab', t); }}
                                 className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === t
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
@@ -1032,7 +1032,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                     <div className="space-y-6">
                         <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
                             <button
-                                onClick={() => setContentTab('library')}
+                                onClick={() => { setContentTab('library'); sessionStorage.setItem('adminContentTab', 'library'); }}
                                 className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${contentTab === 'library'
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
@@ -1040,7 +1040,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                 Библиотека
                             </button>
                             <button
-                                onClick={() => setContentTab('scenarios')}
+                                onClick={() => { setContentTab('scenarios'); sessionStorage.setItem('adminContentTab', 'scenarios'); }}
                                 className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${contentTab === 'scenarios'
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}

@@ -24,6 +24,7 @@ WHERE legacy_key IN (
   'flow1-2026-04-22-bf-romanova',
   'flow1-2026-04-23-bf-gromova',
   'flow1-2026-04-23-bf-sobol-repeat',
+  'flow1-2026-04-23-bf-kulish-2000',
   'flow1-2026-04-25-bf-bardina',
   'flow1-2026-04-25-bf-skrebeyko',
   'flow1-2026-04-26-bf-kulish',
@@ -60,6 +61,7 @@ WHERE legacy_key IN (
   'flow1-2026-04-22-bf-romanova',
   'flow1-2026-04-23-bf-gromova',
   'flow1-2026-04-23-bf-sobol-repeat',
+  'flow1-2026-04-23-bf-kulish-2000',
   'flow1-2026-04-25-bf-bardina',
   'flow1-2026-04-25-bf-skrebeyko',
   'flow1-2026-04-26-bf-kulish',
@@ -71,7 +73,7 @@ WHERE legacy_key IN (
   'flow1-2026-05-27-bf-romanova'
 );
 
--- Ниже — 15 завтраков (без 15.04), согласованные тексты; время Europe/Moscow (+03); end_at дублирует start_at.
+-- Ниже — 16 завтраков (без 15.04), согласованные тексты; время Europe/Moscow (+03); end_at дублирует start_at.
 
 INSERT INTO public.pvl_calendar_events (
   id, legacy_key, title, description, event_type, start_at, end_at, date_hint, visibility_role, cohort_id, is_published
@@ -167,6 +169,24 @@ SELECT
   'breakfast',
   TIMESTAMPTZ '2026-04-23 11:00:00+03',
   TIMESTAMPTZ '2026-04-23 11:00:00+03',
+  DATE '2026-04-23',
+  'all',
+  (SELECT c.id FROM public.pvl_cohorts c WHERE c.year = 2026 ORDER BY c.created_at ASC NULLS LAST LIMIT 1),
+  TRUE;
+
+INSERT INTO public.pvl_calendar_events (
+  id, legacy_key, title, description, event_type, start_at, end_at, date_hint, visibility_role, cohort_id, is_published
+)
+SELECT
+  gen_random_uuid(),
+  'flow1-2026-04-23-bf-kulish-2000',
+  'Инна Кулиш — «Мне поздно быть идеальной»',
+  $d$https://vk.me/psiholog_kulish
+Не идеальна — да, но какая?
+Встреча для курса. Очень жду обратную связь.$d$,
+  'breakfast',
+  TIMESTAMPTZ '2026-04-23 20:00:00+03',
+  TIMESTAMPTZ '2026-04-23 20:00:00+03',
   DATE '2026-04-23',
   'all',
   (SELECT c.id FROM public.pvl_cohorts c WHERE c.year = 2026 ORDER BY c.created_at ASC NULLS LAST LIMIT 1),

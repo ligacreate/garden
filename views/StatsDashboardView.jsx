@@ -84,19 +84,15 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
     );
 
     return (
-        <div className="min-h-full pb-20 pt-6 px-4 lg:px-0 font-sans text-slate-700">
-            {/* Ambient Background */}
-            {/* Ambient Background removed - now global in UserApp */}
-
+        <div className="min-h-full pb-20 pt-2 sm:pt-6 px-0 lg:px-0 font-sans text-slate-700">
             {/* Header */}
-                <div className="flex justify-between items-end mb-8 animate-in fade-in duration-700">
+                <div className="flex justify-between items-end mb-6 animate-in fade-in duration-700">
                     <div>
-                        <h1 className="text-4xl font-display font-semibold text-slate-900 tracking-tight">Мой сад</h1>
-                        {/* <p className="text-slate-400 mt-1 font-light">Пространство роста</p> */}
+                        <h1 className="text-3xl sm:text-4xl font-display font-semibold text-slate-900 tracking-tight">Мой сад</h1>
                     </div>
                 </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 
                 {/* 1. HERO: TREE CARD (Sky Aesthetic) */}
                 <div className="lg:col-span-2 relative min-h-[320px] h-auto rounded-[2.5rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(47,111,84,0.35)] group animate-in zoom-in-95 duration-700 flex flex-col md:block">

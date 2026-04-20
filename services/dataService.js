@@ -691,6 +691,16 @@ class LocalStorageService {
     }
 
     async getLibrarySettings() {
+        try {
+            const { data } = await postgrestFetch('app_settings', { key: 'eq.library_settings', select: 'value' });
+            if (data?.[0]?.value) {
+                const normalized = normalizeLibrarySettings(data[0].value);
+                localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+                return normalized;
+            }
+        } catch (e) {
+            console.warn('app_settings fetch failed, falling back to localStorage', e);
+        }
         const raw = JSON.parse(localStorage.getItem(LIBRARY_SETTINGS_STORAGE_KEY) || 'null');
         return normalizeLibrarySettings(raw || DEFAULT_LIBRARY_SETTINGS);
     }
@@ -698,6 +708,15 @@ class LocalStorageService {
     async saveLibrarySettings(settings) {
         const normalized = normalizeLibrarySettings(settings || DEFAULT_LIBRARY_SETTINGS);
         localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+        try {
+            await postgrestFetch('app_settings', {}, {
+                method: 'POST',
+                body: [{ key: 'library_settings', value: normalized, updated_at: new Date().toISOString() }],
+                headers: { Prefer: 'resolution=merge-duplicates' }
+            });
+        } catch (e) {
+            console.warn('app_settings save failed', e);
+        }
         return normalized;
     }
 
@@ -1614,6 +1633,16 @@ class RemoteApiService {
     }
 
     async getLibrarySettings() {
+        try {
+            const { data } = await postgrestFetch('app_settings', { key: 'eq.library_settings', select: 'value' });
+            if (data?.[0]?.value) {
+                const normalized = normalizeLibrarySettings(data[0].value);
+                localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+                return normalized;
+            }
+        } catch (e) {
+            console.warn('app_settings fetch failed, falling back to localStorage', e);
+        }
         const raw = JSON.parse(localStorage.getItem(LIBRARY_SETTINGS_STORAGE_KEY) || 'null');
         return normalizeLibrarySettings(raw || DEFAULT_LIBRARY_SETTINGS);
     }
@@ -1621,6 +1650,15 @@ class RemoteApiService {
     async saveLibrarySettings(settings) {
         const normalized = normalizeLibrarySettings(settings || DEFAULT_LIBRARY_SETTINGS);
         localStorage.setItem(LIBRARY_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+        try {
+            await postgrestFetch('app_settings', {}, {
+                method: 'POST',
+                body: [{ key: 'library_settings', value: normalized, updated_at: new Date().toISOString() }],
+                headers: { Prefer: 'resolution=merge-duplicates' }
+            });
+        } catch (e) {
+            console.warn('app_settings save failed', e);
+        }
         return normalized;
     }
 

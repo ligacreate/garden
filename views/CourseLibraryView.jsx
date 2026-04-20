@@ -77,7 +77,7 @@ const COURSES = [
     {
         id: 7,
         title: "Социальная психология",
-        description: "Курс о групповой динамике, влиянии среды и психологии взаимодействия. Для всех участниц сада.",
+        description: "Групповая динамика, доверие, влияние — то, что помогает ведущей работать с группой.",
         image: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&q=80&w=800",
         tag: "Курсы",
         minRole: ROLES.APPLICANT,
@@ -706,7 +706,7 @@ const CourseLibraryView = ({
     }, [selectedCourse?.id, user?.id, user?.role, user?.name, user?.email, gardenCampPaused]);
 
     return (
-        <div className="flex min-h-0 flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-12">
+        <div className="flex min-h-0 flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-28 md:pb-12">
             <div className="flex justify-between items-end mb-10">
                 <div>
                     <h1 className="text-4xl font-light text-slate-800 tracking-tight">{selectedCourse ? selectedCourse.title : 'Библиотека'}</h1>

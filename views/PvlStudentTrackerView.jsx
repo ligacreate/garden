@@ -480,6 +480,40 @@ export function StudentCourseTracker({
 
     if (activeStep) {
         const moduleItems = activeStep.module?.items || [];
+        const isChecklistStep = linkedItem?.contentType === 'checklist';
+        const isQuizStep = activeStep.item?.tag === 'quiz' && !isChecklistStep;
+        const completionLabel = isChecklistStep
+            ? 'Готово'
+            : (activeStep.item?.tag === 'task' || isQuizStep ? 'Выполнено' : 'Изучено');
+        const pillBase = 'inline-flex min-h-[36px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center rounded-full border px-2.5 py-1.5 text-[13px] font-medium transition-colors sm:min-w-[8.5rem] sm:flex-none sm:basis-auto sm:px-4 sm:text-sm';
+        const StepNav = ({ className = '' }) => {
+            return (
+                <nav className={`flex flex-wrap gap-2 ${className}`} aria-label="Навигация по шагу">
+                    <button
+                        type="button"
+                        disabled={!nextStep}
+                        onClick={() => nextStep && setActiveStepKey(nextStep.key)}
+                        className={`${pillBase} border-slate-200 bg-white text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                        Дальше
+                    </button>
+                    <button
+                        type="button"
+                        disabled={!!checked[activeStep.key]}
+                        aria-pressed={checked[activeStep.key] ? 'true' : 'false'}
+                        onClick={() => {
+                            if (!checked[activeStep.key]) {
+                                if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
+                                toggleItem(activeStep.key);
+                            }
+                        }}
+                        className={`${pillBase} border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 disabled:cursor-default disabled:opacity-55`}
+                    >
+                        {completionLabel}
+                    </button>
+                </nav>
+            );
+        };
         return (
             <div className="space-y-3 pb-20 md:space-y-4 md:pb-0">
                 <div className="max-lg:border-0 max-lg:bg-transparent max-lg:p-0 max-lg:shadow-none lg:rounded-2xl lg:border lg:border-slate-100/90 lg:bg-white lg:p-4 lg:shadow-sm">
@@ -547,6 +581,9 @@ export function StudentCourseTracker({
                                 {activeStep.module?.title} · {activeTagLabel}
                                 {linkedItem?.completed || (activeStep.key && checked[activeStep.key]) ? ' · пройдено' : ''}
                             </p>
+                            {activeStep.item?.tag !== 'task' ? (
+                                <StepNav className="mt-3 max-lg:mb-3 lg:hidden" />
+                            ) : null}
                             {contentItemId && !linkedItem ? (
                                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm leading-relaxed text-amber-800 max-lg:border-0 max-lg:bg-amber-50/50 sm:p-4">
                                     Материал привязан к шагу, но не найден в данных курса для вашего потока (проверьте seed, БД или учительскую).
@@ -570,46 +607,7 @@ export function StudentCourseTracker({
                                     Этот шаг пока без привязанного материала. Изучите материал по программе курса и отметьте прохождение кнопкой ниже.
                                 </div>
                             ) : null}
-                            {activeStep.item?.tag !== 'task' && (
-                            <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveStepKey('')}
-                                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 sm:px-3 sm:text-xs"
-                                >
-                                    Назад к модулям
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!prevStep}
-                                    onClick={() => prevStep && setActiveStepKey(prevStep.key)}
-                                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-xs"
-                                >
-                                    Предыдущий шаг
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!nextStep}
-                                    onClick={() => nextStep && setActiveStepKey(nextStep.key)}
-                                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:text-xs"
-                                >
-                                    Следующий шаг
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={!!checked[activeStep.key]}
-                                    onClick={() => {
-                                        if (!checked[activeStep.key]) {
-                                            if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
-                                            toggleItem(activeStep.key);
-                                        }
-                                    }}
-                                    className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-xs"
-                                >
-                                    {checked[activeStep.key] ? 'Отмечено как изучено' : 'Отметить как изучено'}
-                                </button>
-                            </div>
-                            )}
+                            <StepNav className="mt-4" />
                         </section>
                     </div>
                 </div>

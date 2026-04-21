@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { pvlDomainApi } from '../services/pvlMockApi';
 import RichEditor from '../components/RichEditor';
 import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared';
-import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly } from './pvlQuestionnaireShared';
+import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly, StructuredAnswersFallback } from './pvlQuestionnaireShared';
 import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText } from '../utils/pvlHomeworkAnswerRichText';
 import { normalizeMaterialHtml, pvlMaterialBodyClass } from './pvlLibraryMaterialShared.jsx';
 
@@ -495,8 +495,10 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
 }
 
 export function SubmissionVersionCard({ version, checklistSections, homeworkAssignmentType = 'standard', questionnaireBlocks = [], questionnaireTitle = '', questionnaireDescription = '' }) {
-    const hasChecklist = version?.answersJson && typeof version.answersJson === 'object' && Object.keys(version.answersJson).length > 0;
+    const answersObj = version?.answersJson && typeof version.answersJson === 'object' ? version.answersJson : null;
+    const hasStructuredAnswers = answersObj && Object.keys(answersObj).length > 0;
     const showQuestionnaire = homeworkAssignmentType === 'questionnaire' && Array.isArray(questionnaireBlocks) && questionnaireBlocks.length > 0;
+    const showChecklist = homeworkAssignmentType === 'checklist' && Array.isArray(checklistSections) && checklistSections.length > 0;
     return (
         <article className={`rounded-xl border p-3 ${version.isCurrent ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/70'}`}>
             <div className="flex items-center justify-between gap-2 mb-1">
@@ -506,8 +508,12 @@ export function SubmissionVersionCard({ version, checklistSections, homeworkAssi
             <p className="text-xs text-slate-500">{version.createdAt} · {version.authorRole}</p>
             {showQuestionnaire ? (
                 <QuestionnaireAnswersReadonly blocks={questionnaireBlocks} questionnaireTitle={questionnaireTitle} questionnaireDescription={questionnaireDescription} answersJson={version.answersJson} />
-            ) : hasChecklist && checklistSections?.length ? (
+            ) : homeworkAssignmentType === 'questionnaire' && hasStructuredAnswers ? (
+                <StructuredAnswersFallback answersJson={answersObj} />
+            ) : showChecklist && hasStructuredAnswers ? (
                 <ChecklistAnswersReadonly sections={checklistSections} answersJson={version.answersJson} />
+            ) : homeworkAssignmentType === 'checklist' && hasStructuredAnswers ? (
+                <StructuredAnswersFallback answersJson={answersObj} />
             ) : (
                 <div
                     className="text-sm text-slate-700 mt-1 max-w-none [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full"

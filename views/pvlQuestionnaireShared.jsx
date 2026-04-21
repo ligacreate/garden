@@ -100,6 +100,42 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
     );
 }
 
+/**
+ * Если у ментора не подгрузилась структура задания (пустые blocks/sections),
+ * но в версии есть answersJson — показываем сохранённые пары id → ответ.
+ */
+export function StructuredAnswersFallback({ answersJson }) {
+    const raw = answersJson && typeof answersJson === 'object' ? answersJson : {};
+    const entries = Object.entries(raw)
+        .filter(([, v]) => v != null && String(v).trim() !== '')
+        .sort(([a], [b]) => a.localeCompare(b, 'ru'));
+    if (entries.length === 0) {
+        return <p className="text-sm text-slate-400 mt-2">—</p>;
+    }
+    return (
+        <div className="space-y-3 mt-2 rounded-lg border border-amber-200/80 bg-amber-50/50 p-3">
+            <p className="text-xs text-amber-950/80">
+                Шаблон задания не загрузился; ниже — сохранённые ответы по полям.
+            </p>
+            {entries.map(([fieldId, val]) => {
+                const s = String(val);
+                const has = homeworkAnswerPlainText(s).trim() !== '';
+                return (
+                    <div key={fieldId} className="rounded-lg bg-white p-3 border border-slate-100 space-y-1">
+                        <div className="text-xs font-medium text-slate-500 break-all">{fieldId}</div>
+                        <div
+                            className="text-sm text-slate-800 max-w-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                            dangerouslySetInnerHTML={{
+                                __html: has ? sanitizeHomeworkAnswerHtml(s) : '<p class="text-slate-400">—</p>',
+                            }}
+                        />
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 /** Ментор / история: только чтение ответов. */
 export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, questionnaireDescription, answersJson }) {
     const a = answersJson && typeof answersJson === 'object' ? answersJson : {};
@@ -116,13 +152,19 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
 
             {qaPairs.map((b, idx) => {
                 const raw = a[b.id];
-                const answer = raw != null ? String(raw).trim() : '';
+                const answer = raw != null ? String(raw) : '';
+                const has = homeworkAnswerPlainText(answer).trim() !== '';
                 return (
                     <div key={b.id} className="rounded-lg bg-white p-4 shadow-sm border border-slate-100 space-y-2">
                         <div className="text-xs font-medium text-slate-500">
                             {idx + 1}. {b.question || 'Вопрос'}
                         </div>
-                        <p className="text-sm text-slate-800 whitespace-pre-wrap">{answer || <span className="text-slate-400">—</span>}</p>
+                        <div
+                            className="text-sm text-slate-800 mt-1 max-w-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                            dangerouslySetInnerHTML={{
+                                __html: has ? sanitizeHomeworkAnswerHtml(answer) : '<p class="text-slate-400">—</p>',
+                            }}
+                        />
                     </div>
                 );
             })}

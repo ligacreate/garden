@@ -1,5 +1,15 @@
 import DOMPurify from 'dompurify';
 
+/**
+ * Word/браузер при вставке часто добавляют HTML-комментарии; DOMPurify их удаляет,
+ * из‑за чего текст между ними пропадает при рендере через innerHTML.
+ */
+export function stripMsOfficeHtmlNoise(dirty) {
+    return String(dirty || '')
+        .replace(/<!--\s*StartFragment\s*-->/gi, '')
+        .replace(/<!--\s*EndFragment\s*-->/gi, '');
+}
+
 /** Те же семантические теги, что и в RichEditor (ответы менти / ментора). */
 const PURIFY_OPTS = {
     ALLOWED_TAGS: [
@@ -16,12 +26,14 @@ const PURIFY_OPTS = {
  * Безопасный HTML ответа домашки (в т.ч. data:image из загрузки файла).
  */
 export function sanitizeHomeworkAnswerHtml(dirty) {
-    return DOMPurify.sanitize(String(dirty || ''), PURIFY_OPTS);
+    const cleaned = stripMsOfficeHtmlNoise(dirty);
+    return DOMPurify.sanitize(String(cleaned || ''), PURIFY_OPTS);
 }
 
 /** Проверка «пустого» ответа с учётом HTML (для чек-листа и валидации). */
 export function homeworkAnswerPlainText(html) {
-    const t = DOMPurify.sanitize(String(html || ''), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+    const cleaned = stripMsOfficeHtmlNoise(html);
+    const t = DOMPurify.sanitize(String(cleaned || ''), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
     return String(t || '').replace(/\u00a0/g, ' ').trim();
 }
 

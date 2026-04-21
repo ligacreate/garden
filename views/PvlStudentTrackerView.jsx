@@ -590,7 +590,7 @@ export function StudentCourseTracker({
                                 </div>
                             ) : null}
                             {linkedItem ? (
-                                <div className="mt-4 max-h-[min(85vh,56rem)] min-h-0 overflow-y-auto pr-1">
+                                <div className="mt-4">
                                     <PvlLibraryMaterialBody
                                         key={linkedItem.id}
                                         variant="tracker"

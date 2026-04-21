@@ -76,6 +76,7 @@ import {
 } from '../services/pvlMockApi';
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 import { TASK_STATUS } from '../data/pvl/enums';
+import { coerceAnswersJsonObject } from '../utils/pvlHomeworkAnswerRichText';
 import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
 import {
     createDefaultQuestionnaireBlocks,
@@ -1966,7 +1967,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             createdAt: formatPvlDateTime(v.createdAt),
             authorRole: v.authorRole,
             textContent: v.textContent,
-            answersJson: v.answersJson != null ? v.answersJson : null,
+            answersJson: coerceAnswersJsonObject(v.answersJson),
             attachments: v.attachments || [],
             links: v.links || [],
             isCurrent: !!v.isCurrent,

@@ -4,7 +4,7 @@ import { pvlDomainApi } from '../services/pvlMockApi.js';
 import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared.jsx';
 import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly, StructuredAnswersFallback } from './pvlQuestionnaireShared.jsx';
 import RichEditor from '../components/RichEditor.jsx';
-import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml } from '../utils/pvlHomeworkAnswerRichText.js';
+import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, coerceAnswersJsonObject } from '../utils/pvlHomeworkAnswerRichText.js';
 import { isQuestionnaireAnswersComplete } from '../utils/pvlQuestionnaireBlocks.js';
 
 export function stripMaterialNumbering(title) {
@@ -709,7 +709,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
 
 function HomeworkVersionItem({ version, isQuestionnaire, questionnaireBlocks, questionnaireTitle, questionnaireDescription, isChecklist, checklistSections }) {
     const versionDate = String(version.createdAt || '').substring(0, 16);
-    const answersJson = version.answersJson && typeof version.answersJson === 'object' ? version.answersJson : {};
+    const answersJson = coerceAnswersJsonObject(version.answersJson) || {};
     const hasStructuredAnswers = Object.keys(answersJson).length > 0;
     return (
         <div className="rounded-xl border border-[#E8D5C4]/50 bg-white/70 p-3">
@@ -724,11 +724,9 @@ function HomeworkVersionItem({ version, isQuestionnaire, questionnaireBlocks, qu
                     questionnaireDescription={questionnaireDescription}
                     answersJson={answersJson}
                 />
-            ) : isQuestionnaire && hasStructuredAnswers ? (
-                <StructuredAnswersFallback answersJson={answersJson} />
-            ) : isChecklist && checklistSections.length ? (
+            ) : isChecklist && checklistSections.length && hasStructuredAnswers ? (
                 <ChecklistAnswersReadonly sections={checklistSections} answersJson={answersJson} />
-            ) : isChecklist && hasStructuredAnswers ? (
+            ) : hasStructuredAnswers ? (
                 <StructuredAnswersFallback answersJson={answersJson} />
             ) : version.textContent ? (
                 <div

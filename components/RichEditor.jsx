@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Bold, Italic, Underline, Link, List, ListOrdered, Type, Image, Upload, Table } from 'lucide-react';
+import { stripMsOfficeHtmlNoise } from '../utils/pvlHomeworkAnswerRichText';
 
 const RichEditor = ({
     value,
@@ -18,13 +19,24 @@ const RichEditor = ({
     /** Предотвращает перезапись DOM из props сразу после правок пользователя (иначе «теряется» текст при сохранении без blur). */
     const skipExternalSyncRef = useRef(false);
 
+    /** Word/браузер вставляют HTML-комментарии; они не попадают в `.children`, поэтому раньше «залипали» в innerHTML. */
+    const removeHtmlCommentNodes = (rootNode) => {
+        if (!rootNode?.ownerDocument) return;
+        const doc = rootNode.ownerDocument;
+        const tw = doc.createTreeWalker(rootNode, NodeFilter.SHOW_COMMENT);
+        const dead = [];
+        while (tw.nextNode()) dead.push(tw.currentNode);
+        dead.forEach((n) => n.parentNode?.removeChild(n));
+    };
+
     const sanitizeIncomingHtml = (rawHtml) => {
-        const html = String(rawHtml || '');
+        const html = stripMsOfficeHtmlNoise(String(rawHtml || ''));
         if (!html.trim()) return '';
         const parser = new DOMParser();
         const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html');
         const root = doc.getElementById('root');
         if (!root) return '';
+        removeHtmlCommentNodes(root);
 
         const allowedTags = new Set([
             'P', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',

@@ -31,7 +31,7 @@ import { api } from './dataService';
 import { ROLES as GARDEN_ROLES } from '../utils/roles';
 import { classifyGardenProfileForPvlStudent, pvlGardenRoleLabelRu } from '../utils/pvlGardenAdmission';
 import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
-import { isHomeworkAnswerEmpty } from '../utils/pvlHomeworkAnswerRichText';
+import { isHomeworkAnswerEmpty, normalizeAnswersJsonForStore } from '../utils/pvlHomeworkAnswerRichText';
 import {
     createDefaultQuestionnaireBlocks,
     normalizeQuestionnaireBlocks,
@@ -2430,7 +2430,8 @@ export const studentApi = {
         if (!submission) return null;
         const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
         const textContent = payload?.textContent ?? '';
-        const answersJson = payload?.answersJson !== undefined ? payload.answersJson : undefined;
+        const answersJson =
+            payload?.answersJson !== undefined ? normalizeAnswersJsonForStore(payload.answersJson) : undefined;
 
         const touchDraftVersion = (ver) => {
             ver.textContent = textContent;
@@ -2496,6 +2497,9 @@ export const studentApi = {
         if (draftV && draftV.isDraft) {
             if (isHomeworkAnswerEmpty(textContent) && draftV.textContent) textContent = draftV.textContent;
             if (answersJson === undefined && draftV.answersJson != null) answersJson = draftV.answersJson;
+        }
+        if (answersJson !== undefined && answersJson !== null) {
+            answersJson = normalizeAnswersJsonForStore(answersJson);
         }
         const meta = task?.homeworkMeta;
         if (meta?.assignmentType === 'questionnaire') {
@@ -2908,6 +2912,8 @@ export const mentorApi = {
     },
     canPostTaskThread,
     getMentorTaskDetail(_, studentId, taskId) {
+        // Как у ученицы: подтянуть homeworkMeta из CMS (task-ci-*), иначе у ментора «standard» и пустые блоки.
+        syncPublishedHomeworkTasksForStudent(studentId);
         return getTaskDetail(studentId, taskId);
     },
     submitMentorReview(mentorId, studentId, taskId, payload) {

@@ -41,6 +41,36 @@ export function isHomeworkAnswerEmpty(html) {
     return homeworkAnswerPlainText(html).length === 0;
 }
 
+/** PostgREST/старые записи могут отдавать JSON объектом или строкой. */
+export function coerceAnswersJsonObject(raw) {
+    if (raw == null) return null;
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+        const t = raw.trim();
+        if (!t) return null;
+        try {
+            const p = JSON.parse(t);
+            return p && typeof p === 'object' && !Array.isArray(p) ? p : null;
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+/** Чистит HTML-поля анкеты/чек-листа перед сохранением (мусор буфера, комментарии Word). */
+export function normalizeAnswersJsonForStore(answersJson) {
+    if (!answersJson || typeof answersJson !== 'object') return answersJson;
+    const out = { ...answersJson };
+    for (const k of Object.keys(out)) {
+        const v = out[k];
+        if (typeof v === 'string') {
+            out[k] = sanitizeHomeworkAnswerHtml(v);
+        }
+    }
+    return out;
+}
+
 /** Загрузка картинки в ответ: только data URL, без внешних URL. */
 export function pvlReadImageFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {

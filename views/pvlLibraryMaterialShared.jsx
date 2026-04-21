@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { pvlDomainApi } from '../services/pvlMockApi.js';
-import { ChecklistFieldsEditor } from './pvlChecklistShared.jsx';
-import { QuestionnaireFieldsEditor } from './pvlQuestionnaireShared.jsx';
+import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared.jsx';
+import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly } from './pvlQuestionnaireShared.jsx';
 import RichEditor from '../components/RichEditor.jsx';
-import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl } from '../utils/pvlHomeworkAnswerRichText.js';
+import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml } from '../utils/pvlHomeworkAnswerRichText.js';
 import { isQuestionnaireAnswersComplete } from '../utils/pvlQuestionnaireBlocks.js';
 
 export function stripMaterialNumbering(title) {
@@ -449,15 +449,16 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
     );
 }
 
-function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '/student' }) {
+export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '/student' }) {
     const [draft, setDraft] = React.useState('');
     const [answers, setAnswers] = React.useState({});
     const [saved, setSaved] = React.useState(false);
-    const [submitted, setSubmitted] = React.useState(false);
+    const [refreshTick, setRefreshTick] = React.useState(0);
 
     const task = React.useMemo(() => {
         return pvlDomainApi.studentApi.ensureTaskForContentItem(studentId, selectedItem);
-    }, [studentId, selectedItem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [studentId, selectedItem?.id]);
 
     const hwMeta = React.useMemo(() => {
         const t = pvlDomainApi.db.homeworkTasks.find((x) => x.id === task?.id);
@@ -467,24 +468,33 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
     const checklistSections = hwMeta?.checklistSections || [];
     const isQuestionnaire = hwMeta?.assignmentType === 'questionnaire';
     const questionnaireBlocks = hwMeta?.questionnaireBlocks || [];
+    const questionnaireTitle = hwMeta?.questionnaireTitle || '';
+    const questionnaireDescription = hwMeta?.questionnaireDescription || '';
+
+    const detail = React.useMemo(() => {
+        if (!task?.id || !studentId) return null;
+        return pvlDomainApi.studentApi.getStudentTaskDetail(studentId, task.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [studentId, task?.id, refreshTick]);
 
     React.useEffect(() => {
-        if (!task) return;
-        const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, task.id);
-        const currentVersion = detail?.versions?.find(v => v.isDraft) || detail?.versions?.find(v => v.isCurrent);
+        if (!detail?.versions) return;
+        const currentVersion = detail.versions.find(v => v.isDraft) || detail.versions.find(v => v.isCurrent);
         if (currentVersion?.textContent) setDraft(currentVersion.textContent);
         if (currentVersion?.answersJson && typeof currentVersion.answersJson === 'object') {
             setAnswers({ ...currentVersion.answersJson });
         }
-        const st = detail?.state?.status;
-        if (st === 'submitted' || st === 'pending_review' || st === 'accepted') {
-            setSubmitted(true);
-        }
-    }, [studentId, task]);
+    }, [task?.id]);
 
     if (!task) return null;
 
-    const state = pvlDomainApi.db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
+    const taskState = detail?.state || pvlDomainApi.db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
+    const submittedVersions = (detail?.versions || []).filter(v => !v.isDraft);
+    const thread = (detail?.thread || []).filter(m => m.authorRole !== 'system');
+    const deadlineAt = detail?.task?.deadlineAt || null;
+
+    const refresh = () => setRefreshTick(t => t + 1);
+
     const STATUS_LABELS = {
         not_started: { label: 'Не начато', color: 'bg-slate-100 text-slate-500' },
         draft: { label: 'Черновик', color: 'bg-violet-100 text-violet-800' },
@@ -493,9 +503,13 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
         revision_requested: { label: 'На доработке', color: 'bg-orange-100 text-orange-700' },
         accepted: { label: 'Принято', color: 'bg-emerald-100 text-emerald-700' },
     };
-    const statusInfo = STATUS_LABELS[state?.status] || STATUS_LABELS.not_started;
-    const isAccepted = state?.status === 'accepted';
-    const isPending = state?.status === 'pending_review' || state?.status === 'submitted';
+    const statusInfo = STATUS_LABELS[taskState?.status] || STATUS_LABELS.not_started;
+    const isAccepted = taskState?.status === 'accepted';
+    const isPending = taskState?.status === 'pending_review' || taskState?.status === 'submitted';
+    const canEdit = !isAccepted && !isPending;
+
+    const currentVersion = submittedVersions.find(v => v.isCurrent) || (submittedVersions.length ? submittedVersions[submittedVersions.length - 1] : null);
+    const prevVersions = submittedVersions.filter(v => v.id !== currentVersion?.id).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
 
     const handleSaveDraft = () => {
         if (isChecklist || isQuestionnaire) {
@@ -505,6 +519,7 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
         }
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+        refresh();
     };
 
     const handleSubmit = () => {
@@ -516,98 +531,180 @@ function HomeworkInlineForm({ selectedItem, studentId, navigate, routePrefix = '
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
         }
         if (!ok) return;
-        setSubmitted(true);
-    };
-
-    const handleOpenFull = () => {
-        if (navigate) navigate(`${routePrefix}/results/${task.id}`);
+        refresh();
     };
 
     return (
         <div className="mt-4 space-y-4">
             {selectedItem.fullDescription ? (
                 <div
-                    className={`${materialBodyClass}`}
+                    className={materialBodyClass}
                     dangerouslySetInnerHTML={{ __html: normalizeMaterialHtml(selectedItem.fullDescription) }}
                 />
             ) : null}
+
+            {/* Задание: заголовок, статус, дедлайн */}
             <div className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-2">
                     <h4 className="font-display text-lg text-[#4A3728]">Домашнее задание</h4>
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusInfo.color}`}>
                         {statusInfo.label}
                     </span>
                 </div>
+                {deadlineAt ? (
+                    <div className="text-xs text-slate-500 mb-2">Дедлайн: {deadlineAt}</div>
+                ) : null}
                 {selectedItem.lessonHomework?.prompt ? (
-                    <p className="text-sm text-slate-600 leading-relaxed mb-3">
+                    <p className="text-sm text-slate-600 leading-relaxed mb-2">
                         {selectedItem.lessonHomework.prompt}
                     </p>
                 ) : !selectedItem.fullDescription && selectedItem.shortDescription ? (
-                    <p className="text-sm text-slate-600 leading-relaxed mb-3">
+                    <p className="text-sm text-slate-600 leading-relaxed mb-2">
                         {selectedItem.shortDescription}
                     </p>
                 ) : null}
-                {selectedItem.lessonHomework?.expectedResult && (
+                {selectedItem.lessonHomework?.expectedResult ? (
                     <p className="text-xs text-slate-400">Ожидаемый результат: {selectedItem.lessonHomework.expectedResult}</p>
-                )}
+                ) : null}
             </div>
 
-            {!isAccepted && (
+            {/* Отправленные версии */}
+            {currentVersion ? (
+                <div className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5">
+                    <p className="text-xs text-[#7A6758] mb-2">Текущая версия</p>
+                    <HomeworkVersionItem
+                        version={currentVersion}
+                        isQuestionnaire={isQuestionnaire}
+                        questionnaireBlocks={questionnaireBlocks}
+                        questionnaireTitle={questionnaireTitle}
+                        questionnaireDescription={questionnaireDescription}
+                        isChecklist={isChecklist}
+                        checklistSections={checklistSections}
+                    />
+                    {isPending ? (
+                        <p className="mt-3 text-xs text-[#7A6758]">Ответ уже отправлен и ожидает решения ментора. Редактирование откроется, если ментор вернет работу на доработку.</p>
+                    ) : null}
+                    {prevVersions.length > 0 ? (
+                        <details className="mt-3">
+                            <summary className="text-xs cursor-pointer text-[#7A6758]">Предыдущие версии ({prevVersions.length})</summary>
+                            <div className="grid gap-2 mt-2">
+                                {prevVersions.map(v => (
+                                    <HomeworkVersionItem
+                                        key={v.id}
+                                        version={v}
+                                        isQuestionnaire={isQuestionnaire}
+                                        questionnaireBlocks={questionnaireBlocks}
+                                        questionnaireTitle={questionnaireTitle}
+                                        questionnaireDescription={questionnaireDescription}
+                                        isChecklist={isChecklist}
+                                        checklistSections={checklistSections}
+                                    />
+                                ))}
+                            </div>
+                        </details>
+                    ) : null}
+                </div>
+            ) : null}
+
+            {/* Форма ввода ответа */}
+            {canEdit ? (
                 <div className="space-y-3">
                     {isQuestionnaire && questionnaireBlocks.length ? (
-                        <QuestionnaireFieldsEditor blocks={questionnaireBlocks} value={answers} onChange={setAnswers} disabled={isPending} />
+                        <QuestionnaireFieldsEditor
+                            blocks={questionnaireBlocks}
+                            questionnaireTitle={questionnaireTitle}
+                            questionnaireDescription={questionnaireDescription}
+                            value={answers}
+                            onChange={setAnswers}
+                            disabled={false}
+                        />
                     ) : isChecklist && checklistSections.length ? (
-                        <ChecklistFieldsEditor sections={checklistSections} value={answers} onChange={setAnswers} disabled={isPending} />
+                        <ChecklistFieldsEditor sections={checklistSections} value={answers} onChange={setAnswers} disabled={false} />
                     ) : (
                         <RichEditor
                             value={draft}
                             onChange={setDraft}
-                            placeholder={
-                                isPending
-                                    ? 'Работа отправлена на проверку…'
-                                    : 'Заголовки, жирный, курсив, подчёркивание, списки, таблица. Картинки — только загрузкой файла.'
-                            }
+                            placeholder="Заголовки, жирный, курсив, подчёркивание, списки, таблица. Картинки — только загрузкой файла."
                             variant="student"
                             onUploadImage={pvlReadImageFileAsDataUrl}
-                            readOnly={isPending}
+                            readOnly={false}
                         />
                     )}
-                    {!isPending && (
-                        <div className="flex gap-2 flex-wrap">
-                            <button
-                                type="button"
-                                onClick={handleSaveDraft}
-                                className="px-4 py-2 rounded-xl border border-[#E8D5C4] bg-white text-sm text-[#4A3728] hover:bg-[#FAF6F2] transition-colors"
-                            >
-                                {saved ? 'Сохранено ✓' : 'Сохранить черновик'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleSubmit}
-                                disabled={
-                                    isQuestionnaire
-                                        ? !isQuestionnaireAnswersComplete(questionnaireBlocks, answers)
-                                        : isChecklist
-                                            ? false
-                                            : isHomeworkAnswerEmpty(draft)
-                                }
-                                className="px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            >
-                                Отправить на проверку
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex gap-2 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={handleSaveDraft}
+                            className="px-4 py-2 rounded-xl border border-[#E8D5C4] bg-white text-sm text-[#4A3728] hover:bg-[#FAF6F2] transition-colors"
+                        >
+                            {saved ? 'Сохранено ✓' : 'Сохранить черновик'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSubmit}
+                            disabled={
+                                isQuestionnaire
+                                    ? !isQuestionnaireAnswersComplete(questionnaireBlocks, answers)
+                                    : isChecklist
+                                        ? false
+                                        : isHomeworkAnswerEmpty(draft)
+                            }
+                            className="px-4 py-2 rounded-xl bg-[#C4956A] text-white text-sm font-medium hover:bg-[#B8845A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Отправить на проверку
+                        </button>
+                    </div>
                 </div>
-            )}
+            ) : null}
 
-            {(submitted || isAccepted || isPending) && navigate && (
-                <button
-                    onClick={handleOpenFull}
-                    className="text-sm text-[#C4956A] underline-offset-2 hover:underline"
-                >
-                    Открыть полную карточку задания →
-                </button>
-            )}
+            {/* Лента по заданию */}
+            {thread.length > 0 ? (
+                <div className="rounded-2xl border border-[#E8D5C4]/70 bg-white p-4 md:p-5">
+                    <h4 className="font-display text-xl text-[#4A3728] mb-1">Лента по заданию</h4>
+                    <p className="text-xs text-[#7A6758] mb-3">Сообщения по заданию.</p>
+                    <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">
+                        {thread.map(m => (
+                            <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : 'bg-white border-slate-200'}`}>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-medium text-slate-800">
+                                        {m.authorName}
+                                        <span className="text-xs text-slate-500 font-normal ml-1">({m.authorRole === 'mentor' ? 'ментор' : 'участница'})</span>
+                                    </p>
+                                    <p className="text-xs text-slate-500">{m.createdAt}</p>
+                                </div>
+                                <p className="mt-1 text-sm text-slate-700">{m.text}</p>
+                                {m.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function HomeworkVersionItem({ version, isQuestionnaire, questionnaireBlocks, questionnaireTitle, questionnaireDescription, isChecklist, checklistSections }) {
+    const versionDate = String(version.createdAt || '').substring(0, 16);
+    return (
+        <div className="rounded-xl border border-[#E8D5C4]/50 bg-white/70 p-3">
+            <div className="flex items-center justify-between mb-2 text-xs text-[#7A6758]">
+                <span>Версия {version.versionNumber}</span>
+                <span>{versionDate}</span>
+            </div>
+            {isQuestionnaire && questionnaireBlocks.length ? (
+                <QuestionnaireAnswersReadonly
+                    blocks={questionnaireBlocks}
+                    questionnaireTitle={questionnaireTitle}
+                    questionnaireDescription={questionnaireDescription}
+                    answersJson={version.answersJson || {}}
+                />
+            ) : isChecklist && checklistSections.length ? (
+                <ChecklistAnswersReadonly sections={checklistSections} answersJson={version.answersJson || {}} />
+            ) : version.textContent ? (
+                <div
+                    className="text-sm text-slate-700 whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(version.textContent) }}
+                />
+            ) : <p className="text-xs text-slate-400 italic">Нет содержимого</p>}
         </div>
     );
 }

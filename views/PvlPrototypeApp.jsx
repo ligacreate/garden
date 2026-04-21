@@ -37,6 +37,7 @@ import {
     stripMaterialNumbering,
     buildLessonVideoPlayerHtml,
     PvlLibraryMaterialBody,
+    HomeworkInlineForm,
     normalizeMaterialHtml,
     pvlMaterialBodyClass,
 } from './pvlLibraryMaterialShared';
@@ -3205,6 +3206,48 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];
         const adminChrome = routePrefix === '/admin';
+        const taskData = pvlDomainApi.db.homeworkTasks.find(t => t.id === taskId);
+        const contentItemId = taskData?.linkedContentItemId;
+        const hwSelectedItem = contentItemId
+            ? pvlDomainApi.studentApi.getPublishedContentItemForStudent(studentId, contentItemId)
+            : null;
+        if (hwSelectedItem?.lessonKind === 'homework') {
+            return (
+                <div className="space-y-4 pb-20 md:pb-0">
+                    <div className="rounded-2xl border border-slate-100/90 bg-white p-4 shadow-sm">
+                        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                            {!adminChrome ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/student/results')}
+                                        className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-800 hover:bg-emerald-100"
+                                    >
+                                        Результаты
+                                    </button>
+                                    <span> / </span>
+                                </>
+                            ) : null}
+                            <span className="text-slate-700">{hwSelectedItem.title}</span>
+                        </div>
+                        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-400">Материал</div>
+                            <h3 className="font-display text-2xl text-slate-800 mt-1">{hwSelectedItem.title}</h3>
+                            <p className="text-xs text-slate-500 mt-2">Домашнее задание</p>
+                            <div className="mt-4 max-h-[min(85vh,56rem)] min-h-0 overflow-y-auto pr-1">
+                                <HomeworkInlineForm
+                                    key={`${studentId}-${taskId}-${refreshKey}`}
+                                    selectedItem={hwSelectedItem}
+                                    studentId={studentId}
+                                    navigate={navigate}
+                                    routePrefix={routePrefix}
+                                />
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            );
+        }
         return (
             <PvlTaskDetailView
                 key={`${studentId}-${taskId}-${refreshKey}`}
@@ -4325,6 +4368,7 @@ function createDefaultLessonHomework() {
         assignmentType: 'standard',
         checklistSections: JSON.parse(JSON.stringify(DEFAULT_REFLEX_CHECKLIST_SECTIONS)),
         questionnaireTitle: '',
+        questionnaireDescription: '',
         questionnaireBlocks: createDefaultQuestionnaireBlocks(),
         responseFormat: {
             artifactType: 'text',
@@ -4377,6 +4421,7 @@ function normalizeLessonHomework(raw) {
         assignmentType,
         checklistSections: assignmentType === 'checklist' ? checklistSections : base.checklistSections,
         questionnaireTitle: String(src.questionnaireTitle || '').trim(),
+        questionnaireDescription: String(src.questionnaireDescription || '').trim(),
         questionnaireBlocks,
         responseFormat: {
             artifactType: responseFormat.artifactType || 'text',
@@ -4507,16 +4552,11 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                         Блоки и пункты берутся из шаблона ниже; если список пуст, при сохранении подставится шаблон рефлексии (Контекст · Что наблюдала · Личная рефлексия).
                     </p>
                 ) : null}
-                {hw.assignmentType === 'questionnaire' ? (
-                    <p className="text-[11px] text-slate-500 leading-snug">
-                        Составьте блоки: информационный текст, краткий и развёрнутый ответ. Ответы ученицы сохраняются в той же сдаче, что и чек-лист (поле answersJson).
-                    </p>
-                ) : null}
                 {validation.questionnaire ? <div className="text-xs text-rose-700">{validation.questionnaire}</div> : null}
                 {hw.assignmentType === 'questionnaire' ? (
                     <div className="space-y-3 border-t border-slate-100 pt-3">
                         <label className="block space-y-1">
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Заголовок анкеты (опционально)</span>
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Заголовок анкеты</span>
                             <input
                                 value={hw.questionnaireTitle}
                                 onChange={(e) => setHw((prev) => ({ ...prev, questionnaireTitle: e.target.value }))}
@@ -4524,126 +4564,73 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                                 placeholder="Например: Рефлексия после модуля"
                             />
                         </label>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Блоки</div>
+                        <label className="block space-y-1">
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Описание (покажется перед вопросами)</span>
+                            <textarea
+                                value={hw.questionnaireDescription || ''}
+                                onChange={(e) => setHw((prev) => ({ ...prev, questionnaireDescription: e.target.value }))}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                                rows={2}
+                                placeholder="Краткая инструкция для участницы…"
+                            />
+                        </label>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Вопросы</div>
                         <div className="space-y-2">
-                            {(hw.questionnaireBlocks || []).map((b, idx) => (
-                                <div key={b.id} className="rounded-lg border border-slate-200/90 bg-slate-50/50 p-2 space-y-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <select
-                                            value={b.type}
-                                            onChange={(e) => {
-                                                const t = e.target.value;
-                                                setHw((prev) => ({
+                            {(hw.questionnaireBlocks || []).filter((b) => b.type === 'qa_pair').map((b, idx) => {
+                                const absIdx = hw.questionnaireBlocks.findIndex((x) => x.id === b.id);
+                                return (
+                                    <div key={b.id} className="rounded-lg border border-slate-200/90 bg-slate-50/50 p-2 space-y-2">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="text-[11px] font-medium text-slate-500 mr-1">Вопрос {idx + 1}</span>
+                                            <button
+                                                type="button"
+                                                className="text-[11px] rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50"
+                                                onClick={() => moveListItem('questionnaireBlocks', absIdx, -1)}
+                                            >Вверх</button>
+                                            <button
+                                                type="button"
+                                                className="text-[11px] rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50"
+                                                onClick={() => moveListItem('questionnaireBlocks', absIdx, 1)}
+                                            >Вниз</button>
+                                            <button
+                                                type="button"
+                                                className="text-[11px] rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-rose-800 hover:bg-rose-100"
+                                                onClick={() => setHw((prev) => ({
                                                     ...prev,
-                                                    questionnaireBlocks: prev.questionnaireBlocks.map((row, i) => {
-                                                        if (i !== idx) return row;
-                                                        if (t === 'text') return { id: row.id, type: 'text', content: row.content || '<p></p>' };
-                                                        if (t === 'long_text') return { id: row.id, type: 'long_text', label: row.label || 'Вопрос', required: !!row.required };
-                                                        return { id: row.id, type: 'short_text', label: row.label || 'Вопрос', required: !!row.required };
-                                                    }),
-                                                }));
-                                            }}
-                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
-                                        >
-                                            <option value="text">Текст (информация)</option>
-                                            <option value="short_text">Краткий ответ</option>
-                                            <option value="long_text">Развёрнутый ответ</option>
-                                        </select>
-                                        <button
-                                            type="button"
-                                            className="text-[11px] rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50"
-                                            onClick={() => moveListItem('questionnaireBlocks', idx, -1)}
-                                        >
-                                            Вверх
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="text-[11px] rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-600 hover:bg-slate-50"
-                                            onClick={() => moveListItem('questionnaireBlocks', idx, 1)}
-                                        >
-                                            Вниз
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="text-[11px] rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-rose-800 hover:bg-rose-100"
-                                            onClick={() => setHw((prev) => ({
-                                                ...prev,
-                                                questionnaireBlocks: prev.questionnaireBlocks.filter((row) => row.id !== b.id),
-                                            }))}
-                                        >
-                                            Удалить
-                                        </button>
-                                    </div>
-                                    {b.type === 'text' ? (
-                                        <RichEditor
-                                            value={b.content || ''}
-                                            onChange={(html) => setHw((prev) => ({
-                                                ...prev,
-                                                questionnaireBlocks: prev.questionnaireBlocks.map((row) => (row.id === b.id ? { ...row, content: html } : row)),
-                                            }))}
-                                            onUploadImage={pvlRichEditorUploadImage}
-                                            placeholder="Текст для ученицы…"
-                                            variant="default"
-                                        />
-                                    ) : (
-                                        <>
+                                                    questionnaireBlocks: prev.questionnaireBlocks.filter((row) => row.id !== b.id),
+                                                }))}
+                                            >Удалить</button>
+                                        </div>
+                                        <div className="space-y-1.5">
                                             <input
-                                                value={b.label || ''}
+                                                value={b.question}
                                                 onChange={(e) => setHw((prev) => ({
                                                     ...prev,
-                                                    questionnaireBlocks: prev.questionnaireBlocks.map((row) => (row.id === b.id ? { ...row, label: e.target.value } : row)),
+                                                    questionnaireBlocks: prev.questionnaireBlocks.map((row) =>
+                                                        row.id === b.id ? { ...row, question: e.target.value } : row
+                                                    ),
                                                 }))}
                                                 className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm"
-                                                placeholder="Формулировка вопроса"
+                                                placeholder="Текст вопроса"
                                             />
-                                            <label className="flex items-center gap-2 text-xs text-slate-700">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!b.required}
-                                                    onChange={(e) => setHw((prev) => ({
-                                                        ...prev,
-                                                        questionnaireBlocks: prev.questionnaireBlocks.map((row) => (row.id === b.id ? { ...row, required: e.target.checked } : row)),
-                                                    }))}
-                                                />
-                                                Обязательно для отправки
-                                            </label>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
+                                            <div className="rounded border border-dashed border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-400">
+                                                Поле ответа участницы (без ограничения символов)
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1"
-                                onClick={() => setHw((prev) => ({
-                                    ...prev,
-                                    questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'text', content: '<p></p>' }],
-                                }))}
-                            >
-                                + Текст
-                            </button>
-                            <button
-                                type="button"
-                                className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1"
-                                onClick={() => setHw((prev) => ({
-                                    ...prev,
-                                    questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'short_text', label: 'Вопрос', required: false }],
-                                }))}
-                            >
-                                + Краткий ответ
-                            </button>
-                            <button
-                                type="button"
-                                className="text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1"
-                                onClick={() => setHw((prev) => ({
-                                    ...prev,
-                                    questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'long_text', label: 'Вопрос', required: false }],
-                                }))}
-                            >
-                                + Развёрнутый ответ
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            className="text-xs rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-900 hover:bg-emerald-100"
+                            onClick={() => setHw((prev) => ({
+                                ...prev,
+                                questionnaireBlocks: [...prev.questionnaireBlocks, { id: newQuestionnaireBlockId(), type: 'qa_pair', question: '' }],
+                            }))}
+                        >
+                            + Добавить вопрос
+                        </button>
                     </div>
                 ) : null}
             </section>
@@ -5370,15 +5357,17 @@ function AdminContentItemScreen({
                                         ))}
                                     </select>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs text-slate-500 ml-0.5">Длительность</label>
-                                    <input
-                                        value={editForm.estimatedDuration}
-                                        onChange={(e) => setEditForm((f) => ({ ...f, estimatedDuration: e.target.value }))}
-                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                        placeholder="например 20 мин"
-                                    />
-                                </div>
+                                {editForm.lessonKind !== 'homework' ? (
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-0.5">Длительность</label>
+                                        <input
+                                            value={editForm.estimatedDuration}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, estimatedDuration: e.target.value }))}
+                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                            placeholder="например 20 мин"
+                                        />
+                                    </div>
+                                ) : null}
                             </div>
                             {editForm.targetSection === 'library' ? (
                                 <div className="grid md:grid-cols-2 gap-4">
@@ -5407,14 +5396,16 @@ function AdminContentItemScreen({
                                     </div>
                                 </div>
                             ) : null}
-                            <div className="space-y-1">
-                                <label className="text-xs text-slate-500 ml-0.5">Теги через запятую</label>
-                                <input
-                                    value={editForm.tagsText}
-                                    onChange={(e) => setEditForm((f) => ({ ...f, tagsText: e.target.value }))}
-                                    className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                />
-                            </div>
+                            {editForm.lessonKind !== 'homework' ? (
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-500 ml-0.5">Теги через запятую</label>
+                                    <input
+                                        value={editForm.tagsText}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, tagsText: e.target.value }))}
+                                        className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                    />
+                                </div>
+                            ) : null}
                             {editForm.targetSection === 'lessons' && editForm.lessonKind === 'quiz' ? (
                                 <>
                                     <LessonQuizBuilder
@@ -5432,39 +5423,11 @@ function AdminContentItemScreen({
                                     </section>
                                 </>
                             ) : editForm.targetSection === 'lessons' && editForm.lessonKind === 'homework' ? (
-                                <>
-                                    <LessonHomeworkBuilder
-                                        value={editForm.lessonHomework}
-                                        onChange={(next) => setEditForm((f) => ({ ...f, lessonHomework: next }))}
-                                        validation={validateLessonHomework(editForm.lessonHomework, { requireCriteria: false })}
-                                    />
-                                    <div className="space-y-2">
-                                        <label className="text-xs text-slate-500 ml-0.5">Полный текст задания</label>
-                                        <RichEditor
-                                            key={`pvl-hw-${contentId}`}
-                                            value={editForm.fullDescriptionHtml}
-                                            onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
-                                            onUploadImage={pvlRichEditorUploadImage}
-                                            placeholder="Опишите домашнее задание..."
-                                        />
-                                    </div>
-                                    <section className="rounded-xl border border-emerald-100 bg-white p-4">
-                                        <div className="text-sm font-medium text-emerald-900 mb-2">Предпросмотр для ученицы</div>
-                                        <div className="text-xs text-slate-600">Модуль {clampPvlModule(editForm.moduleNumber)}</div>
-                                        <div className="mt-1 text-xs text-slate-600">
-                                            Дедлайн: {normalizeLessonHomework(editForm.lessonHomework).deadline.type === 'fixed_date'
-                                                ? (normalizeLessonHomework(editForm.lessonHomework).deadline.at || 'не задан')
-                                                : normalizeLessonHomework(editForm.lessonHomework).deadline.type === 'week_based'
-                                                    ? (normalizeLessonHomework(editForm.lessonHomework).deadline.weekBasedLabel || 'по модулю')
-                                                    : 'без дедлайна'}
-                                        </div>
-                                        <div className="mt-2 text-xs text-slate-700">
-                                            {normalizeLessonHomework(editForm.lessonHomework).assignmentType === 'questionnaire'
-                                                ? `Анкета · блоков: ${normalizeLessonHomework(editForm.lessonHomework).questionnaireBlocks?.length || 0}`
-                                                : `Формат ответа: ${normalizeLessonHomework(editForm.lessonHomework).responseFormat.artifactType}`}
-                                        </div>
-                                    </section>
-                                </>
+                                <LessonHomeworkBuilder
+                                    value={editForm.lessonHomework}
+                                    onChange={(next) => setEditForm((f) => ({ ...f, lessonHomework: next }))}
+                                    validation={validateLessonHomework(editForm.lessonHomework, { requireCriteria: false })}
+                                />
                             ) : videoSummaryEditor ? (
                                 <div className="space-y-4">
                                     <div className="space-y-1">
@@ -6302,9 +6265,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                     <section className="rounded-xl border border-emerald-100/90 bg-emerald-50/25 p-3 space-y-2.5">
                         <div className={cmsFormTitle}>Форма урока</div>
                         <div className="grid md:grid-cols-2 gap-2">
-                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={cmsIn} placeholder="Название" />
-                            <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className={cmsIn} placeholder="Длительность (например 20 мин)" />
-                            <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={cmsIn} placeholder="Теги через запятую" />
+                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="Название" />
+                            {draft.lessonKind !== 'homework' ? (
+                                <>
+                                    <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className={cmsIn} placeholder="Длительность (например 20 мин)" />
+                                    <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={cmsIn} placeholder="Теги через запятую" />
+                                </>
+                            ) : null}
                         </div>
                         <div className="space-y-1.5">
                             <div className="text-xs font-medium text-emerald-900/80">Куда публиковать в курсе</div>
@@ -6387,16 +6354,6 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     onChange={(next) => setDraft((d) => ({ ...d, lessonHomework: next }))}
                                     validation={validateLessonHomework(draft.lessonHomework, { requireCriteria: false })}
                                 />
-                                <div className="space-y-1">
-                                    <label className={cmsLbl}>Полный текст задания</label>
-                                    <RichEditor
-                                        key="create-homework"
-                                        value={draft.fullDescriptionHtml}
-                                        onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val, lessonHomeworkPrompt: val }))}
-                                        onUploadImage={pvlRichEditorUploadImage}
-                                        placeholder="Опишите домашнее задание..."
-                                    />
-                                </div>
                                 <div className="flex justify-end">
                                     <button
                                         type="button"

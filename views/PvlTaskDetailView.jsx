@@ -494,7 +494,7 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
     );
 }
 
-export function SubmissionVersionCard({ version, checklistSections, homeworkAssignmentType = 'standard', questionnaireBlocks = [] }) {
+export function SubmissionVersionCard({ version, checklistSections, homeworkAssignmentType = 'standard', questionnaireBlocks = [], questionnaireTitle = '', questionnaireDescription = '' }) {
     const hasChecklist = version?.answersJson && typeof version.answersJson === 'object' && Object.keys(version.answersJson).length > 0;
     const showQuestionnaire = homeworkAssignmentType === 'questionnaire' && Array.isArray(questionnaireBlocks) && questionnaireBlocks.length > 0;
     return (
@@ -505,7 +505,7 @@ export function SubmissionVersionCard({ version, checklistSections, homeworkAssi
             </div>
             <p className="text-xs text-slate-500">{version.createdAt} · {version.authorRole}</p>
             {showQuestionnaire ? (
-                <QuestionnaireAnswersReadonly blocks={questionnaireBlocks} answersJson={version.answersJson} />
+                <QuestionnaireAnswersReadonly blocks={questionnaireBlocks} questionnaireTitle={questionnaireTitle} questionnaireDescription={questionnaireDescription} answersJson={version.answersJson} />
             ) : hasChecklist && checklistSections?.length ? (
                 <ChecklistAnswersReadonly sections={checklistSections} answersJson={version.answersJson} />
             ) : (
@@ -547,6 +547,8 @@ export function SubmissionHistory({
     homeworkAssignmentType = 'standard',
     checklistSections = [],
     questionnaireBlocks = [],
+    questionnaireTitle = '',
+    questionnaireDescription = '',
     checklistAnswers = {},
     setChecklistAnswers,
     visualStyle = 'default',
@@ -573,6 +575,8 @@ export function SubmissionHistory({
                         checklistSections={checklistSections}
                         homeworkAssignmentType={homeworkAssignmentType}
                         questionnaireBlocks={questionnaireBlocks}
+                        questionnaireTitle={questionnaireTitle}
+                        questionnaireDescription={questionnaireDescription}
                     />
                 </div>
             ) : null}
@@ -588,6 +592,8 @@ export function SubmissionHistory({
                             checklistSections={checklistSections}
                             homeworkAssignmentType={homeworkAssignmentType}
                             questionnaireBlocks={questionnaireBlocks}
+                            questionnaireTitle={questionnaireTitle}
+                            questionnaireDescription={questionnaireDescription}
                         />
                     ))}</div>
                 </details>
@@ -605,6 +611,8 @@ export function SubmissionHistory({
                             {isQuestionnaire && setChecklistAnswers ? (
                                 <QuestionnaireFieldsEditor
                                     blocks={questionnaireBlocks}
+                                    questionnaireTitle={questionnaireTitle}
+                                    questionnaireDescription={questionnaireDescription}
                                     value={checklistAnswers}
                                     onChange={setChecklistAnswers}
                                     disabled={false}
@@ -846,6 +854,8 @@ export function MentorStudentAnswerCompact({
     versions = [],
     checklistSections = [],
     questionnaireBlocks = [],
+    questionnaireTitle = '',
+    questionnaireDescription = '',
     homeworkAssignmentType = 'standard',
 }) {
     const [showPrev, setShowPrev] = useState(false);
@@ -867,6 +877,8 @@ export function MentorStudentAnswerCompact({
                 checklistSections={checklistSections}
                 homeworkAssignmentType={homeworkAssignmentType}
                 questionnaireBlocks={questionnaireBlocks}
+                questionnaireTitle={questionnaireTitle}
+                questionnaireDescription={questionnaireDescription}
             />
             {previous.length > 0 ? (
                 <div className="mt-3">
@@ -886,6 +898,8 @@ export function MentorStudentAnswerCompact({
                                     checklistSections={checklistSections}
                                     homeworkAssignmentType={homeworkAssignmentType}
                                     questionnaireBlocks={questionnaireBlocks}
+                                    questionnaireTitle={questionnaireTitle}
+                                    questionnaireDescription={questionnaireDescription}
                                 />
                             ))}
                         </div>
@@ -952,16 +966,6 @@ function MentorTaskSlim({
     return (
         <div className="space-y-4">
             <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
-            <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex flex-wrap items-center gap-3">
-                <button
-                    type="button"
-                    onClick={openLesson}
-                    className="text-sm rounded-full border border-[#E8D5C4] bg-[#FAF6F2] px-4 py-2 text-[#4A3728] hover:bg-[#F5EDE6]"
-                >
-                    {td.linkedLessonTitle ? `Открыть урок: ${td.linkedLessonTitle}` : 'Открыть урок в библиотеке курса'}
-                </button>
-                <p className="text-xs text-[#9B8B80] max-w-xl">Открывает отдельный урок как материал в библиотеке, а не общий трекер.</p>
-            </div>
             <TaskDescription
                 data={state.taskDescription}
                 showControlPointNote={!!td?.isControlPoint}
@@ -972,19 +976,14 @@ function MentorTaskSlim({
                 versions={state.submissionVersions}
                 checklistSections={state.taskDescription?.checklistSections || []}
                 questionnaireBlocks={state.taskDescription?.questionnaireBlocks || []}
+                questionnaireTitle={state.taskDescription?.questionnaireTitle || ''}
+                questionnaireDescription={state.taskDescription?.questionnaireDescription || ''}
                 homeworkAssignmentType={state.taskDescription?.homeworkAssignmentType || 'standard'}
             />
-            {state.threadMessages?.length > 0 ? (
-                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                    <h3 className="font-display text-xl text-[#4A3728] mb-1">Лента по заданию</h3>
-                    <p className="text-xs text-[#7A6758] mb-3">История событий и комментариев.</p>
-                    <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">{renderCommentsThread(state.threadMessages)}</div>
-                </div>
-            ) : null}
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
                     <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
-                    <p className="text-xs text-[#9B8B80]">Единое поле ответа: фиксируйте решение (принять / доработка), критерии и следующий шаг — это же уйдёт участнице в ленту.</p>
+                    <p className="text-xs text-[#9B8B80]">Фиксируйте решение (принять / доработка) и комментарий — это уйдёт участнице в ленту.</p>
                     <textarea
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
@@ -1011,8 +1010,15 @@ function MentorTaskSlim({
                     </div>
                 </div>
             ) : (
-                <p className="text-sm text-[#9B8B80]">Работа принята.</p>
+                <p className="text-sm text-[#9B8B80] px-1">Работа принята.</p>
             )}
+            {state.threadMessages?.length > 0 ? (
+                <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
+                    <h3 className="font-display text-xl text-[#4A3728] mb-1">Лента по заданию</h3>
+                    <p className="text-xs text-[#7A6758] mb-3">История событий и комментариев.</p>
+                    <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">{renderCommentsThread(state.threadMessages)}</div>
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -1039,6 +1045,8 @@ export function renderTaskDetail({
     homeworkAssignmentType = 'standard',
     checklistSections = [],
     questionnaireBlocks = [],
+    questionnaireTitle = '',
+    questionnaireDescription = '',
     checklistAnswers = {},
     setChecklistAnswers,
 }) {
@@ -1062,6 +1070,8 @@ export function renderTaskDetail({
                 homeworkAssignmentType={homeworkAssignmentType}
                 checklistSections={checklistSections}
                 questionnaireBlocks={questionnaireBlocks}
+                questionnaireTitle={questionnaireTitle}
+                questionnaireDescription={questionnaireDescription}
                 checklistAnswers={checklistAnswers}
                 setChecklistAnswers={setChecklistAnswers}
                 visualStyle="tracker"
@@ -1111,6 +1121,8 @@ export default function PvlTaskDetailView({
     const homeworkAssignmentType = initialData?.taskDescription?.homeworkAssignmentType || 'standard';
     const checklistSections = initialData?.taskDescription?.checklistSections || [];
     const questionnaireBlocks = initialData?.taskDescription?.questionnaireBlocks || [];
+    const questionnaireTitle = initialData?.taskDescription?.questionnaireTitle || '';
+    const questionnaireDescription = initialData?.taskDescription?.questionnaireDescription || '';
 
     const getInitialChecklistAnswers = (data) => {
         const vers = data?.submissionVersions || [];
@@ -1268,6 +1280,8 @@ export default function PvlTaskDetailView({
                 homeworkAssignmentType,
                 checklistSections,
                 questionnaireBlocks,
+                questionnaireTitle,
+                questionnaireDescription,
                 checklistAnswers,
                 setChecklistAnswers,
                 mentorForm,

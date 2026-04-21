@@ -270,10 +270,6 @@ export function PlatformCourseModulesGrid({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    if (isHwStep && navigate && hwInfo?.task) {
-                                                        navigate(`${routePrefix}/results/${hwInfo.task.id}`);
-                                                        return;
-                                                    }
                                                     if (interactionMode === 'open' && onOpenItem) {
                                                         onOpenItem({ key, item, module: mod, index: i, isDone });
                                                         return;

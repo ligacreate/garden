@@ -1,4 +1,5 @@
 import { seed } from '../data/pvl/seed';
+import { LOCAL_DEMO_LESSON_ITEMS, LOCAL_DEMO_LESSON_PLACEMENTS } from '../data/pvl/localDemoLessons';
 import { capSzMentor, capSzSelf, computeCourseBreakdown } from './pvlScoringEngine';
 import { CANONICAL_SCHEDULE_2026 } from '../data/pvl/constants';
 import { CERTIFICATION_STATUS, CONTENT_STATUS, COURSE_STATUS, ROLES, TASK_STATUS } from '../data/pvl/enums';
@@ -55,6 +56,25 @@ function cloneSeedData(src) {
 }
 
 const db = cloneSeedData(seed);
+
+function hasPublishedLessonsInDb() {
+    return (db.contentItems || []).some(
+        (i) => i && i.status === CONTENT_STATUS.PUBLISHED && String(i.targetSection || '') === 'lessons',
+    );
+}
+
+/** У seed пустой CMS-слой: без PostgREST в трекере нечего показывать — подмешиваем демо-уроки. */
+function ensureLocalDemoLessonContent() {
+    if (hasPublishedLessonsInDb()) return;
+    if (!Array.isArray(db.contentItems)) db.contentItems = [];
+    if (!Array.isArray(db.contentPlacements)) db.contentPlacements = [];
+    db.contentItems.push(...structuredClone(LOCAL_DEMO_LESSON_ITEMS));
+    db.contentPlacements.push(...structuredClone(LOCAL_DEMO_LESSON_PLACEMENTS));
+}
+
+if (import.meta.env.DEV) {
+    ensureLocalDemoLessonContent();
+}
 const eventLog = [];
 let auditLog = [];
 let notifications = [];
@@ -854,6 +874,13 @@ export async function syncPvlRuntimeFromDb() {
     db.contentItems = mappedItems;
     applyPvlWritingModuleLibraryLessonGroupPatch();
     db.contentPlacements = mappedPlacements;
+    if (
+        import.meta.env.DEV
+        && mappedItems.length === 0
+        && mappedPlacements.length === 0
+    ) {
+        ensureLocalDemoLessonContent();
+    }
     if (mappedEvents.length) {
         const dbIds = new Set(mappedEvents.map((e) => e.id));
         const seedOnly = (db.calendarEvents || []).filter((e) => !dbIds.has(e.id));
@@ -3895,6 +3922,9 @@ export const pvlDomainApi = {
             const fresh = structuredClone(seed);
             Object.keys(db).forEach((k) => { delete db[k]; });
             Object.assign(db, fresh);
+            if (import.meta.env.DEV) {
+                ensureLocalDemoLessonContent();
+            }
             auditLog = [];
             notifications = [];
             addAuditEvent('debug', 'system', 'reset_database', 'database', 'root', 'Database reset to seed', {});

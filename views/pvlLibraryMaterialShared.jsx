@@ -223,11 +223,14 @@ export function LibraryQuizRunner({ quiz: rawQuiz, onPassed }) {
             <div className="space-y-6">
                 {questions.map((q, idx) => (
                     <fieldset key={q.id} className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
-                        <legend className="text-sm font-semibold text-slate-800 px-1">
-                            Вопрос {idx + 1}
-                            {Number(q.points) ? <span className="text-slate-500 font-normal"> · {q.points} б.</span> : null}
-                        </legend>
-                        <p className="text-sm text-slate-700 mt-2 mb-3">{q.text || '—'}</p>
+                        <legend className="sr-only">Вопрос {idx + 1}</legend>
+                        <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                            <div className="text-sm font-semibold text-slate-800">
+                                Вопрос {idx + 1}
+                                {Number(q.points) ? <span className="font-normal text-slate-500"> · {q.points} б.</span> : null}
+                            </div>
+                            <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{q.text || '—'}</p>
+                        </div>
                         {q.type === 'open' ? (
                             <textarea
                                 value={openText[q.id] || ''}
@@ -369,12 +372,15 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
         );
     }
     if (isVideoLessonLayout(selectedItem)) {
+        const trackerMobileFlat = variant === 'tracker'
+            ? 'max-lg:rounded-xl max-lg:border-0 max-lg:shadow-none max-lg:bg-[#FAF6F2]/30'
+            : '';
         return (
             <div className="mt-4 space-y-6">
                 {selectedItem.shortDescription ? (
                     <p className="text-sm text-slate-500 leading-relaxed">{selectedItem.shortDescription}</p>
                 ) : null}
-                <div className="overflow-hidden rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/40 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.1)]">
+                <div className={`overflow-hidden rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/40 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.1)] ${trackerMobileFlat}`}>
                     <div className="relative aspect-video w-full bg-slate-900/[0.04]">
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-black/55 to-transparent" aria-hidden />
                         <div className="pointer-events-none absolute left-3 top-2.5 z-10 max-w-[min(100%,20rem)] truncate text-sm font-medium text-white drop-shadow-md">
@@ -407,15 +413,35 @@ export function PvlLibraryMaterialBody({ selectedItem, lessonVideoPlayerHtml, on
                         </div>
                     ) : null;
                 })()}
-                <section className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]">
-                    <div className="flex items-center gap-2.5 mb-3 pb-2 border-b border-[#E8D5C4]/50">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/80 border border-[#E8D5C4]/60 text-base" aria-hidden>📋</span>
-                        <h4 className="font-display text-lg text-[#4A3728] m-0 leading-tight">Конспект</h4>
-                    </div>
-                    <div
-                        className={materialBodyClass}
-                        dangerouslySetInnerHTML={{ __html: normalizeMaterialHtml(selectedItem.fullDescription || '') }}
-                    />
+                <section
+                    className={
+                        variant === 'tracker'
+                            ? 'mt-6 border-0 bg-transparent p-0 shadow-none'
+                            : 'rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] md:p-5'
+                    }
+                >
+                    {variant === 'tracker' ? (
+                        <>
+                            <h4 className="font-display m-0 text-base font-semibold leading-snug text-slate-800 sm:text-lg">
+                                Конспект
+                            </h4>
+                            <div
+                                className={`${materialBodyClass} mt-3 max-lg:[&>blockquote]:border-l-slate-200/90 max-lg:[&>blockquote]:bg-slate-50/50`}
+                                dangerouslySetInnerHTML={{ __html: normalizeMaterialHtml(selectedItem.fullDescription || '') }}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <div className="mb-3 flex items-center gap-2.5 border-b border-[#E8D5C4]/50 pb-2">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#E8D5C4]/60 bg-white/80 text-base" aria-hidden>📋</span>
+                                <h4 className="font-display m-0 text-lg leading-tight text-[#4A3728]">Конспект</h4>
+                            </div>
+                            <div
+                                className={materialBodyClass}
+                                dangerouslySetInnerHTML={{ __html: normalizeMaterialHtml(selectedItem.fullDescription || '') }}
+                            />
+                        </>
+                    )}
                 </section>
                 <p className="text-xs text-slate-500">
                     {variant === 'tracker'

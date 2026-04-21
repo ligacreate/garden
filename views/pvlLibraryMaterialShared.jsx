@@ -569,30 +569,29 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
                 />
             ) : null}
 
-            {/* Задание: заголовок, статус, дедлайн */}
-            <div className="rounded-2xl border border-[#E8D5C4]/70 bg-gradient-to-br from-[#FAF6F2] via-white to-[#FAF6F2]/30 p-4 md:p-5">
-                <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-display text-lg text-[#4A3728]">Домашнее задание</h4>
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusInfo.color}`}>
-                        {statusInfo.label}
-                    </span>
-                </div>
+            {/* Статус и дедлайн — компактная строка */}
+            <div className="flex flex-wrap items-center gap-2">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusInfo.color}`}>
+                    {statusInfo.label}
+                </span>
                 {deadlineAt ? (
-                    <div className="text-xs text-slate-500 mb-2">Дедлайн: {deadlineAt}</div>
-                ) : null}
-                {selectedItem.lessonHomework?.prompt ? (
-                    <p className="text-sm text-slate-600 leading-relaxed mb-2">
-                        {selectedItem.lessonHomework.prompt}
-                    </p>
-                ) : !selectedItem.fullDescription && selectedItem.shortDescription ? (
-                    <p className="text-sm text-slate-600 leading-relaxed mb-2">
-                        {selectedItem.shortDescription}
-                    </p>
-                ) : null}
-                {selectedItem.lessonHomework?.expectedResult ? (
-                    <p className="text-xs text-slate-400">Ожидаемый результат: {selectedItem.lessonHomework.expectedResult}</p>
+                    <span className="text-xs text-slate-500">Дедлайн: {deadlineAt}</span>
                 ) : null}
             </div>
+
+            {/* Текст задания */}
+            {selectedItem.lessonHomework?.prompt ? (
+                <p className="text-sm text-slate-600 leading-relaxed">
+                    {selectedItem.lessonHomework.prompt}
+                </p>
+            ) : !selectedItem.fullDescription && selectedItem.shortDescription ? (
+                <p className="text-sm text-slate-600 leading-relaxed">
+                    {selectedItem.shortDescription}
+                </p>
+            ) : null}
+            {selectedItem.lessonHomework?.expectedResult ? (
+                <p className="text-xs text-slate-400">Ожидаемый результат: {selectedItem.lessonHomework.expectedResult}</p>
+            ) : null}
 
             {/* Отправленные версии */}
             {currentVersion ? (
@@ -697,7 +696,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
                                     </p>
                                     <p className="text-xs text-slate-500">{m.createdAt}</p>
                                 </div>
-                                <p className="mt-1 text-sm text-slate-700">{m.text}</p>
+                                <div className="mt-1 text-sm text-slate-700 max-w-none [&_p]:my-0.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-bold [&_em]:italic [&_u]:underline [&_img]:max-w-full" dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(m.text || '') }} />
                                 {m.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
                             </article>
                         ))}

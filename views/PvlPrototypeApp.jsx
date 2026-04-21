@@ -4547,6 +4547,18 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                     <option value="checklist">Чек-лист (ответы по пунктам в одной сдаче)</option>
                     <option value="questionnaire">Анкета (текстовые блоки и вопросы)</option>
                 </select>
+                {hw.assignmentType === 'standard' ? (
+                    <label className="block space-y-1 border-t border-slate-100 pt-3">
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Текст задания</span>
+                        <textarea
+                            value={hw.prompt || ''}
+                            onChange={(e) => setHw((prev) => ({ ...prev, prompt: e.target.value }))}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                            rows={4}
+                            placeholder="Опишите задание для участницы…"
+                        />
+                    </label>
+                ) : null}
                 {hw.assignmentType === 'checklist' ? (
                     <p className="text-[11px] text-slate-500 leading-snug">
                         Блоки и пункты берутся из шаблона ниже; если список пуст, при сохранении подставится шаблон рефлексии (Контекст · Что наблюдала · Личная рефлексия).

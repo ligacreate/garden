@@ -705,7 +705,7 @@ export function renderCommentsThread(messages) {
                 </div>
                 <p className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-xs text-slate-500'}`}>{m.createdAt}</p>
             </div>
-            <p className={`mt-1 ${m.authorRole === 'system' ? 'text-xs text-slate-500' : 'text-sm text-slate-700'}`}>{m.text}</p>
+            <div className={`mt-1 max-w-none ${m.authorRole === 'system' ? 'text-xs text-slate-500' : 'text-sm text-slate-700 [&_p]:my-0.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-bold [&_em]:italic [&_u]:underline [&_img]:max-w-full'}`} dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(m.text || '') }} />
             {m.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
             {m.isUnreadForCurrentUser ? <p className="text-xs text-rose-700 mt-1">Новое</p> : null}
         </article>
@@ -745,26 +745,23 @@ export function CommentsThread({
             ) : null}
             {showComposer ? (
                 <div className={`mt-3 border-t pt-3 ${trackerLike ? 'border-[#E8D5C4]/60' : 'border-slate-100'}`}>
-                    <textarea
+                    <RichEditor
                         value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        rows={3}
-                        className={
-                            trackerLike
-                                ? 'w-full rounded-xl border border-[#E8D5C4] bg-[#FAF6F2]/40 p-3 text-sm text-[#2C1810] placeholder:text-[#9B8B80]'
-                                : 'w-full rounded-xl border border-slate-200 p-3 text-sm'
-                        }
+                        onChange={setMessage}
                         placeholder={disputeMode ? 'Сообщение в рамках спора…' : 'Написать комментарий…'}
+                        variant="student"
+                        onUploadImage={pvlReadImageFileAsDataUrl}
+                        editorClassName="!min-h-[100px] !max-h-[280px] p-3"
                     />
                     <div className="mt-2">
                         <button
                             type="button"
                             onClick={() => {
-                                if (!message.trim()) return;
+                                if (!homeworkAnswerPlainText(message).trim()) return;
                                 onSend({
                                     authorName: role === 'mentor' ? 'Ментор' : 'Участница',
                                     authorRole: role,
-                                    text: message.trim(),
+                                    text: message,
                                     attachments: [],
                                     disputeOnly: disputeMode,
                                 });
@@ -791,9 +788,9 @@ export function renderMentorResponseForm(form, setForm, onSave) {
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ответ ментора</h3>
             <div className="grid gap-2">
-                <textarea value={form.strengths} onChange={(e) => setForm((p) => ({ ...p, strengths: e.target.value }))} rows={3} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="Что уже хорошо работает" />
-                <textarea value={form.blockers} onChange={(e) => setForm((p) => ({ ...p, blockers: e.target.value }))} rows={3} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="Что блокирует зачет следующего этапа" />
-                <textarea value={form.nextActions} onChange={(e) => setForm((p) => ({ ...p, nextActions: e.target.value }))} rows={3} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="1–3 конкретных действия до следующей точки" />
+                <RichEditor value={form.strengths} onChange={(v) => setForm((p) => ({ ...p, strengths: v }))} placeholder="Что уже хорошо работает" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
+                <RichEditor value={form.blockers} onChange={(v) => setForm((p) => ({ ...p, blockers: v }))} placeholder="Что блокирует зачет следующего этапа" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
+                <RichEditor value={form.nextActions} onChange={(v) => setForm((p) => ({ ...p, nextActions: v }))} placeholder="1–3 конкретных действия до следующей точки" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
                 {warning ? (
                     <div className="rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
                         В брифе рекомендован лимит до 3 правок в одном ответе. Проверь, не перегружает ли это участницу.
@@ -804,7 +801,7 @@ export function renderMentorResponseForm(form, setForm, onSave) {
                     <option value="на доработке">на доработке</option>
                     <option value="не принято">не принято</option>
                 </select>
-                <textarea value={form.generalComment} onChange={(e) => setForm((p) => ({ ...p, generalComment: e.target.value }))} rows={3} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-sm" placeholder="Общий комментарий" />
+                <RichEditor value={form.generalComment} onChange={(v) => setForm((p) => ({ ...p, generalComment: v }))} placeholder="Общий комментарий" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
                 <button onClick={onSave} className="w-fit text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">
                     Сохранить ответ и обновить статус
                 </button>
@@ -984,12 +981,13 @@ function MentorTaskSlim({
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
                     <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
                     <p className="text-xs text-[#9B8B80]">Фиксируйте решение (принять / доработка) и комментарий — это уйдёт участнице в ленту.</p>
-                    <textarea
+                    <RichEditor
                         value={reply}
-                        onChange={(e) => setReply(e.target.value)}
-                        rows={4}
-                        className="w-full rounded-xl border border-[#E8D5C4] p-3 text-sm"
+                        onChange={setReply}
                         placeholder="Комментарий для участницы…"
+                        variant="student"
+                        onUploadImage={pvlReadImageFileAsDataUrl}
+                        editorClassName="!min-h-[120px] !max-h-[320px] p-3"
                     />
                     {formError ? <p className="text-sm text-rose-600">{formError}</p> : null}
                     <div className="flex flex-wrap gap-2 pt-1">

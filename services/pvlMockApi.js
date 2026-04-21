@@ -2262,6 +2262,7 @@ function ensureTaskForContentItem(studentId, contentItem) {
 
     const hwMeta = buildHomeworkMetaFromLessonHw(contentItem.lessonHomework);
     task.homeworkMeta = hwMeta;
+    task.title = contentItem.title || task.title || 'Домашнее задание';
     task.updatedAt = nowIso();
 
     let state = db.studentTaskStates.find(s => s.studentId === studentId && s.taskId === task.id);
@@ -2381,6 +2382,7 @@ export const studentApi = {
                     revisionCycles: s.revisionCycles ?? 0,
                     isControlPoint: !!task.isControlPoint,
                     controlPointId: task.controlPointId || null,
+                    acceptedAt: s.acceptedAt || null,
                     mentorCommentPreview: db.threadMessages.find((m) => m.studentId === studentId && m.taskId === task.id && m.authorRole === ROLES.MENTOR)?.text || '',
                 };
             })

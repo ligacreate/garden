@@ -26,13 +26,14 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                         <span className="text-slate-400 mr-2">{idx + 1}.</span>
                         {b.question || <span className="text-slate-400 italic">Вопрос</span>}
                     </p>
-                    <textarea
+                    <RichEditor
                         value={v[b.id] || ''}
-                        onChange={(e) => !disabled && onChange({ ...v, [b.id]: e.target.value })}
-                        disabled={!!disabled}
-                        rows={4}
-                        className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/25 disabled:opacity-60"
+                        onChange={(html) => !disabled && onChange({ ...v, [b.id]: html })}
                         placeholder="Ваш ответ…"
+                        variant="student"
+                        onUploadImage={pvlReadImageFileAsDataUrl}
+                        readOnly={!!disabled}
+                        editorClassName="!min-h-[160px] !max-h-[400px] p-3"
                     />
                 </div>
             ))}

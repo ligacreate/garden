@@ -511,7 +511,11 @@ export function SubmissionVersionCard({ version, checklistSections, homeworkAssi
             ) : showChecklist && hasStructuredAnswers ? (
                 <ChecklistAnswersReadonly sections={checklistSections} answersJson={answersObj || {}} />
             ) : hasStructuredAnswers ? (
-                <StructuredAnswersFallback answersJson={answersObj} />
+                <StructuredAnswersFallback
+                    answersJson={answersObj}
+                    questionnaireBlocks={questionnaireBlocks}
+                    checklistSections={checklistSections}
+                />
             ) : (
                 <div
                     className="text-sm text-slate-700 mt-1 max-w-none [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full"

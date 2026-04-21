@@ -100,15 +100,56 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
     );
 }
 
+function orderedIdsFromQuestionnaireBlocks(blocks) {
+    const ids = [];
+    (blocks || []).forEach((b) => {
+        if (b && b.id) ids.push(String(b.id));
+    });
+    return ids;
+}
+
+function orderedIdsFromChecklistSections(sections) {
+    const ids = [];
+    (sections || []).forEach((sec) => {
+        (sec?.items || []).forEach((item) => {
+            if (item?.id) ids.push(String(item.id));
+        });
+    });
+    return ids;
+}
+
+/** Сначала ключи в порядке шаблона, затем остальные (как в объекте ответа). */
+function orderedAnswerEntries(raw, preferredIds) {
+    const filtered = Object.entries(raw).filter(([, v]) => v != null && String(v).trim() !== '');
+    if (!preferredIds || preferredIds.length === 0) {
+        return filtered;
+    }
+    const map = new Map(filtered);
+    const out = [];
+    preferredIds.forEach((id) => {
+        if (map.has(id)) {
+            out.push([id, map.get(id)]);
+            map.delete(id);
+        }
+    });
+    map.forEach((val, id) => out.push([id, val]));
+    return out;
+}
+
 /**
  * Если у ментора не подгрузилась структура задания (пустые blocks/sections),
  * но в версии есть answersJson — показываем сохранённые пары id → ответ.
+ * `questionnaireBlocks` / `checklistSections` передавайте, если есть — порядок строк будет как в ДЗ.
  */
-export function StructuredAnswersFallback({ answersJson }) {
+export function StructuredAnswersFallback({ answersJson, questionnaireBlocks = [], checklistSections = [] }) {
     const raw = answersJson && typeof answersJson === 'object' ? answersJson : {};
-    const entries = Object.entries(raw)
-        .filter(([, v]) => v != null && String(v).trim() !== '')
-        .sort(([a], [b]) => a.localeCompare(b, 'ru'));
+    const preferred =
+        Array.isArray(questionnaireBlocks) && questionnaireBlocks.length
+            ? orderedIdsFromQuestionnaireBlocks(questionnaireBlocks)
+            : Array.isArray(checklistSections) && checklistSections.length
+              ? orderedIdsFromChecklistSections(checklistSections)
+              : [];
+    const entries = orderedAnswerEntries(raw, preferred);
     if (entries.length === 0) {
         return <p className="text-sm text-slate-400 mt-2">—</p>;
     }

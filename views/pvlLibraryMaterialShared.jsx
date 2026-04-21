@@ -727,7 +727,11 @@ function HomeworkVersionItem({ version, isQuestionnaire, questionnaireBlocks, qu
             ) : isChecklist && checklistSections.length && hasStructuredAnswers ? (
                 <ChecklistAnswersReadonly sections={checklistSections} answersJson={answersJson} />
             ) : hasStructuredAnswers ? (
-                <StructuredAnswersFallback answersJson={answersJson} />
+                <StructuredAnswersFallback
+                    answersJson={answersJson}
+                    questionnaireBlocks={questionnaireBlocks}
+                    checklistSections={checklistSections}
+                />
             ) : version.textContent ? (
                 <div
                     className="text-sm text-slate-700 whitespace-pre-wrap"

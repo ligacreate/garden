@@ -1893,15 +1893,37 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     const detail = pvlDomainApi.studentApi.getStudentTaskDetail(studentId, taskId);
     const task = detail.task || {};
     const state = detail.state || {};
-    const hwAssignment = task.homeworkMeta?.assignmentType || 'standard';
-    const checklistSections = task.homeworkMeta?.checklistSections || [];
-    const questionnaireBlocks = task.homeworkMeta?.questionnaireBlocks || [];
-    const questionnaireTitle = task.homeworkMeta?.questionnaireTitle || '';
+    let hwAssignment = task.homeworkMeta?.assignmentType || 'standard';
+    let checklistSections = task.homeworkMeta?.checklistSections || [];
+    let questionnaireBlocks = task.homeworkMeta?.questionnaireBlocks || [];
+    let questionnaireTitle = task.homeworkMeta?.questionnaireTitle || '';
+    let questionnaireDescription = String(task.homeworkMeta?.questionnaireDescription || '').trim();
     const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
     const db = pvlDomainApi.db;
     const ciIdFallback = !task.linkedContentItemId && String(taskId || '').startsWith('task-ci-')
         ? taskId.slice('task-ci-'.length) : null;
     const linkedContentItem = db.contentItems?.find((c) => c.id === (task.linkedContentItemId || ciIdFallback));
+    /** У ментора/после синка из БД в task.homeworkMeta иногда пусто — берём схему из опубликованного урока (CMS). */
+    const lessonHw = linkedContentItem?.lessonHomework && typeof linkedContentItem.lessonHomework === 'object'
+        ? linkedContentItem.lessonHomework
+        : null;
+    if (lessonHw) {
+        const lar = String(lessonHw.assignmentType || lessonHw.assignment_type || '').toLowerCase();
+        if (lar === 'questionnaire' && hwAssignment === 'standard') hwAssignment = 'questionnaire';
+        if (lar === 'checklist' && hwAssignment === 'standard') hwAssignment = 'checklist';
+        if (!questionnaireBlocks.length && (lar === 'questionnaire' || hwAssignment === 'questionnaire')) {
+            const rawBlocks = Array.isArray(lessonHw.questionnaireBlocks) ? lessonHw.questionnaireBlocks
+                : Array.isArray(lessonHw.blocks) ? lessonHw.blocks : [];
+            if (rawBlocks.length) questionnaireBlocks = normalizeQuestionnaireBlocks(rawBlocks);
+        }
+        if (!checklistSections.length && (lar === 'checklist' || hwAssignment === 'checklist')) {
+            if (Array.isArray(lessonHw.checklistSections) && lessonHw.checklistSections.length) {
+                checklistSections = lessonHw.checklistSections;
+            }
+        }
+        if (!questionnaireTitle) questionnaireTitle = String(lessonHw.questionnaireTitle || lessonHw.title || '').trim();
+        if (!questionnaireDescription) questionnaireDescription = String(lessonHw.questionnaireDescription || '').trim();
+    }
     const taskDescriptionSummary =
         task.description ||
         linkedContentItem?.fullDescription ||
@@ -1960,6 +1982,7 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
             checklistSections,
             questionnaireBlocks,
             questionnaireTitle,
+            questionnaireDescription,
         },
         submissionVersions: (detail.versions || []).map((v) => ({
             id: v.id,

@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/dataService';
 import PvlTaskDetailView from './PvlTaskDetailView';
 
+/** Дата старта курса ПВЛ 2026 (поток 1). При смене потока — обновить здесь. */
+const PVL_COURSE_START_DATE = '2026-04-15';
+/** Дата конца курса ПВЛ 2026 (поток 1). */
+const PVL_COURSE_END_DATE = '2026-07-14';
+/** Дедлайн самозащиты СЗ ПВЛ 2026. */
+const PVL_SZ_DEADLINE_DATE = '2026-06-30';
+
 export const studentProfile = {
     id: 'stu-2026-001',
     fullName: 'Дарья Лебедева',
@@ -117,7 +124,7 @@ export const faqItems = [
     { id: 'f-3', q: 'СЗ и курсовые баллы — это одно?', a: 'Нет. Курсовые баллы (до 400) отдельно, самооценка СЗ (до 54) отдельно.' },
 ];
 
-const MENU = ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
+const MENU = ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Календарь', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
 
 export function statusBadge(status) {
     const s = String(status || '').toLowerCase();
@@ -601,15 +608,15 @@ export default function PvlStudentCabinetView({ user }) {
                 });
 
                 const currentWeek = (() => {
-                    const start = new Date('2026-04-15');
+                    const start = new Date(`${PVL_COURSE_START_DATE}T00:00:00`);
                     const now = new Date();
                     const diffDays = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
                     if (diffDays < 0) return 0;
                     return Math.max(0, Math.min(12, Math.floor(diffDays / 7)));
                 })();
 
-                const daysToCourseEnd = Math.max(0, Math.ceil((new Date('2026-07-14').getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-                const daysToSzDeadline = Math.max(0, Math.ceil((new Date('2026-06-30').getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                const daysToCourseEnd = Math.max(0, Math.ceil((new Date(`${PVL_COURSE_END_DATE}T00:00:00`).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                const daysToSzDeadline = Math.max(0, Math.ceil((new Date(`${PVL_SZ_DEADLINE_DATE}T00:00:00`).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
                 setProfileState((prev) => ({
                     ...prev,
@@ -673,7 +680,7 @@ export default function PvlStudentCabinetView({ user }) {
         if (activeMenu === 'Глоссарий курса') return renderGlossaryPage();
         if (activeMenu === 'Библиотека курса') return renderLibraryPage(libraryState, libraryFilter);
         if (activeMenu === 'Уроки') return renderLessonsPage();
-        if (activeMenu === 'Практикумы с менторами') return renderMentorPracticesPage();
+        if (activeMenu === 'Календарь') return renderMentorPracticesPage();
         if (activeMenu === 'Чек-лист') return renderChecklistPage();
         if (activeMenu === 'Результаты') return renderResultsPage(resultsState, resultsFilter, setSelectedTask);
         if (activeMenu === 'Сертификация') return renderCertificationPage();

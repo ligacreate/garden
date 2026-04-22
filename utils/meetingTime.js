@@ -26,6 +26,9 @@ const getZonedDate = (dateStr, timeStr, timeZone) => {
     return new Date(utcGuess.getTime() - offset * 60000);
 };
 
+/** Настенные часы в таймзоне (как в календаре ПВЛ: опубликовано в мск) → один момент в UTC. */
+export const instantFromWallClockInTimeZone = (isoYmd, hhmm, timeZone) => getZonedDate(isoYmd, hhmm, timeZone);
+
 export const getMeetingTimezone = (meeting, fallbackTz) => {
     const viewerTz = fallbackTz || DEFAULT_TIMEZONE;
     const cityTz = resolveCityTimezone(meeting?.city, null);

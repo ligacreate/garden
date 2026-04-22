@@ -43,7 +43,7 @@ export function redirectToAllowedRoute(role, attemptedRoute) {
 const PVL_COURSE_SIDEBAR_LABELS = [
     'О курсе',
     'Трекер курса',
-    'Практикумы с менторами',
+    'Календарь',
     'Библиотека курса',
     'Глоссарий курса',
     'Чат с ментором',
@@ -58,7 +58,7 @@ export function buildSidebarByRole(role) {
             'Ученицы',
             'Менторы',
             'Материалы курса',
-            'Календарь',
+            'События',
             ...PVL_COURSE_SIDEBAR_LABELS.filter((label) => label !== 'Чат с ментором'),
             'Настройки',
         ];

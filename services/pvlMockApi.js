@@ -38,8 +38,14 @@ import {
     isQuestionnaireAnswersComplete,
 } from '../utils/pvlQuestionnaireBlocks';
 
-/** Согласовано с калькуляторами дедлайнов в прототипе */
-const DASHBOARD_TODAY = '2026-06-03';
+/** Реальная текущая дата YYYY-MM-DD для расчёта дедлайнов и статусов. */
+function getTodayYmd() {
+    try {
+        return new Date().toISOString().slice(0, 10);
+    } catch {
+        return '2026-06-03';
+    }
+}
 
 function diffCourseDays(firstYmd, secondYmd) {
     const toDate = (x) => new Date(`${String(x).slice(0, 10)}T00:00:00.000Z`);
@@ -1554,10 +1560,11 @@ export function mapStudentHomeworkDisplayStatus(state) {
     return mapTaskStatus(s);
 }
 
-export function mapStudentControlPointDisplayStatus(cpState, deadlineAt, today = DASHBOARD_TODAY) {
+export function mapStudentControlPointDisplayStatus(cpState, deadlineAt, today = null) {
+    const effectiveToday = today ?? getTodayYmd();
     const raw = cpState?.status || 'not_started';
     if (raw === 'accepted') return 'принято';
-    const overdue = deadlineAt && diffCourseDays(today, deadlineAt) > 0 && raw !== 'accepted';
+    const overdue = deadlineAt && diffCourseDays(effectiveToday, deadlineAt) > 0 && raw !== 'accepted';
     if (overdue) return 'просрочено';
     if (raw === 'pending_review' || raw === TASK_STATUS.PENDING_REVIEW) return 'на проверке';
     if (raw === 'not_started' || raw === undefined) return 'не начато';
@@ -1567,7 +1574,7 @@ export function mapStudentControlPointDisplayStatus(cpState, deadlineAt, today =
 function computeStudentDashboardWidgets(studentId) {
     const profile = db.studentProfiles.find((p) => p.userId === studentId);
     const cohort = db.cohorts.find((c) => c.id === profile?.cohortId);
-    const today = DASHBOARD_TODAY;
+    const today = getTodayYmd();
     const mod = profile?.currentModule ?? 1;
     const modWeeks = CANONICAL_SCHEDULE_2026.weeks.filter((w) => w.moduleNumber === mod);
     const moduleEndDate = modWeeks.length
@@ -1756,7 +1763,7 @@ function buildSubmissionPayload(studentId, taskId, submissionId) {
     return { versions, thread, currentVersionId, draftVersionId };
 }
 
-function persistTrackerProgressToDb(studentId) {
+async function persistTrackerProgressToDb(studentId) {
     const sqlStudentId = studentSqlIdByUserId(studentId);
     if (!sqlStudentId) return;
     const checkedMap = db.studentTrackerChecks?.[studentId] || {};
@@ -1782,11 +1789,17 @@ function persistTrackerProgressToDb(studentId) {
         if (!groupedByModule.has(moduleId)) groupedByModule.set(moduleId, []);
         groupedByModule.get(moduleId).push(k);
     });
-    groupedByModule.forEach((keys, moduleId) => {
+    for (const [moduleId, keys] of groupedByModule.entries()) {
         const week = (db.courseWeeks || []).find((w) => Number(w.moduleNumber ?? -1) === Number(moduleId))
             || (db.courseWeeks || []).find((w) => Number(w.weekNumber ?? -1) === Number(moduleId));
-        const sqlWeekId = week ? sqlWeekIdByMockWeekId.get(String(week.id)) : null;
-        if (!sqlWeekId) return;
+        let sqlWeekId = week ? sqlWeekIdByMockWeekId.get(String(week.id)) : null;
+        if (!sqlWeekId && pvlPostgrestApi.isEnabled()) {
+            // Маппинг ещё не заполнен при первом запуске — инициализируем
+            // eslint-disable-next-line no-await-in-loop
+            await ensureDbTrackerHomeworkStructure();
+            sqlWeekId = week ? sqlWeekIdByMockWeekId.get(String(week.id)) : null;
+        }
+        if (!sqlWeekId) continue;
         fireAndForget(async () => {
             await ensurePvlStudentInDb(studentId);
             return pvlPostgrestApi.upsertStudentCourseProgress(sqlStudentId, {
@@ -1800,15 +1813,15 @@ function persistTrackerProgressToDb(studentId) {
                 payload: { checkedKeys: keys },
             });
         }, { table: 'pvl_student_course_progress', endpoint: '/pvl_student_course_progress', id: `${sqlStudentId}:${sqlWeekId}` });
-    });
+    }
 }
 
 async function doPersistSubmissionToDb(studentId, taskId) {
     const sqlStudentId = studentSqlIdByUserId(studentId);
-    if (!sqlStudentId) return;
+    if (!sqlStudentId) throw new Error(`sqlStudentId not resolved for userId=${studentId}`);
     const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
     const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
-    if (!state || !submission) return;
+    if (!state || !submission) throw new Error(`state/submission not found for studentId=${studentId} taskId=${taskId}`);
     const payload = buildSubmissionPayload(studentId, taskId, submission.id);
 
     /** Сначала гарантируем наличие строки студента в pvl_students (FK-ограничение). */
@@ -1907,7 +1920,10 @@ function persistContentProgressToDb(studentId, itemId) {
         const pr = (db.studentLibraryProgress || []).find(
             (x) => x.studentId === studentId && x.libraryItemId === itemId,
         );
-        if (!pr) return;
+        if (!pr) {
+            logDbFallback({ endpoint: '/pvl_student_content_progress', status: 'skip', table: 'pvl_student_content_progress', id: `${studentId}:${itemId}`, error: 'progress record not found in memory' });
+            return;
+        }
         await pvlPostgrestApi.upsertStudentContentProgress(sqlStudentId, {
             content_item_id: itemId,
             progress_percent: pr.progressPercent || 0,
@@ -2311,7 +2327,7 @@ export const studentApi = {
     },
     saveTrackerChecklist(studentId, checkedMap = {}) {
         db.studentTrackerChecks[studentId] = { ...(checkedMap || {}) };
-        persistTrackerProgressToDb(studentId);
+        persistTrackerProgressToDb(studentId); // async, намеренно без await — не блокируем UI
         return db.studentTrackerChecks[studentId];
     },
     getStudentDashboard(studentId) {
@@ -2431,6 +2447,8 @@ export const studentApi = {
     },
     ensureTaskForContentItem: (studentId, contentItem) => ensureTaskForContentItem(studentId, contentItem),
     saveStudentDraft(studentId, taskId, payload = {}) {
+        // Защитный синк: создаём task/state/submission если ещё нет (аналогично submitStudentTask)
+        syncPublishedHomeworkTasksForStudent(studentId);
         const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
         if (!submission) return null;
         const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
@@ -2922,6 +2940,7 @@ export const mentorApi = {
         return getTaskDetail(studentId, taskId);
     },
     submitMentorReview(mentorId, studentId, taskId, payload) {
+        syncPublishedHomeworkTasksForStudent(studentId);
         const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
         if (!state) return null;
         const tooMany = detectTooManyRevisions(payload);
@@ -3073,8 +3092,14 @@ export const calendarApi = {
         const raw = (db.calendarEvents || [])
             .filter((e) => !cohortId || pvlPlacementVisibleForCohort(e.cohortId, cohortId))
             .filter((e) => calendarVisibleToViewer(e, viewerRole));
-        const deduped = dedupeCalendarEvents(raw);
-        return deduped.slice().sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
+        /** Дедупликация нужна при слиянии сид+PostgREST; в учительской схлопывала «одинаковые» вручную созданные встречи. */
+        const list = viewerRole === 'admin' ? raw : dedupeCalendarEvents(raw);
+        return list.slice().sort((a, b) => {
+            const ta = new Date(a.startAt).getTime();
+            const tb = new Date(b.startAt).getTime();
+            if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb;
+            return String(a.startAt || '').localeCompare(String(b.startAt || ''));
+        });
     },
     getById(id) {
         return (db.calendarEvents || []).find((e) => e.id === id) || null;

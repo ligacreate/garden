@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { loadViewPreferences, saveViewPreferences } from '../services/pvlAppKernel';
 import { pvlCohortIdsEquivalent, pvlDomainApi } from '../services/pvlMockApi';
-import { formatPvlDateTime } from '../utils/pvlDateFormat';
+import { formatPvlDateTime, getPvlCalendarEventTimeDisplay } from '../utils/pvlDateFormat';
 
 /** Согласовано с прототипом дедлайнов ПВЛ (fallback) */
 const PVL_TODAY = '2026-04-15';
@@ -33,6 +33,36 @@ function monthDateFromPrefsYm(ym) {
     const [y, m] = ym.split('-').map(Number);
     if (!y || m < 1 || m > 12) return null;
     return new Date(y, m - 1, 1, 12, 0, 0);
+}
+
+/** YYYY-MM-DD или ДД-MM-ГГГГ (как в поле формы) → валидный startAt/endAt в UTC, время сохраняем из previousStartAt. */
+function adminCalendarFormDateStringToStartEnd(dateRaw, previousStartAt) {
+    const s = String(dateRaw || '').trim();
+    if (!s) {
+        return { startAt: previousStartAt, endAt: previousStartAt, date: dateRaw };
+    }
+    const timeMatch = String(previousStartAt || '').match(/T(\d{2}):(\d{2}):(\d{2})/);
+    const t = timeMatch ? `T${timeMatch[1]}:${timeMatch[2]}:${timeMatch[3]}.000Z` : 'T12:00:00.000Z';
+    let y;
+    let mo;
+    let d;
+    if (/^(\d{4})-(\d{2})-(\d{2})$/.test(s)) {
+        y = s.slice(0, 4);
+        mo = s.slice(5, 7);
+        d = s.slice(8, 10);
+    } else {
+        const dmY = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+        if (dmY) {
+            d = dmY[1].padStart(2, '0');
+            mo = dmY[2].padStart(2, '0');
+            y = dmY[3];
+        } else {
+            return { startAt: previousStartAt, endAt: previousStartAt, date: dateRaw };
+        }
+    }
+    const isoDay = `${y}-${mo}-${d}`;
+    const startAt = `${isoDay}${t}`;
+    return { startAt, endAt: startAt, date: dateRaw };
 }
 
 export const PVL_CAL_EVENT_LABELS = {
@@ -309,6 +339,45 @@ function normalizePracticumRecapHtml(source = '') {
     return `<div>${escapeHtml(raw).replaceAll('\n', '<br/>')}</div>`;
 }
 
+function PvlCalendarEventTimeChips({ startAt }) {
+    const t = getPvlCalendarEventTimeDisplay(startAt);
+    if (t.mode === 'dual') {
+        return (
+            <>
+                {t.dateStr}
+                {', '}
+                <span className="tabular-nums">
+                    {t.localTime}
+                    <span className="text-[#C4B8AE]" aria-hidden>
+                        {' '}
+                        ·
+                        {' '}
+                    </span>
+                    <span className="text-[#8B7D72] tabular-nums">
+                        {t.mskTime}
+                        {' '}
+                        мск
+                    </span>
+                </span>
+            </>
+        );
+    }
+    if (t.mode === 'msk_only') {
+        return (
+            <>
+                {t.dateStr}
+                {', '}
+                <span className="tabular-nums">
+                    {t.mskTime}
+                    {' '}
+                    мск
+                </span>
+            </>
+        );
+    }
+    return <span className="tabular-nums">{formatPvlDateTime(startAt)}</span>;
+}
+
 function PvlPastArchiveListItem({ ev }) {
     const rich =
         String(ev.eventType || '').toLowerCase() === 'practicum_done'
@@ -319,7 +388,7 @@ function PvlPastArchiveListItem({ ev }) {
                 <div className="flex flex-wrap items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
                     <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
-                    <span className="text-[11px] text-[#6B5D4F]">{formatPvlDateTime(ev.startAt)}</span>
+                    <span className="text-[11px] text-[#6B5D4F]"><PvlCalendarEventTimeChips startAt={ev.startAt} /></span>
                 </div>
                 {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
                     <div
@@ -355,7 +424,7 @@ function PvlPastArchiveListItem({ ev }) {
             <div className="mt-1 text-[11px] text-[#8B7D72]">
                 {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
                 {' · '}
-                {formatPvlDateTime(ev.startAt)}
+                <PvlCalendarEventTimeChips startAt={ev.startAt} />
             </div>
         </li>
     );
@@ -593,7 +662,7 @@ export function PvlDashboardCalendarBlock({
                                                 <div className="mt-1 text-[11px] text-[#6B5D4F]">
                                                     {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
                                                     {' · '}
-                                                    {formatPvlDateTime(ev.startAt)}
+                                                    <PvlCalendarEventTimeChips startAt={ev.startAt} />
                                                 </div>
                                             </button>
                                             {contactHref ? (
@@ -610,7 +679,7 @@ export function PvlDashboardCalendarBlock({
                                             ) : internalBreakfastSignup ? (
                                                 <button
                                                     type="button"
-                                                    title="Открыть раздел «Практикумы»"
+                                                    title="Открыть раздел «Календарь»"
                                                     className={signupButtonClassName}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -902,16 +971,17 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                 }}
                             />
                         </label>
-                        <label className="block text-xs text-slate-500">Дата (ДД-ММ-ГГГГ)
+                        <label className="block text-xs text-slate-500">Дата (ДД-MM-ГГГГ или ГГГГ-MM-ДД)
                             <input
                                 className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.date || ''}
                                 onChange={(e) => {
                                     const date = e.target.value;
+                                    const { startAt, endAt } = adminCalendarFormDateStringToStartEnd(date, editing.startAt);
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, {
                                         date,
-                                        startAt: `${date}T12:00:00.000Z`,
-                                        endAt: `${date}T12:00:00.000Z`,
+                                        startAt,
+                                        endAt,
                                     });
                                     bump();
                                 }}
@@ -1062,7 +1132,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                         />
                                         <span className="font-medium text-slate-800">{ev.title}</span>
                                     </div>
-                                    <div className="text-[11px] text-slate-500 mt-1">{formatPvlDateTime(ev.startAt)}</div>
+                                    <div className="text-[11px] text-slate-500 mt-1"><PvlCalendarEventTimeChips startAt={ev.startAt} /></div>
                                 </button>
                             ))
                         )}
@@ -1073,7 +1143,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
             <div className="rounded-lg bg-slate-50/90 p-3 text-xs text-slate-600">
                 <span className="font-medium text-slate-700">Предпросмотр для участницы / ментора:</span>
                 {' '}
-                те же цвета и список, без кнопок редактирования. Переход по событию на дашборде ведёт в «Практикумы» или «Уроки», если задана связь.
+                те же цвета и список, без кнопок редактирования. Переход по событию на дашборде ведёт в «Календарь» или «Уроки», если задана связь.
             </div>
         </div>
     );

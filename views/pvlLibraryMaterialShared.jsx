@@ -538,13 +538,16 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
     const prevVersions = submittedVersions.filter(v => v.id !== currentVersion?.id).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
 
     const handleSaveDraft = () => {
+        let result;
         if (isChecklist || isQuestionnaire) {
-            pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: '', answersJson: answers });
+            result = pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: '', answersJson: answers });
         } else {
-            pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
+            result = pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
         }
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+        if (result) {
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        }
         refresh();
     };
 
@@ -556,7 +559,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
             if (isHomeworkAnswerEmpty(draft)) return;
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
         }
-        if (!ok) return;
+        if (!ok || ok?.error) return;
         refresh();
     };
 

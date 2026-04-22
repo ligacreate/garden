@@ -1149,12 +1149,13 @@ export default function PvlTaskDetailView({
     }, [role, state.taskDetail.status]);
 
     const handleOpenDispute = () => {
+        let result;
         if (role === 'mentor' && mentorActorId && taskStudentId && taskId) {
-            pvlDomainApi.mentorApi.openTaskDispute(mentorActorId, taskStudentId, taskId);
+            result = pvlDomainApi.mentorApi.openTaskDispute(mentorActorId, taskStudentId, taskId);
         } else if (role === 'student' && taskStudentId && taskId) {
-            pvlDomainApi.studentApi.openStudentTaskDispute(taskStudentId, taskId);
+            result = pvlDomainApi.studentApi.openStudentTaskDispute(taskStudentId, taskId);
         }
-        onRefresh?.();
+        if (result?.ok !== false) onRefresh?.();
     };
 
     const handleSendThreadMessage = (message) => {

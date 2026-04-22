@@ -255,6 +255,7 @@ function toRoute(name) {
         Уроки: 'lessons',
         Трекер: 'tracker',
         'Трекер курса': 'tracker',
+        Календарь: 'practicums',
         Практикумы: 'practicums',
         'Практикумы с менторами': 'practicums',
         Коммуникации: 'messages',
@@ -273,7 +274,7 @@ function toRoute(name) {
 const COURSE_MENU_LABELS = [
     'О курсе',
     'Трекер',
-    'Практикумы',
+    'Календарь',
     'Библиотека',
     'Глоссарий',
     'Чат с ментором',
@@ -293,7 +294,7 @@ const ADMIN_SIDEBAR_CONFIG = [
     { type: 'item', label: 'Ученицы', path: '/admin/students' },
     { type: 'item', label: 'Менторы', path: '/admin/mentors' },
     { type: 'item', label: 'Материалы курса', path: '/admin/content' },
-    { type: 'item', label: 'Календарь', path: '/admin/calendar' },
+    { type: 'item', label: 'События', path: '/admin/calendar' },
     { type: 'divider' },
     ...COURSE_MENU_LABELS.filter((label) => label !== 'Чат с ментором').map((label) => ({
         type: 'item',
@@ -338,7 +339,7 @@ function adminSectionForRoute(allowedRoute) {
     if (/^\/admin\/students(\/|$)/.test(ap)) return 'Ученицы';
     if (/^\/admin\/mentors(\/|$)/.test(ap)) return 'Менторы';
     if (ap === '/admin/content' || /^\/admin\/content\//.test(ap)) return 'Материалы курса';
-    if (ap === '/admin/calendar') return 'Календарь';
+    if (ap === '/admin/calendar') return 'События';
     if (ap === '/admin/settings') return 'Настройки';
     for (const label of COURSE_MENU_LABELS) {
         if (courseSidebarItemActive(allowedRoute, '/admin', label)) return label;
@@ -495,7 +496,7 @@ const COURSE_MENU_ICON = {
     Глоссарий: Languages,
     Библиотека: Library,
     Трекер: Route,
-    Практикумы: CalendarCheck2,
+    Календарь: CalendarCheck2,
     Коммуникации: MessageCircle,
     'Чат с ментором': MessageCircle,
     Результаты: BarChart3,
@@ -524,7 +525,7 @@ const ADMIN_MENU_ICON = {
     Ученицы: Users,
     Менторы: UserCog,
     'Материалы курса': Files,
-    Календарь: CalendarDays,
+    События: CalendarDays,
     Настройки: Settings2,
     'Вернуться в сад': CornerUpLeft,
     ...COURSE_MENU_ICON,
@@ -742,7 +743,7 @@ const BREADCRUMB_LABELS = {
     onboarding: 'Онбординг',
     lessons: 'Уроки',
     tracker: 'Трекер курса',
-    practicums: 'Практикумы',
+    practicums: 'Календарь',
     checklist: 'Чек-лист',
     results: 'Результаты',
     certification: 'Сертификация',
@@ -760,7 +761,7 @@ const BREADCRUMB_LABELS = {
     review: 'Проверки и риски',
     settings: 'Настройки',
     pvl: 'Начало',
-    calendar: 'Календарь',
+    calendar: 'События',
 };
 
 function breadcrumbSegmentLabel(seg) {
@@ -1025,7 +1026,7 @@ const TARGET_SECTION_LABELS = {
     glossary: 'Глоссарий',
     library: 'Библиотека',
     lessons: 'Уроки',
-    practicums: 'Практикумы',
+    practicums: 'Календарь',
     checklist: 'Чек-лист',
     results: 'Результаты',
     certification: 'Сертификация',
@@ -2277,7 +2278,7 @@ function StudentPracticumsCalendar({ studentId }) {
     return (
         <div className="space-y-6">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">
-                <h2 className="font-display text-2xl text-slate-800">Практикумы</h2>
+                <h2 className="font-display text-2xl text-slate-800">Календарь</h2>
             </div>
             {events.length === 0 ? (
                 <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-6 text-sm text-slate-500 shadow-sm">Запланированных событий пока нет.</div>
@@ -3290,7 +3291,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                     if (v) refresh();
                     return v;
                 }}
-                onStudentReply={(msg) => { pvlDomainApi.studentApi.addStudentThreadReply(studentId, taskId, { text: msg.text, disputeOnly: msg.disputeOnly }); refresh(); }}
+                onStudentReply={(msg) => { const r = pvlDomainApi.studentApi.addStudentThreadReply(studentId, taskId, { text: msg.text, disputeOnly: msg.disputeOnly }); if (r) refresh(); }}
             />
         );
     }
@@ -3318,7 +3319,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/practicums') {
-        /** Практикумы + завтраки Лиги; legacy `session` из старых данных/БД. */
+        /** Все типы из легенды: уроки, практикумы, завтраки, записи; legacy `session` в старых данных. */
         const practicumViewerRole = routePrefix === '/admin' ? 'admin' : routePrefix === '/mentor' ? 'mentor' : 'student';
         return (
             <PvlDashboardCalendarBlock
@@ -3326,8 +3327,8 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                 cohortId="cohort-2026-1"
                 navigate={navigate}
                 routePrefix={routePrefix}
-                title="Практикумы"
-                eventTypeFilter={['practicum', 'mentor_meeting', 'session', 'practicum_done', 'breakfast', 'live_stream']}
+                title="Календарь"
+                eventTypeFilter={['lesson', 'lesson_release', 'practicum', 'mentor_meeting', 'session', 'practicum_done', 'breakfast', 'live_stream']}
                 showPracticumArchive
             />
         );
@@ -3406,14 +3407,34 @@ function buildTeacherStudentRows() {
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
         const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
-        const total = Math.max(1, tasks.length);
+
+        // Трекер: прогресс по шагам (уроки = video/pdf/live теги)
+        const trackerChecked = pvlDomainApi.studentApi.getTrackerChecklist(userId);
+        const trackerStats = computePvlTrackerDashboardStats(trackerChecked);
+
+        // Домашние задания (без контрольных точек)
+        const hwTasks = tasks.filter((t) => !t.isControlPoint);
+        const hwAccepted = hwTasks.filter((t) => String(t.displayStatus || '').toLowerCase() === 'принято').length;
+        const hwPending = hwTasks.filter((t) => {
+            const s = String(t.displayStatus || '').toLowerCase();
+            return s.includes('проверк') || s.includes('отправлен');
+        }).length;
+        const hwRevision = hwTasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('доработ')).length;
+        const hwOverdue = hwTasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('просроч')).length;
+
+        // Контрольные точки (КТ)
+        const cpTasks = tasks.filter((t) => t.isControlPoint);
+        const cpAccepted = cpTasks.filter((t) => String(t.displayStatus || '').toLowerCase() === 'принято').length;
+        const cpPending = cpTasks.filter((t) => {
+            const s = String(t.displayStatus || '').toLowerCase();
+            return s.includes('проверк') || s.includes('отправлен');
+        }).length;
+
+        // Общий % закрытия (все задания)
+        const totalTasks = Math.max(1, tasks.length);
         const closed = tasks.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
-        const closedPct = Math.round((closed / total) * 100);
-        const pendingReview = tasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('проверк')).length;
-        const inRevision = tasks.filter((t) => String(t.displayStatus || '').toLowerCase().includes('доработ')).length;
-        let hwSummary = `${closed}/${tasks.length || 0} закрыто`;
-        if (pendingReview) hwSummary = `на проверке: ${pendingReview}`;
-        else if (inRevision) hwSummary = `на доработке: ${inRevision}`;
+        const closedPct = Math.round((closed / totalTasks) * 100);
+
         const pts = pvlDomainApi.helpers.getStudentPointsSummary(userId);
         const lastAct = sp.lastActivityAt ? formatPvlDateTime(sp.lastActivityAt) : '—';
         return {
@@ -3425,9 +3446,21 @@ function buildTeacherStudentRows() {
             courseLine,
             closedPct,
             coursePoints: pts.coursePointsTotal ?? 0,
-            hwSummary,
             lastAct,
             mentorLine,
+            // Трекер
+            lessonsDone: trackerStats.lessonsDone,
+            lessonsTotal: trackerStats.lessonsTotal,
+            // ДЗ
+            hwAccepted,
+            hwPending,
+            hwRevision,
+            hwOverdue,
+            hwTotal: hwTasks.length,
+            // Контрольные точки
+            cpAccepted,
+            cpPending,
+            cpTotal: cpTasks.length,
         };
     });
 }
@@ -3936,13 +3969,15 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                 onBack={() => navigate(fromKanban ? '/mentor/dashboard' : `/mentor/mentee/${menteeId}`)}
                 initialData={buildTaskDetailStateFromApi(resolvedMentee, taskId, 'mentor')}
                 onMentorReply={(msg) => {
-                    pvlDomainApi.mentorApi.addMentorThreadReply(mentorActorId, resolvedMentee, taskId, { text: msg.text, disputeOnly: msg.disputeOnly });
-                    refresh();
+                    const r = pvlDomainApi.mentorApi.addMentorThreadReply(mentorActorId, resolvedMentee, taskId, { text: msg.text, disputeOnly: msg.disputeOnly });
+                    if (r) refresh();
                 }}
                 onMentorReview={(payload) => {
-                    pvlDomainApi.mentorApi.submitMentorReview(mentorActorId, resolvedMentee, taskId, payload);
-                    pvlDomainApi.actions.markThreadRead(mentorActorId, resolvedMentee, taskId);
-                    refresh();
+                    const r = pvlDomainApi.mentorApi.submitMentorReview(mentorActorId, resolvedMentee, taskId, payload);
+                    if (r) {
+                        pvlDomainApi.actions.markThreadRead(mentorActorId, resolvedMentee, taskId);
+                        refresh();
+                    }
                 }}
             />
         );
@@ -3990,7 +4025,7 @@ function TeacherPvlHome({ navigate }) {
         { title: 'Ученицы', desc: 'Прогресс по курсу и карточки сопровождения.', to: '/admin/students' },
         { title: 'Менторы', desc: 'Нагрузка, очередь проверок и статус сопровождения.', to: '/admin/mentors' },
         { title: 'Материалы курса', desc: 'Уроки, библиотека и глоссарий (данные ПВЛ отдельно от сада).', to: '/admin/content' },
-        { title: 'Календарь', desc: 'Встречи с менторами, эфиры и выход уроков.', to: '/admin/calendar' },
+        { title: 'События', desc: 'Встречи с менторами, эфиры и выход уроков.', to: '/admin/calendar' },
     ];
     const rows = [
         { area: 'Материалы курса', state: 'Работает', note: 'CRUD в памяти; стартовый контент подмешивается при запуске.' },
@@ -5557,7 +5592,7 @@ function ContentNavigator({ items, placements, onOpen }) {
     const SECTIONS = [
         { key: 'library', label: 'Библиотека' },
         { key: 'lessons', label: 'Уроки' },
-        { key: 'practicums', label: 'Практикумы' },
+        { key: 'practicums', label: 'Календарь' },
         { key: 'glossary', label: 'Глоссарий' },
     ];
 
@@ -6451,7 +6486,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             {/* Фильтры по разделу и статусу */}
             <div className="space-y-2">
                 <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-emerald-50/60 border border-emerald-100">
-                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['practicums', 'Практикумы'], ['glossary', 'Глоссарий']].map(([val, label]) => (
+                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['practicums', 'Календарь'], ['glossary', 'Глоссарий']].map(([val, label]) => (
                         <button
                             key={val}
                             type="button"
@@ -6823,33 +6858,59 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                 ))}
                             </select>
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                            <div>Закрытие: <span className="font-medium text-slate-800 tabular-nums">{row.closedPct}%</span></div>
-                            <div>Баллы: <span className="font-medium text-slate-800 tabular-nums">{row.coursePoints}/400</span></div>
-                            <div className="col-span-2">Домашки: {row.hwSummary}</div>
-                            <div className="col-span-2">Последнее: {row.lastAct}</div>
+                        <div className="mt-2 space-y-1.5 text-xs text-slate-600">
+                            <div className="flex items-center gap-2">
+                                <span className="w-14 shrink-0 text-slate-400">Уроки</span>
+                                <span className="tabular-nums font-medium text-slate-700">{row.lessonsDone}/{row.lessonsTotal}</span>
+                                <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                    <div className="h-full rounded-full bg-sky-400" style={{ width: `${row.lessonsTotal ? Math.round((row.lessonsDone / row.lessonsTotal) * 100) : 0}%` }} />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-14 shrink-0 text-slate-400">ДЗ</span>
+                                <span className="text-emerald-600 font-medium">✓{row.hwAccepted}</span>
+                                {row.hwRevision > 0 && <span className="text-amber-600">⚠{row.hwRevision}</span>}
+                                {row.hwPending > 0 && <span className="text-blue-500">↑{row.hwPending}</span>}
+                                {row.hwOverdue > 0 && <span className="text-red-500">✗{row.hwOverdue}</span>}
+                                <span className="text-slate-400 ml-auto">/{row.hwTotal}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-14 shrink-0 text-slate-400">КТ</span>
+                                <span className="tabular-nums font-medium text-emerald-600">{row.cpAccepted}</span>
+                                <span className="text-slate-400">/ {row.cpTotal}</span>
+                                {row.cpPending > 0 && <span className="text-blue-500 text-[10px]">({row.cpPending} на провер.)</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-14 shrink-0 text-slate-400">Баллы</span>
+                                <span className="tabular-nums font-medium text-slate-700">{row.coursePoints}/400</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                                <span className="w-14 shrink-0 text-slate-400">Посл.</span>
+                                <span>{row.lastAct}</span>
+                            </div>
                         </div>
                     </article>
                 ))}
             </div>
             <div className="hidden md:block overflow-x-auto -mx-1 px-1">
-                <table className="w-full text-sm text-left min-w-[920px]">
+                <table className="w-full text-sm text-left min-w-[1100px]">
                     <thead>
                         <tr className="text-xs text-slate-500 border-b border-slate-100">
                             <th className="pb-2 pr-3 font-medium">Имя</th>
                             <th className="pb-2 pr-3 font-medium whitespace-nowrap">Статус</th>
-                            <th className="pb-2 pr-3 font-medium">Сейчас по курсу</th>
+                            <th className="pb-2 pr-3 font-medium">Модуль</th>
                             <th className="pb-2 pr-3 font-medium min-w-[12rem]">Ментор</th>
-                            <th className="pb-2 pr-3 font-medium tabular-nums">Закрытие ДЗ</th>
-                            <th className="pb-2 pr-3 font-medium tabular-nums">Баллы</th>
-                            <th className="pb-2 pr-3 font-medium">Домашки</th>
-                            <th className="pb-2 font-medium">Последнее действие</th>
+                            <th className="pb-2 pr-3 font-medium min-w-[9rem]">Уроки</th>
+                            <th className="pb-2 pr-3 font-medium min-w-[8rem]">ДЗ</th>
+                            <th className="pb-2 pr-3 font-medium whitespace-nowrap">КТ</th>
+                            <th className="pb-2 pr-3 font-medium tabular-nums whitespace-nowrap">Баллы</th>
+                            <th className="pb-2 font-medium whitespace-nowrap">Последнее</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.length === 0 && (
                             <tr>
-                                <td colSpan={8} className="py-10 text-center text-sm text-slate-500">
+                                <td colSpan={9} className="py-10 text-center text-sm text-slate-500">
                                     {syncResult == null && 'Загрузка учениц…'}
                                     {syncResult?.synced === false && syncResult?.reason === 'no_users' && 'Список профилей из Сада пуст (0 строк). Убедитесь, что JWT передаётся в PostgREST и политика SELECT на profiles разрешает читать нужные строки (см. migrations/05_profiles_rls.sql: при схеме «только свой профиль» админ не увидит абитуриентов — нужна политика select для role=admin или service role).'}
                                     {syncResult?.synced === false && syncResult?.reason === 'error' && 'Ошибка при синхронизации с Садом. Проверьте подключение к PostgREST.'}
@@ -6874,7 +6935,7 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                     </button>
                                 </td>
                                 <td className="py-3 pr-3 align-top text-xs text-slate-600 whitespace-nowrap">{row.statusLabelRu}</td>
-                                <td className="py-3 pr-3 align-top text-slate-600 text-xs max-w-[14rem]">{row.courseLine}</td>
+                                <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.courseLine}</td>
                                 <td className="py-3 pr-3 align-top" onClick={(e) => e.stopPropagation()}>
                                     <select
                                         value={row.mentorUserId || ''}
@@ -6888,9 +6949,29 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                         ))}
                                     </select>
                                 </td>
-                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.closedPct}%</td>
-                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700">{row.coursePoints}/400</td>
-                                <td className="py-3 pr-3 align-top text-xs text-slate-600">{row.hwSummary}</td>
+                                <td className="py-3 pr-3 align-top">
+                                    <div className="flex items-center gap-1.5 text-xs tabular-nums">
+                                        <span className="text-slate-700 font-medium">{row.lessonsDone}/{row.lessonsTotal}</span>
+                                        <div className="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                            <div className="h-full rounded-full bg-sky-400" style={{ width: `${row.lessonsTotal ? Math.round((row.lessonsDone / row.lessonsTotal) * 100) : 0}%` }} />
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="py-3 pr-3 align-top text-xs">
+                                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                        <span className="text-emerald-600 font-medium">✓{row.hwAccepted}</span>
+                                        {row.hwRevision > 0 && <span className="text-amber-600">⚠{row.hwRevision}</span>}
+                                        {row.hwPending > 0 && <span className="text-blue-500">↑{row.hwPending}</span>}
+                                        {row.hwOverdue > 0 && <span className="text-red-500">✗{row.hwOverdue}</span>}
+                                        <span className="text-slate-400">/{row.hwTotal}</span>
+                                    </div>
+                                </td>
+                                <td className="py-3 pr-3 align-top text-xs tabular-nums">
+                                    <span className="text-emerald-600 font-medium">{row.cpAccepted}</span>
+                                    <span className="text-slate-400">/{row.cpTotal}</span>
+                                    {row.cpPending > 0 && <div className="text-blue-500 text-[10px]">{row.cpPending} на провер.</div>}
+                                </td>
+                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700 text-xs">{row.coursePoints}/400</td>
                                 <td className="py-3 align-top text-xs text-slate-500 tabular-nums">{row.lastAct}</td>
                             </tr>
                         ))}
@@ -7356,13 +7437,15 @@ function AdminPage({
                 onBack={() => navigate(`/admin/students/${menteeSeg}`)}
                 initialData={buildTaskDetailStateFromApi(resolved, taskId, 'mentor')}
                 onMentorReply={(msg) => {
-                    pvlDomainApi.mentorApi.addMentorThreadReply(mentorActorId, resolved, taskId, { text: msg.text, disputeOnly: msg.disputeOnly });
-                    forceRefresh();
+                    const r = pvlDomainApi.mentorApi.addMentorThreadReply(mentorActorId, resolved, taskId, { text: msg.text, disputeOnly: msg.disputeOnly });
+                    if (r) forceRefresh();
                 }}
                 onMentorReview={(payload) => {
-                    pvlDomainApi.mentorApi.submitMentorReview(mentorActorId, resolved, taskId, payload);
-                    pvlDomainApi.actions.markThreadRead(mentorActorId, resolved, taskId);
-                    forceRefresh();
+                    const r = pvlDomainApi.mentorApi.submitMentorReview(mentorActorId, resolved, taskId, payload);
+                    if (r) {
+                        pvlDomainApi.actions.markThreadRead(mentorActorId, resolved, taskId);
+                        forceRefresh();
+                    }
                 }}
             />
         );
@@ -7852,7 +7935,7 @@ export default function PvlPrototypeApp({
                 glossary: 'Глоссарий',
                 library: 'Библиотека',
                 lessons: 'Трекер',
-                practicums: 'Практикумы',
+                practicums: 'Календарь',
                 checklist: 'Трекер',
                 tracker: 'Трекер',
                 messages: 'Чат с ментором',

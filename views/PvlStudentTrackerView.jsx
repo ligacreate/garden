@@ -142,6 +142,13 @@ export function usePlatformStepChecklist(studentId, refreshKey = 0) {
             });
             setChecked(merged);
             localStorage.setItem(storageKey, JSON.stringify(merged));
+            // Если в localStorage есть галочки, которых нет в БД — синхронизировать в БД.
+            // Это переносит накопленный прогресс при первой же загрузке страницы.
+            const mergedCount = Object.values(merged).filter(Boolean).length;
+            const dbCount = Object.values(fromDb).filter(Boolean).length;
+            if (mergedCount > dbCount && studentId) {
+                pvlDomainApi.studentApi.saveTrackerChecklist(studentId, merged);
+            }
         } catch {
             setChecked({});
         }

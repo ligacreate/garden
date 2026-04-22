@@ -460,6 +460,7 @@ export const pvlPostgrestApi = {
     async upsertCourseWeek(payload) {
         const rows = await request('pvl_course_weeks', {
             method: 'POST',
+            params: { on_conflict: 'week_number' },
             body: [payload],
             prefer: 'resolution=merge-duplicates,return=representation',
         });

@@ -168,12 +168,39 @@ JS-нормализация корректна: quiz → checklist, homework →
 
 ---
 
+## Фаза 8: Прогресс трекера не сохраняется в БД (2026-04-22) [x]
+
+**Проблема:** Все ученицы ПВЛ жалуются — прогресс трекера (галочки) исчезает при смене устройства или очистке браузера.
+
+**Диагноз:** `pvl_course_weeks` строки вставлены сидом (`001_demo_minimal.sql`) БЕЗ `external_key`. Поле добавлено миграцией 003, но не заполнено для существующих строк. В `ensureDbTrackerHomeworkStructure` код делал:
+```js
+const byWeekExternal = new Map((weekRows || []).map((r) => [String(r.external_key || ''), r]));
+if (byWeekExternal.size === 0) { // ← ОШИБКА: size === 1, т.к. все null → ''
+```
+Map имел размер 1 (все null-значения схлопывались в ключ `''`), условие не срабатывало, `sqlWeekIdByMockWeekId` оставалась пустой. `persistTrackerProgressToDb` находил `sqlWeekId = null` и уходил без записи.
+
+**Исправление (код):**
+- `pvlMockApi.js`: исправлено условие — теперь фильтрует null external_key, проверяет каких недель не хватает
+- `pvlPostgrestApi.js`: добавлен `on_conflict: 'week_number'` в `upsertCourseWeek` (иначе дублирование)
+- `PvlStudentTrackerView.jsx`: в `usePlatformStepChecklist` при загрузке авто-синхронизирует прогресс из localStorage в БД, если в БД меньше галочек (переносит накопленный прогресс)
+
+**Исправление (БД):** создана миграция `016_pvl_weeks_external_key_backfill.sql`:
+```sql
+UPDATE public.pvl_course_weeks SET external_key = 'cohort-2026-1-w' || week_number WHERE external_key IS NULL;
+```
+
+**КРИТИЧЕСКИ ВАЖНО:** применить `016_pvl_weeks_external_key_backfill.sql` на продакшн Timeweb прямо сейчас.
+
+---
+
 ## Итог
 
-- [x] Частично (что осталось: применить миграции 007/009/012 на продакшн)
+- [x] Частично (что осталось: применить миграции 007/009/012/016 на продакшн)
 
 **Корневая причина 1 (контент):** CHECK constraint `pvl_content_items_content_type_check` в продакшн-БД не содержит 'checklist' и 'template' — эти значения были добавлены в migration 002 уже после первого применения.
 
 **Корневая причина 2 (ментор слетает):** Таблица `pvl_garden_mentor_links` скорее всего не создана в production (миграция 007 не применена). Ошибка сохранения ранее проглатывалась → UI не знал о сбое. Исправлено: `persistGardenMentorLink` теперь пробрасывает ошибку → пользователь увидит alert при неудачной записи.
 
 **Корневая причина 3 (стажеры в менти):** После коммита `a6424ce` стажеры (intern) классифицировались как `gardenRole: 'student'` и попадали в admin-список учениц. Исправлено: теперь `gardenRole: 'intern'`, `getAdminStudents` их фильтрует, но в studentProfiles они остаются (доступ к урокам не нарушен).
+
+**Корневая причина 4 (трекер теряет прогресс):** `pvl_course_weeks.external_key = NULL` для всех продакшн-строк → `sqlWeekIdByMockWeekId` пустая → прогресс трекера никогда не писался в БД. Хранился только в localStorage. Исправлено: миграция 016 + код-фикс + авто-синхронизация при загрузке.

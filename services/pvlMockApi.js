@@ -621,9 +621,14 @@ async function ensureDbTrackerHomeworkStructure() {
         pvlPostgrestApi.listCourseLessons(),
         pvlPostgrestApi.listHomeworkItems(),
     ]);
-    const byWeekExternal = new Map((weekRows || []).map((r) => [String(r.external_key || ''), r]));
-    if (byWeekExternal.size === 0) {
-        for (const w of db.courseWeeks || []) {
+    const byWeekExternal = new Map(
+        (weekRows || [])
+            .filter((r) => r.external_key)
+            .map((r) => [String(r.external_key), r]),
+    );
+    const weeksMissingExternalKey = (db.courseWeeks || []).filter((w) => !byWeekExternal.has(w.id));
+    if (weeksMissingExternalKey.length > 0) {
+        for (const w of weeksMissingExternalKey) {
             // eslint-disable-next-line no-await-in-loop
             await pvlPostgrestApi.upsertCourseWeek({
                 week_number: Number(w.weekNumber ?? 0),
@@ -2344,7 +2349,7 @@ export const studentApi = {
         };
     },
     getStudentMenu() {
-        return ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Практикумы с менторами', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
+        return ['О курсе', 'Глоссарий курса', 'Библиотека курса', 'Уроки', 'Календарь', 'Чек-лист', 'Результаты', 'Сертификация', 'Культурный код Лиги'];
     },
     getStudentResults(studentId, filters = {}) {
         syncPublishedHomeworkTasksForStudent(studentId);

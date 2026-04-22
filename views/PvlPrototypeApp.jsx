@@ -1734,9 +1734,12 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                                                     key={i.id}
                                                                     type="button"
                                                                     onClick={() => openCategoryMaterial(i)}
-                                                                    className="w-full rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md"
+                                                                    className={`w-full rounded-2xl px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md ${i.completed ? 'bg-emerald-50/70' : 'bg-white'}`}
                                                                 >
-                                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                        {i.completed && <span className="shrink-0 text-[11px] font-semibold text-emerald-600">✓</span>}
+                                                                    </div>
                                                                     {i.estimatedDuration ? (
                                                                         <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
                                                                     ) : null}
@@ -1756,9 +1759,12 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                                                         key={i.id}
                                                                         type="button"
                                                                         onClick={() => openCategoryMaterial(i)}
-                                                                        className="w-full rounded-2xl bg-white/90 px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/40 hover:shadow-md"
+                                                                        className={`w-full rounded-2xl px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/40 hover:shadow-md ${i.completed ? 'bg-emerald-50/70' : 'bg-white/90'}`}
                                                                     >
-                                                                        <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                        <div className="flex items-center justify-between gap-1">
+                                                                            <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                            {i.completed && <span className="shrink-0 text-[11px] font-semibold text-emerald-600">✓</span>}
+                                                                        </div>
                                                                         {i.estimatedDuration ? (
                                                                             <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
                                                                         ) : null}
@@ -1788,9 +1794,12 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                                                 key={i.id}
                                                                 type="button"
                                                                 onClick={() => openCategoryMaterial(i)}
-                                                                className={`w-full rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md ${String(selectedItem?.id) === String(i.id) ? 'ring-2 ring-emerald-400 ring-offset-1' : ''}`}
+                                                                className={`w-full rounded-2xl px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/35 hover:shadow-md ${i.completed ? 'bg-emerald-50/70' : 'bg-white'} ${String(selectedItem?.id) === String(i.id) ? 'ring-2 ring-emerald-400 ring-offset-1' : ''}`}
                                                             >
-                                                                <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                    {i.completed && <span className="shrink-0 text-[11px] font-semibold text-emerald-600">✓</span>}
+                                                                </div>
                                                                 {i.estimatedDuration ? (
                                                                     <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
                                                                 ) : null}
@@ -1810,9 +1819,12 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                                                     key={i.id}
                                                                     type="button"
                                                                     onClick={() => openCategoryMaterial(i)}
-                                                                    className={`w-full rounded-2xl bg-white/90 px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/40 hover:shadow-md ${String(selectedItem?.id) === String(i.id) ? 'ring-2 ring-emerald-400 ring-offset-1' : ''}`}
+                                                                    className={`w-full rounded-2xl px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-emerald-50/40 hover:shadow-md ${i.completed ? 'bg-emerald-50/70' : 'bg-white/90'} ${String(selectedItem?.id) === String(i.id) ? 'ring-2 ring-emerald-400 ring-offset-1' : ''}`}
                                                                 >
-                                                                    <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <div className="text-sm text-slate-800 truncate">{stripMaterialNumbering(i.title)}</div>
+                                                                        {i.completed && <span className="shrink-0 text-[11px] font-semibold text-emerald-600">✓</span>}
+                                                                    </div>
                                                                     {i.estimatedDuration ? (
                                                                         <div className="mt-0.5 text-[11px] text-slate-500">{i.estimatedDuration}</div>
                                                                     ) : null}
@@ -1836,17 +1848,23 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                         >
                                             Распечатать
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id);
-                                                setLibraryTick((v) => v + 1);
-                                                refresh?.();
-                                            }}
-                                            className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]"
-                                        >
-                                            Отметить как изученное
-                                        </button>
+                                        {selectedItem.completed ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700 min-h-[36px]">
+                                                ✓ Изучено
+                                            </span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id);
+                                                    setLibraryTick((v) => v + 1);
+                                                    refresh?.();
+                                                }}
+                                                className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]"
+                                            >
+                                                Отметить как изученное
+                                            </button>
+                                        )}
                                         <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]">Назад к списку</button>
                                     </div>
                                 </div>

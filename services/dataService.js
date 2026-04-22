@@ -4,8 +4,8 @@ import { DEFAULT_TIMEZONE } from '../utils/timezone';
 import DOMPurify from 'dompurify';
 import imageCompression from 'browser-image-compression';
 
-const POSTGREST_URL = import.meta.env.VITE_POSTGREST_URL || 'https://api.skrebeyko.ru';
-const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'https://auth.skrebeyko.ru';
+const POSTGREST_URL = import.meta.env.VITE_POSTGREST_URL;
+const AUTH_URL = import.meta.env.VITE_AUTH_URL;
 const PUSH_URL = import.meta.env.VITE_PUSH_URL || AUTH_URL;
 
 /** Если true — не передаём JWT в PostgREST (например локальный PostgREST без jwt-secret). */

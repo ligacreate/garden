@@ -3,6 +3,7 @@ dist 2/
 *.zip
 .env
 .env.*
+!.env.example
 .DS_Store
 __MACOSX/
 mini_unzipped/
@@ -16,3 +17,4 @@ artifacts-*.png
 # Supabase SQL editor CSV exports (often contain PII)
 Supabase*.csv
 .business/
+database/pvl/diagnostics/

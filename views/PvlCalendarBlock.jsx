@@ -339,54 +339,69 @@ function normalizePracticumRecapHtml(source = '') {
     return `<div>${escapeHtml(raw).replaceAll('\n', '<br/>')}</div>`;
 }
 
+/** Только время — светло-зелёная плашка; дата и тип снаружи. */
+function PvlCalendarTimePill({ children }) {
+    return (
+        <span className="inline-flex max-w-full items-center rounded-full border border-emerald-200/80 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-emerald-900 leading-tight">
+            {children}
+        </span>
+    );
+}
+
 function PvlCalendarEventTimeChips({ startAt }) {
     const t = getPvlCalendarEventTimeDisplay(startAt);
     if (t.mode === 'dual') {
         return (
-            <>
-                <span className="text-[#3D342B]">{t.dateStr}</span>
-                {', '}
-                <span className="inline-flex items-baseline gap-1.5 font-semibold">
-                    <span className="tabular-nums text-[#1A1512]">{t.localTime}</span>
-                    <span className="text-[#6B5D4F] font-normal" aria-hidden>
+            <span className="inline-flex min-w-0 flex-wrap items-baseline gap-1.5 text-xs text-[#3D342B]">
+                <span>{t.dateStr},</span>
+                <PvlCalendarTimePill>
+                    {t.localTime}
+                    <span className="mx-1 font-normal text-emerald-800/75" aria-hidden>
                         ·
                     </span>
-                    <span className="tabular-nums text-[#134032]">
-                        {t.mskTime}
-                        {' '}
-                        мск
-                    </span>
-                </span>
-            </>
+                    {t.mskTime} мск
+                </PvlCalendarTimePill>
+            </span>
         );
     }
     if (t.mode === 'msk_only') {
         return (
-            <>
-                <span className="text-[#3D342B]">{t.dateStr}</span>
-                {', '}
-                <span className="font-semibold tabular-nums text-[#1A1512]">
+            <span className="inline-flex min-w-0 flex-wrap items-baseline gap-1.5 text-xs text-[#3D342B]">
+                <span>{t.dateStr},</span>
+                <PvlCalendarTimePill>
                     {t.mskTime}
-                    {' '}
-                    <span className="text-[#134032]">мск</span>
-                </span>
-            </>
+                    <span className="ml-0.5">мск</span>
+                </PvlCalendarTimePill>
+            </span>
         );
     }
-    return <span className="font-medium tabular-nums text-[#1A1512]">{formatPvlDateTime(startAt)}</span>;
+    const full = formatPvlDateTime(startAt);
+    if (!full || full === '—') {
+        return <span className="text-xs text-[#3D342B]">{full}</span>;
+    }
+    const comma = full.indexOf(',');
+    if (comma === -1) {
+        return <span className="text-xs text-[#3D342B]">{full}</span>;
+    }
+    const datePart = full.slice(0, comma).trim();
+    const timePart = full.slice(comma + 1).trim();
+    return (
+        <span className="inline-flex min-w-0 flex-wrap items-baseline gap-1.5 text-xs text-[#3D342B]">
+            <span>{datePart},</span>
+            {timePart ? <PvlCalendarTimePill>{timePart}</PvlCalendarTimePill> : null}
+        </span>
+    );
 }
 
-/** Тип события + дата/время: заметная плашка в списке «предстоящие» */
+/** Тип события + дата и время (время — только в зелёной плашке) */
 function PvlCalendarEventMetaStrip({ typeLabel, startAt }) {
     return (
-        <div className="mt-1.5 w-fit max-w-full flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 rounded-lg border border-[#C9B8A8]/80 bg-gradient-to-b from-[#FCF5EC] to-[#EDE0D0] px-2.5 py-1.5 text-xs leading-snug text-[#1E1814] shadow-sm shadow-black/[0.04]">
+        <div className="mt-1.5 flex w-full min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs text-[#3D342B]">
             <span className="shrink-0 font-semibold text-[#4A3F36]">{typeLabel}</span>
-            <span className="text-[#6B5D4F] select-none" aria-hidden>
+            <span className="text-[#8B7D72] select-none" aria-hidden>
                 ·
             </span>
-            <span className="min-w-0">
-                <PvlCalendarEventTimeChips startAt={startAt} />
-            </span>
+            <PvlCalendarEventTimeChips startAt={startAt} />
         </div>
     );
 }
@@ -398,12 +413,10 @@ function PvlPastArchiveListItem({ ev }) {
     if (rich) {
         return (
             <li className="rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
-                    <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
-                    <span className="inline-flex max-w-full items-baseline rounded-md border border-[#C9B8A8]/70 bg-gradient-to-b from-[#FCF5EC] to-[#EDE0D0] px-2 py-0.5 text-xs shadow-sm shadow-black/[0.04]">
-                        <PvlCalendarEventTimeChips startAt={ev.startAt} />
-                    </span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
+                    <span className="min-w-0 text-sm font-medium text-[#3D342B]">{ev.title}</span>
+                    <PvlCalendarEventTimeChips startAt={ev.startAt} />
                 </div>
                 {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
                     <div
@@ -1145,7 +1158,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                         />
                                         <span className="font-medium text-slate-800">{ev.title}</span>
                                     </div>
-                                    <div className="mt-1.5 w-fit max-w-full rounded-md border border-slate-200/90 bg-slate-50/95 px-2.5 py-1.5 text-xs text-slate-800">
+                                    <div className="mt-1.5 min-w-0 pl-0 text-slate-800">
                                         <PvlCalendarEventTimeChips startAt={ev.startAt} />
                                     </div>
                                 </button>

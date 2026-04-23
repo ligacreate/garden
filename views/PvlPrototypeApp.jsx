@@ -1140,6 +1140,23 @@ function getPublishedContentBySection(sectionKey, role = 'student', items = [], 
         .map((x) => x.item);
 }
 
+/** Для сортировки карточек: сначала недавно обновлённые/созданные. */
+function cmsItemTimestampMs(item) {
+    if (!item) return 0;
+    const raw = item.updatedAt || item.createdAt;
+    if (raw == null || raw === '') return 0;
+    const n = new Date(raw).getTime();
+    return Number.isNaN(n) ? 0 : n;
+}
+
+function sortCmsItemsNewestFirst(items) {
+    return [...items].sort((a, b) => {
+        const d = cmsItemTimestampMs(b) - cmsItemTimestampMs(a);
+        if (d !== 0) return d;
+        return String(b.id || '').localeCompare(String(a.id || ''));
+    });
+}
+
 /**
  * Строит модули трекера из опубликованных уроков CMS.
  * Источник шагов — тот же контур, что список «Уроки» у ученицы (getPublishedContentBySection),
@@ -1354,16 +1371,21 @@ function AdminContentSectionPreview({
 function GardenContentCards({ items }) {
     if (!items.length) return <div className="rounded-3xl bg-white p-6 text-sm text-slate-500 shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)]">В этом разделе пока нет материалов.</div>;
     return (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((i) => (
-                <article key={i.id} className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                    <h4 className="text-sm font-medium text-slate-800">{i.title}</h4>
-                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed whitespace-pre-line">{pvlMaterialCardExcerpt(i)}</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-100">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</span>
-                        {i.estimatedDuration ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100">{i.estimatedDuration}</span> : null}
-                        {(i.tags || []).slice(0, 3).map((tag) => (
-                            <span key={`${i.id}-${tag}`} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100">{tag}</span>
+                <article
+                    key={i.id}
+                    className="flex h-full min-h-0 min-w-0 flex-col rounded-2xl border border-slate-100/90 bg-white p-3 shadow-[0_6px_24px_-12px_rgba(15,23,42,0.08)]"
+                >
+                    <h4 className="text-xs font-semibold leading-snug text-slate-800 line-clamp-2">{i.title}</h4>
+                    <p className="mt-1.5 min-h-0 flex-1 text-[11px] leading-snug text-slate-500 line-clamp-4 whitespace-pre-line">
+                        {pvlMaterialCardExcerpt(i, 140)}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1 pt-0.5">
+                        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-100">{CONTENT_TYPE_LABEL[i.contentType] || i.contentType}</span>
+                        {i.estimatedDuration ? <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100">{i.estimatedDuration}</span> : null}
+                        {(i.tags || []).slice(0, 2).map((tag) => (
+                            <span key={`${i.id}-${tag}`} className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-100 truncate max-w-full">{tag}</span>
                         ))}
                     </div>
                 </article>
@@ -3398,11 +3420,13 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
 
 function MentorMaterialsPage({ cmsItems, cmsPlacements }) {
     const cohortId = 'cohort-2026-1';
-    const lessons = getPublishedContentBySection('lessons', 'mentor', cmsItems, cmsPlacements, cohortId);
-    const practicums = getPublishedContentBySection('practicums', 'mentor', cmsItems, cmsPlacements, cohortId);
-    const cert = getPublishedContentBySection('certification', 'mentor', cmsItems, cmsPlacements, cohortId);
-    const checklist = getPublishedContentBySection('checklist', 'mentor', cmsItems, cmsPlacements, cohortId);
-    const combined = [...lessons, ...practicums, ...cert, ...checklist];
+    const combined = useMemo(() => {
+        const lessons = getPublishedContentBySection('lessons', 'mentor', cmsItems, cmsPlacements, cohortId);
+        const practicums = getPublishedContentBySection('practicums', 'mentor', cmsItems, cmsPlacements, cohortId);
+        const cert = getPublishedContentBySection('certification', 'mentor', cmsItems, cmsPlacements, cohortId);
+        const checklist = getPublishedContentBySection('checklist', 'mentor', cmsItems, cmsPlacements, cohortId);
+        return sortCmsItemsNewestFirst([...lessons, ...practicums, ...cert, ...checklist]);
+    }, [cmsItems, cmsPlacements]);
     return (
         <div className="space-y-6">
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-6">

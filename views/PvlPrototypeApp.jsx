@@ -1026,7 +1026,7 @@ const TARGET_SECTION_LABELS = {
     glossary: 'Глоссарий',
     library: 'Библиотека',
     lessons: 'Уроки',
-    practicums: 'Календарь',
+    practicums: 'Записи проведённых практикумов',
     checklist: 'Чек-лист',
     results: 'Результаты',
     certification: 'Сертификация',
@@ -2029,13 +2029,17 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
 
 const ACTIVE_HOMEWORK_LABELS = new Set(['черновик', 'отправлено', 'на проверке', 'к проверке', 'на доработке', 'проверено', 'в работе']);
 
-function StudentDashboard({ studentId, navigate, routePrefix = '/student', gardenBridgeRef = null }) {
+function StudentDashboard({ studentId, navigate, routePrefix = '/student', gardenBridgeRef = null, cmsItems = [], cmsPlacements = [], refreshKey = 0 }) {
     const snapshot = pvlDomainApi.studentApi.getStudentDashboard(studentId);
     const points = pvlDomainApi.helpers.getStudentPointsSummary(studentId);
     const libraryProgress = pvlDomainApi.studentApi.getStudentLibraryProgress(studentId);
     const w = snapshot.compulsoryWidgets;
-    const { checked } = usePlatformStepChecklist(studentId);
-    const tr = useMemo(() => computePvlTrackerDashboardStats(checked), [checked]);
+    const { checked } = usePlatformStepChecklist(studentId, refreshKey);
+    const trackerModules = useMemo(
+        () => buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(studentId)),
+        [studentId, cmsItems, cmsPlacements],
+    );
+    const tr = useMemo(() => computePvlTrackerDashboardStats(checked, trackerModules), [checked, trackerModules]);
     const apiTasks = pvlDomainApi.studentApi.getStudentResults(studentId, {});
     const activeHomework = apiTasks.filter((t) => ACTIVE_HOMEWORK_LABELS.has(t.displayStatus || t.status));
     const homeworkShortlist = useMemo(() => {
@@ -3244,7 +3248,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         return <PvlMergeOnboardingRedirect navigate={navigate} to="/student/about" />;
     }
     if (route === '/student/settings') return <PvlCabinetSettingsStub />;
-    if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} gardenBridgeRef={gardenBridgeRef} />;
+    if (route === '/student/dashboard') return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} gardenBridgeRef={gardenBridgeRef} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refreshKey={refreshKey} />;
     if (route === '/student/results') return <StudentResults studentId={studentId} navigate={navigate} routePrefix={routePrefix} />;
     if (route.startsWith('/student/results/')) {
         const taskId = route.split('/')[3];
@@ -3389,7 +3393,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         const sectionMaterials = sectionKey ? getPublishedContentBySection(sectionKey, 'student', cmsItems, cmsPlacements) : [];
         return <StudentGeneric title="Культурный код Лиги"><GardenContentCards items={sectionMaterials.length ? sectionMaterials : ['Бережность', 'Ясность', 'Без советов', 'Поддержка сообщества'].map((x) => ({ id: x, title: x, shortDescription: '', contentType: 'text', tags: ['код'] }))} /></StudentGeneric>;
     }
-    return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} gardenBridgeRef={gardenBridgeRef} />;
+    return <StudentDashboard studentId={studentId} navigate={navigate} routePrefix={routePrefix} gardenBridgeRef={gardenBridgeRef} cmsItems={cmsItems} cmsPlacements={cmsPlacements} refreshKey={refreshKey} />;
 }
 
 function MentorMaterialsPage({ cmsItems, cmsPlacements }) {
@@ -3414,7 +3418,8 @@ function riskLevelDisplay(level) {
     return m[String(level || '').toLowerCase()] || level;
 }
 
-function buildTeacherStudentRows() {
+function buildTeacherStudentRows(cmsItems = [], cmsPlacements = []) {
+    const trackerModules = buildTrackerModulesFromCms(cmsItems, cmsPlacements, 'cohort-2026-1');
     return pvlDomainApi.adminApi.getAdminStudents({}).map((sp) => {
         const userId = sp.userId;
         const user = resolveActorUser(userId);
@@ -3428,7 +3433,7 @@ function buildTeacherStudentRows() {
 
         // Трекер: прогресс по шагам (уроки = video/pdf/live теги)
         const trackerChecked = pvlDomainApi.studentApi.getTrackerChecklist(userId);
-        const trackerStats = computePvlTrackerDashboardStats(trackerChecked);
+        const trackerStats = computePvlTrackerDashboardStats(trackerChecked, trackerModules);
 
         // Домашние задания (без контрольных точек)
         const hwTasks = tasks.filter((t) => !t.isControlPoint);
@@ -4020,6 +4025,12 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         }
     };
     const courseRoute = route.replace(/^\/mentor\//, '/student/');
+    if (route === '/mentor/about') return (
+        <div className="space-y-5">
+            <StudentAboutEnriched navigate={navigate} routePrefix="/mentor" cmsItems={cmsItems} cmsPlacements={cmsPlacements} />
+        </div>
+    );
+    if (route === '/mentor/glossary') return <StudentGlossarySearch studentId="" cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (!mentorMirrorStudentId) {
         return mentorMirrorUnavailable;
     }
@@ -5610,7 +5621,7 @@ function ContentNavigator({ items, placements, onOpen }) {
     const SECTIONS = [
         { key: 'library', label: 'Библиотека' },
         { key: 'lessons', label: 'Уроки' },
-        { key: 'practicums', label: 'Календарь' },
+        { key: 'practicums', label: 'Записи практикумов' },
         { key: 'glossary', label: 'Глоссарий' },
     ];
 
@@ -6504,7 +6515,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
             {/* Фильтры по разделу и статусу */}
             <div className="space-y-2">
                 <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-emerald-50/60 border border-emerald-100">
-                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['practicums', 'Календарь'], ['glossary', 'Глоссарий']].map(([val, label]) => (
+                    {[['all', 'Все разделы'], ['library', 'Библиотека'], ['lessons', 'Уроки'], ['practicums', 'Записи практикумов'], ['glossary', 'Глоссарий']].map(([val, label]) => (
                         <button
                             key={val}
                             type="button"
@@ -6768,7 +6779,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
     );
 }
 
-function AdminStudents({ navigate, route, refreshKey = 0 }) {
+function AdminStudents({ navigate, route, refreshKey = 0, cmsItems = [], cmsPlacements = [] }) {
     const [cohortId, setCohortId] = useState('all');
     const [listTick, setListTick] = useState(0);
     const [syncResult, setSyncResult] = useState(null);
@@ -6782,9 +6793,7 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                 if (!cancelled) setListTick((t) => t + 1);
             }
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, []);
     const cohorts = pvlDomainApi.adminApi.getAdminCohorts();
     const mentorOptions = useMemo(() => (
@@ -6793,11 +6802,11 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
             label: resolveActorDisplayName(mp.userId || mp.id) || mp.userId || mp.id,
         }))
     ), [listTick]);
-    const rows = useMemo(() => buildTeacherStudentRows().filter((r) => {
+    const rows = useMemo(() => buildTeacherStudentRows(cmsItems, cmsPlacements).filter((r) => {
         if (cohortId === 'all') return true;
         const sp = pvlDomainApi.db.studentProfiles.find((p) => p.userId === r.userId);
         return sp?.cohortId === cohortId;
-    }), [cohortId, listTick, refreshKey]);
+    }), [cohortId, listTick, refreshKey, cmsItems, cmsPlacements]);
 
     const assignStudentMentor = async (studentId, mentorUserId) => {
         try {
@@ -6822,48 +6831,82 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
 
     const mentorSelectClass = 'w-full max-w-[16rem] rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-800 outline-none ring-1 ring-slate-200/80 focus:ring-emerald-400/80';
 
+    const HwBadges = ({ row }) => {
+        const notStarted = Math.max(0, row.hwTotal - row.hwAccepted - row.hwPending - row.hwRevision - row.hwOverdue);
+        if (row.hwTotal === 0) return <span className="text-[11px] text-slate-400">—</span>;
+        return (
+            <div className="flex flex-wrap gap-1">
+                {row.hwAccepted > 0 && <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200/70">✓ {row.hwAccepted}</span>}
+                {row.hwPending > 0 && <span className="inline-flex items-center gap-0.5 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200/70">↑ {row.hwPending}</span>}
+                {row.hwRevision > 0 && <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200/70">⚠ {row.hwRevision}</span>}
+                {row.hwOverdue > 0 && <span className="inline-flex items-center gap-0.5 rounded-md bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200/70">✗ {row.hwOverdue}</span>}
+                {notStarted > 0 && <span className="inline-flex items-center gap-0.5 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">· {notStarted}</span>}
+            </div>
+        );
+    };
+
+    const LessonBar = ({ done, total }) => {
+        const pct = total ? Math.round((done / total) * 100) : 0;
+        return (
+            <div className="flex items-center gap-1.5 text-xs tabular-nums">
+                <span className="font-medium text-slate-700 whitespace-nowrap">{done}/{total}</span>
+                <div className="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden shrink-0">
+                    <div className="h-full rounded-full bg-sky-400 transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                {total > 0 && <span className="text-slate-400">{pct}%</span>}
+            </div>
+        );
+    };
+
+    const emptyMsg = syncResult == null ? 'Загрузка учениц…'
+        : syncResult?.synced === false && syncResult?.reason === 'no_users' ? 'Список профилей из Сада пуст (0 строк).'
+        : syncResult?.synced === false && syncResult?.reason === 'error' ? 'Ошибка синхронизации с Садом.'
+        : syncResult?.synced === true && (syncResult.trackMembers ?? 0) === 0 ? 'Нет участников ПВЛ в выборке.'
+        : syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && cohortId !== 'all' ? 'В выбранном потоке список пуст.'
+        : 'Данные загружены.';
+
     return (
         <section className="space-y-5 rounded-3xl bg-white p-5 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] md:p-6">
-            <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="font-display text-2xl text-slate-800">Ученицы</h2>
-            </div>
-            <div>
                 <label className="sr-only" htmlFor="pvl-admin-students-cohort">Поток</label>
                 <select
                     id="pvl-admin-students-cohort"
                     value={cohortId}
                     onChange={(e) => setCohortId(e.target.value)}
-                    className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-slate-200/80 w-full md:w-auto"
+                    className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-slate-200/80"
                 >
                     <option value="all">Все потоки</option>
                     {cohorts.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
             </div>
-            <div className="grid gap-4 md:hidden">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-slate-50/70 px-4 py-2.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Статусы ДЗ:</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500"><span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 ring-1 ring-emerald-200/70">✓</span>принято</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500"><span className="rounded-md bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700 ring-1 ring-blue-200/70">↑</span>на проверке</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500"><span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 ring-1 ring-amber-200/70">⚠</span>на доработке</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500"><span className="rounded-md bg-rose-50 px-1.5 py-0.5 font-medium text-rose-700 ring-1 ring-rose-200/70">✗</span>просрочено</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500"><span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500">·</span>не начато</span>
+                <span className="ml-auto text-[11px] text-slate-400 hidden sm:inline">Кликните строку — откроется карточка</span>
+            </div>
+            {/* Мобильные карточки */}
+            <div className="grid gap-3 md:hidden">
                 {rows.length === 0 && syncResult != null && (
-                    <div className="rounded-xl bg-slate-50/80 p-4 text-sm text-slate-500 text-center">
-                        {syncResult?.synced === false && syncResult?.reason === 'no_users' && 'Профили из Сада не загружены (0 строк).'}
-                        {syncResult?.synced === false && syncResult?.reason === 'error' && 'Ошибка синхронизации с Садом.'}
-                        {syncResult?.synced === true && (syncResult.trackMembers ?? 0) === 0 && 'Нет участников ПВЛ в выборке (только персонал).'}
-                        {syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && `В базе ПВЛ: ${syncResult.trackMembers} участн. (абитуриенты: ${syncResult.applicants ?? 0}, ученицы: ${syncResult.students ?? 0}).`}
-                    </div>
+                    <div className="rounded-xl bg-slate-50/80 p-4 text-sm text-slate-500 text-center">{emptyMsg}</div>
                 )}
                 {rows.map((row) => (
                     <article
                         key={row.userId}
-                        className="rounded-xl bg-slate-50/80 p-3"
+                        className="rounded-xl bg-slate-50/80 p-3 cursor-pointer hover:bg-slate-100/80 transition-colors"
+                        onClick={() => navigate(`/admin/students/${row.userId}`)}
                     >
-                        <button
-                            type="button"
-                            className="text-left w-full text-sm font-medium text-blue-700 hover:underline"
-                            onClick={() => navigate(`/admin/students/${row.userId}`)}
-                        >
-                            {resolveActorDisplayName(row.userId) || row.userId}
-                        </button>
-                        <div className="text-[10px] text-slate-500 mt-1">{row.statusLabelRu}</div>
-                        <div className="text-xs text-slate-600 mt-1">{row.courseLine}</div>
-                        <div className="mt-3">
-                            <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-1">Ментор</div>
+                        <div className="text-sm font-medium text-blue-700">{resolveActorDisplayName(row.userId) || row.userId}</div>
+                        <div className="flex flex-wrap items-center gap-x-2 mt-0.5 text-[10px] text-slate-500">
+                            <span>{row.statusLabelRu}</span>
+                            <span>·</span>
+                            <span>{row.courseLine}</span>
+                        </div>
+                        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                             <select
                                 value={row.mentorUserId || ''}
                                 onChange={(e) => assignStudentMentor(row.userId, e.target.value)}
@@ -6876,85 +6919,56 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                 ))}
                             </select>
                         </div>
-                        <div className="mt-2 space-y-1.5 text-xs text-slate-600">
-                            <div className="flex items-center gap-2">
-                                <span className="w-14 shrink-0 text-slate-400">Уроки</span>
-                                <span className="tabular-nums font-medium text-slate-700">{row.lessonsDone}/{row.lessonsTotal}</span>
-                                <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                    <div className="h-full rounded-full bg-sky-400" style={{ width: `${row.lessonsTotal ? Math.round((row.lessonsDone / row.lessonsTotal) * 100) : 0}%` }} />
-                                </div>
+                        <div className="mt-2 space-y-1.5">
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="w-12 shrink-0 text-slate-400">Уроки</span>
+                                <LessonBar done={row.lessonsDone} total={row.lessonsTotal} />
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="w-14 shrink-0 text-slate-400">ДЗ</span>
-                                <span className="text-emerald-600 font-medium">✓{row.hwAccepted}</span>
-                                {row.hwRevision > 0 && <span className="text-amber-600">⚠{row.hwRevision}</span>}
-                                {row.hwPending > 0 && <span className="text-blue-500">↑{row.hwPending}</span>}
-                                {row.hwOverdue > 0 && <span className="text-red-500">✗{row.hwOverdue}</span>}
-                                <span className="text-slate-400 ml-auto">/{row.hwTotal}</span>
+                            <div className="flex items-start gap-2 text-xs">
+                                <span className="w-12 shrink-0 text-slate-400 pt-0.5">ДЗ</span>
+                                <HwBadges row={row} />
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="w-14 shrink-0 text-slate-400">КТ</span>
-                                <span className="tabular-nums font-medium text-emerald-600">{row.cpAccepted}</span>
-                                <span className="text-slate-400">/ {row.cpTotal}</span>
-                                {row.cpPending > 0 && <span className="text-blue-500 text-[10px]">({row.cpPending} на провер.)</span>}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="w-14 shrink-0 text-slate-400">Баллы</span>
-                                <span className="tabular-nums font-medium text-slate-700">{row.coursePoints}/400</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="w-14 shrink-0 text-slate-400">Посл.</span>
-                                <span>{row.lastAct}</span>
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="w-12 shrink-0 text-slate-400">Заход</span>
+                                <span className="text-slate-600 tabular-nums">{row.lastAct}</span>
                             </div>
                         </div>
                     </article>
                 ))}
             </div>
+
+            {/* Десктопная таблица */}
             <div className="hidden md:block overflow-x-auto -mx-1 px-1">
-                <table className="w-full text-sm text-left min-w-[1100px]">
+                <table className="w-full text-sm text-left min-w-[860px]">
                     <thead>
                         <tr className="text-xs text-slate-500 border-b border-slate-100">
                             <th className="pb-2 pr-3 font-medium">Имя</th>
                             <th className="pb-2 pr-3 font-medium whitespace-nowrap">Статус</th>
                             <th className="pb-2 pr-3 font-medium">Модуль</th>
                             <th className="pb-2 pr-3 font-medium min-w-[12rem]">Ментор</th>
-                            <th className="pb-2 pr-3 font-medium min-w-[9rem]">Уроки</th>
-                            <th className="pb-2 pr-3 font-medium min-w-[8rem]">ДЗ</th>
-                            <th className="pb-2 pr-3 font-medium whitespace-nowrap">КТ</th>
-                            <th className="pb-2 pr-3 font-medium tabular-nums whitespace-nowrap">Баллы</th>
-                            <th className="pb-2 font-medium whitespace-nowrap">Последнее</th>
+                            <th className="pb-2 pr-3 font-medium min-w-[11rem]">Уроки</th>
+                            <th className="pb-2 pr-3 font-medium min-w-[10rem]">ДЗ</th>
+                            <th className="pb-2 font-medium whitespace-nowrap">Заход</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.length === 0 && (
                             <tr>
-                                <td colSpan={9} className="py-10 text-center text-sm text-slate-500">
-                                    {syncResult == null && 'Загрузка учениц…'}
-                                    {syncResult?.synced === false && syncResult?.reason === 'no_users' && 'Список профилей из Сада пуст (0 строк). Убедитесь, что JWT передаётся в PostgREST и политика SELECT на profiles разрешает читать нужные строки (см. migrations/05_profiles_rls.sql: при схеме «только свой профиль» админ не увидит абитуриентов — нужна политика select для role=admin или service role).'}
-                                    {syncResult?.synced === false && syncResult?.reason === 'error' && 'Ошибка при синхронизации с Садом. Проверьте подключение к PostgREST.'}
-                                    {syncResult?.synced === true && (syncResult.trackMembers ?? 0) === 0 && 'Синхронизация прошла: в выборке из Сада нет участников ПВЛ (все пользователи с ролями персонала: ментор/стажёр/ведущая/админ/куратор).'}
-                                    {syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && cohortId !== 'all' && 'Участники есть в данных, но в выбранном потоке список пуст. Выберите «Все потоки».'}
-                                    {syncResult?.synced === true && (syncResult.trackMembers ?? 0) > 0 && cohortId === 'all' && 'Участники синхронизированы, но строк нет — обновите страницу или проверьте консоль.'}
-                                </td>
+                                <td colSpan={7} className="py-10 text-center text-sm text-slate-500">{emptyMsg}</td>
                             </tr>
                         )}
                         {rows.map((row) => (
                             <tr
                                 key={row.userId}
-                                className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80"
+                                className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 cursor-pointer"
+                                onClick={() => navigate(`/admin/students/${row.userId}`)}
                             >
-                                <td className="py-3 pr-3 align-top">
-                                    <button
-                                        type="button"
-                                        className="font-medium text-blue-700 hover:underline text-left"
-                                        onClick={() => navigate(`/admin/students/${row.userId}`)}
-                                    >
-                                        {resolveActorDisplayName(row.userId) || row.userId}
-                                    </button>
+                                <td className="py-3 pr-3 align-middle">
+                                    <span className="font-medium text-blue-700">{resolveActorDisplayName(row.userId) || row.userId}</span>
                                 </td>
-                                <td className="py-3 pr-3 align-top text-xs text-slate-600 whitespace-nowrap">{row.statusLabelRu}</td>
-                                <td className="py-3 pr-3 align-top text-slate-600 text-xs">{row.courseLine}</td>
-                                <td className="py-3 pr-3 align-top" onClick={(e) => e.stopPropagation()}>
+                                <td className="py-3 pr-3 align-middle text-xs text-slate-600 whitespace-nowrap">{row.statusLabelRu}</td>
+                                <td className="py-3 pr-3 align-middle text-slate-600 text-xs">{row.courseLine}</td>
+                                <td className="py-3 pr-3 align-middle" onClick={(e) => e.stopPropagation()}>
                                     <select
                                         value={row.mentorUserId || ''}
                                         onChange={(e) => assignStudentMentor(row.userId, e.target.value)}
@@ -6967,30 +6981,13 @@ function AdminStudents({ navigate, route, refreshKey = 0 }) {
                                         ))}
                                     </select>
                                 </td>
-                                <td className="py-3 pr-3 align-top">
-                                    <div className="flex items-center gap-1.5 text-xs tabular-nums">
-                                        <span className="text-slate-700 font-medium">{row.lessonsDone}/{row.lessonsTotal}</span>
-                                        <div className="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-full rounded-full bg-sky-400" style={{ width: `${row.lessonsTotal ? Math.round((row.lessonsDone / row.lessonsTotal) * 100) : 0}%` }} />
-                                        </div>
-                                    </div>
+                                <td className="py-3 pr-3 align-middle">
+                                    <LessonBar done={row.lessonsDone} total={row.lessonsTotal} />
                                 </td>
-                                <td className="py-3 pr-3 align-top text-xs">
-                                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                                        <span className="text-emerald-600 font-medium">✓{row.hwAccepted}</span>
-                                        {row.hwRevision > 0 && <span className="text-amber-600">⚠{row.hwRevision}</span>}
-                                        {row.hwPending > 0 && <span className="text-blue-500">↑{row.hwPending}</span>}
-                                        {row.hwOverdue > 0 && <span className="text-red-500">✗{row.hwOverdue}</span>}
-                                        <span className="text-slate-400">/{row.hwTotal}</span>
-                                    </div>
+                                <td className="py-3 pr-3 align-middle">
+                                    <HwBadges row={row} />
                                 </td>
-                                <td className="py-3 pr-3 align-top text-xs tabular-nums">
-                                    <span className="text-emerald-600 font-medium">{row.cpAccepted}</span>
-                                    <span className="text-slate-400">/{row.cpTotal}</span>
-                                    {row.cpPending > 0 && <div className="text-blue-500 text-[10px]">{row.cpPending} на провер.</div>}
-                                </td>
-                                <td className="py-3 pr-3 align-top tabular-nums text-slate-700 text-xs">{row.coursePoints}/400</td>
-                                <td className="py-3 align-top text-xs text-slate-500 tabular-nums">{row.lastAct}</td>
+                                <td className="py-3 align-middle text-xs text-slate-500 tabular-nums whitespace-nowrap">{row.lastAct}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -7431,7 +7428,7 @@ function AdminPage({
             />
         );
     }
-    if (adminPathOnly === '/admin/students') return <AdminStudents navigate={navigate} route={route} refreshKey={refreshKey} />;
+    if (adminPathOnly === '/admin/students') return <AdminStudents navigate={navigate} route={route} refreshKey={refreshKey} cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (adminPathOnly === '/admin/mentors') return <AdminMentors />;
     if (adminPathOnly === '/admin/settings') return <AdminSettings />;
 

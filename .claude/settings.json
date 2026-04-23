@@ -12,7 +12,8 @@
       "Bash(curl -s \"https://api.skrebeyko.ru/pvl_garden_mentor_links?select=*\" -H \"Accept: application/json\")",
       "Bash(curl -s \"https://api.skrebeyko.ru/profiles?select=id,name,email,role&role=in.\\(mentor,admin,curator\\)\" -H \"Accept: application/json\")",
       "Bash(curl -s \"https://api.skrebeyko.ru/profiles?select=id,name,email,role&id=eq.579a3392-4a73-4b21-ac5c-7a7f64f91147\" -H \"Accept: application/json\")",
-      "Bash(curl -s \"https://api.skrebeyko.ru/profiles?select=id,name,email,role&id=eq.579a3392-4a73-4b21-ac5c-7a7f64f91147\" -H \"Accept: application/json\" -H \"Authorization: Bearer anonymous\")"
+      "Bash(curl -s \"https://api.skrebeyko.ru/profiles?select=id,name,email,role&id=eq.579a3392-4a73-4b21-ac5c-7a7f64f91147\" -H \"Accept: application/json\" -H \"Authorization: Bearer anonymous\")",
+      "Bash(npx vite *)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

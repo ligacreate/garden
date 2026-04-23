@@ -910,7 +910,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
 
 
             {/* Main Content Area */}
-            <div className="flex min-h-0 flex-1 overflow-y-auto pb-24 md:pb-6 md:pt-6 pt-20 relative isolate">
+            <div className="flex min-h-0 flex-1 overflow-y-auto pb-20 md:pb-6 md:pt-6 pt-20 relative isolate">
                 {/* Ambient Background - Global */}
                 <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(63,139,107,0.18),_transparent_55%),radial-gradient(circle_at_20%_20%,_rgba(143,127,106,0.15),_transparent_40%),linear-gradient(180deg,_#fbf9f3_0%,_#f7f3ea_100%)] -z-50" />
 
@@ -996,17 +996,17 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                 </div>
             </div>
 
-            {/* Mobile Bottom Navigation */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-white/60 z-50 flex justify-around items-end px-2 pt-2 pb-6 shadow-[0_-10px_30px_-20px_rgba(21,17,12,0.6)]">
+            {/* Mobile Bottom Navigation: компактная панель (меньше по высоте, чем pb-6 + крупные иконки) */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex w-full items-stretch justify-between border-t border-white/60 bg-white/95 px-0.5 pt-1.5 shadow-[0_-4px_18px_-12px_rgba(21,17,12,0.45)] backdrop-blur-xl pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
                 {isCourseSidebarMode ? (
                     /* ПВЛ-режим: быстрые кнопки курса */
                     <>
                         <button
                             onClick={() => { try { gardenPvlBridgeRef.current?.exit?.(); } catch { /* ignore */ } handleViewChange(homeView); }}
-                            className="flex flex-col items-center gap-1 pb-1 text-slate-400 active:text-slate-600 transition-colors duration-200"
+                            className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 text-slate-400 transition-colors duration-200 active:text-slate-600"
                         >
-                            <CornerUpLeft size={22} strokeWidth={1.5} />
-                            <span className="text-[10px] font-medium">Сад</span>
+                            <CornerUpLeft size={20} strokeWidth={1.5} className="shrink-0" />
+                            <span className="text-[9px] font-medium leading-none">Сад</span>
                         </button>
                         {courseSidebar.items
                             .filter(item => item.type !== 'divider' && item.action !== 'exit_pvl' && item.action !== 'settings')
@@ -1018,20 +1018,20 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                     <button
                                         key={item.key}
                                         onClick={() => { try { gardenPvlBridgeRef.current?.navigate?.(item.route); } catch { /* ignore */ } }}
-                                        className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`}
+                                        className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`}
                                     >
-                                        <Icon size={22} strokeWidth={isActive ? 2 : 1.5} />
-                                        <span className="text-[10px] font-medium truncate max-w-[56px] text-center leading-tight">{item.label}</span>
+                                        <Icon size={20} strokeWidth={isActive ? 2 : 1.5} className="shrink-0" />
+                                        <span className="max-w-[52px] truncate text-center text-[9px] font-medium leading-tight">{item.label}</span>
                                     </button>
                                 );
                             })
                         }
                         <button
                             onClick={() => setMobileMenuOpen(true)}
-                            className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-emerald-700' : 'text-slate-400'}`}
+                            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${mobileMenuOpen ? 'text-emerald-700' : 'text-slate-400'}`}
                         >
-                            <Menu size={22} strokeWidth={1.5} />
-                            <span className="text-[10px] font-medium">Меню</span>
+                            <Menu size={20} strokeWidth={1.5} className="shrink-0" />
+                            <span className="text-[9px] font-medium leading-none">Меню</span>
                         </button>
                     </>
                 ) : (
@@ -1040,39 +1040,39 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         {isApplicant ? (
                             <button
                                 onClick={() => handleViewChange('library')}
-                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'library' ? 'text-emerald-700' : 'text-slate-400'}`}
+                                className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'library' ? 'text-emerald-700' : 'text-slate-400'}`}
                             >
-                                <GraduationCap size={22} strokeWidth={view === 'library' ? 2 : 1.5} />
-                                <span className="text-[10px] font-medium">Библиотека</span>
+                                <GraduationCap size={20} strokeWidth={view === 'library' ? 2 : 1.5} className="shrink-0" />
+                                <span className="text-[9px] font-medium leading-none">Библиотека</span>
                             </button>
                         ) : (
                             <button
                                 onClick={() => handleViewChange('dashboard')}
-                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'dashboard' ? 'text-emerald-700' : 'text-slate-400'}`}
+                                className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'dashboard' ? 'text-emerald-700' : 'text-slate-400'}`}
                             >
-                                <LayoutGrid size={22} strokeWidth={view === 'dashboard' ? 2 : 1.5} />
-                                <span className="text-[10px] font-medium">Дашборд</span>
+                                <LayoutGrid size={20} strokeWidth={view === 'dashboard' ? 2 : 1.5} className="shrink-0" />
+                                <span className="text-[9px] font-medium leading-none">Дашборд</span>
                             </button>
                         )}
 
                         <button
                             onClick={() => handleViewChange('meetings')}
-                            className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'meetings' ? 'text-emerald-700' : 'text-slate-400'}`}
+                            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'meetings' ? 'text-emerald-700' : 'text-slate-400'}`}
                         >
-                            <CalendarRange size={22} strokeWidth={view === 'meetings' ? 2 : 1.5} />
-                            <span className="text-[10px] font-medium">Встречи</span>
+                            <CalendarRange size={20} strokeWidth={view === 'meetings' ? 2 : 1.5} className="shrink-0" />
+                            <span className="text-[9px] font-medium leading-none">Встречи</span>
                         </button>
 
                         {/* Центральная акцентная кнопка — ПВЛ или Учительская */}
                         {(canOpenPvlButton || canOpenTeacherCabinet) ? (
-                            <button onClick={openPvlCourse} className="flex flex-col items-center gap-1 -translate-y-3">
-                                <div className="w-14 h-14 rounded-2xl bg-emerald-700 flex items-center justify-center shadow-[0_8px_24px_-8px_rgba(5,150,105,0.55)] transition-transform duration-200 active:scale-95">
+                            <button onClick={openPvlCourse} className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 -translate-y-1.5 py-0.5">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-700 shadow-[0_6px_16px_-6px_rgba(5,150,105,0.5)] transition-transform duration-200 active:scale-95">
                                     {canOpenTeacherCabinet
-                                        ? <BadgeCheck size={26} color="white" strokeWidth={2} />
-                                        : <GraduationCap size={26} color="white" strokeWidth={2} />
+                                        ? <BadgeCheck size={22} color="white" strokeWidth={2} />
+                                        : <GraduationCap size={22} color="white" strokeWidth={2} />
                                     }
                                 </div>
-                                <span className="text-[10px] font-semibold text-emerald-700">
+                                <span className="text-[9px] font-semibold leading-none text-emerald-700">
                                     {canOpenTeacherCabinet ? 'Учительская' : 'ПВЛ'}
                                 </span>
                             </button>
@@ -1081,29 +1081,29 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         {(canOpenPvlButton || canOpenTeacherCabinet) && (
                             <button
                                 onClick={() => handleViewChange('practices')}
-                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
+                                className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
                             >
-                                <BookOpen size={22} strokeWidth={view === 'practices' ? 2 : 1.5} />
-                                <span className="text-[10px] font-medium">Практики</span>
+                                <BookOpen size={20} strokeWidth={view === 'practices' ? 2 : 1.5} className="shrink-0" />
+                                <span className="text-[9px] font-medium leading-none">Практики</span>
                             </button>
                         )}
 
                         {!(canOpenPvlButton || canOpenTeacherCabinet) && (
                             <button
                                 onClick={() => handleViewChange('practices')}
-                                className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
+                                className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
                             >
-                                <BookOpen size={22} strokeWidth={view === 'practices' ? 2 : 1.5} />
-                                <span className="text-[10px] font-medium">Практики</span>
+                                <BookOpen size={20} strokeWidth={view === 'practices' ? 2 : 1.5} className="shrink-0" />
+                                <span className="text-[9px] font-medium leading-none">Практики</span>
                             </button>
                         )}
 
                         <button
                             onClick={() => setMobileMenuOpen(true)}
-                            className={`flex flex-col items-center gap-1 pb-1 transition-colors duration-200 ${mobileMenuOpen ? 'text-emerald-700' : 'text-slate-400'}`}
+                            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${mobileMenuOpen ? 'text-emerald-700' : 'text-slate-400'}`}
                         >
-                            <Menu size={22} strokeWidth={1.5} />
-                            <span className="text-[10px] font-medium">Меню</span>
+                            <Menu size={20} strokeWidth={1.5} className="shrink-0" />
+                            <span className="text-[9px] font-medium leading-none">Меню</span>
                         </button>
                     </>
                 )}

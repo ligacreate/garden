@@ -344,16 +344,14 @@ function PvlCalendarEventTimeChips({ startAt }) {
     if (t.mode === 'dual') {
         return (
             <>
-                {t.dateStr}
+                <span className="text-[#3D342B]">{t.dateStr}</span>
                 {', '}
-                <span className="tabular-nums">
-                    {t.localTime}
-                    <span className="text-[#C4B8AE]" aria-hidden>
-                        {' '}
+                <span className="inline-flex items-baseline gap-1.5 font-semibold">
+                    <span className="tabular-nums text-[#1A1512]">{t.localTime}</span>
+                    <span className="text-[#6B5D4F] font-normal" aria-hidden>
                         ·
-                        {' '}
                     </span>
-                    <span className="text-[#8B7D72] tabular-nums">
+                    <span className="tabular-nums text-[#134032]">
                         {t.mskTime}
                         {' '}
                         мск
@@ -365,17 +363,32 @@ function PvlCalendarEventTimeChips({ startAt }) {
     if (t.mode === 'msk_only') {
         return (
             <>
-                {t.dateStr}
+                <span className="text-[#3D342B]">{t.dateStr}</span>
                 {', '}
-                <span className="tabular-nums">
+                <span className="font-semibold tabular-nums text-[#1A1512]">
                     {t.mskTime}
                     {' '}
-                    мск
+                    <span className="text-[#134032]">мск</span>
                 </span>
             </>
         );
     }
-    return <span className="tabular-nums">{formatPvlDateTime(startAt)}</span>;
+    return <span className="font-medium tabular-nums text-[#1A1512]">{formatPvlDateTime(startAt)}</span>;
+}
+
+/** Тип события + дата/время: заметная плашка в списке «предстоящие» */
+function PvlCalendarEventMetaStrip({ typeLabel, startAt }) {
+    return (
+        <div className="mt-1.5 w-fit max-w-full flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 rounded-lg border border-[#C9B8A8]/80 bg-gradient-to-b from-[#FCF5EC] to-[#EDE0D0] px-2.5 py-1.5 text-xs leading-snug text-[#1E1814] shadow-sm shadow-black/[0.04]">
+            <span className="shrink-0 font-semibold text-[#4A3F36]">{typeLabel}</span>
+            <span className="text-[#6B5D4F] select-none" aria-hidden>
+                ·
+            </span>
+            <span className="min-w-0">
+                <PvlCalendarEventTimeChips startAt={startAt} />
+            </span>
+        </div>
+    );
 }
 
 function PvlPastArchiveListItem({ ev }) {
@@ -388,7 +401,9 @@ function PvlPastArchiveListItem({ ev }) {
                 <div className="flex flex-wrap items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
                     <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
-                    <span className="text-[11px] text-[#6B5D4F]"><PvlCalendarEventTimeChips startAt={ev.startAt} /></span>
+                    <span className="inline-flex max-w-full items-baseline rounded-md border border-[#C9B8A8]/70 bg-gradient-to-b from-[#FCF5EC] to-[#EDE0D0] px-2 py-0.5 text-xs shadow-sm shadow-black/[0.04]">
+                        <PvlCalendarEventTimeChips startAt={ev.startAt} />
+                    </span>
                 </div>
                 {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
                     <div
@@ -421,11 +436,10 @@ function PvlPastArchiveListItem({ ev }) {
                 <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
                 <span className="text-sm font-medium text-[#5C4D42]">{ev.title}</span>
             </div>
-            <div className="mt-1 text-[11px] text-[#8B7D72]">
-                {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                {' · '}
-                <PvlCalendarEventTimeChips startAt={ev.startAt} />
-            </div>
+            <PvlCalendarEventMetaStrip
+                typeLabel={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                startAt={ev.startAt}
+            />
         </li>
     );
 }
@@ -659,11 +673,10 @@ export function PvlDashboardCalendarBlock({
                                                     />
                                                     <span className="text-sm font-medium text-[#3D342B]">{ev.title}</span>
                                                 </div>
-                                                <div className="mt-1 text-[11px] text-[#6B5D4F]">
-                                                    {PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
-                                                    {' · '}
-                                                    <PvlCalendarEventTimeChips startAt={ev.startAt} />
-                                                </div>
+                                                <PvlCalendarEventMetaStrip
+                                                    typeLabel={PVL_CAL_EVENT_LABELS[ev.eventType] || ev.eventType}
+                                                    startAt={ev.startAt}
+                                                />
                                             </button>
                                             {contactHref ? (
                                                 <a
@@ -1132,7 +1145,9 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                         />
                                         <span className="font-medium text-slate-800">{ev.title}</span>
                                     </div>
-                                    <div className="text-[11px] text-slate-500 mt-1"><PvlCalendarEventTimeChips startAt={ev.startAt} /></div>
+                                    <div className="mt-1.5 w-fit max-w-full rounded-md border border-slate-200/90 bg-slate-50/95 px-2.5 py-1.5 text-xs text-slate-800">
+                                        <PvlCalendarEventTimeChips startAt={ev.startAt} />
+                                    </div>
                                 </button>
                             ))
                         )}

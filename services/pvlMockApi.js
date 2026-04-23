@@ -1782,6 +1782,26 @@ async function persistTrackerProgressToDb(studentId) {
             moduleByStepKey.set(`${mod.id}-${index}`, Number(mod.id)); // backward-compatible legacy key
         });
     });
+    // PVL_PLATFORM_MODULES.items is always [] (CMS populates modules separately).
+    // Fall back to parsing module ID directly from the step key format.
+    checkedKeys.forEach((k) => {
+        if (moduleByStepKey.has(k)) return;
+        const mMatch = String(k).match(/^m:(\d+):/);
+        if (mMatch) { moduleByStepKey.set(k, Number(mMatch[1])); return; }
+        const legacyMatch = String(k).match(/^(\d+)-(\d+)$/);
+        if (legacyMatch) { moduleByStepKey.set(k, Number(legacyMatch[1])); return; }
+        // sid:{contentItemId} — look up placement module, fall back to module 1
+        const sidMatch = String(k).match(/^sid:(.+)$/);
+        if (sidMatch) {
+            const contentId = sidMatch[1];
+            const placement = (db.contentPlacements || []).find(
+                (p) => String(p.contentId || p.contentItemId || '') === contentId,
+            );
+            const rawMod = placement?.moduleNumber ?? placement?.module ?? null;
+            const modId = rawMod != null ? Math.max(1, Math.min(3, Number(rawMod) <= 1 ? 1 : Number(rawMod) === 2 ? 2 : 3)) : 1;
+            moduleByStepKey.set(k, modId);
+        }
+    });
     const groupedByModule = new Map();
     checkedKeys.forEach((k) => {
         const moduleId = moduleByStepKey.get(String(k));

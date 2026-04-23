@@ -46,12 +46,12 @@ function trackerStepKey(moduleId, item, index) {
     return `m:${moduleId}:s:${textSlug || index}`;
 }
 
-function computePlatformStepStats(checked) {
+function computePlatformStepStats(checked, modules = PVL_PLATFORM_MODULES) {
     let totalSteps = 0;
     let doneSteps = 0;
     let anchorsTotal = 0;
     let anchorsDone = 0;
-    PVL_PLATFORM_MODULES.forEach((mod) => {
+    modules.forEach((mod) => {
         mod.items.forEach((item, i) => {
             totalSteps += 1;
             const key = trackerStepKey(mod.id, item, i);
@@ -70,16 +70,17 @@ const TRACKER_LESSON_TAGS = new Set(['video', 'pdf', 'live']);
 const TRACKER_HOMEWORK_TAGS = new Set(['task', 'quiz']);
 
 /**
- * Показатели дашборда из тех же отметок, что «Трекер курса» (localStorage + PVL_PLATFORM_MODULES).
+ * Показатели дашборда из тех же отметок, что «Трекер курса».
+ * modules — CMS-populated модули из buildTrackerModulesFromCms; без них stats будут нулями.
  */
-export function computePvlTrackerDashboardStats(checked) {
+export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_MODULES) {
     let lessonsDone = 0;
     let lessonsTotal = 0;
     let homeworkDone = 0;
     let homeworkTotal = 0;
     let currentModule = null;
 
-    PVL_PLATFORM_MODULES.forEach((mod) => {
+    modules.forEach((mod) => {
         let moduleHasIncomplete = false;
         mod.items.forEach((item, i) => {
             const key = trackerStepKey(mod.id, item, i);
@@ -99,10 +100,10 @@ export function computePvlTrackerDashboardStats(checked) {
     });
 
     if (!currentModule) {
-        currentModule = PVL_PLATFORM_MODULES[0] || null;
+        currentModule = modules[0] || PVL_PLATFORM_MODULES[0] || null;
     }
 
-    const base = computePlatformStepStats(checked);
+    const base = computePlatformStepStats(checked, modules);
     return {
         ...base,
         currentModuleTitle: currentModule?.title || pvlPlatformModuleTitleFromInternal(1),
@@ -344,7 +345,7 @@ export function StudentCourseTracker({
     const [, forceMentorRefreshTick] = useState(0);
     const [syncTick, setSyncTick] = useState(0);
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
-    const { checked, toggleItem } = usePlatformStepChecklist(studentId, syncTick);
+    const { checked, toggleItem } = usePlatformStepChecklist(studentId, syncTick + refreshKey);
     const studentProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null;
     const mentorUserId = (() => {
         const direct = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;

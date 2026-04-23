@@ -1,5 +1,6 @@
 import React from 'react';
 import RichEditor from '../components/RichEditor';
+import { pvlMaterialBodyClass } from './pvlMaterialBodyStyles.js';
 import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText } from '../utils/pvlHomeworkAnswerRichText';
 
 export function ChecklistFieldsEditor({ sections, value, onChange, disabled }) {
@@ -16,7 +17,7 @@ export function ChecklistFieldsEditor({ sections, value, onChange, disabled }) {
                                 <RichEditor
                                     value={v[item.id] || ''}
                                     onChange={(html) => onChange({ ...v, [item.id]: html })}
-                                    placeholder="Ответ по пункту…"
+                                    placeholder=""
                                     variant="student"
                                     onUploadImage={pvlReadImageFileAsDataUrl}
                                     readOnly={!!disabled}
@@ -43,7 +44,7 @@ export function ChecklistAnswersReadonly({ sections, answersJson }) {
                             <li key={item.id} className="text-sm">
                                 <span className="text-slate-500 text-xs block">{item.prompt}</span>
                                 <div
-                                    className="text-slate-800 mt-1 max-w-none text-sm [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full"
+                                    className={`${pvlMaterialBodyClass} mt-1 text-slate-800`}
                                     dangerouslySetInnerHTML={{
                                         __html: homeworkAnswerPlainText(a[item.id])
                                             ? sanitizeHomeworkAnswerHtml(a[item.id])

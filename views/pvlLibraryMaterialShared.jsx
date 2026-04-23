@@ -6,6 +6,33 @@ import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly, StructuredAnsw
 import RichEditor from '../components/RichEditor.jsx';
 import { isHomeworkAnswerEmpty, pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, coerceAnswersJsonObject } from '../utils/pvlHomeworkAnswerRichText.js';
 import { isQuestionnaireAnswersComplete } from '../utils/pvlQuestionnaireBlocks.js';
+import { pvlMaterialBodyClass } from './pvlMaterialBodyStyles.js';
+
+export { pvlMaterialBodyClass };
+
+/** Ориентировочный срок проверки ДЗ ментором (для плашек в интерфейсе). */
+export const PVL_MENTOR_HOMEWORK_REVIEW_SLA_DAYS = 2;
+
+/** Короткий текст для плашек у статуса и в карточках. */
+export const PVL_MENTOR_REVIEW_SLA_PILL_TEXT = 'Срок ответа ментора: до 2 дней';
+
+/**
+ * Развёрнуто — под блоком со счётчиками в «Результатах».
+ * Формулировка: ясно, без канцелярита, ориентир по сроку.
+ */
+export const PVL_MENTOR_REVIEW_SLA_BANNER_TEXT =
+    'Проверка домашнего задания ментором обычно занимает до 2 дней с момента отправки.';
+
+export function PvlMentorReviewSlaPill({ className = '' }) {
+    return (
+        <span
+            className={`inline-flex max-w-full items-center rounded-full border border-amber-200/90 bg-amber-50 px-2.5 py-0.5 text-[10px] font-medium leading-snug text-amber-950 ${className}`.trim()}
+            title="Ориентировочный срок; в праздники и пиковые дни ответ может прийти чуть позже"
+        >
+            {PVL_MENTOR_REVIEW_SLA_PILL_TEXT}
+        </span>
+    );
+}
 
 export function stripMaterialNumbering(title) {
     const source = String(title || '').trim();
@@ -238,7 +265,7 @@ export function LibraryQuizRunner({ quiz: rawQuiz, onPassed }) {
                                 rows={4}
                                 disabled={submitted}
                                 className="w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-800 disabled:bg-slate-50"
-                                placeholder="Ваш ответ…"
+                                placeholder=""
                             />
                         ) : (
                             <ul className="space-y-2">
@@ -323,14 +350,6 @@ export function LibraryQuizRunner({ quiz: rawQuiz, onPassed }) {
         </div>
     );
 }
-
-/**
- * Общие стили тела материала (библиотека, трекер, глоссарий, предпросмотр в учительской).
- * Не ставим overflow-x-auto на корень — иначе обрезаются маркеры нумерованных списков (10 → «0»).
- * Горизонтальный скролл только у таблиц.
- */
-export const pvlMaterialBodyClass =
-    'text-sm text-slate-700 leading-7 max-w-full [&_.pvl-doc-verbatim]:whitespace-pre-wrap [&_.pvl-doc-verbatim]:font-normal [&_.pvl-doc-verbatim]:text-slate-700 [&_.pvl-doc-verbatim]:leading-7 [&_.pvl-wiki-embed]:my-3 [&>h1]:mt-6 [&>h1]:mb-3 [&>h1]:text-xl [&>h1]:font-semibold [&>h1]:text-slate-900 [&>h1]:border-b [&>h1]:border-slate-200 [&>h1]:pb-2 [&>h2]:mt-5 [&>h2]:mb-2.5 [&>h2]:text-lg [&>h2]:font-semibold [&>h2]:text-slate-900 [&>h3]:mt-4 [&>h3]:mb-2 [&>h3]:text-base [&>h3]:font-semibold [&>h3]:text-slate-800 [&>h4]:mt-3 [&>h4]:mb-1.5 [&>h4]:text-base [&>h4]:font-semibold [&>h5]:mt-2 [&>h5]:mb-1 [&>h5]:text-sm [&>h5]:font-semibold [&>h6]:mt-2 [&>h6]:mb-1 [&>h6]:text-sm [&>h6]:font-semibold [&>p]:mb-3 [&>p]:leading-relaxed [&>ul]:my-3 [&>ul]:list-disc [&>ul]:list-outside [&>ul]:pl-6 [&>ul]:space-y-1 [&>ol]:my-3 [&>ol]:list-decimal [&>ol]:list-outside [&>ol]:pl-6 [&>ol]:space-y-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-5 [&_li]:my-1 [&_li]:pl-0.5 [&>blockquote]:my-4 [&>blockquote]:rounded-r-lg [&>blockquote]:border-l-4 [&>blockquote]:border-emerald-200/80 [&>blockquote]:bg-emerald-50/40 [&>blockquote]:pl-4 [&>blockquote]:pr-3 [&>blockquote]:py-2.5 [&>blockquote]:text-slate-700 [&>hr]:my-6 [&>hr]:border-slate-200 [&>pre]:whitespace-pre-wrap [&>pre]:rounded-xl [&>pre]:border [&>pre]:border-slate-200 [&>pre]:bg-slate-50 [&>pre]:p-3 [&_table]:my-4 [&_table]:block [&_table]:w-full [&_table]:max-w-none [&_table]:overflow-x-auto [&_table]:min-w-[min(100%,48rem)] [&_table]:border-collapse [&_table]:border [&_table]:border-slate-200 [&_table]:text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50/90 [&_th]:px-2 [&_th]:py-2 [&_th]:text-left [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-2 [&_td]:align-top [&_strong]:font-semibold [&_em]:italic [&_a]:text-emerald-800 [&_a]:underline [&_img]:max-h-[min(80vh,32rem)] [&_img]:max-w-full [&_img]:rounded-lg [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em]';
 
 const materialBodyClass = pvlMaterialBodyClass;
 
@@ -580,6 +599,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
                 {deadlineAt ? (
                     <span className="text-xs text-slate-500">Дедлайн: {deadlineAt}</span>
                 ) : null}
+                <PvlMentorReviewSlaPill className="shrink" />
             </div>
 
             {/* Текст задания */}
@@ -652,7 +672,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
                         <RichEditor
                             value={draft}
                             onChange={setDraft}
-                            placeholder="Заголовки, жирный, курсив, подчёркивание, списки, таблица. Картинки — только загрузкой файла."
+                            placeholder=""
                             variant="student"
                             onUploadImage={pvlReadImageFileAsDataUrl}
                             readOnly={false}

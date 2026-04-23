@@ -2239,7 +2239,11 @@ function buildHomeworkMetaFromLessonHw(lessonHomework) {
         assignmentType,
         checklistSections: assignmentType === 'checklist' ? checklistSections : null,
         questionnaireBlocks: assignmentType === 'questionnaire' ? questionnaireBlocks : null,
-        questionnaireTitle: assignmentType === 'questionnaire' ? String(hw.questionnaireTitle || hw.title || '').trim() : null,
+        questionnaireTitle: assignmentType === 'questionnaire' ? String(hw.questionnaireTitle || hw.questionnaire_title || hw.title || '').trim() : null,
+        questionnaireDescription:
+            assignmentType === 'questionnaire'
+                ? String(hw.questionnaireDescription || hw.questionnaire_description || '').trim()
+                : null,
     };
 }
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import RichEditor from '../components/RichEditor';
+import { pvlMaterialBodyClass } from './pvlMaterialBodyStyles.js';
 import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText } from '../utils/pvlHomeworkAnswerRichText';
 
 /** Ученица: заполнение анкеты в стиле Google Forms. */
@@ -29,7 +30,7 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                     <RichEditor
                         value={v[b.id] || ''}
                         onChange={(html) => !disabled && onChange({ ...v, [b.id]: html })}
-                        placeholder="Ваш ответ…"
+                        placeholder=""
                         variant="student"
                         onUploadImage={pvlReadImageFileAsDataUrl}
                         readOnly={!!disabled}
@@ -68,7 +69,7 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                                         onChange={(e) => onChange({ ...v, [b.id]: e.target.value })}
                                         disabled={!!disabled}
                                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                                        placeholder="Ответ…"
+                                        placeholder=""
                                     />
                                 </label>
                             );
@@ -83,7 +84,7 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                                     <RichEditor
                                         value={v[b.id] || ''}
                                         onChange={(html) => onChange({ ...v, [b.id]: html })}
-                                        placeholder="Развёрнутый ответ…"
+                                        placeholder=""
                                         variant="student"
                                         onUploadImage={pvlReadImageFileAsDataUrl}
                                         readOnly={!!disabled}
@@ -165,7 +166,7 @@ export function StructuredAnswersFallback({ answersJson, questionnaireBlocks = [
                     <div key={fieldId} className="rounded-lg bg-white p-3 border border-slate-100 space-y-1">
                         <div className="text-xs font-medium text-slate-500 break-all">{fieldId}</div>
                         <div
-                            className="text-sm text-slate-800 max-w-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                            className={`${pvlMaterialBodyClass} text-slate-800`}
                             dangerouslySetInnerHTML={{
                                 __html: has ? sanitizeHomeworkAnswerHtml(s) : '<p class="text-slate-400">—</p>',
                             }}
@@ -201,7 +202,7 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
                             {idx + 1}. {b.question || 'Вопрос'}
                         </div>
                         <div
-                            className="text-sm text-slate-800 mt-1 max-w-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                            className={`${pvlMaterialBodyClass} mt-1 text-slate-800`}
                             dangerouslySetInnerHTML={{
                                 __html: has ? sanitizeHomeworkAnswerHtml(answer) : '<p class="text-slate-400">—</p>',
                             }}
@@ -218,7 +219,7 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
                             return (
                                 <div
                                     key={b.id}
-                                    className="text-sm text-slate-600 max-w-none [&_p]:my-1 rounded-lg bg-slate-50/80 p-2 border border-slate-100"
+                                    className={`${pvlMaterialBodyClass} text-slate-600 rounded-lg bg-slate-50/80 p-2 border border-slate-100`}
                                     dangerouslySetInnerHTML={{
                                         __html: sanitizeHomeworkAnswerHtml(b.content || ''),
                                     }}
@@ -232,7 +233,7 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
                                 <div className="text-xs font-medium text-slate-500">{b.label || b.id}</div>
                                 {b.type === 'long_text' ? (
                                     <div
-                                        className="text-slate-800 mt-1 max-w-none text-sm [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5"
+                                        className={`${pvlMaterialBodyClass} mt-1 text-slate-800`}
                                         dangerouslySetInnerHTML={{
                                             __html: has ? sanitizeHomeworkAnswerHtml(String(raw)) : '<p class="text-slate-400">—</p>',
                                         }}

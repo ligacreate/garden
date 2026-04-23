@@ -336,13 +336,21 @@ function buildPracticumRecordingEmbedHtml(source = '') {
         const host = u.hostname.replace(/^www\./i, '').toLowerCase();
         if (host === 'kinescope.io' && u.pathname.includes('/embed/')) {
             return sanitizePracticumEmbedHtml(
-                `<div style="position:relative;padding-top:56.25%;width:100%"><iframe src="${escapeHtml(u.href)}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer; clipboard-write; screen-wake-lock;" frameborder="0" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"></iframe></div>`,
+                `<div class="pvl-kinescope-16x9" style="position:relative;width:100%;aspect-ratio:16/9"><iframe src="${escapeHtml(u.href)}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer; clipboard-write; screen-wake-lock;" frameborder="0" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe></div>`,
             );
         }
     } catch {
         return '';
     }
     return '';
+}
+
+/** Сетка «Записи проведённых практикумов» — только с плеером, без «текстовых» дублей без видео. */
+function practicumDoneEventHasPlayer(ev) {
+    if (buildPracticumRecordingEmbedHtml(ev?.recordingUrl)) return true;
+    if (/<\s*iframe/i.test(String(ev?.recordingUrl || ''))) return true;
+    if (/<\s*iframe/i.test(String(ev?.recapText || ''))) return true;
+    return false;
 }
 
 /** HTML описания под видео: сохраняем абзацы и ссылки (не путать с iframe-эмбедом). */
@@ -443,9 +451,10 @@ function PvlCalendarEventMetaStrip({ typeLabel, startAt }) {
 }
 
 function PvlPastArchiveListItem({ ev }) {
+    const playerFromUrl = buildPracticumRecordingEmbedHtml(ev.recordingUrl);
     const rich =
         String(ev.eventType || '').toLowerCase() === 'practicum_done'
-        && (ev.recordingUrl || ev.recapText || buildPracticumRecordingEmbedHtml(ev.recordingUrl));
+        && (ev.recordingUrl || ev.recapText || playerFromUrl);
     if (rich) {
         return (
             <li className="flex h-full min-w-0 flex-col rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
@@ -456,10 +465,10 @@ function PvlPastArchiveListItem({ ev }) {
                     </span>
                     <PvlCalendarEventTimeChips startAt={ev.startAt} />
                 </div>
-                {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
+                {playerFromUrl ? (
                     <div
-                        className="mt-2 w-full min-w-0 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
-                        dangerouslySetInnerHTML={{ __html: buildPracticumRecordingEmbedHtml(ev.recordingUrl) }}
+                        className="pvl-practicum-recording-embed mt-2 w-full min-w-0 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white [&>div]:relative [&>div]:aspect-video [&>div]:!h-auto [&>div]:!min-h-0 [&>div]:!w-full [&>div]:!p-0 [&>div]:![padding-top:0] [&_iframe]:!absolute [&_iframe]:!inset-0 [&_iframe]:!left-0 [&_iframe]:!top-0 [&_iframe]:!h-full [&_iframe]:!w-full [&_iframe]:!max-h-none"
+                        dangerouslySetInnerHTML={{ __html: playerFromUrl }}
                     />
                 ) : null}
                 {ev.recordingUrl ? (
@@ -507,6 +516,8 @@ export function PvlDashboardCalendarBlock({
     scheduleCtaLabel = '+ Запланировать',
     eventTypeFilter = [],
     showPracticumArchive = false,
+    /** «Архив: прошедшие встречи» (завтраки/практикумы без practicum_done) — по умолчанию выключен на странице календаря. */
+    showPastMeetingsArchive = false,
 }) {
     const [currentDate, setCurrentDate] = useState(() => new Date());
     /** YYYY-MM-DD в видимом месяце или null — тогда справа список за месяц */
@@ -556,17 +567,18 @@ export function PvlDashboardCalendarBlock({
         ? `События · ${new Date(`${selectedDayKey}T12:00:00`).toLocaleString('ru-RU', { day: 'numeric', month: 'long' })}`
         : 'Предстоящие события в этом месяце';
 
-    /** Записи проведённых практикумов (practicum_done) — показываем всегда, т.к. тип уже означает «проведено». */
+    /** Записи проведённых практикумов (practicum_done) — только с плеером/iframe (без «пустых» карточек). */
     const practicumDoneArchiveEntries = useMemo(() => {
         if (!showPracticumArchive) return [];
         return events
             .filter((ev) => String(ev.eventType || '').toLowerCase() === 'practicum_done')
+            .filter(practicumDoneEventHasPlayer)
             .sort((a, b) => String(b.startAt || '').localeCompare(String(a.startAt || '')));
     }, [events, showPracticumArchive]);
 
     /** Прошедшие встречи (практикумы, завтраки, эфиры) без practicum_done — второй блок архива. */
     const pastArchiveEntries = useMemo(() => {
-        if (!showPracticumArchive) return [];
+        if (!showPracticumArchive || !showPastMeetingsArchive) return [];
         const now = Date.now();
         const allow = new Set(['practicum', 'mentor_meeting', 'breakfast', 'live_stream', 'session']);
         return events
@@ -576,7 +588,7 @@ export function PvlDashboardCalendarBlock({
                 return allow.has(String(ev.eventType || '').toLowerCase());
             })
             .sort((a, b) => String(b.startAt || '').localeCompare(String(a.startAt || '')));
-    }, [events, showPracticumArchive]);
+    }, [events, showPracticumArchive, showPastMeetingsArchive]);
 
     /** В общем списке месяца — только предстоящие; по клику на день показываем все события этого дня. */
     const displayListEvents = useMemo(() => {
@@ -780,19 +792,21 @@ export function PvlDashboardCalendarBlock({
                             </ul>
                         )}
                     </div>
-                    <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
-                        <h4 className="text-base font-semibold text-[#3D342B]">Архив: прошедшие встречи</h4>
-                        <p className="mt-1 text-[11px] text-[#8B7D72]">Практикумы, завтраки и эфиры с прошедшей датой (без дублирования записей проведённых практикумов).</p>
-                        {pastArchiveEntries.length === 0 ? (
-                            <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет таких прошедших событий в выбранном потоке.</p>
-                        ) : (
-                            <ul className="mt-3 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
-                                {pastArchiveEntries.map((ev) => (
-                                    <PvlPastArchiveListItem key={ev.id} ev={ev} />
-                                ))}
-                            </ul>
-                        )}
-                    </div>
+                    {showPastMeetingsArchive ? (
+                        <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
+                            <h4 className="text-base font-semibold text-[#3D342B]">Архив: прошедшие встречи</h4>
+                            <p className="mt-1 text-[11px] text-[#8B7D72]">Практикумы, завтраки и эфиры с прошедшей датой (без дублирования записей проведённых практикумов).</p>
+                            {pastArchiveEntries.length === 0 ? (
+                                <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет таких прошедших событий в выбранном потоке.</p>
+                            ) : (
+                                <ul className="mt-3 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
+                                    {pastArchiveEntries.map((ev) => (
+                                        <PvlPastArchiveListItem key={ev.id} ev={ev} />
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    ) : null}
                 </div>
             ) : null}
         </section>
@@ -1019,7 +1033,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                             <input
                                 className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.recordingUrl || ''}
-                                placeholder="https://..."
+                                placeholder=""
                                 onChange={(e) => {
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, { recordingUrl: e.target.value.trim() });
                                     bump();
@@ -1085,7 +1099,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                             <input
                                 className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.linkedLessonId || ''}
-                                placeholder="les-7"
+                                placeholder=""
                                 onChange={(e) => {
                                     pvlDomainApi.adminApi.updateCalendarEvent(editing.id, { linkedLessonId: e.target.value || null });
                                     bump();

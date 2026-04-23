@@ -40,6 +40,8 @@ import {
     HomeworkInlineForm,
     normalizeMaterialHtml,
     pvlMaterialBodyClass,
+    PvlMentorReviewSlaPill,
+    PVL_MENTOR_REVIEW_SLA_BANNER_TEXT,
 } from './pvlLibraryMaterialShared';
 import { parsePvlImportedMarkdownDoc } from '../utils/pvlMarkdownImport';
 import { pvlMaterialCardExcerpt, pvlHtmlToPlainText } from '../utils/pvlPlainText';
@@ -1934,8 +1936,10 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
     let hwAssignment = task.homeworkMeta?.assignmentType || 'standard';
     let checklistSections = task.homeworkMeta?.checklistSections || [];
     let questionnaireBlocks = task.homeworkMeta?.questionnaireBlocks || [];
-    let questionnaireTitle = task.homeworkMeta?.questionnaireTitle || '';
-    let questionnaireDescription = String(task.homeworkMeta?.questionnaireDescription || '').trim();
+    let questionnaireTitle = task.homeworkMeta?.questionnaireTitle || task.homeworkMeta?.questionnaire_title || '';
+    let questionnaireDescription = String(
+        task.homeworkMeta?.questionnaireDescription || task.homeworkMeta?.questionnaire_description || '',
+    ).trim();
     const weekRow = task.weekId ? pvlDomainApi.db.courseWeeks.find((w) => w.id === task.weekId) : null;
     const db = pvlDomainApi.db;
     const ciIdFallback = !task.linkedContentItemId && String(taskId || '').startsWith('task-ci-')
@@ -1959,8 +1963,14 @@ function buildTaskDetailStateFromApi(studentId, taskId, viewerRole = 'student') 
                 checklistSections = lessonHw.checklistSections;
             }
         }
-        if (!questionnaireTitle) questionnaireTitle = String(lessonHw.questionnaireTitle || lessonHw.title || '').trim();
-        if (!questionnaireDescription) questionnaireDescription = String(lessonHw.questionnaireDescription || '').trim();
+        if (!questionnaireTitle) {
+            questionnaireTitle = String(lessonHw.questionnaireTitle || lessonHw.questionnaire_title || lessonHw.title || '').trim();
+        }
+        if (!questionnaireDescription) {
+            questionnaireDescription = String(
+                lessonHw.questionnaireDescription || lessonHw.questionnaire_description || '',
+            ).trim();
+        }
     }
     const taskDescriptionSummary =
         task.description ||
@@ -2210,12 +2220,13 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                                     </div>
                                 </div>
                                 <div className="text-[11px] text-slate-500">Модуль {clampPvlModule(t.moduleNumber ?? t.week ?? 0)}</div>
-                                <div className="text-[11px]">
+                                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                                     {!hideDeadlineForAcceptedWithScore(t) ? (
                                         <span className={`inline-flex rounded-full border px-1.5 py-px text-[10px] leading-tight ${deadlineUrgencyTone(t.deadlineAt)}`}>
                                             Дедлайн: {fmtDeadline(t.deadlineAt)}
                                         </span>
                                     ) : <span className="inline-block h-[18px]" />}
+                                    <PvlMentorReviewSlaPill />
                                 </div>
                                 <div className="text-[11px] text-slate-500">Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
                                 <div className="text-[11px]">
@@ -2741,7 +2752,7 @@ function StudentGlossarySearch({ studentId = '', cmsItems = [], cmsPlacements = 
                 value={q}
                 onChange={(e) => setQuery(e.target.value)}
                 className="w-full rounded-full border border-[#E8D5C4] bg-white px-4 py-2.5 text-sm"
-                placeholder="Поиск по термину или определению..."
+                placeholder=""
             />
             <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-3">
                 <p className="text-[11px] font-medium text-slate-500 mb-2">Быстрый фильтр по первой букве</p>
@@ -2997,6 +3008,9 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                     <div className="font-display text-2xl text-amber-800 tabular-nums mt-0.5">{summary.inRevision}</div>
                 </article>
             </section>
+            <p className="rounded-2xl border border-amber-100/90 bg-amber-50/50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-950/90 shadow-sm">
+                {PVL_MENTOR_REVIEW_SLA_BANNER_TEXT}
+            </p>
 
             <section className="space-y-2">
                 {!tasks.length ? (
@@ -3015,7 +3029,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                                 <StatusBadge>{shortTaskStatusLabel(t.displayStatus || t.status)}</StatusBadge>
                             </div>
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
                             {!hideDeadlineForAcceptedWithScore(t) ? (
                                 <span className={`inline-flex min-w-[148px] items-center rounded-full border px-2 py-0.5 ${deadlineUrgencyTone(t.deadlineAt)}`}>
                                     Дедлайн: {formatPvlDateTime(t.deadlineAt)}
@@ -3024,6 +3038,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                             <span className="inline-flex min-w-[148px] items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-slate-600">
                                 Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}
                             </span>
+                            <PvlMentorReviewSlaPill className="min-w-0" />
                         </div>
                         <div className="mt-2 text-xs">
                             {t.mentorCommentPreview ? (
@@ -3070,7 +3085,7 @@ function DirectMessageThread({ messages, actorId }) {
                             <div className="text-[10px] text-slate-500">
                                 {author?.fullName || m.authorUserId} · {formatPvlDateTime(m.createdAt)}
                             </div>
-                            <p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words">{m.text}</p>
+                            <p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words leading-relaxed">{m.text}</p>
                         </article>
                     </div>
                 );
@@ -3131,8 +3146,8 @@ function StudentDirectMessages({ studentId = 'u-st-1' }) {
                                 onChange={(e) => setText(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); onSend(); } }}
                                 rows={3}
-                                className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                                placeholder="Напишите сообщение ментору… (Shift+Enter — отправить)"
+                                className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-relaxed"
+                                placeholder=""
                             />
                             <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
                                 Отправить
@@ -3211,8 +3226,8 @@ function MentorDirectMessages({ mentorId = 'u-men-1' }) {
                             onChange={(e) => setText(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); onSend(); } }}
                             rows={3}
-                            className="w-full rounded-xl border border-slate-200 p-3 text-sm"
-                            placeholder="Ответить ученице… (Shift+Enter — отправить)"
+                            className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-relaxed"
+                            placeholder=""
                         />
                         <button type="button" onClick={onSend} className="shrink-0 text-xs rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-800 hover:bg-emerald-100">
                             Отправить
@@ -3299,7 +3314,10 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
                         <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                             <div className="text-[10px] uppercase tracking-wider text-slate-400">Материал</div>
                             <h3 className="font-display text-2xl text-slate-800 mt-1">{hwSelectedItem.title}</h3>
-                            <p className="text-xs text-slate-500 mt-2">Домашнее задание</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <p className="text-xs text-slate-500 m-0">Домашнее задание</p>
+                                <PvlMentorReviewSlaPill />
+                            </div>
                             <div className="mt-4 max-h-[min(85vh,56rem)] min-h-0 overflow-y-auto pr-1">
                                 <HomeworkInlineForm
                                     key={`${studentId}-${taskId}-${refreshKey}`}
@@ -4395,7 +4413,7 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
                             value={quiz.settings.passPercent}
                             onChange={(e) => setQuiz((prev) => ({ ...prev, settings: { ...prev.settings, passPercent: Math.max(1, Math.min(100, Number(e.target.value) || 70)) } }))}
                             className="rounded-xl border border-slate-200 p-2 text-sm"
-                            placeholder="Проходной %"
+                            placeholder=""
                         />
                         <div className="text-xs text-slate-400">Первая попытка допускает результат ниже 70%, вторая — финальная пересдача.</div>
                     </div>
@@ -4436,10 +4454,10 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
                                             <select value={q.type} onChange={(e) => updateQuestion(q.id, (row) => ({ ...createQuizQuestion(e.target.value), id: row.id, text: row.text, points: row.points, required: row.required, hint: row.hint, feedback: row.feedback }))} className="rounded-lg border border-slate-200 p-2 text-sm bg-white">
                                                 {QUIZ_Q_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                                             </select>
-                                            <input type="number" min={0} value={q.points} onChange={(e) => updateQuestion(q.id, { points: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-200 p-2 text-sm bg-white placeholder:text-slate-400" placeholder="Баллы за вопрос (серым: например 1)" />
+                                            <input type="number" min={0} value={q.points} onChange={(e) => updateQuestion(q.id, { points: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="" />
                                             <label className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700 flex items-center justify-between">Обязательный<input type="checkbox" checked={q.required !== false} onChange={(e) => updateQuestion(q.id, { required: e.target.checked })} /></label>
                                         </div>
-                                        <textarea value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white min-h-[70px]" placeholder="Сформулируйте вопрос для ученицы" />
+                                        <textarea value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} className="w-full rounded-lg border border-slate-200 p-2 text-sm bg-white min-h-[70px]" placeholder="" />
                                         {q.type === 'open' ? (
                                             <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600">Режим проверки: <span className="font-medium">ручная проверка</span></div>
                                         ) : (
@@ -4449,7 +4467,7 @@ function LessonQuizBuilder({ value, onChange, validation = {} }) {
                                                         {q.type === 'single'
                                                             ? <input type="radio" checked={!!opt.isCorrect} onChange={() => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => ({ ...x, isCorrect: x.id === opt.id })) }))} />
                                                             : <input type="checkbox" checked={!!opt.isCorrect} onChange={(e) => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => (x.id === opt.id ? { ...x, isCorrect: e.target.checked } : x)) }))} />}
-                                                        <input value={opt.text} onChange={(e) => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => (x.id === opt.id ? { ...x, text: e.target.value } : x)) }))} className="rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="Вариант ответа (что увидит ученица)" />
+                                                        <input value={opt.text} onChange={(e) => updateQuestion(q.id, (row) => ({ ...row, options: row.options.map((x) => (x.id === opt.id ? { ...x, text: e.target.value } : x)) }))} className="rounded-lg border border-slate-200 p-2 text-sm bg-white" placeholder="" />
                                                         <button type="button" onClick={() => updateQuestion(q.id, (row) => ({ ...row, options: row.options.length > 2 ? row.options.filter((x) => x.id !== opt.id) : row.options }))} className="text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1">Удалить</button>
                                                     </div>
                                                 ))}
@@ -4618,7 +4636,7 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                 value={hw.deadline.weekBasedLabel}
                 onChange={(e) => setHw((prev) => ({ ...prev, deadline: { ...prev.deadline, weekBasedLabel: e.target.value } }))}
                 className="w-full min-h-[38px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
-                placeholder="Правило по модулю"
+                placeholder=""
             />
         ) : (
             <div className="min-h-[38px] rounded-lg border border-dashed border-slate-200/80 bg-slate-50/50 px-2 py-1.5 text-xs text-slate-400">Без даты</div>
@@ -4660,7 +4678,7 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                             onChange={(e) => setHw((prev) => ({ ...prev, prompt: e.target.value }))}
                             className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
                             rows={4}
-                            placeholder="Опишите задание для участницы…"
+                            placeholder=""
                         />
                     </label>
                 ) : null}
@@ -4678,7 +4696,7 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                                 value={hw.questionnaireTitle}
                                 onChange={(e) => setHw((prev) => ({ ...prev, questionnaireTitle: e.target.value }))}
                                 className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
-                                placeholder="Например: Рефлексия после модуля"
+                                placeholder=""
                             />
                         </label>
                         <label className="block space-y-1">
@@ -4688,7 +4706,7 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                                 onChange={(e) => setHw((prev) => ({ ...prev, questionnaireDescription: e.target.value }))}
                                 className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
                                 rows={2}
-                                placeholder="Краткая инструкция для участницы…"
+                                placeholder=""
                             />
                         </label>
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Вопросы</div>
@@ -4728,11 +4746,9 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                                                     ),
                                                 }))}
                                                 className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm"
-                                                placeholder="Текст вопроса"
+                                                placeholder=""
                                             />
-                                            <div className="rounded border border-dashed border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-400">
-                                                Поле ответа участницы (без ограничения символов)
-                                            </div>
+                                            <div className="rounded border border-dashed border-slate-200 bg-white px-2 py-2 min-h-[2.25rem]" aria-hidden />
                                         </div>
                                     </div>
                                 );
@@ -5430,7 +5446,7 @@ function AdminContentItemScreen({
                                                 value={editForm.practicumDocumentUrl || ''}
                                                 onChange={(e) => setEditForm((f) => ({ ...f, practicumDocumentUrl: e.target.value }))}
                                                 className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                                placeholder="Ссылка на документ"
+                                                placeholder=""
                                             />
                                         </div>
                                         <div className="space-y-1 md:col-span-2">
@@ -5439,7 +5455,7 @@ function AdminContentItemScreen({
                                                 value={editForm.practicumVideoUrl || ''}
                                                 onChange={(e) => setEditForm((f) => ({ ...f, practicumVideoUrl: e.target.value }))}
                                                 className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25 min-h-[72px] font-mono text-xs"
-                                                placeholder="Вставьте iframe-код или ссылку kinescope.io/embed/..."
+                                                placeholder=""
                                             />
                                         </div>
                                     </>
@@ -5481,7 +5497,7 @@ function AdminContentItemScreen({
                                             value={editForm.estimatedDuration}
                                             onChange={(e) => setEditForm((f) => ({ ...f, estimatedDuration: e.target.value }))}
                                             className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder="например 20 мин"
+                                            placeholder=""
                                         />
                                     </div>
                                 ) : null}
@@ -5507,7 +5523,7 @@ function AdminContentItemScreen({
                                             value={editForm.libraryLessonGroupTitle || ''}
                                             onChange={(e) => setEditForm((f) => ({ ...f, libraryLessonGroupTitle: e.target.value }))}
                                             className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder="Например: Научные основы письменных практик"
+                                            placeholder=""
                                         />
                                         <p className="text-[11px] text-slate-500 leading-snug">Материалы с одинаковым названием отображаются в одной рамке в библиотеке.</p>
                                     </div>
@@ -5554,7 +5570,7 @@ function AdminContentItemScreen({
                                             onChange={(e) => setEditForm((f) => ({ ...f, shortDescription: e.target.value }))}
                                             rows={2}
                                             className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder="Необязательно: вводная строка над плеером"
+                                            placeholder=""
                                         />
                                     </div>
                                     <div className="grid md:grid-cols-2 gap-2">
@@ -5562,13 +5578,13 @@ function AdminContentItemScreen({
                                             value={editForm.lessonVideoUrl || ''}
                                             onChange={(e) => setEditForm((f) => ({ ...f, lessonVideoUrl: e.target.value }))}
                                             className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder="Ссылка на видео (опционально)"
+                                            placeholder=""
                                         />
                                         <input
                                             value={editForm.lessonRutubeUrl || ''}
                                             onChange={(e) => setEditForm((f) => ({ ...f, lessonRutubeUrl: e.target.value }))}
                                             className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder="RuTube (опционально)"
+                                            placeholder=""
                                         />
                                     </div>
                                     <div className="space-y-1">
@@ -5578,7 +5594,7 @@ function AdminContentItemScreen({
                                             onChange={(e) => setEditForm((f) => ({ ...f, lessonVideoEmbed: e.target.value }))}
                                             rows={4}
                                             className="w-full font-mono text-[12px] bg-white border border-emerald-200/70 rounded-xl p-3 text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder='<iframe src="https://kinescope.io/embed/..." ...></iframe>'
+                                            placeholder=""
                                         />
                                     </div>
                                     <div className="space-y-1">
@@ -5588,7 +5604,7 @@ function AdminContentItemScreen({
                                             value={editForm.fullDescriptionHtml}
                                             onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
                                             onUploadImage={pvlRichEditorUploadImage}
-                                            placeholder="Текст конспекта под видео..."
+                                            placeholder=""
                                         />
                                     </div>
                                 </div>
@@ -5600,7 +5616,7 @@ function AdminContentItemScreen({
                                         value={editForm.fullDescriptionHtml}
                                         onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
                                         onUploadImage={pvlRichEditorUploadImage}
-                                        placeholder="Напишите текст материала..."
+                                        placeholder=""
                                     />
                                 </div>
                             )}
@@ -6196,7 +6212,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         <div className="grid gap-2 md:grid-cols-2">
                             <div className="space-y-1 md:col-span-2">
                                 <label className={cmsLbl}>Название</label>
-                                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Название" />
+                                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                             </div>
                             <div className="min-w-0 space-y-1">
                                 <label className={cmsLbl}>Категория</label>
@@ -6211,13 +6227,13 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     value={draft.libraryLessonGroupTitle}
                                     onChange={(e) => setDraft((d) => ({ ...d, libraryLessonGroupTitle: e.target.value }))}
                                     className={`w-full ${cmsIn}`}
-                                    placeholder="Например: Научные основы письменных практик"
+                                    placeholder=""
                                 />
                                 <p className="text-[11px] text-slate-500 leading-snug">Материалы с одинаковым названием отображаются в одной рамке в библиотеке.</p>
                             </div>
                             <div className="min-w-0 space-y-1 md:col-span-2">
                                 <label className={cmsLbl}>Теги</label>
-                                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Теги через запятую" />
+                                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                             </div>
                             <div className="flex flex-wrap items-center gap-2 pt-0.5 md:col-span-2">
                                 <button
@@ -6247,7 +6263,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                                 value={draft.libraryCategoryCustomTitle}
                                                 onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryCustomTitle: e.target.value }))}
                                                 className={cmsIn}
-                                                placeholder="Новая категория"
+                                                placeholder=""
                                             />
                                             <button
                                                 type="button"
@@ -6266,7 +6282,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     <div className="rounded-xl border border-emerald-100 bg-white p-3 space-y-2 md:col-span-2">
                                         <div className="text-xs font-medium text-emerald-900/80">Загрузить обложку</div>
                                         <div className="flex items-center gap-2">
-                                            <input value={draft.coverImage} onChange={(e) => setDraft((d) => ({ ...d, coverImage: e.target.value }))} className="w-full rounded-lg border border-emerald-200/70 bg-white p-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25" placeholder="Ссылка на обложку / изображение" />
+                                            <input value={draft.coverImage} onChange={(e) => setDraft((d) => ({ ...d, coverImage: e.target.value }))} className="w-full rounded-lg border border-emerald-200/70 bg-white p-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25" placeholder="" />
                                             <label className="text-xs rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-900 cursor-pointer whitespace-nowrap hover:bg-emerald-100/80">
                                                 {isCoverUploading ? 'Загрузка…' : 'Загрузить'}
                                                 <input type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
@@ -6281,11 +6297,11 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     </div>
                                     <div className="space-y-1">
                                         <label className={cmsLbl}>Ссылка на документ</label>
-                                        <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на документ" />
+                                        <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                                     </div>
                                     <div className="space-y-1">
                                         <label className={cmsLbl}>Ссылка на видео</label>
-                                        <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на видео" />
+                                        <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                                     </div>
                                 </>
                             ) : null}
@@ -6297,7 +6313,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 value={draft.fullDescriptionHtml}
                                 onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
                                 onUploadImage={pvlRichEditorUploadImage}
-                                placeholder="Напишите материал для библиотеки..."
+                                placeholder=""
                             />
                         </div>
                     </section>
@@ -6309,11 +6325,11 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         <div className="grid gap-2 md:grid-cols-2">
                             <div className="space-y-1 md:col-span-2">
                                 <label className={cmsLbl}>Название</label>
-                                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Название" />
+                                <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                             </div>
                             <div className="min-w-0 space-y-1">
                                 <label className={cmsLbl}>Теги</label>
-                                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Теги через запятую" />
+                                <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                             </div>
                             <div className="space-y-1">
                                 <label className={cmsLbl}>Поток</label>
@@ -6345,11 +6361,11 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                             </div>
                             <div className="space-y-1">
                                 <label className={cmsLbl}>Ссылка на документ</label>
-                                <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на документ" />
+                                <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                             </div>
                             <div className="space-y-1 md:col-span-2">
                                 <label className={cmsLbl}>Embed-код или ссылка Kinescope (запись практикума)</label>
-                                <textarea value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn} min-h-[72px] font-mono text-xs`} placeholder="Вставьте iframe-код или ссылку kinescope.io/embed/..." />
+                                <textarea value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn} min-h-[72px] font-mono text-xs`} placeholder="" />
                             </div>
                         </div>
                         <div className="space-y-1">
@@ -6359,7 +6375,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 value={draft.fullDescriptionHtml}
                                 onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
                                 onUploadImage={pvlRichEditorUploadImage}
-                                placeholder="Напишите материал для практикума..."
+                                placeholder=""
                             />
                         </div>
                     </section>
@@ -6368,12 +6384,12 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 {draft.targetSection === 'glossary' ? (
                     <section className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-4 space-y-5">
                         <div className={cmsFormTitle}>Форма термина глоссария</div>
-                        <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Термин" />
+                        <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
                         <textarea
                             value={draft.fullDescriptionHtml}
                             onChange={(e) => setDraft((d) => ({ ...d, fullDescriptionHtml: e.target.value }))}
                             className={`w-full min-h-[110px] ${cmsIn}`}
-                            placeholder="Определение / описание термина"
+                            placeholder=""
                         />
                     </section>
                 ) : null}
@@ -6382,11 +6398,11 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                     <section className="rounded-xl border border-emerald-100/90 bg-emerald-50/25 p-3 space-y-2.5">
                         <div className={cmsFormTitle}>Форма урока</div>
                         <div className="grid md:grid-cols-2 gap-2">
-                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="Название" />
+                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="" />
                             {draft.lessonKind !== 'homework' ? (
                                 <>
-                                    <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className={cmsIn} placeholder="Длительность (например 20 мин)" />
-                                    <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={cmsIn} placeholder="Теги через запятую" />
+                                    <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className={cmsIn} placeholder="" />
+                                    <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={cmsIn} placeholder="" />
                                 </>
                             ) : null}
                         </div>
@@ -6414,9 +6430,9 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                         {draft.lessonKind === 'text_video' ? (
                             <div className="space-y-2">
                                 <div className="grid md:grid-cols-2 gap-2">
-                                    <input value={draft.lessonVideoUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))} className={cmsIn} placeholder="Ссылка на видео (YouTube/Kinescope)" />
-                                    <input value={draft.lessonRutubeUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))} className={cmsIn} placeholder="Приватный RuTube URL" />
-                                    <input value={draft.lessonVideoEmbed} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="Embed-код/iframe (Kinescope)" />
+                                    <input value={draft.lessonVideoUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))} className={cmsIn} placeholder="" />
+                                    <input value={draft.lessonRutubeUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))} className={cmsIn} placeholder="" />
+                                    <input value={draft.lessonVideoEmbed} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="" />
                                 </div>
                                 <div className="space-y-1">
                                     <label className={cmsLbl}>Текст урока</label>
@@ -6425,7 +6441,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         value={draft.fullDescriptionHtml}
                                         onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val, lessonTextBody: val }))}
                                         onUploadImage={pvlRichEditorUploadImage}
-                                        placeholder="Содержимое урока..."
+                                        placeholder=""
                                     />
                                 </div>
                             </div>
@@ -7521,7 +7537,7 @@ function DebugPanel({ role, setRole, setActingUserId, actingUserId, setNowDate, 
                 <select value={actingUserId} onChange={(e) => setActingUserId(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white">
                     <option value="u-st-1">Ученица 1</option><option value="u-st-2">Ученица 2</option><option value="u-st-3">Ученица 3</option><option value="u-st-4">Ученица 4</option><option value="u-men-1">Ментор</option><option value="u-adm-1">Администратор</option>
                 </select>
-                <input value={nowDate} onChange={(e) => setNowDate(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white" placeholder="ГГГГ-ММ-ДД" />
+                <input value={nowDate} onChange={(e) => setNowDate(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs bg-white" placeholder="" />
                 <button type="button" onClick={forceRefresh} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] bg-white">Обновить данные</button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -7764,20 +7780,20 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h3 className="font-display text-2xl text-[#4A3728] mb-2">Bug report template</h3>
                 <div className="grid md:grid-cols-3 gap-2">
-                    <input value={bug.role} onChange={(e) => setBug((b) => ({ ...b, role: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="role" />
-                    <input value={bug.screen} onChange={(e) => setBug((b) => ({ ...b, screen: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="screen" />
-                    <input value={bug.route} onChange={(e) => setBug((b) => ({ ...b, route: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="route" />
-                    <input value={bug.scenario} onChange={(e) => setBug((b) => ({ ...b, scenario: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="scenario" />
-                    <input value={bug.stepNumber} onChange={(e) => setBug((b) => ({ ...b, stepNumber: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="step number" />
+                    <input value={bug.role} onChange={(e) => setBug((b) => ({ ...b, role: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="" />
+                    <input value={bug.screen} onChange={(e) => setBug((b) => ({ ...b, screen: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="" />
+                    <input value={bug.route} onChange={(e) => setBug((b) => ({ ...b, route: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="" />
+                    <input value={bug.scenario} onChange={(e) => setBug((b) => ({ ...b, scenario: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="" />
+                    <input value={bug.stepNumber} onChange={(e) => setBug((b) => ({ ...b, stepNumber: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs" placeholder="" />
                     <select value={bug.severity} onChange={(e) => setBug((b) => ({ ...b, severity: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs">
                         <option value="critical">critical</option><option value="major">major</option><option value="minor">minor</option><option value="cosmetic">cosmetic</option>
                     </select>
-                    <input value={bug.expected} onChange={(e) => setBug((b) => ({ ...b, expected: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="expected" />
-                    <input value={bug.actual} onChange={(e) => setBug((b) => ({ ...b, actual: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="actual" />
-                    <input value={bug.screenshot} onChange={(e) => setBug((b) => ({ ...b, screenshot: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="screenshot placeholder" />
-                    <textarea value={bug.note} onChange={(e) => setBug((b) => ({ ...b, note: e.target.value }))} rows={3} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="note" />
+                    <input value={bug.expected} onChange={(e) => setBug((b) => ({ ...b, expected: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="" />
+                    <input value={bug.actual} onChange={(e) => setBug((b) => ({ ...b, actual: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="" />
+                    <input value={bug.screenshot} onChange={(e) => setBug((b) => ({ ...b, screenshot: e.target.value }))} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="" />
+                    <textarea value={bug.note} onChange={(e) => setBug((b) => ({ ...b, note: e.target.value }))} rows={3} className="rounded-xl border border-[#E8D5C4] p-2 text-xs md:col-span-3" placeholder="" />
                 </div>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-xs mt-2" placeholder="Общие заметки QA..." />
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="w-full rounded-xl border border-[#E8D5C4] p-2 text-xs mt-2" placeholder="" />
             </div>
 
             {/* Open questions:

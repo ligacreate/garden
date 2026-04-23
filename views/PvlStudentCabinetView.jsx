@@ -212,7 +212,7 @@ function renderAboutPage() {
 function renderGlossaryPage() {
     return (
         <div className="space-y-3">
-            <input className="w-full rounded-full border border-[#E8D5C4] bg-white px-4 py-2 text-sm" placeholder="Поиск термина..." />
+            <input className="w-full rounded-full border border-[#E8D5C4] bg-white px-4 py-2 text-sm" placeholder="" />
             <div className="grid md:grid-cols-2 gap-3">
                 {['Письменная практика', 'Результат встречи', 'Артефакт', 'Рефлексивный отклик'].map((t) => (
                     <article key={t} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">

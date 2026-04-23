@@ -4,7 +4,8 @@ import RichEditor from '../components/RichEditor';
 import { ChecklistFieldsEditor, ChecklistAnswersReadonly } from './pvlChecklistShared';
 import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly, StructuredAnswersFallback } from './pvlQuestionnaireShared';
 import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText, coerceAnswersJsonObject } from '../utils/pvlHomeworkAnswerRichText';
-import { normalizeMaterialHtml, pvlMaterialBodyClass } from './pvlLibraryMaterialShared.jsx';
+import { normalizeMaterialHtml, PvlMentorReviewSlaPill } from './pvlLibraryMaterialShared.jsx';
+import { pvlMaterialBodyClass } from './pvlMaterialBodyStyles.js';
 
 function threadEventLabel(messageType) {
     const m = {
@@ -327,7 +328,15 @@ function buildTaskHeaderDateParts(data) {
     return { deadline, second };
 }
 
-export function TaskHeader({ data, onBack, backLabel = '← Назад в «Результаты»', showBackButton = true, visualStyle = 'default' }) {
+export function TaskHeader({
+    data,
+    onBack,
+    backLabel = '← Назад в «Результаты»',
+    showBackButton = true,
+    visualStyle = 'default',
+    /** Плашка со сроком проверки ментором (домашние задания и аналогичные сдачи). */
+    showMentorReviewSla = false,
+}) {
     const trackerLike = visualStyle === 'tracker';
     const stLower = String(data.status || '').toLowerCase();
     const isDone = stLower.includes('принят') || stLower.includes('проверено');
@@ -383,6 +392,11 @@ export function TaskHeader({ data, onBack, backLabel = '← Назад в «Ре
                         <span>
                             {second.label}:{' '}
                             <span className={trackerLike ? 'font-medium text-[#4A3728]' : 'font-medium text-slate-800'}>{second.value}</span>
+                        </span>
+                    ) : null}
+                    {showMentorReviewSla ? (
+                        <span className="flex min-w-0 flex-[1_1_100%] items-center sm:flex-[0] sm:basis-auto">
+                            <PvlMentorReviewSlaPill />
                         </span>
                     ) : null}
                 </div>
@@ -484,7 +498,7 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <h3 className="font-display text-xl text-slate-800 mb-2">Задание</h3>
             <div
-                className="text-sm text-slate-700 max-w-none [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:border-slate-200 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600 [&_img]:max-w-full"
+                className={pvlMaterialBodyClass}
                 dangerouslySetInnerHTML={{ __html: summaryHtml }}
             />
             {showControlPointNote ? (
@@ -518,7 +532,7 @@ export function SubmissionVersionCard({ version, checklistSections, homeworkAssi
                 />
             ) : (
                 <div
-                    className="text-sm text-slate-700 mt-1 max-w-none [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full"
+                    className={`${pvlMaterialBodyClass} mt-1 max-w-none`}
                     dangerouslySetInnerHTML={{
                         __html: homeworkAnswerPlainText(version.textContent)
                             ? sanitizeHomeworkAnswerHtml(version.textContent)
@@ -532,7 +546,14 @@ export function SubmissionVersionCard({ version, checklistSections, homeworkAssi
     );
 }
 
-export function renderSubmissionVersions(versions, checklistSections, homeworkAssignmentType, questionnaireBlocks) {
+export function renderSubmissionVersions(
+    versions,
+    checklistSections,
+    homeworkAssignmentType,
+    questionnaireBlocks,
+    questionnaireTitle = '',
+    questionnaireDescription = '',
+) {
     return versions.map((version) => (
         <SubmissionVersionCard
             key={version.id}
@@ -540,6 +561,8 @@ export function renderSubmissionVersions(versions, checklistSections, homeworkAs
             checklistSections={checklistSections}
             homeworkAssignmentType={homeworkAssignmentType}
             questionnaireBlocks={questionnaireBlocks}
+            questionnaireTitle={questionnaireTitle}
+            questionnaireDescription={questionnaireDescription}
         />
     ));
 }
@@ -636,6 +659,7 @@ export function SubmissionHistory({
                                 <RichEditor
                                     value={draftText}
                                     onChange={setDraftText}
+                                    placeholder=""
                                     variant="student"
                                     onUploadImage={pvlReadImageFileAsDataUrl}
                                 />
@@ -713,7 +737,10 @@ export function renderCommentsThread(messages) {
                 </div>
                 <p className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-xs text-slate-500'}`}>{m.createdAt}</p>
             </div>
-            <div className={`mt-1 max-w-none ${m.authorRole === 'system' ? 'text-xs text-slate-500' : 'text-sm text-slate-700 [&_p]:my-0.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-bold [&_em]:italic [&_u]:underline [&_img]:max-w-full'}`} dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(m.text || '') }} />
+            <div
+                className={`mt-1 max-w-none ${m.authorRole === 'system' ? 'text-xs text-slate-500' : pvlMaterialBodyClass}`}
+                dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(m.text || '') }}
+            />
             {m.attachments?.length ? <p className="text-xs text-slate-500 mt-1">Вложения: {m.attachments.join(', ')}</p> : null}
             {m.isUnreadForCurrentUser ? <p className="text-xs text-rose-700 mt-1">Новое</p> : null}
         </article>
@@ -756,7 +783,7 @@ export function CommentsThread({
                     <RichEditor
                         value={message}
                         onChange={setMessage}
-                        placeholder={disputeMode ? 'Сообщение в рамках спора…' : 'Написать комментарий…'}
+                        placeholder=""
                         variant="student"
                         onUploadImage={pvlReadImageFileAsDataUrl}
                         editorClassName="!min-h-[100px] !max-h-[280px] p-3"
@@ -796,9 +823,9 @@ export function renderMentorResponseForm(form, setForm, onSave) {
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ответ ментора</h3>
             <div className="grid gap-2">
-                <RichEditor value={form.strengths} onChange={(v) => setForm((p) => ({ ...p, strengths: v }))} placeholder="Что уже хорошо работает" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
-                <RichEditor value={form.blockers} onChange={(v) => setForm((p) => ({ ...p, blockers: v }))} placeholder="Что блокирует зачет следующего этапа" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
-                <RichEditor value={form.nextActions} onChange={(v) => setForm((p) => ({ ...p, nextActions: v }))} placeholder="1–3 конкретных действия до следующей точки" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
+                <RichEditor value={form.strengths} onChange={(v) => setForm((p) => ({ ...p, strengths: v }))} placeholder="" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
+                <RichEditor value={form.blockers} onChange={(v) => setForm((p) => ({ ...p, blockers: v }))} placeholder="" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
+                <RichEditor value={form.nextActions} onChange={(v) => setForm((p) => ({ ...p, nextActions: v }))} placeholder="" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
                 {warning ? (
                     <div className="rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
                         В брифе рекомендован лимит до 3 правок в одном ответе. Проверь, не перегружает ли это участницу.
@@ -809,11 +836,10 @@ export function renderMentorResponseForm(form, setForm, onSave) {
                     <option value="на доработке">на доработке</option>
                     <option value="не принято">не принято</option>
                 </select>
-                <RichEditor value={form.generalComment} onChange={(v) => setForm((p) => ({ ...p, generalComment: v }))} placeholder="Общий комментарий" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
+                <RichEditor value={form.generalComment} onChange={(v) => setForm((p) => ({ ...p, generalComment: v }))} placeholder="" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
                 <button onClick={onSave} className="w-fit text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">
                     Сохранить ответ и обновить статус
                 </button>
-                <p className="text-xs text-[#9B8B80]">Подсказка: критика должна быть привязана к критерию или стандарту.</p>
             </div>
         </div>
     );
@@ -988,11 +1014,10 @@ function MentorTaskSlim({
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
                     <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
-                    <p className="text-xs text-[#9B8B80]">Фиксируйте решение (принять / доработка) и комментарий — это уйдёт участнице в ленту.</p>
                     <RichEditor
                         value={reply}
                         onChange={setReply}
-                        placeholder="Комментарий для участницы…"
+                        placeholder=""
                         variant="student"
                         onUploadImage={pvlReadImageFileAsDataUrl}
                         editorClassName="!min-h-[120px] !max-h-[320px] p-3"
@@ -1058,7 +1083,14 @@ export function renderTaskDetail({
 }) {
     return (
         <div className="space-y-3">
-            <TaskHeader data={state.taskDetail} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} visualStyle="tracker" />
+            <TaskHeader
+                data={state.taskDetail}
+                onBack={onBack}
+                backLabel={backLabel}
+                showBackButton={showHeaderBack}
+                visualStyle="tracker"
+                showMentorReviewSla={role === 'student'}
+            />
             <TaskDescription
                 data={state.taskDescription}
                 showControlPointNote={!!state.taskDetail?.isControlPoint}

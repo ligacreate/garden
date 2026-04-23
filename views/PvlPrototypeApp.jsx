@@ -3957,11 +3957,11 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     if (route === '/mentor/review-queue') return <MentorReviewQueuePanel navigate={navigate} mentorId={mentorId} refresh={refresh} refreshKey={refreshKey} />;
     if (route === '/mentor/messages') return <MentorDirectMessages mentorId={mentorId} />;
     if (route === '/mentor/tracker') {
-        if (!mentorMirrorStudentId) return mentorMirrorUnavailable;
+        const trackerStudentId = mentorMirrorStudentId || mentorId;
         return (
             <StudentCourseTracker
-                studentId={mentorMirrorStudentId}
-                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(mentorMirrorStudentId))}
+                studentId={trackerStudentId}
+                modules={buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(trackerStudentId))}
                 routePrefix="/mentor"
                 navigate={navigate}
                 refreshKey={refreshKey}
@@ -3971,8 +3971,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     if (route === '/mentor/materials') return <MentorMaterialsPage cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
     if (route === '/mentor/library' || route.startsWith('/mentor/library/')) {
         const itemId = route === '/mentor/library' ? '' : route.slice('/mentor/library/'.length).split('/')[0] || '';
-        if (!mentorMirrorStudentId) return mentorMirrorUnavailable;
-        return <LibraryPage studentId={mentorMirrorStudentId} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" refresh={refresh} refreshKey={refreshKey} />;
+        return <LibraryPage studentId={mentorMirrorStudentId || mentorId} navigate={navigate} initialItemId={itemId} routePrefix="/mentor" refresh={refresh} refreshKey={refreshKey} />;
     }
     if (/^\/mentor\/mentee\/[^/]+\/task\/[^/]+$/.test(pathOnly)) {
         const [, , , menteeId, , taskId] = pathOnly.split('/');
@@ -4031,13 +4030,10 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
         </div>
     );
     if (route === '/mentor/glossary') return <StudentGlossarySearch studentId="" cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
-    if (!mentorMirrorStudentId) {
-        return mentorMirrorUnavailable;
-    }
     return (
         <StudentPage
             route={courseRoute}
-            studentId={mentorMirrorStudentId}
+            studentId={mentorMirrorStudentId || mentorId}
             navigate={mentorCourseNavigate}
             cmsItems={cmsItems}
             cmsPlacements={cmsPlacements}

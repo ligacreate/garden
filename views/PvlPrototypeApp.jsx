@@ -5416,13 +5416,13 @@ function AdminContentItemScreen({
                                                 placeholder="Ссылка на документ"
                                             />
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-xs text-slate-500 ml-0.5">Ссылка на видео / запись</label>
-                                            <input
+                                        <div className="space-y-1 md:col-span-2">
+                                            <label className="text-xs text-slate-500 ml-0.5">Embed-код или ссылка Kinescope (запись практикума)</label>
+                                            <textarea
                                                 value={editForm.practicumVideoUrl || ''}
                                                 onChange={(e) => setEditForm((f) => ({ ...f, practicumVideoUrl: e.target.value }))}
-                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                                placeholder="Ссылка на видео"
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25 min-h-[72px] font-mono text-xs"
+                                                placeholder="Вставьте iframe-код или ссылку kinescope.io/embed/..."
                                             />
                                         </div>
                                     </>
@@ -6288,7 +6288,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
 
                 {draft.targetSection === 'practicums' ? (
                     <section className="space-y-2 rounded-xl border border-emerald-100/90 bg-emerald-50/30 p-2.5 md:p-3">
-                        <div className={cmsFormTitle}>Форма материала для практикумов</div>
+                        <div className={cmsFormTitle}>Форма записи проведённого практикума</div>
                         <div className="grid gap-2 md:grid-cols-2">
                             <div className="space-y-1 md:col-span-2">
                                 <label className={cmsLbl}>Название</label>
@@ -6330,9 +6330,9 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 <label className={cmsLbl}>Ссылка на документ</label>
                                 <input value={draft.fileUrl} onChange={(e) => setDraft((d) => ({ ...d, fileUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на документ" />
                             </div>
-                            <div className="space-y-1">
-                                <label className={cmsLbl}>Ссылка на видео</label>
-                                <input value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="Ссылка на видео" />
+                            <div className="space-y-1 md:col-span-2">
+                                <label className={cmsLbl}>Embed-код или ссылка Kinescope (запись практикума)</label>
+                                <textarea value={draft.externalUrl} onChange={(e) => setDraft((d) => ({ ...d, externalUrl: e.target.value }))} className={`w-full ${cmsIn} min-h-[72px] font-mono text-xs`} placeholder="Вставьте iframe-код или ссылку kinescope.io/embed/..." />
                             </div>
                         </div>
                         <div className="space-y-1">

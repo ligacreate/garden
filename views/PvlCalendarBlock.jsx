@@ -1,8 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
+import { ExternalLink } from 'lucide-react';
 import { loadViewPreferences, saveViewPreferences } from '../services/pvlAppKernel';
 import { pvlCohortIdsEquivalent, pvlDomainApi } from '../services/pvlMockApi';
-import { formatPvlDateTime, getPvlCalendarEventTimeDisplay } from '../utils/pvlDateFormat';
+import {
+    buildCalendarEventStartAtIsoUTC,
+    formatPvlDateTime,
+    getPvlCalendarEventTimeDisplay,
+    mskHhMmFromCalendarStored,
+} from '../utils/pvlDateFormat';
 
 /** Согласовано с прототипом дедлайнов ПВЛ (fallback) */
 const PVL_TODAY = '2026-04-15';
@@ -35,33 +41,45 @@ function monthDateFromPrefsYm(ym) {
     return new Date(y, m - 1, 1, 12, 0, 0);
 }
 
-/** YYYY-MM-DD или ДД-MM-ГГГГ (как в поле формы) → валидный startAt/endAt в UTC, время сохраняем из previousStartAt. */
+/**
+ * Поле «Дата» учительской: ГГГГ-ММ-ДД или ДД-ММ-ГГГГ, опционально время « ЧЧ:ММ» (время — по мск).
+ * В БД — ISO UTC, соответствующий этим московским часам (не путать с T…Z как с UTC-часами).
+ */
 function adminCalendarFormDateStringToStartEnd(dateRaw, previousStartAt) {
     const s = String(dateRaw || '').trim();
     if (!s) {
         return { startAt: previousStartAt, endAt: previousStartAt, date: dateRaw };
     }
-    const timeMatch = String(previousStartAt || '').match(/T(\d{2}):(\d{2}):(\d{2})/);
-    const t = timeMatch ? `T${timeMatch[1]}:${timeMatch[2]}:${timeMatch[3]}.000Z` : 'T12:00:00.000Z';
-    let y;
-    let mo;
-    let d;
-    if (/^(\d{4})-(\d{2})-(\d{2})$/.test(s)) {
-        y = s.slice(0, 4);
-        mo = s.slice(5, 7);
-        d = s.slice(8, 10);
-    } else {
-        const dmY = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-        if (dmY) {
-            d = dmY[1].padStart(2, '0');
-            mo = dmY[2].padStart(2, '0');
-            y = dmY[3];
+    const ymdT = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{1,2}):(\d{2}))?$/);
+    const dmyT = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+    let isoYmd;
+    let hh;
+    let mm;
+    if (ymdT) {
+        isoYmd = `${ymdT[1]}-${ymdT[2]}-${ymdT[3]}`;
+        if (ymdT[4] != null && ymdT[4] !== '') {
+            hh = parseInt(ymdT[4], 10);
+            mm = parseInt(ymdT[5], 10);
         } else {
-            return { startAt: previousStartAt, endAt: previousStartAt, date: dateRaw };
+            ({ h: hh, m: mm } = mskHhMmFromCalendarStored(previousStartAt));
         }
+    } else if (dmyT) {
+        isoYmd = `${dmyT[3]}-${dmyT[2].padStart(2, '0')}-${dmyT[1].padStart(2, '0')}`;
+        if (dmyT[4] != null && dmyT[4] !== '') {
+            hh = parseInt(dmyT[4], 10);
+            mm = parseInt(dmyT[5], 10);
+        } else {
+            ({ h: hh, m: mm } = mskHhMmFromCalendarStored(previousStartAt));
+        }
+    } else {
+        return { startAt: previousStartAt, endAt: previousStartAt, date: dateRaw };
     }
-    const isoDay = `${y}-${mo}-${d}`;
-    const startAt = `${isoDay}${t}`;
+    if (!Number.isFinite(hh)) hh = 12;
+    if (!Number.isFinite(mm)) mm = 0;
+    const startAt = buildCalendarEventStartAtIsoUTC(isoYmd, hh, mm);
+    if (!startAt) {
+        return { startAt: previousStartAt, endAt: previousStartAt, date: dateRaw };
+    }
     return { startAt, endAt: startAt, date: dateRaw };
 }
 
@@ -285,7 +303,7 @@ function linkifyCalendarDescriptionToHtml(text = '') {
                 } else {
                     const href = escapeHtml(u.href);
                     parts.push(
-                        `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:text-blue-700">${href}</a>`,
+                        `<a href="${href}" target="_blank" rel="noopener noreferrer">${href}</a>`,
                     );
                 }
             } catch {
@@ -327,6 +345,21 @@ function buildPracticumRecordingEmbedHtml(source = '') {
     return '';
 }
 
+/** HTML описания под видео: сохраняем абзацы и ссылки (не путать с iframe-эмбедом). */
+function sanitizePracticumRecapBodyHtml(snippet = '') {
+    const raw = String(snippet || '')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .trim();
+    if (!raw) return '';
+    return DOMPurify.sanitize(raw, {
+        ALLOWED_TAGS: ['a', 'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'span', 'div', 'h2', 'h3', 'h4', 'blockquote'],
+        ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    });
+}
+
 function normalizePracticumRecapHtml(source = '') {
     const raw = String(source || '')
         .replaceAll('&lt;', '<')
@@ -335,8 +368,11 @@ function normalizePracticumRecapHtml(source = '') {
         .replaceAll('&quot;', '"')
         .trim();
     if (!raw) return '';
-    if (/<\s*[a-z][^>]*>/i.test(raw)) return sanitizePracticumEmbedHtml(raw);
-    return `<div>${escapeHtml(raw).replaceAll('\n', '<br/>')}</div>`;
+    if (/<\s*[a-z][^>]*>/i.test(raw)) {
+        return sanitizePracticumRecapBodyHtml(raw);
+    }
+    const linked = linkifyCalendarDescriptionToHtml(raw);
+    return linked ? `<div>${linked}</div>` : '';
 }
 
 /** Только время — светло-зелёная плашка; дата и тип снаружи. */
@@ -412,15 +448,17 @@ function PvlPastArchiveListItem({ ev }) {
         && (ev.recordingUrl || ev.recapText || buildPracticumRecordingEmbedHtml(ev.recordingUrl));
     if (rich) {
         return (
-            <li className="rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
-                    <span className="min-w-0 text-sm font-medium text-[#3D342B]">{ev.title}</span>
+            <li className="flex h-full min-w-0 flex-col rounded-xl border border-[#E8E0D4]/70 bg-[#FAF8F5] p-3">
+                <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-2 sm:gap-y-1">
+                    <span className="flex min-w-0 items-start gap-2 sm:mt-0.5">
+                        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full sm:mt-0.5 ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
+                        <span className="min-w-0 text-sm font-medium leading-snug text-[#3D342B]">{ev.title}</span>
+                    </span>
                     <PvlCalendarEventTimeChips startAt={ev.startAt} />
                 </div>
                 {buildPracticumRecordingEmbedHtml(ev.recordingUrl) ? (
                     <div
-                        className="mt-2 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
+                        className="mt-2 w-full min-w-0 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white"
                         dangerouslySetInnerHTML={{ __html: buildPracticumRecordingEmbedHtml(ev.recordingUrl) }}
                     />
                 ) : null}
@@ -428,15 +466,16 @@ function PvlPastArchiveListItem({ ev }) {
                     <a
                         href={ev.recordingUrl}
                         target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-flex text-xs font-medium text-[#1B4D3E] hover:underline"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-emerald-200 bg-emerald-50/90 px-3 py-2 text-xs font-semibold text-emerald-900 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 sm:py-2.5 sm:text-sm"
                     >
+                        <ExternalLink className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
                         Смотреть запись
                     </a>
                 ) : null}
                 {ev.recapText ? (
                     <div
-                        className="mt-2 text-sm text-[#5C4D42] clean-rich-text"
+                        className="mt-2 max-h-48 min-h-0 flex-1 overflow-y-auto text-sm leading-snug text-[#5C4D42] clean-rich-text [&_a]:font-semibold [&_a]:text-emerald-800 [&_a]:underline [&_a]:decoration-2 [&_a]:underline-offset-2 [&_a]:hover:text-emerald-950 sm:max-h-52"
                         dangerouslySetInnerHTML={{ __html: normalizePracticumRecapHtml(ev.recapText) }}
                     />
                 ) : null}
@@ -444,7 +483,7 @@ function PvlPastArchiveListItem({ ev }) {
         );
     }
     return (
-        <li className="rounded-xl border border-[#E8E0D4]/50 bg-[#FAF8F5]/80 px-3 py-2.5">
+        <li className="flex h-full min-w-0 flex-col rounded-xl border border-[#E8E0D4]/50 bg-[#FAF8F5]/80 px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${calendarEventDotClass(ev.eventType)}`} aria-hidden />
                 <span className="text-sm font-medium text-[#5C4D42]">{ev.title}</span>
@@ -734,7 +773,7 @@ export function PvlDashboardCalendarBlock({
                         {practicumDoneArchiveEntries.length === 0 ? (
                             <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет записей проведённых практикумов в выбранном потоке.</p>
                         ) : (
-                            <ul className="mt-3 space-y-3">
+                            <ul className="mt-3 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
                                 {practicumDoneArchiveEntries.map((ev) => (
                                     <PvlPastArchiveListItem key={ev.id} ev={ev} />
                                 ))}
@@ -747,7 +786,7 @@ export function PvlDashboardCalendarBlock({
                         {pastArchiveEntries.length === 0 ? (
                             <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет таких прошедших событий в выбранном потоке.</p>
                         ) : (
-                            <ul className="mt-3 space-y-3">
+                            <ul className="mt-3 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
                                 {pastArchiveEntries.map((ev) => (
                                     <PvlPastArchiveListItem key={ev.id} ev={ev} />
                                 ))}
@@ -997,7 +1036,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                                 }}
                             />
                         </label>
-                        <label className="block text-xs text-slate-500">Дата (ДД-MM-ГГГГ или ГГГГ-MM-ДД)
+                        <label className="block text-xs text-slate-500">Дата и время по мск (ДД-MM-ГГГГ ЧЧ:ММ или ГГГГ-MM-ДД ЧЧ:ММ; время можно не указывать)
                             <input
                                 className="mt-1 w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm"
                                 value={editing.date || ''}

@@ -84,7 +84,7 @@ import {
     newQuestionnaireBlockId,
     questionnaireHasAnswerBlocks,
 } from '../utils/pvlQuestionnaireBlocks';
-import { formatPvlDateTime } from '../utils/pvlDateFormat';
+import { buildCalendarEventStartAtIsoUTC, formatPvlDateTime } from '../utils/pvlDateFormat';
 import {
     clearAppSession,
     loadAppSession,
@@ -1064,19 +1064,13 @@ function practicumEventTypeRu(t) {
 }
 
 /**
- * Дата из <input type="date">, время из <input type="time"> (часто «HH:mm:ss»).
- * Собираем валидные ISO для календаря без конкатенации вида …T19:00:00:00.000Z.
+ * Дата из <input type="date">, время — часы/минуты по мск (как в календаре курса).
+ * Собираем ISO UTC через instantFromWallClock (не Date.UTC — иначе время читалось как UTC).
  */
 function buildPracticumCalendarIsoRange(isoDate, timeRaw) {
     const dStr = String(isoDate || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
         return { ok: false, error: 'Укажите дату практикума (поле «Дата практикума»).' };
-    }
-    const y = Number(dStr.slice(0, 4));
-    const mo = Number(dStr.slice(5, 7));
-    const da = Number(dStr.slice(8, 10));
-    if (![y, mo, da].every((n) => Number.isFinite(n))) {
-        return { ok: false, error: 'Некорректная дата практикума.' };
     }
     const rawT = String(timeRaw || '').trim();
     const seg = (rawT || '19:00').split(':');
@@ -1086,13 +1080,16 @@ function buildPracticumCalendarIsoRange(isoDate, timeRaw) {
     if (!Number.isFinite(mm)) mm = 0;
     hh = Math.min(23, Math.max(0, hh));
     mm = Math.min(59, Math.max(0, mm));
-    const start = new Date(Date.UTC(y, mo - 1, da, hh, mm, 0));
+    const startIso = buildCalendarEventStartAtIsoUTC(dStr, hh, mm);
+    if (!startIso) {
+        return { ok: false, error: 'Некорректная дата или время практикума.' };
+    }
+    const start = new Date(startIso);
     if (Number.isNaN(start.getTime())) {
         return { ok: false, error: 'Некорректная дата или время практикума.' };
     }
-    const end = new Date(start);
-    end.setUTCMinutes(end.getUTCMinutes() + 90);
-    return { ok: true, startAt: start.toISOString(), endAt: end.toISOString() };
+    const end = new Date(start.getTime() + 90 * 60 * 1000);
+    return { ok: true, startAt: startIso, endAt: end.toISOString() };
 }
 
 const SECTION_ROUTE_TO_KEY = {

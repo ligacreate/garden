@@ -84,6 +84,46 @@ export function getPvlCalendarEventInstant(raw) {
 }
 
 /**
+ * Часы и минуты по московому времени для уже сохранённого startAt (учитывает и ISO с Z, и наивный T в мск).
+ * @param {string|Date|null|undefined} raw
+ * @returns {{ h: number, m: number }}
+ */
+export function mskHhMmFromCalendarStored(raw) {
+    const inst = getPvlCalendarEventInstant(raw);
+    if (!inst) return { h: 12, m: 0 };
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: PVL_MS_TZ,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(inst);
+    const hv = parts.find((p) => p.type === 'hour')?.value;
+    const mv = parts.find((p) => p.type === 'minute')?.value;
+    let h = parseInt(hv ?? '12', 10);
+    let m = parseInt(mv ?? '0', 10);
+    if (Number.isNaN(h)) h = 12;
+    if (Number.isNaN(m)) m = 0;
+    return { h: Math.min(23, Math.max(0, h)), m: Math.min(59, Math.max(0, m)) };
+}
+
+/**
+ * Календарь: дата YYYY-MM-DD и время как в мск (как на «настенных часах») → один момент в UTC для БД.
+ * @param {string} isoYmd
+ * @param {number|string} hour
+ * @param {number|string} minute
+ * @returns {string|null} ISO UTC или null
+ */
+export function buildCalendarEventStartAtIsoUTC(isoYmd, hour, minute) {
+    const ymd = String(isoYmd || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+    const hh = String(Math.min(23, Math.max(0, Number(hour) || 0))).padStart(2, '0');
+    const mm = String(Math.min(59, Math.max(0, Number(minute) || 0))).padStart(2, '0');
+    const inst = instantFromWallClockInTimeZone(ymd, `${hh}:${mm}`, PVL_MS_TZ);
+    if (!inst || Number.isNaN(inst.getTime())) return null;
+    return inst.toISOString();
+}
+
+/**
  * Подстрока для списков календаря: дата в мск; время — «локально · мск» вне Москвы, иначе одна метка мск.
  * @param {string|Date|null|undefined} raw
  */

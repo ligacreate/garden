@@ -1049,6 +1049,14 @@ const CONTENT_STATUS_LABEL = {
     withdrawn: 'Снятые / в архиве',
 };
 
+/** Серые подсказки в пустом редакторе: не заполняют поле заранее, только ориентируют при пустом экране. */
+const PVL_RICH_PLACEHOLDER = {
+    libraryMaterial: 'Основной текст для карточки: абзацы, списки, ссылки, картинки.',
+    lessonBody: 'Конспект и пояснения к уроку — так увидит ученица под вступлением и видео.',
+    practicumBody: 'Конспект и тезисы с практикума — основной текст для ученицы.',
+    homeworkTask: 'Сформулируйте задание: что сделать и в каком виде сдать.',
+};
+
 function labelTargetSection(key) {
     return TARGET_SECTION_LABELS[key] || key;
 }
@@ -4678,7 +4686,7 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                             onChange={(e) => setHw((prev) => ({ ...prev, prompt: e.target.value }))}
                             className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
                             rows={4}
-                            placeholder=""
+                            placeholder={PVL_RICH_PLACEHOLDER.homeworkTask}
                         />
                     </label>
                 ) : null}
@@ -5570,22 +5578,28 @@ function AdminContentItemScreen({
                                             onChange={(e) => setEditForm((f) => ({ ...f, shortDescription: e.target.value }))}
                                             rows={2}
                                             className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder=""
+                                            placeholder="1–2 предложения под заголовком, над плеером. Без дублирования полного конспекта."
                                         />
                                     </div>
                                     <div className="grid md:grid-cols-2 gap-2">
-                                        <input
-                                            value={editForm.lessonVideoUrl || ''}
-                                            onChange={(e) => setEditForm((f) => ({ ...f, lessonVideoUrl: e.target.value }))}
-                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder=""
-                                        />
-                                        <input
-                                            value={editForm.lessonRutubeUrl || ''}
-                                            onChange={(e) => setEditForm((f) => ({ ...f, lessonRutubeUrl: e.target.value }))}
-                                            className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
-                                            placeholder=""
-                                        />
+                                        <div className="space-y-1 min-w-0">
+                                            <label className="text-xs text-slate-500 ml-0.5">Ссылка на страницу видео</label>
+                                            <input
+                                                value={editForm.lessonVideoUrl || ''}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, lessonVideoUrl: e.target.value }))}
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                                placeholder="Страница Kinescope, Vimeo…"
+                                            />
+                                        </div>
+                                        <div className="space-y-1 min-w-0">
+                                            <label className="text-xs text-slate-500 ml-0.5">Ссылка на RuTube (если публикуете там)</label>
+                                            <input
+                                                value={editForm.lessonRutubeUrl || ''}
+                                                onChange={(e) => setEditForm((f) => ({ ...f, lessonRutubeUrl: e.target.value }))}
+                                                className="w-full bg-white border border-emerald-200/70 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/25"
+                                                placeholder="https://rutube.ru/…"
+                                            />
+                                        </div>
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs text-slate-500 ml-0.5">Код встраивания Kinescope (iframe)</label>
@@ -5604,7 +5618,7 @@ function AdminContentItemScreen({
                                             value={editForm.fullDescriptionHtml}
                                             onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
                                             onUploadImage={pvlRichEditorUploadImage}
-                                            placeholder=""
+                                            placeholder={PVL_RICH_PLACEHOLDER.lessonBody}
                                         />
                                     </div>
                                 </div>
@@ -5616,7 +5630,7 @@ function AdminContentItemScreen({
                                         value={editForm.fullDescriptionHtml}
                                         onChange={(val) => setEditForm((f) => ({ ...f, fullDescriptionHtml: val }))}
                                         onUploadImage={pvlRichEditorUploadImage}
-                                        placeholder=""
+                                        placeholder={editForm?.targetSection === 'practicums' ? PVL_RICH_PLACEHOLDER.practicumBody : PVL_RICH_PLACEHOLDER.libraryMaterial}
                                     />
                                 </div>
                             )}
@@ -6247,8 +6261,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                             </div>
                             {showLibraryAdvanced ? (
                                 <>
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-slate-500 opacity-0">Действия</label>
+                                    <div className="space-y-1 md:col-span-2">
                                         <button
                                             type="button"
                                             className="w-full text-xs rounded-xl border border-emerald-200 px-3 py-2 text-emerald-900 bg-white hover:bg-emerald-50/80"
@@ -6259,15 +6272,18 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                     </div>
                                     {showNewLibraryCategoryInput ? (
                                         <>
-                                            <input
-                                                value={draft.libraryCategoryCustomTitle}
-                                                onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryCustomTitle: e.target.value }))}
-                                                className={cmsIn}
-                                                placeholder=""
-                                            />
+                                            <div className="space-y-1 md:col-span-2">
+                                                <label className={cmsLbl}>Название новой категории</label>
+                                                <input
+                                                    value={draft.libraryCategoryCustomTitle}
+                                                    onChange={(e) => setDraft((d) => ({ ...d, libraryCategoryCustomTitle: e.target.value }))}
+                                                    className={`w-full ${cmsIn}`}
+                                                    placeholder="Как она появится в библиотеке"
+                                                />
+                                            </div>
                                             <button
                                                 type="button"
-                                                className="text-xs rounded-xl border border-emerald-600 bg-emerald-700 px-3 py-2 text-white hover:bg-emerald-800"
+                                                className="md:col-span-2 w-full text-xs rounded-xl border border-emerald-600 bg-emerald-700 px-3 py-2 text-white hover:bg-emerald-800"
                                                 onClick={() => {
                                                     const created = addOrSelectCustomLibraryCategory(draft.libraryCategoryCustomTitle);
                                                     if (!created) return;
@@ -6313,7 +6329,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 value={draft.fullDescriptionHtml}
                                 onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
                                 onUploadImage={pvlRichEditorUploadImage}
-                                placeholder=""
+                                placeholder={PVL_RICH_PLACEHOLDER.libraryMaterial}
                             />
                         </div>
                     </section>
@@ -6375,7 +6391,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                 value={draft.fullDescriptionHtml}
                                 onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val }))}
                                 onUploadImage={pvlRichEditorUploadImage}
-                                placeholder=""
+                                placeholder={PVL_RICH_PLACEHOLDER.practicumBody}
                             />
                         </div>
                     </section>
@@ -6384,55 +6400,129 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 {draft.targetSection === 'glossary' ? (
                     <section className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-4 space-y-5">
                         <div className={cmsFormTitle}>Форма термина глоссария</div>
-                        <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`w-full ${cmsIn}`} placeholder="" />
-                        <textarea
-                            value={draft.fullDescriptionHtml}
-                            onChange={(e) => setDraft((d) => ({ ...d, fullDescriptionHtml: e.target.value }))}
-                            className={`w-full min-h-[110px] ${cmsIn}`}
-                            placeholder=""
-                        />
+                        <div className="space-y-1">
+                            <label className={cmsLbl}>Термин</label>
+                            <input
+                                value={draft.title}
+                                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                                className={`w-full ${cmsIn}`}
+                                placeholder="Слово или короткая фраза"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className={cmsLbl}>Определение</label>
+                            <textarea
+                                value={draft.fullDescriptionHtml}
+                                onChange={(e) => setDraft((d) => ({ ...d, fullDescriptionHtml: e.target.value }))}
+                                className={`w-full min-h-[110px] ${cmsIn}`}
+                                placeholder="Толкование для карточки в глоссарии"
+                            />
+                        </div>
                     </section>
                 ) : null}
 
                 {draft.targetSection === 'lessons' ? (
                     <section className="rounded-xl border border-emerald-100/90 bg-emerald-50/25 p-3 space-y-2.5">
                         <div className={cmsFormTitle}>Форма урока</div>
-                        <div className="grid md:grid-cols-2 gap-2">
-                            <input value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="" />
-                            {draft.lessonKind !== 'homework' ? (
-                                <>
-                                    <input value={draft.estimatedDuration} onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))} className={cmsIn} placeholder="" />
-                                    <input value={draft.tagsText} onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))} className={cmsIn} placeholder="" />
-                                </>
-                            ) : null}
+                        <div className="space-y-1">
+                            <label className={cmsLbl}>Название урока</label>
+                            <input
+                                value={draft.title}
+                                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                                className={`w-full ${cmsIn}`}
+                                placeholder="Как в списке уроков и в карточке"
+                            />
                         </div>
+                        {draft.lessonKind !== 'homework' ? (
+                            <div className="grid md:grid-cols-2 gap-2">
+                                <div className="space-y-1 min-w-0">
+                                    <label className={cmsLbl}>Длительность</label>
+                                    <input
+                                        value={draft.estimatedDuration}
+                                        onChange={(e) => setDraft((d) => ({ ...d, estimatedDuration: e.target.value }))}
+                                        className={`w-full ${cmsIn}`}
+                                        placeholder="например, 25 мин"
+                                    />
+                                </div>
+                                <div className="space-y-1 min-w-0">
+                                    <label className={cmsLbl}>Теги через запятую</label>
+                                    <input
+                                        value={draft.tagsText}
+                                        onChange={(e) => setDraft((d) => ({ ...d, tagsText: e.target.value }))}
+                                        className={`w-full ${cmsIn}`}
+                                        placeholder="тема, модуль"
+                                    />
+                                </div>
+                            </div>
+                        ) : null}
                         <div className="space-y-1.5">
                             <div className="text-xs font-medium text-emerald-900/80">Куда публиковать в курсе</div>
                             <div className="grid md:grid-cols-2 gap-2">
-                                <select
-                                    value={String(clampPvlModule(draft.moduleNumber))}
-                                    onChange={(e) => setDraft((d) => ({ ...d, moduleNumber: e.target.value, weekNumber: e.target.value }))}
-                                    className={cmsIn}
-                                >
-                                    {modulePickerOptions.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
-                                <select
-                                    value={draft.targetCohort}
-                                    onChange={(e) => setDraft((d) => ({ ...d, targetCohort: e.target.value }))}
-                                    className={cmsIn}
-                                >
-                                    {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-                                </select>
+                                <div className="space-y-1 min-w-0">
+                                    <label className={cmsLbl}>Модуль</label>
+                                    <select
+                                        value={String(clampPvlModule(draft.moduleNumber))}
+                                        onChange={(e) => setDraft((d) => ({ ...d, moduleNumber: e.target.value, weekNumber: e.target.value }))}
+                                        className={`w-full ${cmsIn}`}
+                                    >
+                                        {modulePickerOptions.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1 min-w-0">
+                                    <label className={cmsLbl}>Поток</label>
+                                    <select
+                                        value={draft.targetCohort}
+                                        onChange={(e) => setDraft((d) => ({ ...d, targetCohort: e.target.value }))}
+                                        className={`w-full ${cmsIn}`}
+                                    >
+                                        {(pvlDomainApi.adminApi.getAdminCohorts() || []).map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         {draft.lessonKind === 'text_video' ? (
                             <div className="space-y-2">
+                                <div className="space-y-1">
+                                    <label className={cmsLbl}>Короткий текст над видео</label>
+                                    <textarea
+                                        value={draft.shortDescription || ''}
+                                        onChange={(e) => setDraft((d) => ({ ...d, shortDescription: e.target.value }))}
+                                        rows={2}
+                                        className={`w-full ${cmsIn} text-slate-800`}
+                                        placeholder="1–2 предложения под заголовком, над плеером. Без дублирования полного конспекта."
+                                    />
+                                </div>
                                 <div className="grid md:grid-cols-2 gap-2">
-                                    <input value={draft.lessonVideoUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))} className={cmsIn} placeholder="" />
-                                    <input value={draft.lessonRutubeUrl} onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))} className={cmsIn} placeholder="" />
-                                    <input value={draft.lessonVideoEmbed} onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))} className={`md:col-span-2 ${cmsIn}`} placeholder="" />
+                                    <div className="space-y-1 min-w-0">
+                                        <label className={cmsLbl}>Ссылка на страницу видео</label>
+                                        <input
+                                            value={draft.lessonVideoUrl}
+                                            onChange={(e) => setDraft((d) => ({ ...d, lessonVideoUrl: e.target.value }))}
+                                            className={`w-full ${cmsIn}`}
+                                            placeholder="Страница Kinescope, Vimeo…"
+                                        />
+                                    </div>
+                                    <div className="space-y-1 min-w-0">
+                                        <label className={cmsLbl}>Ссылка на RuTube (если публикуете там)</label>
+                                        <input
+                                            value={draft.lessonRutubeUrl}
+                                            onChange={(e) => setDraft((d) => ({ ...d, lessonRutubeUrl: e.target.value }))}
+                                            className={`w-full ${cmsIn}`}
+                                            placeholder="https://rutube.ru/…"
+                                        />
+                                    </div>
+                                    <div className="space-y-1 min-w-0 md:col-span-2">
+                                        <label className={cmsLbl}>Код встраивания Kinescope (iframe)</label>
+                                        <textarea
+                                            value={draft.lessonVideoEmbed}
+                                            onChange={(e) => setDraft((d) => ({ ...d, lessonVideoEmbed: e.target.value }))}
+                                            rows={3}
+                                            className={`w-full min-h-[72px] font-mono text-xs ${cmsIn}`}
+                                            placeholder="Код iframe из панели Kinescope"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="space-y-1">
                                     <label className={cmsLbl}>Текст урока</label>
@@ -6441,7 +6531,7 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                                         value={draft.fullDescriptionHtml}
                                         onChange={(val) => setDraft((d) => ({ ...d, fullDescriptionHtml: val, lessonTextBody: val }))}
                                         onUploadImage={pvlRichEditorUploadImage}
-                                        placeholder=""
+                                        placeholder={PVL_RICH_PLACEHOLDER.lessonBody}
                                     />
                                 </div>
                             </div>

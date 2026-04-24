@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { marked } from 'marked';
-import { Bold, Italic, Underline, Link, List, ListOrdered, Type, Image, Upload, Table } from 'lucide-react';
+import { Bold, Italic, Underline, Link, List, ListOrdered, Type, Image, Upload, Table, TextQuote } from 'lucide-react';
 import { stripMsOfficeHtmlNoise } from '../utils/pvlHomeworkAnswerRichText';
+import { pvlProseBlockquoteClass } from '../views/pvlMaterialBodyStyles.js';
 
 const RichEditor = ({
     value,
@@ -260,8 +261,27 @@ const RichEditor = ({
             list = null;
         };
 
-        for (const line of lines) {
-            const token = parseTextLineType(line);
+        for (let i = 0; i < lines.length; i++) {
+            const rawLine = lines[i];
+            const bqLine = rawLine.match(/^>\s?(.*)$/);
+            if (bqLine) {
+                closeList();
+                const parts = [bqLine[1]];
+                while (i + 1 < lines.length) {
+                    const m = lines[i + 1].match(/^>\s?(.*)$/);
+                    if (!m) break;
+                    i += 1;
+                    parts.push(m[1]);
+                }
+                const trimmed = parts.map((t) => String(t || '').trim()).filter((s) => s.length > 0);
+                const inner = trimmed.length
+                    ? trimmed.map((s) => `<p>${escapeHtml(s)}</p>`).join('')
+                    : '<p><br/></p>';
+                out.push(`<blockquote>${inner}</blockquote>`);
+                continue;
+            }
+
+            const token = parseTextLineType(rawLine);
             if (token.type === 'empty') {
                 closeList();
                 continue;
@@ -304,6 +324,20 @@ const RichEditor = ({
     const handleCommand = (e, command, val = null) => {
         e.preventDefault();
         document.execCommand(command, false, val);
+        pushToParent();
+    };
+
+    /** formatBlock: разные движки ожидают «blockquote» или «BLOCKQUOTE». */
+    const applyFormatBlock = (e, blockTag) => {
+        e.preventDefault();
+        const v = String(blockTag || '').toLowerCase();
+        const candidates = v === 'blockquote' ? ['blockquote', 'BLOCKQUOTE'] : [v];
+        for (const tag of candidates) {
+            if (document.execCommand('formatBlock', false, tag)) {
+                pushToParent();
+                return;
+            }
+        }
         pushToParent();
     };
 
@@ -405,6 +439,14 @@ const RichEditor = ({
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'underline')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Подчёркивание"><Underline size={16} /></button>
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'formatBlock', '<h2>')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Заголовок H2">H2</button>
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'formatBlock', '<h3>')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Подзаголовок H3"><Type size={16} /></button>
+                <button
+                    type="button"
+                    onMouseDown={(e) => applyFormatBlock(e, 'blockquote')}
+                    className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded"
+                    title="Цитата: полоса слева и фон, как в карточке материала (Markdown: строки с &gt; )"
+                >
+                    <TextQuote size={16} />
+                </button>
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'insertUnorderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Маркированный список"><List size={16} /></button>
                 <button type="button" onMouseDown={(e) => handleCommand(e, 'insertOrderedList')} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Нумерованный список"><ListOrdered size={16} /></button>
                 <button type="button" onMouseDown={handleInsertTable} className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded" title="Таблица"><Table size={16} /></button>
@@ -451,7 +493,7 @@ const RichEditor = ({
             </div>
             <div
                 ref={editorRef}
-                className={`p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none [&_h2]:text-2xl [&_h2]:font-display [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_p]:my-2 [&_p]:leading-relaxed [&_div]:my-2 [&_div]:leading-relaxed [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1.5 [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5 [&_img]:max-w-full [&_img]:h-auto ${editorClassName}`}
+                className={`p-4 min-h-[220px] max-h-[420px] overflow-y-auto outline-none text-slate-700 max-w-none ${pvlProseBlockquoteClass} [&_h2]:text-2xl [&_h2]:font-display [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h3]:text-xl [&_h3]:font-display [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_a]:text-blue-700 [&_a]:underline [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_p]:my-2 [&_p]:leading-relaxed [&_div]:my-2 [&_div]:leading-relaxed [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1.5 [&_td]:border [&_td]:border-slate-200 [&_td]:px-2 [&_td]:py-1.5 [&_img]:max-w-full [&_img]:h-auto ${editorClassName}`}
                 contentEditable={!readOnly}
                 suppressContentEditableWarning
                 data-placeholder={placeholder || ''}

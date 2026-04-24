@@ -142,7 +142,7 @@ export function buildLessonVideoPlayerHtml(item) {
 
 /** Санитизация HTML конспекта/материала (импорт MD → marked → хранение в fullDescription). */
 const PVL_MATERIAL_HTML_PURIFY = {
-    ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption', 'br', 'hr', 'ol', 'ul', 'li', 'img'],
+    ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption', 'br', 'hr', 'ol', 'ul', 'li', 'img', 'blockquote'],
     ADD_ATTR: ['align', 'colspan', 'rowspan', 'data-pvl-wiki-ref', 'target', 'rel', 'title', 'loading', 'start', 'type', 'reversed', 'src', 'alt', 'width', 'height', 'class'],
 };
 

@@ -78,7 +78,7 @@ import {
 } from '../services/pvlMockApi';
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 import { TASK_STATUS } from '../data/pvl/enums';
-import { coerceAnswersJsonObject } from '../utils/pvlHomeworkAnswerRichText';
+import { coerceAnswersJsonObject, sanitizeHomeworkAnswerHtml } from '../utils/pvlHomeworkAnswerRichText';
 import { DEFAULT_REFLEX_CHECKLIST_SECTIONS } from '../data/pvl/homeworkChecklistDefaults';
 import {
     createDefaultQuestionnaireBlocks,
@@ -4564,7 +4564,7 @@ function normalizeLessonHomework(raw) {
         criteria: (Array.isArray(src.criteria) && src.criteria.length ? src.criteria : ['']).map((x) => String(x || '')),
         hints: (Array.isArray(src.hints) && src.hints.length ? src.hints : ['']).map((x) => String(x || '')),
         mentorComment: src.mentorComment || '',
-        prompt: src.prompt || '',
+        prompt: sanitizeHomeworkAnswerHtml(String(src.prompt || '')),
         expectedResult: src.expectedResult || '',
         scoring: {
             enabled: !!scoring.enabled,
@@ -4679,16 +4679,19 @@ function LessonHomeworkBuilder({ value, onChange, validation = {} }) {
                     <option value="questionnaire">Анкета (текстовые блоки и вопросы)</option>
                 </select>
                 {hw.assignmentType === 'standard' ? (
-                    <label className="block space-y-1 border-t border-slate-100 pt-3">
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Текст задания</span>
-                        <textarea
+                    <div className="space-y-1 border-t border-slate-100 pt-3">
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Текст задания</div>
+                        <p className="text-[11px] text-slate-500 leading-snug mb-1">
+                            Форматирование как в уроке: вставка из .md в буфере (заголовки, списки) поддерживается; картинки — кнопкой «Загрузить».
+                        </p>
+                        <RichEditor
+                            key="lesson-hw-prompt"
                             value={hw.prompt || ''}
-                            onChange={(e) => setHw((prev) => ({ ...prev, prompt: e.target.value }))}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
-                            rows={4}
+                            onChange={(val) => setHw((prev) => ({ ...prev, prompt: val }))}
+                            onUploadImage={pvlRichEditorUploadImage}
                             placeholder={PVL_RICH_PLACEHOLDER.homeworkTask}
                         />
-                    </label>
+                    </div>
                 ) : null}
                 {hw.assignmentType === 'checklist' ? (
                     <p className="text-[11px] text-slate-500 leading-snug">
@@ -6063,6 +6066,10 @@ function AdminContentCenter({ cmsItems, setCmsItems, cmsPlacements, setCmsPlacem
                 fullDescriptionHtml: parsed.html,
                 lessonTextBody: d.targetSection === 'lessons' && d.lessonKind === 'text_video' ? parsed.html : d.lessonTextBody,
                 lessonHomeworkPrompt: d.targetSection === 'lessons' && d.lessonKind === 'homework' ? parsed.html : d.lessonHomeworkPrompt,
+                lessonHomework:
+                    d.targetSection === 'lessons' && d.lessonKind === 'homework'
+                        ? normalizeLessonHomework({ ...d.lessonHomework, prompt: parsed.html })
+                        : d.lessonHomework,
             }));
             setImportedDocName(file.name);
         } catch {

@@ -604,9 +604,10 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
 
             {/* Текст задания */}
             {selectedItem.lessonHomework?.prompt ? (
-                <p className="text-sm text-slate-600 leading-relaxed">
-                    {selectedItem.lessonHomework.prompt}
-                </p>
+                <div
+                    className={`text-sm text-slate-600 leading-relaxed ${pvlMaterialBodyClass}`}
+                    dangerouslySetInnerHTML={{ __html: normalizeMaterialHtml(selectedItem.lessonHomework.prompt) }}
+                />
             ) : !selectedItem.fullDescription && selectedItem.shortDescription ? (
                 <p className="text-sm text-slate-600 leading-relaxed">
                     {selectedItem.shortDescription}

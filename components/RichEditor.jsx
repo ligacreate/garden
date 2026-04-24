@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { marked } from 'marked';
 import { Bold, Italic, Underline, Link, List, ListOrdered, Type, Image, Upload, Table } from 'lucide-react';
 import { stripMsOfficeHtmlNoise } from '../utils/pvlHomeworkAnswerRichText';
 
@@ -342,14 +343,37 @@ const RichEditor = ({
         }
     };
 
+    const tryMarkdownClipboardToHtml = (plain) => {
+        const t = String(plain || '');
+        if (t.length < 4) return null;
+        const looksMd =
+            /(^|\n)#{1,6}\s+[^\n]+/m.test(t)
+            || /(^|\n)\s*([-*+]|\d+[\).])\s+\S/m.test(t)
+            || /(^|\n)>\s+/m.test(t)
+            || /(^|\n)\s{0,3}```/m.test(t)
+            || /\*\*[^*]+\*\*|__[^_]+__|\[[^\]]+\]\([^)]+\)/.test(t);
+        if (!looksMd) return null;
+        try {
+            const out = marked.parse(t, { breaks: true, gfm: true, async: false });
+            if (typeof out !== 'string' || !out.trim()) return null;
+            return sanitizeIncomingHtml(out);
+        } catch {
+            return null;
+        }
+    };
+
     const handlePaste = (e) => {
         const html = e.clipboardData?.getData('text/html') || '';
         const text = e.clipboardData?.getData('text/plain') || '';
         if (!html && !text) return;
         e.preventDefault();
-        const normalized = html
-            ? sanitizeIncomingHtml(html)
-            : plainTextToStructuredHtml(text);
+        let normalized;
+        if (html) {
+            normalized = sanitizeIncomingHtml(html);
+        } else {
+            const fromMd = tryMarkdownClipboardToHtml(text);
+            normalized = fromMd || plainTextToStructuredHtml(text);
+        }
         document.execCommand('insertHTML', false, normalized);
         flushSanitized();
     };

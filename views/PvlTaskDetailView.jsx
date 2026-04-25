@@ -6,6 +6,7 @@ import { QuestionnaireFieldsEditor, QuestionnaireAnswersReadonly, StructuredAnsw
 import { pvlReadImageFileAsDataUrl, sanitizeHomeworkAnswerHtml, homeworkAnswerPlainText, coerceAnswersJsonObject } from '../utils/pvlHomeworkAnswerRichText';
 import { normalizeMaterialHtml, PvlMentorReviewSlaPill } from './pvlLibraryMaterialShared.jsx';
 import { pvlMaterialBodyClass } from './pvlMaterialBodyStyles.js';
+import Toast from '../components/Toast';
 
 function threadEventLabel(messageType) {
     const m = {
@@ -1155,6 +1156,7 @@ export default function PvlTaskDetailView({
     });
     const [draftText, setDraftText] = useState(localStorage.getItem('pvl_task_draft_v1') || '');
     const [mentorForm, setMentorForm] = useState({ ...mentorReview });
+    const [draftSavedMsg, setDraftSavedMsg] = useState('');
 
     const homeworkAssignmentType = initialData?.taskDescription?.homeworkAssignmentType || 'standard';
     const checklistSections = initialData?.taskDescription?.checklistSections || [];
@@ -1165,7 +1167,15 @@ export default function PvlTaskDetailView({
     const getInitialChecklistAnswers = (data) => {
         const vers = data?.submissionVersions || [];
         const v = vers.find((x) => x.isDraft) || vers.find((x) => x.isCurrent);
-        return v?.answersJson && typeof v.answersJson === 'object' ? { ...v.answersJson } : {};
+        if (v?.answersJson && typeof v.answersJson === 'object') return { ...v.answersJson };
+        try {
+            const raw = localStorage.getItem(`pvl_draft_answers_v1_${taskId}`);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+            }
+        } catch { /* noop */ }
+        return {};
     };
     const [checklistAnswers, setChecklistAnswers] = useState(() => getInitialChecklistAnswers(initialData));
 
@@ -1269,6 +1279,7 @@ export default function PvlTaskDetailView({
 
     return (
         <div className="space-y-3">
+            <Toast message={draftSavedMsg} onClose={() => setDraftSavedMsg('')} />
             {showSubmittedBanner ? (
                 <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4 text-sm text-teal-950 shadow-sm">
                     <p className="font-medium">Работа отправлена ментору ✓</p>
@@ -1288,12 +1299,15 @@ export default function PvlTaskDetailView({
                 onSendThreadMessage: handleSendThreadMessage,
                 onSaveDraft: (arg) => {
                     if (homeworkAssignmentType === 'checklist' || homeworkAssignmentType === 'questionnaire') {
+                        try { localStorage.setItem(`pvl_draft_answers_v1_${taskId}`, JSON.stringify(checklistAnswers)); } catch { /* noop */ }
                         if (onStudentSaveDraft) onStudentSaveDraft({ textContent: '', answersJson: checklistAnswers });
+                        setDraftSavedMsg('Черновик сохранён');
                         return;
                     }
                     const text = typeof arg === 'string' ? arg : draftText;
                     saveDraftSubmission(setDraftText, text);
                     if (onStudentSaveDraft) onStudentSaveDraft({ textContent: text });
+                    setDraftSavedMsg('Черновик сохранён');
                 },
                 onSubmitForReview: () => {
                     if (!canEditStudentSubmission) return;
@@ -1303,6 +1317,7 @@ export default function PvlTaskDetailView({
                             try { window.alert(result.message || 'Не удалось отправить задание'); } catch { /* noop */ }
                             return;
                         }
+                        try { localStorage.removeItem(`pvl_draft_answers_v1_${taskId}`); } catch { /* noop */ }
                         submitForReview(setState);
                         return;
                     }

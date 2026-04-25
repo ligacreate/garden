@@ -523,11 +523,19 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
     }, [studentId, task?.id, refreshTick]);
 
     React.useEffect(() => {
-        if (!detail?.versions) return;
-        const currentVersion = detail.versions.find(v => v.isDraft) || detail.versions.find(v => v.isCurrent);
+        if (!task?.id) return;
+        const currentVersion = detail?.versions?.find(v => v.isDraft) || detail?.versions?.find(v => v.isCurrent);
         if (currentVersion?.textContent) setDraft(currentVersion.textContent);
         if (currentVersion?.answersJson && typeof currentVersion.answersJson === 'object') {
             setAnswers({ ...currentVersion.answersJson });
+        } else {
+            try {
+                const raw = localStorage.getItem(`pvl_draft_answers_v1_${task.id}`);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) setAnswers(parsed);
+                }
+            } catch { /* noop */ }
         }
     }, [task?.id]);
 
@@ -559,6 +567,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
     const handleSaveDraft = () => {
         let result;
         if (isChecklist || isQuestionnaire) {
+            try { localStorage.setItem(`pvl_draft_answers_v1_${task.id}`, JSON.stringify(answers)); } catch { /* noop */ }
             result = pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: '', answersJson: answers });
         } else {
             result = pvlDomainApi.studentApi.saveStudentDraft(studentId, task.id, { textContent: draft });
@@ -579,6 +588,7 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
         }
         if (!ok || ok?.error) return;
+        try { localStorage.removeItem(`pvl_draft_answers_v1_${task.id}`); } catch { /* noop */ }
         refresh();
     };
 

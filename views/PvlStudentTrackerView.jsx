@@ -36,7 +36,7 @@ function tagPillClass(tag) {
 }
 
 function trackerStepKey(moduleId, item, index) {
-    const extId = String(item?.id || '').trim();
+    const extId = String(item?.id || item?.contentItemId || '').trim();
     if (extId) return `sid:${extId}`;
     const textSlug = String(item?.text || '')
         .trim()
@@ -346,6 +346,38 @@ export function StudentCourseTracker({
     const [syncTick, setSyncTick] = useState(0);
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
     const { checked, toggleItem } = usePlatformStepChecklist(studentId, syncTick + refreshKey);
+    const legacyMigrationDoneRef = useRef(false);
+    useEffect(() => {
+        if (legacyMigrationDoneRef.current) return;
+        if (!studentId || !resolvedModules?.length) return;
+        const storageKey = platformStepsStorageKey(studentId);
+        try {
+            const raw = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            let migrated = false;
+            const next = { ...raw };
+            resolvedModules.forEach((mod) => {
+                mod.items.forEach((item, i) => {
+                    if (!item.contentItemId) return;
+                    const textSlug = String(item.text || '')
+                        .trim().toLowerCase()
+                        .replace(/[^\p{L}\p{N}]+/gu, '-')
+                        .replace(/^-+|-+$/g, '');
+                    const oldKey = `m:${mod.id}:s:${textSlug || i}`;
+                    const newKey = `sid:${item.contentItemId}`;
+                    if (next[oldKey] && !next[newKey]) {
+                        next[newKey] = true;
+                        migrated = true;
+                    }
+                });
+            });
+            if (migrated) {
+                localStorage.setItem(storageKey, JSON.stringify(next));
+                pvlDomainApi.studentApi.saveTrackerChecklist(studentId, next);
+                setSyncTick((x) => x + 1);
+            }
+        } catch { /* ignore */ }
+        legacyMigrationDoneRef.current = true;
+    }, [studentId, resolvedModules]);
     const studentProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null;
     const mentorUserId = (() => {
         const direct = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;

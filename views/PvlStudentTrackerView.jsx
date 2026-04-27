@@ -356,30 +356,77 @@ export function StudentCourseTracker({
     const [syncTick, setSyncTick] = useState(0);
     const resolvedModules = modulesProp || PVL_PLATFORM_MODULES;
     const { checked, toggleItem } = usePlatformStepChecklist(studentId, syncTick + refreshKey);
-    const legacyMigrationDoneRef = useRef(false);
+    // Хранит studentId, для которого миграция уже запущена (null = не запускалась)
+    const legacyMigrationDoneRef = useRef(null);
+    // Снимок localStorage до того, как DB-wins может его перезаписать
+    const originalStorageRef = useRef(null);
+    const originalStorageForRef = useRef(null);
+    if (originalStorageForRef.current !== String(studentId || '')) {
+        originalStorageForRef.current = String(studentId || '');
+        try {
+            originalStorageRef.current = JSON.parse(
+                localStorage.getItem(platformStepsStorageKey(studentId)) || '{}'
+            );
+        } catch {
+            originalStorageRef.current = {};
+        }
+    }
     useEffect(() => {
-        if (legacyMigrationDoneRef.current) return;
+        if (legacyMigrationDoneRef.current === String(studentId)) return;
         if (!studentId || !resolvedModules?.length) return;
-        // Ждём пока CMS-данные загрузятся: если ни у одного элемента нет contentItemId — это статический fallback, пропускаем
         const hasCmsItems = resolvedModules.some((mod) => mod.items.some((item) => item.contentItemId));
         if (!hasCmsItems) return;
-        legacyMigrationDoneRef.current = true;
+        // Ждём, пока БД загрузится, чтобы стартовать от актуального состояния БД
+        const fromDb = pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {};
+        const studentLoaded = (pvlDomainApi.db.studentProfiles || []).some(
+            (p) => String(p.userId) === String(studentId)
+        );
+        if (!studentLoaded && !Object.values(fromDb).some(Boolean)) return;
+        legacyMigrationDoneRef.current = String(studentId);
         const storageKey = platformStepsStorageKey(studentId);
         try {
-            const raw = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            const originalRaw = originalStorageRef.current || {};
+            const slugify = (text) =>
+                String(text || '').trim().toLowerCase()
+                    .replace(/[^\p{L}\p{N}]+/gu, '-')
+                    .replace(/^-+|-+$/g, '');
+            // Стартуем от состояния БД, чтобы не потерять данные с других устройств
+            const next = { ...fromDb };
             let migrated = false;
-            const next = { ...raw };
+            // Проход 1: сопоставление по текстовому слагу (текущее название)
             resolvedModules.forEach((mod) => {
                 mod.items.forEach((item, i) => {
                     if (!item.contentItemId) return;
-                    const textSlug = String(item.text || '')
-                        .trim().toLowerCase()
-                        .replace(/[^\p{L}\p{N}]+/gu, '-')
-                        .replace(/^-+|-+$/g, '');
-                    const oldKey = `m:${mod.id}:s:${textSlug || i}`;
+                    const oldKey = `m:${mod.id}:s:${slugify(item.text) || i}`;
                     const newKey = `sid:${item.contentItemId}`;
-                    if (next[oldKey] && !next[newKey]) {
+                    if (originalRaw[oldKey] && !next[newKey]) {
                         next[newKey] = true;
+                        migrated = true;
+                    }
+                });
+            });
+            // Проход 2: fallback по позиции для переименованных уроков
+            resolvedModules.forEach((mod) => {
+                const prefix = `m:${mod.id}:s:`;
+                const unmatchedItems = mod.items.filter(
+                    (item) => item.contentItemId && !next[`sid:${item.contentItemId}`]
+                );
+                if (unmatchedItems.length === 0) return;
+                const allOldCheckedKeys = Object.keys(originalRaw).filter(
+                    (k) => k.startsWith(prefix) && originalRaw[k]
+                );
+                // Ключи, уже использованные в проходе 1
+                const claimedKeys = new Set();
+                mod.items.forEach((item, i) => {
+                    if (!item.contentItemId) return;
+                    const oldKey = `m:${mod.id}:s:${slugify(item.text) || i}`;
+                    if (originalRaw[oldKey]) claimedKeys.add(oldKey);
+                });
+                const unclaimedOldKeys = allOldCheckedKeys.filter((k) => !claimedKeys.has(k));
+                // Сопоставляем по порядку: i-й незанятый ключ → i-й несопоставленный элемент
+                unmatchedItems.forEach((item, idx) => {
+                    if (idx < unclaimedOldKeys.length) {
+                        next[`sid:${item.contentItemId}`] = true;
                         migrated = true;
                     }
                 });
@@ -390,7 +437,7 @@ export function StudentCourseTracker({
                 setSyncTick((x) => x + 1);
             }
         } catch { /* ignore */ }
-    }, [studentId, resolvedModules]);
+    }, [studentId, resolvedModules, refreshKey]);
     const studentProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null;
     const mentorUserId = (() => {
         const direct = studentProfile?.mentorId ? String(studentProfile.mentorId) : null;

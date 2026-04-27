@@ -350,6 +350,10 @@ export function StudentCourseTracker({
     useEffect(() => {
         if (legacyMigrationDoneRef.current) return;
         if (!studentId || !resolvedModules?.length) return;
+        // Ждём пока CMS-данные загрузятся: если ни у одного элемента нет contentItemId — это статический fallback, пропускаем
+        const hasCmsItems = resolvedModules.some((mod) => mod.items.some((item) => item.contentItemId));
+        if (!hasCmsItems) return;
+        legacyMigrationDoneRef.current = true;
         const storageKey = platformStepsStorageKey(studentId);
         try {
             const raw = JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -376,7 +380,6 @@ export function StudentCourseTracker({
                 setSyncTick((x) => x + 1);
             }
         } catch { /* ignore */ }
-        legacyMigrationDoneRef.current = true;
     }, [studentId, resolvedModules]);
     const studentProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(studentId)) || null;
     const mentorUserId = (() => {

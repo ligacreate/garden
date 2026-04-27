@@ -8059,7 +8059,7 @@ export default function PvlPrototypeApp({
             forceRefresh();
 
             if (!embeddedInGarden) return;
-            await new Promise((r) => setTimeout(r, 1600));
+            await new Promise((r) => setTimeout(r, 600));
             if (!mounted) return;
             try {
                 await syncPvlActorsFromGarden();

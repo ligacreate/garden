@@ -697,16 +697,27 @@ async function ensureDbTrackerHomeworkStructure() {
 
 async function syncTrackerAndHomeworkFromDb() {
     await ensureDbTrackerHomeworkStructure();
-    for (const student of db.studentProfiles || []) {
+    const students = db.studentProfiles || [];
+
+    // Сначала параллельно гарантируем наличие всех нужных студентов в pvl_students
+    await Promise.all(
+        students
+            .filter(shouldEarlyEnsurePvlStudentRow)
+            .map((s) => ensurePvlStudentInDb(s.userId).catch(() => {}))
+    );
+
+    // Все студенты параллельно: getProgress + listSubmissions + contentProgress за один батч
+    await Promise.all(students.map(async (student) => {
         const userId = student.userId;
-        if (shouldEarlyEnsurePvlStudentRow(student)) {
-            // eslint-disable-next-line no-await-in-loop
-            await ensurePvlStudentInDb(userId);
-        }
         const sqlStudentId = studentSqlIdByUserId(userId);
-        if (!sqlStudentId) continue;
-        // eslint-disable-next-line no-await-in-loop
-        const progressRows = await pvlPostgrestApi.getStudentCourseProgress(sqlStudentId);
+        if (!sqlStudentId) return;
+
+        const [progressRows, subs, contentProgressRows] = await Promise.all([
+            pvlPostgrestApi.getStudentCourseProgress(sqlStudentId),
+            pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId),
+            pvlPostgrestApi.listStudentContentProgress(sqlStudentId).catch(() => []),
+        ]);
+
         const checked = {};
         (progressRows || []).forEach((row) => {
             const keys = row?.payload?.checkedKeys;
@@ -723,15 +734,12 @@ async function syncTrackerAndHomeworkFromDb() {
             }
         });
         db.studentTrackerChecks[userId] = checked;
-
-        /** Чтобы при сабмишне из БД уже были task/state (частично совпадает с уроками CMS). */
         syncPublishedHomeworkTasksForStudent(userId);
 
-        // eslint-disable-next-line no-await-in-loop
-        const subs = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
-        for (const row of subs || []) {
+        // Submissions + их история — тоже параллельно между собой
+        await Promise.all((subs || []).map(async (row) => {
             const taskId = mockTaskIdBySqlHomeworkId.get(String(row.homework_item_id));
-            if (!taskId) continue;
+            if (!taskId) return;
             const mapped = homeworkDbStatusToTaskStatus(row.status);
             let state = db.studentTaskStates.find((s) => s.studentId === userId && s.taskId === taskId);
             if (!state) {
@@ -782,7 +790,6 @@ async function syncTrackerAndHomeworkFromDb() {
                 db.threadMessages = db.threadMessages.filter((m) => !(m.studentId === userId && m.taskId === taskId));
                 thread.forEach((m) => db.threadMessages.push({ ...m, studentId: userId, taskId }));
             }
-            // eslint-disable-next-line no-await-in-loop
             const hist = await pvlPostgrestApi.listHomeworkStatusHistory(row.id);
             if (Array.isArray(hist) && hist.length) {
                 db.statusHistory = db.statusHistory.filter((h) => !(h.studentId === userId && h.taskId === taskId));
@@ -797,10 +804,8 @@ async function syncTrackerAndHomeworkFromDb() {
                     createdAt: h.changed_at || nowIso(),
                 }));
             }
-        }
+        }));
 
-        // eslint-disable-next-line no-await-in-loop
-        const contentProgressRows = await pvlPostgrestApi.listStudentContentProgress(sqlStudentId).catch(() => []);
         for (const row of contentProgressRows || []) {
             const itemId = row.content_item_id;
             if (!itemId) continue;
@@ -814,7 +819,7 @@ async function syncTrackerAndHomeworkFromDb() {
             pr.lastOpenedAt = row.last_opened_at || pr.lastOpenedAt;
             pr.completedAt = row.completed_at || pr.completedAt;
         }
-    }
+    }));
 }
 
 /** Демо-id учениц из seed — убираем из db, когда из Сада подгружены реальные абитуриенты. */
@@ -1004,18 +1009,44 @@ async function persistGardenMentorLink(studentUserId, mentorUserId) {
     }
 }
 
+const USERS_SWR_KEY = 'pvl_users_swr_v1';
+
 export async function syncPvlActorsFromGarden() {
     try {
-        let users = [];
-        const waitBeforeAttemptMs = [0, 100, 200];
-        for (let i = 0; i < waitBeforeAttemptMs.length; i += 1) {
-            if (waitBeforeAttemptMs[i] > 0) {
-                // eslint-disable-next-line no-await-in-loop
-                await new Promise((r) => setTimeout(r, waitBeforeAttemptMs[i]));
+        // SWR: берём кэш пользователей из localStorage (актуален 1 час)
+        let cachedUsers = null;
+        try {
+            const raw = localStorage.getItem(USERS_SWR_KEY);
+            if (raw) {
+                const { ts, d } = JSON.parse(raw);
+                if (d && Date.now() - ts < 60 * 60 * 1000) cachedUsers = d;
             }
-            // eslint-disable-next-line no-await-in-loop
-            users = await api.getUsers();
-            if (Array.isArray(users) && users.length > 0) break;
+        } catch { /* ignore */ }
+
+        let users = [];
+        if (cachedUsers) {
+            // Кэш есть — используем сразу, обновляем в фоне
+            users = cachedUsers;
+            api.getUsers().then((fresh) => {
+                if (Array.isArray(fresh) && fresh.length > 0) {
+                    try { localStorage.setItem(USERS_SWR_KEY, JSON.stringify({ ts: Date.now(), d: fresh })); } catch { /* ignore */ }
+                }
+            }).catch(() => {});
+        } else {
+            // Кэша нет — ждём сеть с retry
+            const waitBeforeAttemptMs = [0, 100, 200];
+            for (let i = 0; i < waitBeforeAttemptMs.length; i += 1) {
+                if (waitBeforeAttemptMs[i] > 0) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await new Promise((r) => setTimeout(r, waitBeforeAttemptMs[i]));
+                }
+                // eslint-disable-next-line no-await-in-loop
+                users = await api.getUsers();
+                if (Array.isArray(users) && users.length > 0) break;
+            }
+            if (Array.isArray(users) && users.length > 0) {
+                try { localStorage.setItem(USERS_SWR_KEY, JSON.stringify({ ts: Date.now(), d: users })); } catch { /* ignore */ }
+            }
         }
         if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
 

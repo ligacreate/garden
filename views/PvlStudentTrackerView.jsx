@@ -118,6 +118,8 @@ export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_
 
 export function usePlatformStepChecklist(studentId, refreshKey = 0) {
     const storageKey = platformStepsStorageKey(studentId);
+    // localStorage — только кэш для мгновенного первого рендера.
+    // Единственный источник правды — БД (getTrackerChecklist).
     const [checked, setChecked] = useState(() => {
         try {
             return JSON.parse(typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) || '{}' : '{}');
@@ -125,45 +127,53 @@ export function usePlatformStepChecklist(studentId, refreshKey = 0) {
             return {};
         }
     });
+    // true когда DB подтвердила своё состояние (профиль студента загружен syncPvlActorsFromGarden)
+    const dbConfirmedRef = useRef(false);
+    // toggles выполненные до подтверждения DB — применяем поверх DB при её загрузке
+    const pendingTogglesRef = useRef(new Map());
+
     useEffect(() => {
         try {
-            const local = JSON.parse(localStorage.getItem(storageKey) || '{}');
             const fromDb = pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {};
-            // Union: галочка остаётся если она стоит в localStorage ИЛИ в БД.
-            // Это защищает от сброса локально выставленных галочек DB-данными из прошлой сессии.
-            const merged = {};
-            Object.keys(local).forEach((k) => { if (local[k]) merged[k] = true; });
-            Object.keys(fromDb).forEach((k) => { if (fromDb[k]) merged[k] = true; });
-            PVL_PLATFORM_MODULES.forEach((mod) => {
-                mod.items.forEach((item, i) => {
-                    const oldKey = `${mod.id}-${i}`;
-                    const newKey = trackerStepKey(mod.id, item, i);
-                    if (merged[oldKey] && !merged[newKey]) merged[newKey] = true;
-                });
-            });
-            setChecked(merged);
-            localStorage.setItem(storageKey, JSON.stringify(merged));
-            // Если в localStorage есть галочки, которых нет в БД — синхронизировать в БД.
-            // Это переносит накопленный прогресс при первой же загрузке страницы.
-            const mergedCount = Object.values(merged).filter(Boolean).length;
-            const dbCount = Object.values(fromDb).filter(Boolean).length;
-            if (mergedCount > dbCount && studentId) {
-                pvlDomainApi.studentApi.saveTrackerChecklist(studentId, merged);
+            const dbHasData = Object.values(fromDb).some(Boolean);
+            // Профиль студента загружен = syncPvlActorsFromGarden завершился = DB синхронизирована
+            const studentLoaded = (pvlDomainApi.db.studentProfiles || []).some(
+                (p) => String(p.userId) === String(studentId)
+            );
+
+            if (dbHasData || studentLoaded) {
+                dbConfirmedRef.current = true;
+                // Применяем pending-toggles поверх DB-состояния
+                const merged = { ...fromDb };
+                pendingTogglesRef.current.forEach((val, key) => { merged[key] = val; });
+                const hasPending = pendingTogglesRef.current.size > 0;
+                pendingTogglesRef.current.clear();
+
+                setChecked(merged);
+                localStorage.setItem(storageKey, JSON.stringify(merged));
+                if (hasPending || Object.values(merged).some((v, i) => v !== Object.values(fromDb)[i])) {
+                    // Есть расхождение (pending toggles) — пишем объединённое состояние в DB
+                    pvlDomainApi.studentApi.saveTrackerChecklist(studentId, merged);
+                }
             }
+            // Если DB ещё не загружена — продолжаем показывать localStorage, не трогаем DB.
         } catch {
-            setChecked({});
+            /* ignore */
         }
     }, [storageKey, studentId, refreshKey]);
 
     const toggleItem = useCallback((key) => {
         setChecked((prev) => {
             const next = { ...prev, [key]: !prev[key] };
-            try {
-                localStorage.setItem(storageKey, JSON.stringify(next));
-            } catch {
-                /* ignore */
+            try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
+
+            if (dbConfirmedRef.current) {
+                // DB подтверждена — пишем напрямую
+                pvlDomainApi.studentApi.saveTrackerChecklist(studentId, next);
+            } else {
+                // DB ещё не загружена — ставим в очередь, запишем поверх DB при её загрузке
+                pendingTogglesRef.current.set(key, next[key]);
             }
-            pvlDomainApi.studentApi.saveTrackerChecklist(studentId, next);
             return next;
         });
     }, [storageKey, studentId]);

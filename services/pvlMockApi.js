@@ -874,22 +874,17 @@ export function pruneSeedPvlDemoStudentRows() {
     }
 }
 
-export async function syncPvlRuntimeFromDb() {
-    if (!pvlPostgrestApi.isEnabled()) return { synced: false, reason: 'disabled' };
-    const snapshot = await pvlPostgrestApi.loadRuntimeSnapshot();
+const RUNTIME_SWR_KEY = 'pvl_swr_v1';
+
+function applyRuntimeSnapshot(snapshot) {
     const mappedItems = snapshot.items.map(mapDbContentItemToRuntime);
     const mappedPlacements = snapshot.placements.map(mapDbPlacementToRuntime);
     const mappedEvents = snapshot.events.map(mapDbEventToRuntime);
     const mappedFaq = snapshot.faq.map(mapDbFaqToRuntime);
-    /** Состояние рантайма = ответ PostgREST (включая пустые списки — источник правды в БД). */
     db.contentItems = mappedItems;
     applyPvlWritingModuleLibraryLessonGroupPatch();
     db.contentPlacements = mappedPlacements;
-    if (
-        import.meta.env.DEV
-        && mappedItems.length === 0
-        && mappedPlacements.length === 0
-    ) {
+    if (import.meta.env.DEV && mappedItems.length === 0 && mappedPlacements.length === 0) {
         ensureLocalDemoLessonContent();
     }
     if (mappedEvents.length) {
@@ -898,7 +893,28 @@ export async function syncPvlRuntimeFromDb() {
         db.calendarEvents = [...mappedEvents, ...seedOnly];
     }
     db.faqItems = mappedFaq;
-    await syncTrackerAndHomeworkFromDb();
+}
+
+/** Синхронно применяет кэш снимка из localStorage. Возвращает true если кэш был применён. */
+export function syncPvlRuntimeFromCache() {
+    if (!pvlPostgrestApi.isEnabled()) return false;
+    try {
+        const raw = localStorage.getItem(RUNTIME_SWR_KEY);
+        if (!raw) return false;
+        const { ts, d } = JSON.parse(raw);
+        // Кэш действителен 24 часа — контент меняется редко
+        if (!d || Date.now() - ts > 24 * 60 * 60 * 1000) return false;
+        applyRuntimeSnapshot(d);
+        return true;
+    } catch { return false; }
+}
+
+export async function syncPvlRuntimeFromDb() {
+    if (!pvlPostgrestApi.isEnabled()) return { synced: false, reason: 'disabled' };
+    const snapshot = await pvlPostgrestApi.loadRuntimeSnapshot();
+    applyRuntimeSnapshot(snapshot);
+    try { localStorage.setItem(RUNTIME_SWR_KEY, JSON.stringify({ ts: Date.now(), d: snapshot })); } catch { /* ignore quota */ }
+    // syncTrackerAndHomeworkFromDb вызывается в syncPvlActorsFromGarden — после загрузки реальных студентов
     return { synced: true };
 }
 
@@ -991,7 +1007,7 @@ async function persistGardenMentorLink(studentUserId, mentorUserId) {
 export async function syncPvlActorsFromGarden() {
     try {
         let users = [];
-        const waitBeforeAttemptMs = [0, 400, 800, 1200];
+        const waitBeforeAttemptMs = [0, 100, 200];
         for (let i = 0; i < waitBeforeAttemptMs.length; i += 1) {
             if (waitBeforeAttemptMs[i] > 0) {
                 // eslint-disable-next-line no-await-in-loop
@@ -1774,7 +1790,9 @@ async function persistTrackerProgressToDb(studentId) {
         try { await ensureDbTrackerHomeworkStructure(); } catch { /* ignore */ }
     }
     const checkedMap = db.studentTrackerChecks?.[studentId] || {};
-    const checkedKeys = Object.keys(checkedMap).filter((k) => checkedMap[k]);
+    // Железное правило: в PostgREST пишем ТОЛЬКО sid:-ключи (UUID контент-айтема).
+    // Текстовые ключи (m:1:s:...) никогда не должны попадать в БД — они нестабильны.
+    const checkedKeys = Object.keys(checkedMap).filter((k) => checkedMap[k] && k.startsWith('sid:'));
     const moduleByStepKey = new Map();
     PVL_PLATFORM_MODULES.forEach((mod) => {
         mod.items.forEach((item, index) => {

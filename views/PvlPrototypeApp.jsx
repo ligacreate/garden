@@ -74,6 +74,7 @@ import {
     pvlPlacementVisibleForCohort,
     syncPvlActorsFromGarden,
     syncPvlRuntimeFromDb,
+    syncPvlRuntimeFromCache,
     pvlPatchCurrentUserFromGarden,
 } from '../services/pvlMockApi';
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
@@ -8032,6 +8033,13 @@ export default function PvlPrototypeApp({
 
     useEffect(() => {
         let mounted = true;
+        // SWR: применяем кэш мгновенно до любых сетевых запросов
+        if (syncPvlRuntimeFromCache()) {
+            const cached = buildMergedCmsState();
+            setCmsItems(cached.items);
+            setCmsPlacements(cached.placements);
+            forceRefresh();
+        }
         (async () => {
             let res = { synced: false };
             try {

@@ -1764,8 +1764,15 @@ function buildSubmissionPayload(studentId, taskId, submissionId) {
 }
 
 async function persistTrackerProgressToDb(studentId) {
+    if (!pvlPostgrestApi.isEnabled()) return;
+    // Сначала убеждаемся что студент есть в pvl_students — иначе sqlStudentId будет null
+    try { await ensurePvlStudentInDb(studentId); } catch { /* ignore */ }
     const sqlStudentId = studentSqlIdByUserId(studentId);
     if (!sqlStudentId) return;
+    // Убеждаемся что маппинг недель заполнен
+    if (sqlWeekIdByMockWeekId.size === 0) {
+        try { await ensureDbTrackerHomeworkStructure(); } catch { /* ignore */ }
+    }
     const checkedMap = db.studentTrackerChecks?.[studentId] || {};
     const checkedKeys = Object.keys(checkedMap).filter((k) => checkedMap[k]);
     const moduleByStepKey = new Map();

@@ -8,6 +8,55 @@ export function platformStepsStorageKey(studentId) {
     return `pvl_checked_${studentId}`;
 }
 
+const PVL_TRACKER_STYLES = `
+@keyframes pvl-check-pop {
+    0%   { opacity:0; transform:scale(0.2) rotate(-15deg); }
+    60%  { transform:scale(1.25) rotate(4deg); }
+    100% { opacity:1; transform:scale(1) rotate(0deg); }
+}
+@keyframes pvl-row-in {
+    from { opacity:0; transform:translateY(7px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+@keyframes pvl-sk {
+    0%,100% { opacity:.85; }
+    50%      { opacity:.4; }
+}
+.pvl-check-pop { animation: pvl-check-pop 0.28s cubic-bezier(0.34,1.56,0.64,1) both; }
+.pvl-row-in    { animation: pvl-row-in 0.3s ease-out both; }
+.pvl-sk        { animation: pvl-sk 1.4s ease-in-out infinite; }
+`;
+
+function TrackerLoadingSkeleton() {
+    return (
+        <>
+            <style>{PVL_TRACKER_STYLES}</style>
+            <div className="grid gap-6 md:grid-cols-2">
+                {[0, 1].map((mi) => (
+                    <div key={mi} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+                        <div className="flex gap-4 p-4 border-b border-slate-100">
+                            <div className="pvl-sk h-11 w-11 rounded-full bg-slate-200 shrink-0" style={{ animationDelay: `${mi * 180}ms` }} />
+                            <div className="flex-1 space-y-2 pt-1">
+                                <div className="pvl-sk h-4 rounded bg-slate-200" style={{ width: '55%', animationDelay: `${mi * 180 + 80}ms` }} />
+                                <div className="pvl-sk h-3 rounded bg-slate-100" style={{ width: '75%', animationDelay: `${mi * 180 + 130}ms` }} />
+                            </div>
+                        </div>
+                        <div className="p-4 divide-y divide-slate-50">
+                            {[72, 88, 64, 78].map((w, i) => (
+                                <div key={i} className="py-2.5 flex items-center gap-3">
+                                    <div className="pvl-sk h-5 w-5 rounded border-2 border-slate-200 bg-slate-100 shrink-0" style={{ animationDelay: `${mi * 180 + i * 70}ms` }} />
+                                    <div className="pvl-sk h-3.5 rounded bg-slate-100 flex-1" style={{ maxWidth: `${w}%`, animationDelay: `${mi * 180 + i * 70 + 35}ms` }} />
+                                    <div className="pvl-sk h-4 w-14 rounded-full bg-slate-100 shrink-0" style={{ animationDelay: `${mi * 180 + i * 70 + 55}ms` }} />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </>
+    );
+}
+
 /** Как в pvl_platform.html */
 const CHECKLIST_TAG_LABEL = {
     video: '🎬 Видео',
@@ -246,6 +295,8 @@ export function PlatformCourseModulesGrid({
         onlyModuleId != null ? 'grid gap-6 grid-cols-1 max-w-3xl' : 'grid gap-6 md:grid-cols-2';
 
     return (
+        <>
+        <style>{PVL_TRACKER_STYLES}</style>
         <div className={gridClass}>
             {modulesToShow.map((mod) => {
                 const numCls = variant === 'lessons'
@@ -284,7 +335,7 @@ export function PlatformCourseModulesGrid({
                                     const isHwStep = tag === 'task' && !!hwInfo;
                                     const hwBadge = hwInfo ? (HW_STATUS_BADGE[hwInfo.status] || HW_STATUS_BADGE.not_started) : null;
                                     return (
-                                        <li key={key}>
+                                        <li key={key} className="pvl-row-in" style={{ animationDelay: `${i * 35}ms` }}>
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -297,7 +348,7 @@ export function PlatformCourseModulesGrid({
                                                 className="w-full flex flex-wrap sm:flex-nowrap items-start gap-2 sm:gap-3 py-2.5 px-2.5 rounded-xl text-left transition-colors rounded-lg px-1 hover:bg-slate-50/80"
                                             >
                                                 {isHwStep ? (
-                                                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] ${
+                                                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] transition-colors duration-200 ${
                                                         hwInfo.status === 'accepted'
                                                             ? 'border-emerald-500 bg-emerald-500 text-white'
                                                             : hwInfo.status === 'pending_review' || hwInfo.status === 'submitted'
@@ -306,17 +357,17 @@ export function PlatformCourseModulesGrid({
                                                                     ? 'border-orange-400 bg-orange-50 text-orange-600'
                                                                     : 'border-[#C4956A]/40 bg-white text-[#C4956A]'
                                                     }`}>
-                                                        {hwInfo.status === 'accepted' ? '✓' : hwInfo.status === 'pending_review' || hwInfo.status === 'submitted' ? '…' : hwInfo.status === 'revision_requested' ? '!' : ''}
+                                                        {hwInfo.status === 'accepted' ? <span className="pvl-check-pop">✓</span> : hwInfo.status === 'pending_review' || hwInfo.status === 'submitted' ? '…' : hwInfo.status === 'revision_requested' ? '!' : ''}
                                                     </span>
                                                 ) : (
                                                     <span
-                                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
+                                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors duration-200 ${isDone ? 'border-emerald-500 bg-emerald-500 text-white' : item.anchor ? 'border-emerald-300' : 'border-slate-200'}`}
                                                         aria-label={isDone ? 'Шаг отмечен' : 'Шаг не отмечен'}
                                                     >
-                                                        {isDone ? '✓' : ''}
+                                                        {isDone ? <span className="pvl-check-pop">✓</span> : null}
                                                     </span>
                                                 )}
-                                                <span className={`text-sm flex-1 min-w-0 leading-snug ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
+                                                <span className={`text-sm flex-1 min-w-0 leading-snug transition-colors duration-200 ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{item.text}</span>
                                                 <span className={`shrink-0 text-[10px] font-medium rounded-full border px-2 py-0.5 ${tagPillClass(tag)}`}>
                                                     {tagLabelFor(tag)}
                                                 </span>
@@ -336,6 +387,7 @@ export function PlatformCourseModulesGrid({
                 );
             })}
         </div>
+        </>
     );
 }
 
@@ -758,18 +810,25 @@ export function StudentCourseTracker({
 
             <div className="flex flex-wrap items-end justify-between gap-2">
                 <h3 className="font-display text-lg text-slate-800">Модули курса</h3>
+                {refreshKey === 0 && (
+                    <span className="text-xs text-slate-400 animate-pulse">Загружаем данные…</span>
+                )}
             </div>
-            <PlatformCourseModulesGrid
-                studentId={studentId}
-                modules={resolvedModules}
-                variant="tracker"
-                checkedOverride={checked}
-                onToggleItem={toggleItem}
-                interactionMode="open"
-                onOpenItem={({ key }) => setActiveStepKey(key)}
-                navigate={navigate}
-                routePrefix={routePrefix}
-            />
+            {refreshKey === 0 ? (
+                <TrackerLoadingSkeleton />
+            ) : (
+                <PlatformCourseModulesGrid
+                    studentId={studentId}
+                    modules={resolvedModules}
+                    variant="tracker"
+                    checkedOverride={checked}
+                    onToggleItem={toggleItem}
+                    interactionMode="open"
+                    onOpenItem={({ key }) => setActiveStepKey(key)}
+                    navigate={navigate}
+                    routePrefix={routePrefix}
+                />
+            )}
 
             <section className="rounded-2xl border border-amber-100 bg-amber-50/40 p-5 text-sm text-slate-700 shadow-sm">
                 <div className="font-display text-lg text-[#4A3728] mb-1">Финал: сертификация и СЗ</div>

@@ -2243,7 +2243,7 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                                         <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[10px] leading-tight text-amber-900">Доработок: {t.revisionCycles}</span>
                                     ) : <span className="inline-block h-[18px]" />}
                                 </div>
-                                <div className="text-[11px] text-slate-500 line-clamp-1 self-end">{t.mentorCommentPreview || 'Без комментария'}</div>
+                                <div className="text-[11px] text-slate-500 line-clamp-1 self-end">{pvlHtmlToPlainText(t.mentorCommentPreview) || 'Без комментария'}</div>
                                 <div className="pt-2">
                                     <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] leading-tight text-slate-700">Открыть задание</span>
                                 </div>
@@ -3051,7 +3051,7 @@ function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
                         </div>
                         <div className="mt-2 text-xs">
                             {t.mentorCommentPreview ? (
-                                <p className="text-slate-700">Комментарий ментора: {t.mentorCommentPreview}</p>
+                                <p className="text-slate-700">Комментарий ментора: {pvlHtmlToPlainText(t.mentorCommentPreview)}</p>
                             ) : (
                                 <p className="text-slate-400">Комментарий пока отсутствует</p>
                             )}
@@ -8073,13 +8073,12 @@ export default function PvlPrototypeApp({
         };
     }, [embeddedInGarden]);
 
-    // Повторный синк через 90 сек: подхватывает изменения в БД от других устройств
-    // (например, если миграция прошла на другом девайсе уже после загрузки этой сессии)
+    // Повторный синк через 30 сек: подхватывает изменения в БД от других устройств
     useEffect(() => {
         const id = setTimeout(async () => {
             try { await syncPvlActorsFromGarden(); } catch { /* ignore */ }
             forceRefresh();
-        }, 90 * 1000);
+        }, 30 * 1000);
         return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

@@ -1876,19 +1876,39 @@ async function persistTrackerProgressToDb(studentId) {
             sqlWeekId = week ? sqlWeekIdByMockWeekId.get(String(week.id)) : null;
         }
         if (!sqlWeekId) continue;
+        // Захватываем sqlWeekId в локальную переменную до async-замыкания
+        const capturedWeekId = sqlWeekId;
+        const capturedKeys = [...keys];
         fireAndForget(async () => {
             await ensurePvlStudentInDb(studentId);
+            // Читаем текущее состояние из PostgREST и мержим — аддитивно, как course_progress в саду.
+            // Это гарантирует: сохранение с меньшим числом ключей (другой девайс) не затирает бо́льшее.
+            const rows = await pvlPostgrestApi.getStudentCourseProgress(sqlStudentId).catch(() => []);
+            const existingRow = (rows || []).find((r) => String(r.week_id) === String(capturedWeekId));
+            const dbKeys = (existingRow?.payload?.checkedKeys || []).filter((k) => k.startsWith('sid:'));
+            // Явно снятые на этом девайсе — не должны восстанавливаться из БД
+            const uncheckedLocally = new Set(
+                Object.keys(db.studentTrackerChecks?.[studentId] || {})
+                    .filter((k) => k.startsWith('sid:') && !db.studentTrackerChecks[studentId][k])
+            );
+            const mergedKeys = [...new Set([...dbKeys, ...capturedKeys])].filter((k) => !uncheckedLocally.has(k));
+            // Обновляем in-memory: добавляем ключи из БД, чтобы следующее сохранение не потеряло их
+            if (dbKeys.length > 0) {
+                const local = db.studentTrackerChecks[studentId] || {};
+                dbKeys.forEach((k) => { if (!uncheckedLocally.has(k) && !local[k]) local[k] = true; });
+                db.studentTrackerChecks[studentId] = local;
+            }
             return pvlPostgrestApi.upsertStudentCourseProgress(sqlStudentId, {
-                week_id: sqlWeekId,
-                lessons_completed: keys.length,
-                lessons_total: keys.length,
+                week_id: capturedWeekId,
+                lessons_completed: mergedKeys.length,
+                lessons_total: mergedKeys.length,
                 homework_completed: 0,
                 homework_total: 0,
-                is_week_closed: keys.length > 0,
+                is_week_closed: mergedKeys.length > 0,
                 auto_points_awarded: false,
-                payload: { checkedKeys: keys },
+                payload: { checkedKeys: mergedKeys },
             });
-        }, { table: 'pvl_student_course_progress', endpoint: '/pvl_student_course_progress', id: `${sqlStudentId}:${sqlWeekId}` });
+        }, { table: 'pvl_student_course_progress', endpoint: '/pvl_student_course_progress', id: `${sqlStudentId}:${capturedWeekId}` });
     }
 }
 
@@ -2406,7 +2426,13 @@ export const studentApi = {
         return { ...(db.studentTrackerChecks?.[studentId] || {}) };
     },
     saveTrackerChecklist(studentId, checkedMap = {}) {
-        db.studentTrackerChecks[studentId] = { ...(checkedMap || {}) };
+        // Аддитивное слияние: не стираем существующие true-значения из других устройств.
+        // Семантика: checkedMap перезаписывает то, что явно в нём есть (включая false = снять),
+        // всё остальное из текущего in-memory состояния сохраняется.
+        db.studentTrackerChecks[studentId] = {
+            ...(db.studentTrackerChecks[studentId] || {}),
+            ...(checkedMap || {}),
+        };
         persistTrackerProgressToDb(studentId); // async, намеренно без await — не блокируем UI
         return db.studentTrackerChecks[studentId];
     },

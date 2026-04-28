@@ -8073,6 +8073,17 @@ export default function PvlPrototypeApp({
         };
     }, [embeddedInGarden]);
 
+    // Повторный синк через 90 сек: подхватывает изменения в БД от других устройств
+    // (например, если миграция прошла на другом девайсе уже после загрузки этой сессии)
+    useEffect(() => {
+        const id = setTimeout(async () => {
+            try { await syncPvlActorsFromGarden(); } catch { /* ignore */ }
+            forceRefresh();
+        }, 90 * 1000);
+        return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const navigate = useCallback((nextRoute) => {
         const allowedRoute = redirectToAllowedRoute(role, nextRoute);
         if (!PVL_REVIEW_NAV_UNLOCK && allowedRoute !== nextRoute) {

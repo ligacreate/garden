@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/dataService';
 import PvlTaskDetailView from './PvlTaskDetailView';
+import { pvlHtmlToPlainText } from '../utils/pvlPlainText';
 
 /** Дата старта курса ПВЛ 2026 (поток 1). При смене потока — обновить здесь. */
 const PVL_COURSE_START_DATE = '2026-04-15';
@@ -339,7 +340,7 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Сдано: {item.submittedAt || '—'}</div>
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Комментарии: {item.mentorCommentCount}</div>
                         </div>
-                        <p className="text-sm text-[#2C1810] mt-2">{item.mentorCommentPreview}</p>
+                        <p className="text-sm text-[#2C1810] mt-2">{pvlHtmlToPlainText(item.mentorCommentPreview)}</p>
                         <div className="mt-2 flex items-center justify-between">
                             <span className="text-xs text-[#9B8B80]">Вложения: {item.attachments.join(', ')}</span>
                             <button
@@ -658,7 +659,7 @@ export default function PvlStudentCabinetView({ user }) {
                         status: g.completed ? 'принято' : 'в работе',
                         deadlineAt: g.deadline || '—',
                         submittedAt: g.completed_at || '—',
-                        mentorCommentPreview: g.description || 'Комментарий ментора пока отсутствует.',
+                        mentorCommentPreview: pvlHtmlToPlainText(g.description) || 'Комментарий ментора пока отсутствует.',
                         mentorCommentCount: 0,
                         hasUnreadMentorComment: false,
                         score: 0,

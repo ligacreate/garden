@@ -137,6 +137,33 @@ body::before {
     font-family: var(--font-display);
   }
 
+  /* Видимая полоса прокрутки (основная колонка, встречи и т.д.; класс уже используется в разметке) */
+  .custom-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-slate-300);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-slate-400);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   /* ПВЛ, встроенный в «Сад»: те же шрифты, что у основного UI (Onest), без Bricolage в заголовках */
   .pvl-garden-embed .font-display {
     font-family: var(--font-sans);

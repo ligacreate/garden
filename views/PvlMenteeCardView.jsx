@@ -3,6 +3,8 @@ import { RISK_LEVEL } from '../data/pvl/enums';
 import { pvlDomainApi } from '../services/pvlMockApi';
 import { normalizePvlRiskLevel } from '../selectors/pvlCalculators';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
+import { pvlHtmlToPlainText } from '../utils/pvlPlainText';
+import { sanitizeHomeworkAnswerHtml } from '../utils/pvlHomeworkAnswerRichText';
 
 export const menteeProfile = {
     id: '',
@@ -257,7 +259,7 @@ export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
                                 <div>Сдано: {t.submittedAt ? formatPvlDateTime(t.submittedAt) : '—'}</div>
                                 <div className="tabular-nums">Баллы: {t.score}/{t.maxScore}</div>
                             </div>
-                            <p className="mt-2 text-xs text-slate-500">{t.mentorCommentPreview || 'Комментарий пока отсутствует'}</p>
+                            <p className="mt-2 text-xs text-slate-500">{pvlHtmlToPlainText(t.mentorCommentPreview) || 'Комментарий пока отсутствует'}</p>
                         </article>
                     );
                 })}
@@ -380,7 +382,7 @@ export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
                             </span>
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-xs text-[#9B8B80]">{task.mentorCommentPreview || 'Комментария пока нет'}</span>
+                            <span className="text-xs text-[#9B8B80]">{pvlHtmlToPlainText(task.mentorCommentPreview) || 'Комментария пока нет'}</span>
                             <button onClick={() => onOpenTask(task.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть задание</button>
                         </div>
                     </div>
@@ -507,7 +509,7 @@ export function renderThreadFeed(feed, unreadOnly) {
                 <div className="text-sm font-medium text-[#4A3728]">{msg.authorName} <span className="text-xs text-[#9B8B80]">({msg.authorRole})</span></div>
                 <div className="text-xs text-[#9B8B80]">{msg.createdAt}</div>
             </div>
-            <p className="text-sm text-[#2C1810] mt-1">{msg.text}</p>
+            <div className="text-sm text-[#2C1810] mt-1" dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(msg.text || '') }} />
             {msg.isUnread ? <p className="text-xs text-rose-700 mt-1">Непрочитано</p> : null}
         </article>
     ));

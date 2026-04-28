@@ -909,8 +909,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             )}
 
 
-            {/* Main Content Area */}
-            <div className="flex min-h-0 flex-1 overflow-y-auto pb-20 md:pb-6 md:pt-6 pt-20 relative isolate">
+            {/* Main Content Area — flex-col: иначе фон и контент в одну строку и прокрутка ломается; min-w-0 — корректный flex-1; custom-scrollbar — явный бегунок как в сайдбаре */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto custom-scrollbar pb-20 md:pb-6 md:pt-6 pt-20 relative isolate">
                 {/* Ambient Background - Global */}
                 <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_rgba(63,139,107,0.18),_transparent_55%),radial-gradient(circle_at_20%_20%,_rgba(143,127,106,0.15),_transparent_40%),linear-gradient(180deg,_#fbf9f3_0%,_#f7f3ea_100%)] -z-50" />
 

@@ -712,16 +712,22 @@ async function syncTrackerAndHomeworkFromDb() {
         const sqlStudentId = studentSqlIdByUserId(userId);
         if (!sqlStudentId) return;
 
-        const [progressRows, subs, contentProgressRows] = await Promise.all([
+        const [checklistItems, progressRows, subs, contentProgressRows] = await Promise.all([
+            pvlPostgrestApi.listStudentChecklistItems(sqlStudentId).catch(() => []),
             pvlPostgrestApi.getStudentCourseProgress(sqlStudentId),
             pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId),
             pvlPostgrestApi.listStudentContentProgress(sqlStudentId).catch(() => []),
         ]);
 
         const checked = {};
+        // Основной источник: pvl_checklist_items (одна строка на айтем, конфликт невозможен)
+        (checklistItems || []).forEach((row) => {
+            if (row?.content_item_id) checked[`sid:${row.content_item_id}`] = true;
+        });
+        // Fallback: pvl_student_course_progress.payload.checkedKeys (старые данные до миграции 025)
         (progressRows || []).forEach((row) => {
             const keys = row?.payload?.checkedKeys;
-            if (Array.isArray(keys)) keys.forEach((k) => { checked[String(k)] = true; });
+            if (Array.isArray(keys)) keys.filter(k => k.startsWith('sid:')).forEach((k) => { checked[String(k)] = true; });
             const mockWeekId = Array.from(sqlWeekIdByMockWeekId.entries()).find(([, sqlId]) => sqlId === row.week_id)?.[0];
             const week = (db.courseWeeks || []).find((w) => w.id === mockWeekId);
             if (week) {
@@ -2425,15 +2431,48 @@ export const studentApi = {
     getTrackerChecklist(studentId) {
         return { ...(db.studentTrackerChecks?.[studentId] || {}) };
     },
+    checkItem(studentId, contentItemId) {
+        // Обновляем in-memory
+        const checks = db.studentTrackerChecks[studentId] || {};
+        checks[`sid:${contentItemId}`] = true;
+        db.studentTrackerChecks[studentId] = checks;
+        // INSERT одной строки — ON CONFLICT DO NOTHING, конфликт устройств невозможен
+        if (!pvlPostgrestApi.isEnabled()) return;
+        fireAndForget(async () => {
+            await ensurePvlStudentInDb(studentId);
+            const sqlStudentId = studentSqlIdByUserId(studentId);
+            if (!sqlStudentId) return;
+            return pvlPostgrestApi.insertChecklistItem(sqlStudentId, contentItemId);
+        }, { table: 'pvl_checklist_items', endpoint: '/pvl_checklist_items', id: `${studentId}:${contentItemId}` });
+    },
+    uncheckItem(studentId, contentItemId) {
+        // Обновляем in-memory
+        const checks = db.studentTrackerChecks[studentId] || {};
+        checks[`sid:${contentItemId}`] = false;
+        db.studentTrackerChecks[studentId] = checks;
+        // DELETE одной строки
+        if (!pvlPostgrestApi.isEnabled()) return;
+        fireAndForget(async () => {
+            const sqlStudentId = studentSqlIdByUserId(studentId);
+            if (!sqlStudentId) return;
+            return pvlPostgrestApi.deleteChecklistItem(sqlStudentId, contentItemId);
+        }, { table: 'pvl_checklist_items', endpoint: '/pvl_checklist_items', id: `${studentId}:${contentItemId}:del` });
+    },
     saveTrackerChecklist(studentId, checkedMap = {}) {
-        // Аддитивное слияние: не стираем существующие true-значения из других устройств.
-        // Семантика: checkedMap перезаписывает то, что явно в нём есть (включая false = снять),
-        // всё остальное из текущего in-memory состояния сохраняется.
+        // Используется из миграции и DB-wins (массовая запись).
+        // Каждый sid:-ключ → отдельный INSERT/DELETE.
         db.studentTrackerChecks[studentId] = {
             ...(db.studentTrackerChecks[studentId] || {}),
             ...(checkedMap || {}),
         };
-        persistTrackerProgressToDb(studentId); // async, намеренно без await — не блокируем UI
+        if (pvlPostgrestApi.isEnabled()) {
+            Object.entries(checkedMap || {}).forEach(([key, val]) => {
+                if (!key.startsWith('sid:')) return;
+                const contentItemId = key.slice(4);
+                if (val) this.checkItem(studentId, contentItemId);
+                else this.uncheckItem(studentId, contentItemId);
+            });
+        }
         return db.studentTrackerChecks[studentId];
     },
     getStudentDashboard(studentId) {

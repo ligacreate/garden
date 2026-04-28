@@ -192,18 +192,19 @@ export function usePlatformStepChecklist(studentId, refreshKey = 0) {
 
             if (dbHasData || studentLoaded) {
                 dbConfirmedRef.current = true;
-                // Применяем pending-toggles поверх DB-состояния
                 const merged = { ...fromDb };
-                pendingTogglesRef.current.forEach((val, key) => { merged[key] = val; });
-                const hasPending = pendingTogglesRef.current.size > 0;
+                // Применяем pending-toggles — каждый как отдельный INSERT/DELETE
+                pendingTogglesRef.current.forEach((val, key) => {
+                    merged[key] = val;
+                    if (key.startsWith('sid:')) {
+                        const cid = key.slice(4);
+                        if (val) pvlDomainApi.studentApi.checkItem(studentId, cid);
+                        else pvlDomainApi.studentApi.uncheckItem(studentId, cid);
+                    }
+                });
                 pendingTogglesRef.current.clear();
-
                 setChecked(merged);
                 localStorage.setItem(storageKey, JSON.stringify(merged));
-                if (hasPending || Object.values(merged).some((v, i) => v !== Object.values(fromDb)[i])) {
-                    // Есть расхождение (pending toggles) — пишем объединённое состояние в DB
-                    pvlDomainApi.studentApi.saveTrackerChecklist(studentId, merged);
-                }
             }
             // Если DB ещё не загружена — продолжаем показывать localStorage, не трогаем DB.
         } catch {
@@ -213,15 +214,19 @@ export function usePlatformStepChecklist(studentId, refreshKey = 0) {
 
     const toggleItem = useCallback((key) => {
         setChecked((prev) => {
-            const next = { ...prev, [key]: !prev[key] };
+            const wasChecked = !!prev[key];
+            const next = { ...prev, [key]: !wasChecked };
             try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
 
             if (dbConfirmedRef.current) {
-                // DB подтверждена — пишем напрямую
-                pvlDomainApi.studentApi.saveTrackerChecklist(studentId, next);
+                // DB подтверждена — один INSERT или DELETE, не весь blob
+                if (key.startsWith('sid:')) {
+                    const cid = key.slice(4);
+                    if (!wasChecked) pvlDomainApi.studentApi.checkItem(studentId, cid);
+                    else pvlDomainApi.studentApi.uncheckItem(studentId, cid);
+                }
             } else {
-                // DB ещё не загружена — ставим в очередь, запишем поверх DB при её загрузке
-                pendingTogglesRef.current.set(key, next[key]);
+                pendingTogglesRef.current.set(key, !wasChecked);
             }
             return next;
         });

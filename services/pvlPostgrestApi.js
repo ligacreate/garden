@@ -376,6 +376,27 @@ export const pvlPostgrestApi = {
     async listHomeworkItems() {
         return request('pvl_homework_items', { params: { select: '*', order: 'sort_order.asc' } });
     },
+    // pvl_checklist_items — одна строка на (студент × контент-айтем), конфликт невозможен
+    async listStudentChecklistItems(studentId) {
+        return request('pvl_checklist_items', {
+            params: { select: 'content_item_id', student_id: `eq.${studentId}` },
+        });
+    },
+    async insertChecklistItem(studentId, contentItemId) {
+        return request('pvl_checklist_items', {
+            method: 'POST',
+            params: { on_conflict: 'student_id,content_item_id' },
+            body: [{ student_id: studentId, content_item_id: contentItemId }],
+            prefer: 'resolution=ignore-duplicates',
+        });
+    },
+    async deleteChecklistItem(studentId, contentItemId) {
+        return request('pvl_checklist_items', {
+            method: 'DELETE',
+            params: { student_id: `eq.${studentId}`, content_item_id: `eq.${contentItemId}` },
+        });
+    },
+
     async getStudentCourseProgress(studentId) {
         return request('pvl_student_course_progress', {
             params: { select: '*', student_id: `eq.${studentId}` },

@@ -308,14 +308,14 @@ const ShopAdmin = ({ onNotify }) => {
 
     const handleSave = async () => {
         if (!form.name.trim()) { onNotify('Введите название'); return; }
-        if (!form.price) { onNotify('Введите цену'); return; }
+        if (!form.price && !form.promo_code.trim()) { onNotify('Укажите цену или промокод'); return; }
 
         setSaving(true);
         try {
             const payload = {
                 name: form.name.trim(),
                 description: form.description.trim() || null,
-                price: parseInt(form.price, 10),
+                price: form.price ? parseInt(form.price, 10) : null,
                 old_price: form.old_price ? parseInt(form.old_price, 10) : null,
                 image_url: form.image_url.trim() || null,
                 contact_telegram: form.contact_telegram.trim() || null,

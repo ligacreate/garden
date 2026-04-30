@@ -96,16 +96,6 @@ const ProductCard = ({ item, onContact }) => {
 
                 {hasPromo ? (
                     <div className="mt-auto pt-2 space-y-3">
-                        <div className="flex items-baseline gap-2">
-                            {item.old_price && (
-                                <span className="text-sm text-slate-400 line-through">
-                                    {item.old_price.toLocaleString('ru-RU')} ₽
-                                </span>
-                            )}
-                            <span className="text-2xl font-display font-semibold text-slate-900">
-                                {item.price.toLocaleString('ru-RU')} ₽
-                            </span>
-                        </div>
                         <PromoCode code={item.promo_code} />
                         <a
                             href={item.link_url}
@@ -125,7 +115,7 @@ const ProductCard = ({ item, onContact }) => {
                                 </div>
                             )}
                             <div className="text-2xl font-display font-semibold text-slate-900">
-                                {item.price.toLocaleString('ru-RU')} ₽
+                                {item.price != null ? `${item.price.toLocaleString('ru-RU')} ₽` : '—'}
                             </div>
                         </div>
                         <Button variant="primary" onClick={() => onContact(item, selected)}>

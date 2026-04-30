@@ -41,7 +41,7 @@ const PromoCode = ({ code }) => {
         >
             <span className="text-xs text-slate-400 uppercase tracking-widest whitespace-nowrap">Промокод</span>
             <span className="font-mono font-bold text-blue-700 tracking-wider">{code}</span>
-            <span className="ml-auto text-[10px] text-blue-400 whitespace-nowrap">{copied ? 'скопировано' : 'нажми'}</span>
+            {copied && <span className="ml-auto text-[10px] text-blue-400 whitespace-nowrap">скопировано</span>}
         </button>
     );
 };

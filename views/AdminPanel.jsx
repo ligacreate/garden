@@ -391,7 +391,8 @@ const ShopAdmin = ({ onNotify }) => {
                                 <div className="min-w-0">
                                     <div className="font-medium text-slate-800 truncate">{item.name}</div>
                                     <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                                        <span>{item.price.toLocaleString('ru-RU')} ₽</span>
+                                        {item.price != null && <span>{item.price.toLocaleString('ru-RU')} ₽</span>}
+                                        {item.promo_code && <span className="text-blue-600 font-mono">{item.promo_code}</span>}
                                         {item.old_price && <span className="line-through">{item.old_price.toLocaleString('ru-RU')} ₽</span>}
                                         <span>•</span>
                                         <span className="uppercase tracking-wide">#{item.sort_order}</span>

@@ -4,7 +4,7 @@ import {
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap, MessagesSquare, Bell, Info, Languages, Library,
     Route, CalendarCheck2, BarChart3, BadgeCheck, MessageCircleQuestion,
-    CornerUpLeft, MessageCircle
+    CornerUpLeft, MessageCircle, ShoppingBag
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -881,6 +881,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
                                 <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                                 <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
+                                <SidebarItem icon={ShoppingBag} label="Магазин" active={view === 'market'} onClick={() => handleViewChange('market')} />
                                 {isAdmin && (
                                     <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
                                 )}

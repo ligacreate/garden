@@ -729,12 +729,14 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         active={view === 'library'}
                                         onClick={() => handleViewChange('library')}
                                     />
-                                    <SidebarItem
-                                        icon={ShoppingBag}
-                                        label="Магазин"
-                                        active={view === 'market'}
-                                        onClick={() => handleViewChange('market')}
-                                    />
+                                    {!isApplicant && (
+                                        <SidebarItem
+                                            icon={ShoppingBag}
+                                            label="Магазин"
+                                            active={view === 'market'}
+                                            onClick={() => handleViewChange('market')}
+                                        />
+                                    )}
                                     {isAdmin && (
                                         <SidebarItem
                                             icon={MessagesSquare}
@@ -887,7 +889,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
                                 <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                                 <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
-                                <SidebarItem icon={ShoppingBag} label="Магазин" active={view === 'market'} onClick={() => handleViewChange('market')} />
+                                {!isApplicant && <SidebarItem icon={ShoppingBag} label="Магазин" active={view === 'market'} onClick={() => handleViewChange('market')} />}
                                 {isAdmin && (
                                     <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
                                 )}

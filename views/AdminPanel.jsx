@@ -250,6 +250,7 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 const SHOP_EMPTY_FORM = {
     name: '', description: '', price: '', old_price: '',
     image_url: '', contact_telegram: '', contact_whatsapp: '',
+    promo_code: '', link_url: '',
     sort_order: '0', is_active: true,
     options_label: '', options_values: ''
 };
@@ -293,6 +294,8 @@ const ShopAdmin = ({ onNotify }) => {
             image_url: item.image_url || '',
             contact_telegram: item.contact_telegram || '',
             contact_whatsapp: item.contact_whatsapp || '',
+            promo_code: item.promo_code || '',
+            link_url: item.link_url || '',
             sort_order: String(item.sort_order ?? 0),
             is_active: item.is_active !== false,
             options_label: item.options?.label || '',
@@ -317,6 +320,8 @@ const ShopAdmin = ({ onNotify }) => {
                 image_url: form.image_url.trim() || null,
                 contact_telegram: form.contact_telegram.trim() || null,
                 contact_whatsapp: form.contact_whatsapp.trim() || null,
+                promo_code: form.promo_code.trim() || null,
+                link_url: form.link_url.trim() || null,
                 sort_order: parseInt(form.sort_order, 10) || 0,
                 is_active: form.is_active,
                 options: form.options_label.trim()
@@ -428,6 +433,11 @@ const ShopAdmin = ({ onNotify }) => {
                     <div className="grid grid-cols-2 gap-4">
                         <Input label="Telegram" value={form.contact_telegram} onChange={f('contact_telegram')} placeholder="@username" />
                         <Input label="WhatsApp" value={form.contact_whatsapp} onChange={f('contact_whatsapp')} placeholder="79001234567" />
+                    </div>
+                    <div className="bg-blue-50/60 rounded-2xl p-4 space-y-3">
+                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Для товаров со скидкой по промокоду</div>
+                        <Input label="Промокод" value={form.promo_code} onChange={f('promo_code')} placeholder="GARDEN50" />
+                        <Input label="Ссылка перехода" value={form.link_url} onChange={f('link_url')} placeholder="https://izdatelstvo.skrebeyko.ru/..." />
                     </div>
                     <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
                         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Варианты выбора (опционально)</div>

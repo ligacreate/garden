@@ -26,10 +26,31 @@ const DiscountBadge = ({ price, oldPrice }) => {
     );
 };
 
+const PromoCode = ({ code }) => {
+    const [copied, setCopied] = useState(false);
+    const copy = () => {
+        navigator.clipboard.writeText(code).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+    return (
+        <button
+            onClick={copy}
+            className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-left transition-colors hover:bg-blue-100"
+        >
+            <span className="text-xs text-slate-400 uppercase tracking-widest whitespace-nowrap">Промокод</span>
+            <span className="font-mono font-bold text-blue-700 tracking-wider">{code}</span>
+            <span className="ml-auto text-[10px] text-blue-400 whitespace-nowrap">{copied ? 'скопировано' : 'нажми'}</span>
+        </button>
+    );
+};
+
 const ProductCard = ({ item, onContact }) => {
     const [selected, setSelected] = useState(null);
     const opts = item.options;
     const hasOpts = opts?.label && Array.isArray(opts.values) && opts.values.length > 0;
+    const hasPromo = Boolean(item.promo_code && item.link_url);
 
     return (
         <div className="surface-card flex flex-col overflow-hidden">
@@ -73,21 +94,45 @@ const ProductCard = ({ item, onContact }) => {
                     </div>
                 )}
 
-                <div className="flex items-end justify-between mt-auto pt-2">
-                    <div>
-                        {item.old_price && (
-                            <div className="text-xs text-slate-400 line-through mb-0.5">
-                                {item.old_price.toLocaleString('ru-RU')} ₽
-                            </div>
-                        )}
-                        <div className="text-2xl font-display font-semibold text-slate-900">
-                            {item.price.toLocaleString('ru-RU')} ₽
+                {hasPromo ? (
+                    <div className="mt-auto pt-2 space-y-3">
+                        <div className="flex items-baseline gap-2">
+                            {item.old_price && (
+                                <span className="text-sm text-slate-400 line-through">
+                                    {item.old_price.toLocaleString('ru-RU')} ₽
+                                </span>
+                            )}
+                            <span className="text-2xl font-display font-semibold text-slate-900">
+                                {item.price.toLocaleString('ru-RU')} ₽
+                            </span>
                         </div>
+                        <PromoCode code={item.promo_code} />
+                        <a
+                            href={item.link_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-primary w-full justify-center"
+                        >
+                            Перейти
+                        </a>
                     </div>
-                    <Button variant="primary" onClick={() => onContact(item, selected)}>
-                        Связаться
-                    </Button>
-                </div>
+                ) : (
+                    <div className="flex items-end justify-between mt-auto pt-2">
+                        <div>
+                            {item.old_price && (
+                                <div className="text-xs text-slate-400 line-through mb-0.5">
+                                    {item.old_price.toLocaleString('ru-RU')} ₽
+                                </div>
+                            )}
+                            <div className="text-2xl font-display font-semibold text-slate-900">
+                                {item.price.toLocaleString('ru-RU')} ₽
+                            </div>
+                        </div>
+                        <Button variant="primary" onClick={() => onContact(item, selected)}>
+                            Связаться
+                        </Button>
+                    </div>
+                )}
             </div>
         </div>
     );

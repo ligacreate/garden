@@ -729,6 +729,12 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         active={view === 'library'}
                                         onClick={() => handleViewChange('library')}
                                     />
+                                    <SidebarItem
+                                        icon={ShoppingBag}
+                                        label="Магазин"
+                                        active={view === 'market'}
+                                        onClick={() => handleViewChange('market')}
+                                    />
                                     {isAdmin && (
                                         <SidebarItem
                                             icon={MessagesSquare}

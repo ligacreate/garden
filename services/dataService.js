@@ -1327,6 +1327,44 @@ class RemoteApiService {
         }
     }
 
+    // --- Shop Items ---
+
+    async getShopItems({ activeOnly = false } = {}) {
+        const params = { order: 'sort_order.asc' };
+        if (activeOnly) params['is_active'] = 'eq.true';
+        const { data } = await postgrestFetch('shop_items', params);
+        return data || [];
+    }
+
+    async createShopItem(item) {
+        const sanitized = this._sanitizeFields(item, {
+            plain: ['name', 'description', 'image_url', 'contact_telegram', 'contact_whatsapp']
+        });
+        const { data } = await postgrestFetch('shop_items', {}, {
+            method: 'POST',
+            body: sanitized,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
+    }
+
+    async updateShopItem(id, fields) {
+        const sanitized = this._sanitizeFields(fields, {
+            plain: ['name', 'description', 'image_url', 'contact_telegram', 'contact_whatsapp']
+        });
+        const { data } = await postgrestFetch('shop_items', { id: `eq.${id}` }, {
+            method: 'PATCH',
+            body: sanitized,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
+    }
+
+    async deleteShopItem(id) {
+        await postgrestFetch('shop_items', { id: `eq.${id}` }, { method: 'DELETE' });
+        return true;
+    }
+
     async _uploadToS3(file, folder) {
         if (!file) return null;
         const contentType = file.type || 'image/jpeg';

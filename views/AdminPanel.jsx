@@ -4,6 +4,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
 import ConfirmationModal from '../components/ConfirmationModal';
+import ModalShell from '../components/ModalShell';
 import { api } from '../services/dataService';
 import { getMeetingInstant } from '../utils/meetingTime';
 import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
@@ -242,6 +243,227 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
                     </div>
                 </div>
             </div>
+        </div>
+    );
+};
+
+const SHOP_EMPTY_FORM = {
+    name: '', description: '', price: '', old_price: '',
+    image_url: '', contact_telegram: '', contact_whatsapp: '',
+    sort_order: '0', is_active: true,
+    options_label: '', options_values: ''
+};
+
+const ShopAdmin = ({ onNotify }) => {
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [editing, setEditing] = useState(null);
+    const [form, setForm] = useState(SHOP_EMPTY_FORM);
+    const [saving, setSaving] = useState(false);
+    const [confirm, setConfirm] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
+    const load = async () => {
+        setLoading(true);
+        try {
+            const data = await api.getShopItems();
+            setItems(data || []);
+        } catch (e) {
+            onNotify(e?.message || 'Ошибка загрузки товаров');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { load(); }, []);
+
+    const openNew = () => {
+        setEditing(null);
+        setForm(SHOP_EMPTY_FORM);
+        setModalOpen(true);
+    };
+
+    const openEdit = (item) => {
+        setEditing(item);
+        setForm({
+            name: item.name || '',
+            description: item.description || '',
+            price: String(item.price || ''),
+            old_price: String(item.old_price || ''),
+            image_url: item.image_url || '',
+            contact_telegram: item.contact_telegram || '',
+            contact_whatsapp: item.contact_whatsapp || '',
+            sort_order: String(item.sort_order ?? 0),
+            is_active: item.is_active !== false,
+            options_label: item.options?.label || '',
+            options_values: (item.options?.values || []).join(', ')
+        });
+        setModalOpen(true);
+    };
+
+    const f = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
+
+    const handleSave = async () => {
+        if (!form.name.trim()) { onNotify('Введите название'); return; }
+        if (!form.price) { onNotify('Введите цену'); return; }
+
+        setSaving(true);
+        try {
+            const payload = {
+                name: form.name.trim(),
+                description: form.description.trim() || null,
+                price: parseInt(form.price, 10),
+                old_price: form.old_price ? parseInt(form.old_price, 10) : null,
+                image_url: form.image_url.trim() || null,
+                contact_telegram: form.contact_telegram.trim() || null,
+                contact_whatsapp: form.contact_whatsapp.trim() || null,
+                sort_order: parseInt(form.sort_order, 10) || 0,
+                is_active: form.is_active,
+                options: form.options_label.trim()
+                    ? {
+                        label: form.options_label.trim(),
+                        values: form.options_values.split(',').map(v => v.trim()).filter(Boolean)
+                    }
+                    : null
+            };
+
+            if (editing) {
+                await api.updateShopItem(editing.id, payload);
+                onNotify('Товар обновлён');
+            } else {
+                await api.createShopItem(payload);
+                onNotify('Товар добавлен');
+            }
+            setModalOpen(false);
+            await load();
+        } catch (e) {
+            onNotify(e?.message || 'Ошибка сохранения');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = (item) => {
+        setConfirm({
+            isOpen: true,
+            title: 'Удалить товар?',
+            message: `«${item.name}» будет удалён без возможности восстановления.`,
+            onConfirm: async () => {
+                try {
+                    await api.deleteShopItem(item.id);
+                    onNotify('Товар удалён');
+                    await load();
+                } catch (e) {
+                    onNotify(e?.message || 'Ошибка удаления');
+                }
+            }
+        });
+    };
+
+    return (
+        <div className="surface-card p-8 space-y-6">
+            <div className="flex items-center justify-between">
+                <h3 className="font-display font-semibold text-slate-900">Товары магазина ({items.length})</h3>
+                <Button variant="primary" onClick={openNew}>Добавить товар</Button>
+            </div>
+
+            {loading ? (
+                <div className="text-sm text-slate-400 py-4 text-center">Загрузка...</div>
+            ) : items.length === 0 ? (
+                <div className="text-sm text-slate-400 py-8 text-center">Нет товаров</div>
+            ) : (
+                <div className="space-y-3">
+                    {items.map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50/80 rounded-2xl border border-slate-100 group">
+                            <div className="flex items-center gap-4 min-w-0">
+                                {item.image_url ? (
+                                    <img src={item.image_url} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+                                ) : (
+                                    <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                                        <span className="text-slate-300 text-lg">📦</span>
+                                    </div>
+                                )}
+                                <div className="min-w-0">
+                                    <div className="font-medium text-slate-800 truncate">{item.name}</div>
+                                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                                        <span>{item.price.toLocaleString('ru-RU')} ₽</span>
+                                        {item.old_price && <span className="line-through">{item.old_price.toLocaleString('ru-RU')} ₽</span>}
+                                        <span>•</span>
+                                        <span className="uppercase tracking-wide">#{item.sort_order}</span>
+                                        <span>•</span>
+                                        <span className={item.is_active ? 'text-blue-600' : 'text-slate-400'}>
+                                            {item.is_active ? 'активен' : 'скрыт'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => openEdit(item)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Редактировать">
+                                    <Edit2 size={16} />
+                                </button>
+                                <button onClick={() => handleDelete(item)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Удалить">
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <ModalShell
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
+                title={editing ? 'Редактировать товар' : 'Новый товар'}
+                size="md"
+                align="start"
+            >
+                <div className="space-y-4">
+                    <Input label="Название *" value={form.name} onChange={f('name')} placeholder="Название товара" />
+                    <Input label="Описание" value={form.description} onChange={f('description')} placeholder="Короткое описание" />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input label="Цена (₽) *" type="number" value={form.price} onChange={f('price')} placeholder="3500" />
+                        <Input label="Старая цена (₽)" type="number" value={form.old_price} onChange={f('old_price')} placeholder="4900" />
+                    </div>
+                    <Input label="Ссылка на фото" value={form.image_url} onChange={f('image_url')} placeholder="https://..." />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input label="Telegram" value={form.contact_telegram} onChange={f('contact_telegram')} placeholder="@username" />
+                        <Input label="WhatsApp" value={form.contact_whatsapp} onChange={f('contact_whatsapp')} placeholder="79001234567" />
+                    </div>
+                    <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Варианты выбора (опционально)</div>
+                        <Input label="Метка" value={form.options_label} onChange={f('options_label')} placeholder="Материал кейса" />
+                        <Input label="Значения через запятую" value={form.options_values} onChange={f('options_values')} placeholder="Эко-кожа, Экозамша" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input label="Порядок сортировки" type="number" value={form.sort_order} onChange={f('sort_order')} />
+                        <label className="flex items-center gap-3 mt-6 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={form.is_active}
+                                onChange={e => setForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                                className="w-4 h-4 rounded accent-blue-600"
+                            />
+                            <span className="text-sm text-slate-700">Активен (виден в магазине)</span>
+                        </label>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <Button variant="secondary" onClick={() => setModalOpen(false)} disabled={saving}>Отмена</Button>
+                        <Button onClick={handleSave} disabled={saving} className="flex-1">
+                            {saving ? 'Сохраняем...' : (editing ? 'Сохранить' : 'Добавить')}
+                        </Button>
+                    </div>
+                </div>
+            </ModalShell>
+
+            <ConfirmationModal
+                isOpen={confirm.isOpen}
+                onClose={() => setConfirm(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirm.onConfirm}
+                title={confirm.title}
+                message={confirm.message}
+                confirmText="Удалить"
+                confirmVariant="danger"
+            />
         </div>
     );
 };
@@ -491,7 +713,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
 
                 <div className="flex gap-2 items-center justify-between">
                     <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
-                        {['stats', 'users', 'content', 'news', 'events'].map(t => (
+                        {['stats', 'users', 'content', 'news', 'events', 'shop'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => { setTab(t); sessionStorage.setItem('adminTab', t); }}
@@ -499,7 +721,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
-                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'events' ? 'События' : 'Новости'}
+                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'events' ? 'События' : t === 'shop' ? 'Магазин' : 'Новости'}
                             </button>
                         ))}
                     </div>
@@ -1344,6 +1566,8 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                     </div>
                 )}
             </div>
+
+                {tab === 'shop' && <ShopAdmin onNotify={onNotify} />}
 
             <ConfirmationModal
                 isOpen={confirmModal.isOpen}

@@ -376,6 +376,11 @@ export const pvlPostgrestApi = {
     async listHomeworkItems() {
         return request('pvl_homework_items', { params: { select: '*', order: 'sort_order.asc' } });
     },
+    async listPublishedHomeworkContentItems() {
+        return request('pvl_content_items', {
+            params: { select: 'id,title,content_type', status: 'eq.published', content_type: 'in.(homework,template,checklist,questionnaire)' },
+        });
+    },
     // pvl_checklist_items — одна строка на (студент × контент-айтем), конфликт невозможен
     async listStudentChecklistItems(studentId) {
         return request('pvl_checklist_items', {

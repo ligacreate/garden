@@ -670,7 +670,8 @@ async function ensureDbTrackerHomeworkStructure() {
         }
     }
     const byHomeworkExternal = new Map((hwRows || []).map((r) => [String(r.external_key || ''), r]));
-    /** Upsert каждой домашки которой ещё нет в БД (не только при size === 0 — db.homeworkTasks заполняется лениво). */
+
+    // Сканируем db.homeworkTasks (in-memory, заполняется лениво)
     for (const t of db.homeworkTasks || []) {
         if (!byHomeworkExternal.has(String(t.id))) {
             const sqlWeekId = sqlWeekIdByMockWeekId.get(String(t.weekId));
@@ -685,6 +686,30 @@ async function ensureDbTrackerHomeworkStructure() {
                 external_key: t.id,
             });
         }
+    }
+
+    // Сканируем pvl_content_items напрямую — ловим новые уроки, которые ещё не попали в db.homeworkTasks
+    try {
+        const publishedCiRows = await pvlPostgrestApi.listPublishedHomeworkContentItems();
+        for (const ci of publishedCiRows || []) {
+            const externalKey = `task-ci-${ci.id}`;
+            if (!byHomeworkExternal.has(externalKey)) {
+                // eslint-disable-next-line no-await-in-loop
+                await pvlPostgrestApi.upsertHomeworkItem({
+                    week_id: null,
+                    title: ci.title || 'Задание',
+                    item_type: 'homework',
+                    max_score: 20,
+                    is_control_point: false,
+                    sort_order: 0,
+                    external_key: externalKey,
+                });
+                byHomeworkExternal.set(externalKey, { external_key: externalKey });
+            }
+        }
+    } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[PVL DB] ensureDbTrackerHomeworkStructure: failed to sync content items', String(e?.message || e));
     }
     const homeworkRows = await pvlPostgrestApi.listHomeworkItems();
     sqlHomeworkIdByMockTaskId = new Map((homeworkRows || [])

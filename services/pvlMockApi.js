@@ -2092,26 +2092,41 @@ function contentItemIdFromPlacement(p) {
 
 /**
  * Опубликованные материалы раздела для роли и потока.
- * Важно: искать материал по contentItemId || contentId (как в hasPublishedPlacementForStudentContent);
- * isPublished — не строгая truthy-проверка; роль — безопасное сравнение.
+ * Логика идентична getPublishedContentBySection из PvlPrototypeApp.jsx:
+ * элемент виден если targetSection совпадает ИЛИ есть запись в placements —
+ * иначе уроки без placement выпадают из Результатов, но остаются в трекере.
  */
 function getPublishedContentFor(role, section, cohortId) {
-    return (db.contentPlacements || [])
+    const relevantPlacements = (db.contentPlacements || [])
         .filter((p) => p && String(p.targetSection || '') === String(section || ''))
         .filter((p) => p.isPublished !== false)
         .filter((p) => pvlPlacementVisibleForCohort(p.cohortId, cohortId))
-        .filter((p) => placementTargetRoleMatchesStudentOrMentor(p, role))
+        .filter((p) => placementTargetRoleMatchesStudentOrMentor(p, role));
+
+    const fromPlacements = relevantPlacements
         .map((p) => {
             const cid = contentItemIdFromPlacement(p);
             const want = cid ? normalizePvlEntityId(cid) : '';
             const item = want ? (db.contentItems || []).find((ci) => normalizePvlEntityId(ci.id) === want) : null;
-            return { placement: p, item };
+            return { item, orderIndex: Number(p.orderIndex ?? 0) };
         })
         .filter((x) => {
             if (!x.item || x.item.status !== CONTENT_STATUS.PUBLISHED) return false;
             return publishedContentVisibleToRole(x.item, cohortId, role);
-        })
-        .sort((a, b) => Number(a.placement.orderIndex ?? 0) - Number(b.placement.orderIndex ?? 0))
+        });
+
+    const placementIds = new Set(fromPlacements.map((x) => normalizePvlEntityId(x.item.id)));
+
+    // Элементы без размещения, у которых targetSection совпадает — как в getPublishedContentBySection
+    const fromDirect = (db.contentItems || [])
+        .filter((item) => item && item.status === CONTENT_STATUS.PUBLISHED)
+        .filter((item) => String(item.targetSection || '') === String(section || ''))
+        .filter((item) => !placementIds.has(normalizePvlEntityId(item.id)))
+        .filter((item) => publishedContentVisibleToRole(item, cohortId, role))
+        .map((item) => ({ item, orderIndex: Number(item.orderIndex ?? 999) }));
+
+    return [...fromPlacements, ...fromDirect]
+        .sort((a, b) => a.orderIndex - b.orderIndex)
         .map((x) => x.item);
 }
 

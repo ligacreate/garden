@@ -1940,7 +1940,25 @@ async function doPersistSubmissionToDb(studentId, taskId) {
         sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
     }
     if (!sqlHomeworkId) {
-        throw new Error(`sqlHomeworkId not found for taskId=${taskId}`);
+        // Контент-айтем опубликован, но запись в pvl_homework_items ещё не создана.
+        // Создаём её автоматически, чтобы submission не потерялся.
+        const contentItemId = String(taskId).startsWith('task-ci-') ? String(taskId).slice('task-ci-'.length) : null;
+        if (!contentItemId) throw new Error(`sqlHomeworkId not found for taskId=${taskId}`);
+        const task = db.homeworkTasks.find((t) => t.id === taskId);
+        await pvlPostgrestApi.upsertHomeworkItem({
+            week_id: task?.weekId ? (sqlWeekIdByMockWeekId.get(String(task.weekId)) || null) : null,
+            title: task?.title || 'Задание',
+            item_type: 'homework',
+            max_score: Number(task?.scoreMax ?? 20),
+            is_control_point: !!task?.isControlPoint,
+            sort_order: Number(task?.orderIndex ?? 0),
+            external_key: taskId,
+        });
+        await ensureDbTrackerHomeworkStructure();
+        sqlHomeworkId = sqlHomeworkIdByMockTaskId.get(String(taskId));
+    }
+    if (!sqlHomeworkId) {
+        throw new Error(`sqlHomeworkId not found for taskId=${taskId} even after auto-upsert`);
     }
 
     const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
@@ -2658,7 +2676,7 @@ export const studentApi = {
         const submission = db.submissions.find((s) => s.studentId === studentId && s.taskId === taskId);
         const state = db.studentTaskStates.find((s) => s.studentId === studentId && s.taskId === taskId);
         const task = db.homeworkTasks.find((t) => t.id === taskId);
-        if (!submission || !state) return { error: 'task_not_found', taskId };
+        if (!submission || !state) return { error: 'task_not_found', taskId, message: 'Задание не найдено. Пожалуйста, обнови страницу и попробуй отправить снова.' };
         let textContent = payload?.textContent ?? '';
         let answersJson = payload?.answersJson !== undefined ? payload.answersJson : undefined;
         const draftV = submission.draftVersionId ? db.submissionVersions.find((v) => v.id === submission.draftVersionId && v.submissionId === submission.id) : null;

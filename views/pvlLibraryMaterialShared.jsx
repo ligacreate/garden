@@ -587,7 +587,10 @@ export function HomeworkInlineForm({ selectedItem, studentId, navigate, routePre
             if (isHomeworkAnswerEmpty(draft)) return;
             ok = pvlDomainApi.studentApi.submitStudentTask(studentId, task.id, { textContent: draft });
         }
-        if (!ok || ok?.error) return;
+        if (!ok || ok?.error) {
+            try { window.alert(ok?.message || 'Не удалось отправить задание. Попробуй ещё раз или обнови страницу.'); } catch { /* noop */ }
+            return;
+        }
         try { localStorage.removeItem(`pvl_draft_answers_v1_${task.id}`); } catch { /* noop */ }
         refresh();
     };

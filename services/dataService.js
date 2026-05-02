@@ -11,12 +11,6 @@ const PUSH_URL = import.meta.env.VITE_PUSH_URL || AUTH_URL;
 /** Если true — не передаём JWT в PostgREST (например локальный PostgREST без jwt-secret). */
 const POSTGREST_SKIP_JWT = import.meta.env.VITE_POSTGREST_SKIP_JWT === 'true';
 
-/**
- * После PGRST300 («Server lacks JWT secret») на этой вкладке больше не шлём JWT,
- * чтобы не ломать каждый запрос повторными ошибками.
- */
-let postgrestJwtDisabledAfterPgrst300 = false;
-
 const getAuthToken = () => localStorage.getItem('garden_auth_token') || '';
 const setAuthToken = (token) => {
     if (token) localStorage.setItem('garden_auth_token', token);
@@ -24,11 +18,12 @@ const setAuthToken = (token) => {
 };
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-const isPostgrestJwtSecretError = (bodyText) => {
+const isPostgrestJwtMisconfigError = (bodyText) => {
     const t = String(bodyText || '');
-    if (t.includes('PGRST300') || t.includes('JWT secret')) return true;
+    if (t.includes('PGRST300') || t.includes('PGRST302') || t.includes('JWT secret')) return true;
     try {
-        return JSON.parse(t)?.code === 'PGRST300';
+        const code = JSON.parse(t)?.code || '';
+        return code === 'PGRST300' || code === 'PGRST302';
     } catch {
         return false;
     }
@@ -38,50 +33,36 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
     const url = new URL(path, POSTGREST_URL);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
-    const buildHeaders = (includeBearer) => {
-        const headers = {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            ...(options.headers || {}),
-        };
-        if (includeBearer && !POSTGREST_SKIP_JWT && !postgrestJwtDisabledAfterPgrst300) {
-            const token = getAuthToken();
-            if (token) headers.Authorization = `Bearer ${token}`;
-        }
-        if (options.count) headers.Prefer = 'count=exact';
-        if (options.returnRepresentation) headers.Prefer = 'return=representation';
-        return headers;
+    const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(options.headers || {}),
     };
+    if (!POSTGREST_SKIP_JWT) {
+        const token = getAuthToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    if (options.count) headers.Prefer = 'count=exact';
+    if (options.returnRepresentation) headers.Prefer = 'return=representation';
 
-    const tryBearer =
-        !POSTGREST_SKIP_JWT && !postgrestJwtDisabledAfterPgrst300 && Boolean(getAuthToken());
-
-    let response = await fetch(url.toString(), {
+    const response = await fetch(url.toString(), {
         method: options.method || 'GET',
-        headers: buildHeaders(tryBearer),
-        body: options.body ? JSON.stringify(options.body) : undefined
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
     });
 
     if (!response.ok) {
         const text = await response.text();
-        if (tryBearer && isPostgrestJwtSecretError(text)) {
-            postgrestJwtDisabledAfterPgrst300 = true;
-            response = await fetch(url.toString(), {
-                method: options.method || 'GET',
-                headers: buildHeaders(false),
-                body: options.body ? JSON.stringify(options.body) : undefined
-            });
-            if (!response.ok) {
-                const text2 = await response.text();
-                const err = new Error(text2 || `PostgREST error (${response.status})`);
-                err.status = response.status;
-                throw err;
-            }
-        } else {
-            const err = new Error(text || `PostgREST error (${response.status})`);
+        if (isPostgrestJwtMisconfigError(text)) {
+            const err = new Error('PostgREST JWT secret misconfigured');
+            err.code = 'POSTGREST_JWT_MISCONFIG';
             err.status = response.status;
+            err.detail = text;
             throw err;
         }
+        const err = new Error(text || `PostgREST error (${response.status})`);
+        err.status = response.status;
+        throw err;
     }
 
     const data = await response.json();

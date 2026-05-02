@@ -19,6 +19,8 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [librarySettings, setLibrarySettings] = useState({ hiddenCourses: [], materialOrder: {} });
     const [accessBlock, setAccessBlock] = useState(null);
+    const [maintenanceBanner, setMaintenanceBanner] = useState(null);
+    // { reason: 'POSTGREST_JWT_MISCONFIG' | 'PARTIAL_DEGRADATION', detail?: string }
     const [hiddenGardenUserIds, setHiddenGardenUserIds] = useState(() => {
         try {
             const raw = JSON.parse(localStorage.getItem(HIDDEN_GARDEN_USERS_KEY) || '[]');
@@ -94,6 +96,47 @@ export default function App() {
         return root.innerHTML;
     };
 
+    // Загружает базовые данные (users/kb/settings/news) через Promise.allSettled
+    // и применяет успешные. Возвращает агрегаты для caller-side обработки
+    // инфраструктурных ошибок (POSTGREST_JWT_MISCONFIG / 401 / полный отказ).
+    const loadAndApplyInitialData = async () => {
+        const results = await Promise.allSettled([
+            api.getUsers(),
+            api.getKnowledgeBase(),
+            api.getLibrarySettings(),
+            api.getNews(),
+        ]);
+        const [usersR, kbR, settingsR, newsR] = results;
+
+        const jwtMisconfig = results.find(
+            (r) => r.status === 'rejected' && r.reason?.code === 'POSTGREST_JWT_MISCONFIG'
+        );
+        const has401 = results.some(
+            (r) => r.status === 'rejected' && r.reason?.status === 401
+        );
+        const allFailed = results.every((r) => r.status === 'rejected');
+
+        if (usersR.status === 'fulfilled') setUsers(usersR.value || []);
+        else console.error('getUsers failed:', usersR.reason);
+
+        if (kbR.status === 'fulfilled' && kbR.value && kbR.value.length > 0) {
+            setKnowledgeBase(kbR.value);
+        } else if (kbR.status === 'rejected') {
+            console.error('getKnowledgeBase failed:', kbR.reason);
+        }
+
+        if (settingsR.status === 'fulfilled' && settingsR.value) {
+            setLibrarySettings(settingsR.value);
+        } else if (settingsR.status === 'rejected') {
+            console.error('getLibrarySettings failed:', settingsR.reason);
+        }
+
+        if (newsR.status === 'fulfilled') setNews(newsR.value || []);
+        else console.error('getNews failed:', newsR.reason);
+
+        return { jwtMisconfig, has401, allFailed };
+    };
+
     // Initial Data Fetch
     useEffect(() => {
         const init = async () => {
@@ -105,17 +148,26 @@ export default function App() {
                 }
                 setCurrentUser(user);
 
-                const [allUsers, kb, settings, newsData] = await Promise.all([
-                    api.getUsers(),
-                    api.getKnowledgeBase(),
-                    api.getLibrarySettings(),
-                    api.getNews(),
-                ]);
+                const { jwtMisconfig, has401, allFailed } = await loadAndApplyInitialData();
 
-                setUsers(allUsers || []);
-                if (kb && kb.length > 0) setKnowledgeBase(kb);
-                if (settings) setLibrarySettings(settings);
-                setNews(newsData || []);
+                if (jwtMisconfig) {
+                    setMaintenanceBanner({
+                        reason: 'POSTGREST_JWT_MISCONFIG',
+                        detail: jwtMisconfig.reason?.detail || jwtMisconfig.reason?.message,
+                    });
+                    console.error('PostgREST JWT misconfigured:', jwtMisconfig.reason);
+                } else if (has401) {
+                    console.warn('Auth token rejected (401), clearing session');
+                    await api.logout();
+                    setCurrentUser(null);
+                    setLoading(false);
+                    return;
+                } else if (allFailed) {
+                    setMaintenanceBanner({
+                        reason: 'PARTIAL_DEGRADATION',
+                        detail: 'Все 4 запроса не удались',
+                    });
+                }
             } catch (e) {
                 console.error("Init error:", e);
                 if (e?.code === 'SUBSCRIPTION_EXPIRED' || e?.code === 'ACCESS_PAUSED_MANUAL') {
@@ -124,6 +176,15 @@ export default function App() {
                         message: e.message,
                         botRenewUrl: e.botRenewUrl || null
                     });
+                } else if (e?.code === 'POSTGREST_JWT_MISCONFIG') {
+                    setMaintenanceBanner({
+                        reason: 'POSTGREST_JWT_MISCONFIG',
+                        detail: e.detail || e.message,
+                    });
+                } else if (e?.status === 401) {
+                    console.warn('Auth token rejected (401) on getCurrentUser path');
+                    await api.logout();
+                    setCurrentUser(null);
                 }
             } finally {
                 setLoading(false);
@@ -170,16 +231,25 @@ export default function App() {
             setCurrentUser(user);
             setAccessBlock(null);
 
-            const [allUsers, kb, settings, newsData] = await Promise.all([
-                api.getUsers(),
-                api.getKnowledgeBase(),
-                api.getLibrarySettings(),
-                api.getNews(),
-            ]);
-            setUsers(allUsers || []);
-            if (kb && kb.length > 0) setKnowledgeBase(kb);
-            if (settings) setLibrarySettings(settings);
-            setNews(newsData || []);
+            const { jwtMisconfig, has401, allFailed } = await loadAndApplyInitialData();
+
+            if (jwtMisconfig) {
+                setMaintenanceBanner({
+                    reason: 'POSTGREST_JWT_MISCONFIG',
+                    detail: jwtMisconfig.reason?.detail || jwtMisconfig.reason?.message,
+                });
+                console.error('PostgREST JWT misconfigured after login:', jwtMisconfig.reason);
+            } else if (has401) {
+                console.warn('Auth token rejected after login (401), clearing session');
+                await api.logout();
+                setCurrentUser(null);
+                return false;
+            } else if (allFailed) {
+                setMaintenanceBanner({
+                    reason: 'PARTIAL_DEGRADATION',
+                    detail: 'Все 4 запроса не удались',
+                });
+            }
             return true;
         } catch (e) {
             console.error(e);
@@ -383,7 +453,24 @@ export default function App() {
         <div className={`min-h-screen bg-transparent font-sans text-slate-700 selection:bg-blue-100 selection:text-blue-900 flex justify-center relative`}>
             <div className="w-full max-w-[480px] md:max-w-full bg-transparent min-h-screen relative flex flex-col">
                 <Toast message={notification} onClose={() => setNotification(null)} />
-                {!currentUser ? (
+                {maintenanceBanner ? (
+                    <div className="min-h-screen flex items-center justify-center p-4">
+                        <div className="max-w-md text-center">
+                            <h2 className="text-xl font-semibold mb-2">База временно в режиме обслуживания</h2>
+                            <p className="text-slate-600 mb-4">
+                                {maintenanceBanner.reason === 'POSTGREST_JWT_MISCONFIG'
+                                    ? 'Идёт настройка системы безопасности. Попробуйте обновить страницу через несколько минут.'
+                                    : 'Часть данных недоступна. Попробуйте обновить страницу.'}
+                            </p>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-4 py-2 bg-blue-600 text-white rounded"
+                            >
+                                Обновить
+                            </button>
+                        </div>
+                    </div>
+                ) : !currentUser ? (
                     accessBlock?.code === 'SUBSCRIPTION_EXPIRED' ? (
                         <SubscriptionExpiredScreen
                             renewUrl={accessBlock.botRenewUrl || import.meta.env.VITE_DEFAULT_BOT_RENEW_URL || ''}

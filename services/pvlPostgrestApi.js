@@ -3,12 +3,6 @@ const USE_LOCAL_ONLY = import.meta.env.VITE_USE_LOCAL_DB === 'true';
 const IS_DEV = import.meta.env.DEV;
 let didWarnMockMode = false;
 
-/**
- * После PGRST300/PGRST302 («Server lacks JWT secret») больше не шлём JWT на этой вкладке,
- * чтобы не ломать каждый запрос повторными ошибками — аналогично dataService.js.
- */
-let pvlJwtDisabledAfterError = false;
-
 function getAuthToken() {
     try {
         return localStorage.getItem('garden_auth_token') || '';
@@ -56,16 +50,14 @@ function warnMockMode(reason = '') {
     }
 }
 
-function buildHeaders(prefer, withToken) {
+function buildHeaders(prefer) {
     const headers = {
         'Content-Type': 'application/json',
         'Accept-Profile': 'public',
         'Content-Profile': 'public',
     };
-    if (withToken) {
-        const token = getAuthToken();
-        if (token) headers.Authorization = `Bearer ${token}`;
-    }
+    const token = getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
     if (prefer) headers.Prefer = prefer;
     return headers;
 }
@@ -87,32 +79,36 @@ async function request(table, { method = 'GET', params = {}, body, prefer } = {}
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     });
 
-    const tryWithToken = !pvlJwtDisabledAfterError && Boolean(getAuthToken());
-    let response = await fetch(url.toString(), {
+    const response = await fetch(url.toString(), {
         method,
-        headers: buildHeaders(prefer, tryWithToken),
+        headers: buildHeaders(prefer),
         body: body ? JSON.stringify(body) : undefined,
     });
 
-    /* Если PostgREST не имеет jwt-secret — повторяем запрос без токена */
     if (!response.ok) {
         const text = await response.text().catch(() => '');
-        if (tryWithToken && isPgrstJwtError(text)) {
-            pvlJwtDisabledAfterError = true;
-            response = await fetch(url.toString(), {
-                method,
-                headers: buildHeaders(prefer, false),
-                body: body ? JSON.stringify(body) : undefined,
+        if (isPgrstJwtError(text)) {
+            const err = new Error('PostgREST JWT secret misconfigured');
+            err.code = 'POSTGREST_JWT_MISCONFIG';
+            err.status = response.status;
+            err.detail = text;
+            logDb('[PVL DB FALLBACK]', {
+                endpoint: url.toString(),
+                status: response.status,
+                table,
+                id: body?.id || null,
+                error: 'POSTGREST_JWT_MISCONFIG',
             });
-            if (!response.ok) {
-                const text2 = await response.text().catch(() => '');
-                logDb('[PVL DB FALLBACK]', { endpoint: url.toString(), status: response.status, table, id: body?.id || null, error: text2 });
-                throw new Error(text2 || `PostgREST error (${response.status})`);
-            }
-        } else {
-            logDb('[PVL DB FALLBACK]', { endpoint: url.toString(), status: response.status, table, id: body?.id || null, error: text });
-            throw new Error(text || `PostgREST error (${response.status})`);
+            throw err;
         }
+        logDb('[PVL DB FALLBACK]', {
+            endpoint: url.toString(),
+            status: response.status,
+            table,
+            id: body?.id || null,
+            error: text,
+        });
+        throw new Error(text || `PostgREST error (${response.status})`);
     }
 
     const logTag = method === 'GET' ? '[PVL DB READ]' : '[PVL DB WRITE]';

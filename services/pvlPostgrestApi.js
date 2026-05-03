@@ -357,7 +357,7 @@ export const pvlPostgrestApi = {
         const rows = await request('pvl_audit_log', {
             method: 'POST',
             body: [row],
-            prefer: 'return=representation',
+            prefer: 'return=minimal',
         });
         return asArray(rows)[0] || null;
     },

@@ -6,6 +6,7 @@ import { CERTIFICATION_STATUS, CONTENT_STATUS, COURSE_STATUS, ROLES, TASK_STATUS
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import { pvlPostgrestApi } from './pvlPostgrestApi';
+import { readGardenCurrentUserFromStorage, resolvePvlRoleFromGardenProfile } from './pvlRoleResolver';
 import {
     buildAdminRisks,
     buildAntiDebtProtocol,
@@ -603,6 +604,16 @@ async function ensurePvlStudentInDb(userId) {
     const sqlId = studentSqlIdByUserId(userId);
     if (!sqlId) return;
     if (pvlStudentSyncedToDb.has(sqlId)) return;
+
+    // ARCH-012 hotfix: ensure делает upsert в pvl_students, но RLS на этой
+    // таблице — admin-only (phase 11.1). Под mentor/student любая попытка —
+    // 403 → 200+ console-warns за сессию. Раздаём только админу; для
+    // остальных return. Архитектурный fix (убрать ensure-loop с клиента) —
+    // отдельной задачей.
+    const currentUser = readGardenCurrentUserFromStorage();
+    const pvlRole = resolvePvlRoleFromGardenProfile(currentUser);
+    if (pvlRole !== 'admin') return;
+
     pvlStudentSyncedToDb.add(sqlId);
     const user = (db.users || []).find((u) => String(u.id) === String(userId));
     const fullName = user?.fullName || user?.name || 'Участница';

@@ -95,39 +95,33 @@ related_docs:
 ## 🔴 P0 — Критично (делать в первую очередь)
 
 ### SEC-001: Восстановить защиту PostgREST
-- **Статус:** 🟡 IN PROGRESS (начато 2026-05-02)
-- **Контекст:** Дыра закрыта временно через Caddy (503).
-  Нужна полноценная JWT-валидация и RLS.
+- **Статус:** 🟢 DONE (2026-05-03)
+- **Контекст:** Дыра была закрыта временно через Caddy (503),
+  затем заменена полноценной JWT-валидацией + RLS + GRANT'ами.
 - **Шаги:**
   - [x] Этап 0: Закрыть API через Caddy (DONE 2026-05-02)
-  - [ ] Этап 1: SQL-аудит реального состояния БД
-  - [ ] Этап 2: Настройка защиты на стороне БД (auth.uid, RLS, grants)
-  - [ ] Этап 3: PostgREST на проверку JWT
-  - [ ] Этап 4: Изменение фронтенда (postgrestFetch с Bearer)
-    - [ ] Этап 4 (sub-step): Запатчить JWT-fallback в обоих
-      fetch-слоях фронта ДО Этапа 3.
-      - В services/dataService.js удалить module-level флаг
-        postgrestJwtDisabledAfterPgrst300 и блок повтора
-        запроса без Authorization при PGRST300/PGRST302.
-      - В services/pvlPostgrestApi.js аналогично удалить
-        pvlJwtDisabledAfterError и блок повтора без токена.
-      - Заменить на hard-error: при детекции PGRST300/PGRST302
-        бросать типизированную ошибку
-        (err.code='POSTGREST_JWT_MISCONFIG'), не делать второй
-        fetch без токена.
-      - На уровне App.jsx и PvlPrototypeApp.jsx ловить эту
-        ошибку и показывать единый баннер "База временно в
-        режиме обслуживания".
-      - Контекст: оба слоя сейчас при ошибке JWT-секрета в
-        PostgREST молча отключают Authorization до конца
-        сессии вкладки. Это значит, что неправильно настроенный
-        JWT в Этапе 3 = тихая регрессия к исходной дыре. Без
-        этого патча Этап 5 (открытие Caddy) опасен.
-  - [ ] Этап 5: Открыть API обратно и протестировать
-- **Дедлайн:** к концу выходных 2026-05-03
-- **Связано:** docs/SUPABASE_LEGACY_AUDIT.md
-- **Дальнейшее усиление:** см. SEC-004 (FORCE RLS на чувствительных
-  таблицах) в P2
+  - [x] Этап 1-2: SQL-аудит + защита БД (28 таблиц под RLS, +90 политик,
+    helper is_mentor_for SECURITY DEFINER)
+  - [x] Этап 3: PostgREST на JWT-валидацию (web_anon для анона,
+    authenticated для логина); garden-auth выдаёт JWT с role+sub
+  - [x] Этап 4: Frontend patch (jwt_fallback latch'и удалены,
+    Promise.allSettled в App.jsx init, maintenance banner)
+  - [x] Этап 5: Caddy открыт, платформа live (2026-05-03 ~03:00 МСК)
+  - [x] Post-smoke batch frontend fix (5 коммитов: BUG-004, ARCH-012,
+    BUG-005, BUG-006, BUG-003)
+  - [x] Phase 16: bulk GRANT на 40 таблиц (NEW-BUG-007 закрыт)
+  - [x] Phase 17: GRANT EXECUTE на is_admin/is_mentor_for (WARN-008 закрыт)
+  - [x] BUG-003 retry: getAuthUserId через JWT sub claim
+  - [x] Repeat smoke v3 → READY_FOR_ANNOUNCE (2026-05-03 ~19:30 МСК)
+- **Связано:**
+  - docs/HANDOVER_2026-05-02_session1.md, session2.md, session3.md
+  - docs/MIGRATION_2026-05-02_security_restoration.md
+  - docs/EXEC_2026-05-03_post_smoke_repeat_v3.md (финальный smoke)
+  - migrations/2026-05-03_phase16_grant_role_switch_bulk.sql
+  - migrations/2026-05-03_phase17_grant_execute_rls_helpers.sql
+- **Дальнейшее усиление:** см. SEC-007 (messages RLS), SEC-008 (push_sub
+  RLS), SEC-009 (increment_user_seeds privilege escalation),
+  SEC-010 (GRANT-level minimum-privilege hardening) в P2/P3.
 
 ### SEC-002: Сменить пароль пользователя olga@skrebeyko.com
 - **Статус:** 🔴 TODO
@@ -254,6 +248,206 @@ related_docs:
   - [ ] Smoke-тест: пользователь с истёкшей подпиской видит
     блокирующий экран.
 - **Связано:** SEC-001, services/dataService.js:1190-1193
+
+### BUG-006: Frontend пишет `changed_by: null` в pvl_homework_status_history — нарушение audit-trail
+- **Статус:** 🟢 DONE (2026-05-03, batch fix f46049d + retry на JWT sub в этом же batch'е)
+- **Приоритет:** P1 (audit trail для смены статусов ДЗ не пишется,
+  PATCH submissions проходит — но история теряется)
+- **Контекст:**
+  - При smoke-тесте 2026-05-03 под mentor (zobyshka@gmail.com)
+    при «принять ДЗ» обнаружено:
+    - `PATCH /pvl_student_homework_submissions` → 200 ✅
+      (статус ДЗ обновился)
+    - `POST /pvl_homework_status_history` → 403 ❌
+      (история **не создалась**)
+  - Request body показал `"changed_by": null`. RLS-политика
+    `WITH CHECK (changed_by = auth.uid() AND EXISTS(...))`
+    видит `null = <uuid>` → null → не пропускает.
+  - Проблема **не в RLS** — политика правильная. Проблема в
+    том, что фронт не передаёт `currentUser.id` в `changed_by`.
+- **Симптом для пользователя:**
+  - В `pvl_homework_status_history` отсутствуют записи о
+    смене статусов от не-админов. История неполная,
+    нельзя восстановить «кто когда что менял».
+  - Параллельный PATCH submissions проходит — основной статус
+    обновляется. Только журнал страдает.
+- **Как починить (frontend):**
+  - Найти место создания записи истории:
+    ```bash
+    grep -rn "pvl_homework_status_history\|changed_by" services/ views/
+    ```
+    Скорее всего в `services/pvlMockApi.js` или `pvlPostgrestApi.js`
+    в методе типа `transitionSubmissionStatus` / `acceptHomework`.
+  - Добавить `changed_by: currentUser.id` (или `auth.uid()` на
+    клиенте — из decoded JWT) в payload INSERT'а.
+  - Smoke под mentor: смена статуса → должна появиться запись в
+    history с `changed_by = <mentor uid>`.
+- **Дополнительно:** убедиться, что `payload.studentId` в request
+  body соответствует именно ученику submission'а — на текущей
+  записи заметили `payload.studentId = "49c267b1..."` (это студент,
+  а не ментор) — для контекста ОК.
+- **Связано:**
+  - docs/EXEC_2026-05-03_post_smoke_browser_full.md (BUG-HOMEWORK-HISTORY-INSERT-403)
+  - BUG-003 (аналогичная проблема — фронт пишет stub-id вместо
+    auth.uid() в audit-log)
+
+### BUG-005: pvl_audit_log INSERT 403 — RETURNING неявно проверяет SELECT-policy
+- **Статус:** 🟢 DONE (2026-05-03, commit cd72e44 — Prefer: return=minimal в createAuditLog)
+- **Приоритет:** P1 (audit-trail записи теряются — все INSERT в
+  pvl_audit_log от не-админов падают)
+- **Контекст:**
+  - При smoke-тесте 2026-05-03 под mentor-логином: `POST /pvl_audit_log`
+    → 403 `new row violates row-level security policy`.
+  - Диагностика показала: **INSERT WITH CHECK проходит** (auth.uid()
+    IS NOT NULL для mentor истинно). Падает **RETURNING-фаза** —
+    SELECT-policy `is_admin()` не пускает не-админа читать
+    свежевставленную строку.
+  - PostgREST по умолчанию шлёт `Prefer: return=representation` →
+    каждый INSERT неявно требует SELECT-permission.
+  - См. урок 2026-05-03-rls-returning-implies-select-policy.md.
+- **Решение (Вариант A — frontend hotfix):**
+  - В `services/pvlPostgrestApi.js` или в месте где формируется
+    INSERT в `pvl_audit_log` — добавить header
+    `Prefer: return=minimal` для этого endpoint'а.
+  - INSERT выполнится без RETURNING, SELECT-policy не задействуется,
+    audit-trail compliance сохраняется (только admin читает).
+- **Шаги:**
+  - [ ] Найти точку записи audit-log:
+    ```bash
+    grep -rn "pvl_audit_log\|createAuditLog" services/ views/
+    ```
+  - [ ] Добавить `'Prefer': 'return=minimal'` в headers для этого
+    POST'а.
+  - [ ] Smoke под mentor: создать audit-event → 201 Created без тела.
+- **Связано:** docs/lessons/2026-05-03-rls-returning-implies-select-policy.md,
+  docs/EXEC_2026-05-03_post_smoke_diag_403_inserts.md, BUG-003
+  (отдельная проблема — фронт пишет stub-id).
+
+### BUG-004: Hard reload (Cmd+Shift+R) → белый экран — Service Worker кеширует старый bundle
+- **Статус:** 🟢 DONE (2026-05-03, commit bf57606 — SW navigate=network-first + purge legacy caches)
+- **Приоритет:** P0 (первое впечатление пользователя при проблеме)
+- **Контекст:**
+  - При smoke-тесте 2026-05-03 через Claude in Chrome: hard reload
+    (Cmd+Shift+R) на liga.skrebeyko.ru → белый экран, JS-бандл
+    `index-DXUDWmBe.js` зависает в `pending` > 10 сек.
+  - Soft reload (F5) и navigate() работают нормально.
+  - Воспроизводится стабильно.
+- **Корневая причина (диагностика):** Service Worker (`/sw.js`)
+  перехватывает запрос на bundle и пытается отдать из кэша.
+  При hard reload браузер шлёт `Cache-Control: no-cache`, SW
+  обходит cache, но цепочка обработки ломается → запрос висит.
+- **Решение (frontend):**
+  - В `sw.js` (или в его генераторе через Vite-PWA / workbox)
+    изменить стратегию для `index.html`: **network-first**
+    (не cache-first). Bundle-ассеты с хешами могут оставаться
+    cache-first, они никогда не меняют URL для одного содержимого.
+- **Альтернативное решение:** добавить bypass для Cmd+Shift+R
+  через проверку `Cache-Control: no-cache` в SW handler'е.
+- **Шаги:**
+  - [ ] Найти конфигурацию SW: либо `public/sw.js`, либо в
+    Vite config (workbox-plugin).
+  - [ ] Изменить strategy для `/index.html` и `/` на network-first
+    (с fallback на cache при offline).
+  - [ ] Test: Cmd+Shift+R должен загружать страницу как обычный
+    запрос, не зависать.
+- **Связано:** docs/EXEC_2026-05-03_post_smoke_browser_full.md
+  (BUG-WHITE-SCREEN), CLAUDE.md (упоминание /sw.js auto-generated
+  on build).
+
+### BUG-003: Frontend пишет stub-id (`u-adm-1`, `u-st-1`) в pvl_audit_log.actor_user_id вместо auth.uid()
+- **Статус:** 🟢 DONE (2026-05-03, e3bd767 + retry 7585407 — getAuthUserId через JWT sub claim)
+- **Приоритет:** P2 (compliance/forensics, не функциональный блокер)
+- **Контекст:**
+  - Из text-id sweep 2026-05-03: 1621/2205 строк в
+    `pvl_audit_log.actor_user_id` имеют не-UUID значения
+    типа `u-adm-1`, `u-st-1` (legacy stub-id из старых
+    seed/test данных).
+  - **Не security-блокер:** RLS-политики на `pvl_audit_log`
+    не делают `::uuid` cast (`is_admin()` для SELECT,
+    `auth.uid() IS NOT NULL` для INSERT — без cast'а
+    `actor_user_id`).
+  - **Но**: фронт **продолжает писать** stub-id даже сейчас
+    (свежие записи от 2026-05-01 имеют `u-adm-1`/`u-st-1`).
+    Это значит: audit-trail некорректен — нельзя точно
+    сказать «кто сделал действие». Compliance issue.
+- **Что сделать:**
+  - [ ] Найти точки записи через grep:
+    ```bash
+    grep -rn "u-adm-1\|u-st-1\|actor_user_id" services/ views/
+    ```
+    Скорее всего это в `services/pvlMockApi.js` (логика
+    `createAuditLog` или подобная).
+  - [ ] Заменить hardcoded stub-id на актуальный
+    `currentUser.id` (из state) или decoded JWT `sub`.
+  - [ ] Smoke: новая запись в `pvl_audit_log` должна
+    иметь UUID-shape `actor_user_id`, совпадающий с
+    `auth.uid()` пользователя, который инициировал
+    действие.
+- **Связано:** CLEAN-012 (зачистить накопленные stub-id
+  после фикса), CLEAN-007 (общая миграция TEXT → UUID
+  для PVL-таблиц), docs/EXEC_2026-05-03_post_smoke_text_id_sweep.md.
+
+### BUG-002: Левое меню «Трекер» не открывает Трекер у студента, а breadcrumb работает
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (не блокер, обходной путь существует — клик
+  по breadcrumb «Трекер»)
+- **Контекст:**
+  - При входе под студентом (Настина фея) клик по пункту
+    «Трекер» в **левом боковом меню** не переключает контент
+    — UI остаётся на текущей странице.
+  - Кликаем по «Трекер» в **breadcrumb-навигации** (зелёная
+    плашка над списком уроков) — Трекер открывается нормально.
+  - Это значит: handler привязан только к одному из двух путей
+    навигации, либо два разных handler'а имеют разный эффект.
+- **Не связано с SEC-001:** проявилось при smoke-тестировании
+  после открытия Caddy, но скорее всего существовало и раньше
+  — никто просто не использовал именно левое меню для перехода
+  в Трекер. Не регрессия от наших RLS-изменений.
+- **Что сделать:**
+  - [ ] Найти в `views/PvlPrototypeApp.jsx` (или в общем
+    sidebar-компоненте) handler для пункта «Трекер» в левом
+    меню.
+  - [ ] Сравнить с handler'ом breadcrumb-«Трекер».
+  - [ ] Унифицировать — оба должны переключать на одно состояние.
+  - [ ] Smoke под студентом: открыть курс → клик по «Трекер»
+    в **левом меню** → должно работать.
+- **Связано:** REFACTOR-001 (PvlPrototypeApp монолит на 8000+
+  строк, навигация запутана).
+
+### BUG-001: PvlPrototypeApp фрагильный batch-init — один 500-endpoint валит весь компонент
+- **Статус:** 🔴 TODO
+- **Приоритет:** P1 (всплыло в проде после открытия Caddy 2026-05-03;
+  блокирует mentor-UI при любой PVL-таблице, возвращающей 500)
+- **Контекст:**
+  - При логине ментора `PvlPrototypeApp.jsx` делает batch-fetch
+    нескольких PVL-таблиц для инициализации `pvlMockApi`-кэша.
+  - Если хоть один endpoint возвращает 500/400 (например,
+    `pvl_student_questions` падает с RLS-cast-error на битых
+    legacy TEXT-id) — `Promise.all` reject'ится, цепочка
+    sync обрывается, локальный кэш остаётся пустым, mentor
+    видит пустой UI.
+  - В `App.jsx` мы уже применили паттерн `Promise.allSettled`
+    в фазе 4 SEC-001 (через helper `loadAndApplyInitialData`) —
+    это ровно то, что нужно повторить в PVL.
+- **Что сделать:**
+  - [ ] Найти в `views/PvlPrototypeApp.jsx` (или, скорее,
+    в `services/pvlMockApi.js` — `syncPvlRuntimeFromDb`,
+    `syncPvlActorsFromGarden`) места с `Promise.all`-инициализацией
+    нескольких PVL-таблиц.
+  - [ ] Заменить на `Promise.allSettled` + per-result-handling:
+    - При `fulfilled` — записать в кэш
+    - При `rejected` — `console.error`, не валить остальное
+  - [ ] (Опционально) показать toast/баннер пользователю
+    «Часть данных PVL временно недоступна» при partial degradation.
+  - [ ] Smoke: симулировать 500 на одной из PVL-таблиц (например,
+    отозвать grant временно) — убедиться, что остальные
+    компоненты PVL продолжают работать.
+- **Связано:**
+  - REFACTOR-001 (большая декомпозиция PvlPrototypeApp/pvlMockApi)
+  - CLEAN-007 (миграция TEXT → UUID для pvl_student_questions —
+    устраняет одну из причин 500)
+  - docs/EXEC_2026-05-02_etap5_post_smoke_fix1_pvl_student_questions.md
+    (где этот баг впервые проявился)
 
 ### REFACTOR-001: Разбиение монолитных файлов на модули
 - **Статус:** 🔴 TODO
@@ -396,6 +590,60 @@ related_docs:
   - [ ] Реализовать выбранный вариант миграцией.
 - **Связано:** SEC-001 этап 2 (RLS-политики PVL зависят от
   этой связки), docs/REPORT_2026-05-02_db_audit_v3.md
+
+### ARCH-012: Убрать клиентский `ensurePvlStudentInDb` self-heal в пользу серверного flow
+- **Статус:** 🟡 PARTIALLY DONE (2026-05-03, hotfix 45f1402 — early-exit для не-admin закрыл retry-loop). Архитектурный фикс (убрать ensure-loop с клиента полностью) остаётся как P2.
+- **Приоритет:** P2 (всплыло в проде после открытия Caddy
+  2026-05-03; временно смягчено через RLS-расширение, но
+  архитектурно остаётся неправильным паттерном)
+- **Контекст:**
+  - `services/pvlMockApi.js` содержит функцию
+    `ensurePvlStudentInDb(id)`, которую вызывает
+    `syncPvlActorsFromGarden()` для каждого видимого
+    applicant-профиля при инициализации PVL.
+  - Под mentor-логином в проде это даёт **17 ошибок
+    `403 - new row violates row-level security policy
+    for table pvl_students`** в браузерной консоли — RLS
+    правильно блокирует не-админа от INSERT/UPDATE на
+    `pvl_students`.
+  - Архитектурный антипаттерн: client-side «self-heal»
+    данных, который не должен быть на клиенте вообще.
+    Создание записей в `pvl_students` — это **админ-flow**
+    (учительская / регистрация в курсе), не клиент-побочка.
+- **Текущее состояние (2026-05-03):**
+  - **RLS-fix #2 НЕ применён** — после DELETE'а seed-строк
+    в `pvl_student_questions` (post-smoke fix #1) UI заработал
+    штатно. 17 cosmetic-ошибок 403 в браузерной консоли
+    остались, но не блокируют рендеринг компонентов.
+    Сознательное решение: не ослаблять RLS ради косметики;
+    ждём правильное архитектурное решение (см. «Что сделать»).
+  - **Альтернативный fix #2 (не применённый, оставлен на
+    случай если потребуется):** расширить INSERT/UPDATE-
+    политики на `pvl_students` через
+    `id = auth.uid() OR is_admin() OR is_mentor_for(id)`.
+    Минус: позволит залогиненным менять `full_name`/`status`
+    в строках, что может затирать админские действия
+    (например, `status='paused'` ← `active`).
+- **Что сделать (правильное решение):**
+  - [ ] Удалить вызов `ensurePvlStudentInDb` из
+    `syncPvlActorsFromGarden` и подобных мест в `pvlMockApi.js`.
+  - [ ] Создание `pvl_students`-строки переводим на серверный
+    flow:
+    - либо триггер на `profiles` — при `role='applicant'`
+      автоматически создавать строку в `pvl_students` с
+      `id = NEW.id`;
+    - либо явный API-endpoint `POST /pvl/enroll` в
+      `garden-auth` или отдельном сервисе, который ходит
+      под service-role и делает INSERT.
+  - [ ] После убирания ensure-loop с клиента — откатить
+    DB-fix #2: вернуть строгие политики
+    `pvl_students_insert_admin` и
+    `pvl_students_update_admin` (только админ).
+- **Связано:** docs/EXEC_2026-05-02_etap5_post_smoke_fix2_pvl_students_ensure_policy.md
+  (если будет создан после применения fix #2),
+  REFACTOR-001 (упрощение pvlMockApi),
+  ARCH-002 (реальное сохранение ДЗ ПВЛ — связанный архитектурный
+  переход PVL с mock на сервер).
 
 ### CLEAN-001: Удалить legacy скрипты Supabase
 - **Статус:** 🔴 TODO
@@ -568,6 +816,99 @@ related_docs:
   - History API для смены URL без перезагрузки
 - **Когда:** после стабилизации безопасности и базовых фич
 
+### SEC-009: increment_user_seeds — privilege escalation в SECURITY DEFINER функции
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2
+- **Создано:** 2026-05-03 (Q12 SEC-001)
+- **Контекст:** Функция `public.increment_user_seeds(uuid[], integer)` —
+  SECURITY DEFINER, мутирует `profiles.seeds` для произвольных
+  user_ids БЕЗ проверки is_admin() или другой авторизации внутри.
+  Если когда-нибудь дать `GRANT EXECUTE ... TO authenticated` — любой
+  залогиненный сможет начислить любые seeds любому юзеру через
+  POST /rpc/increment_user_seeds. Сейчас EXECUTE не дан (phase 17
+  явно отказался), поэтому meeting-flow на фронте отвалится с 42501
+  (UserApp.jsx:335,376) — это лучше дыры.
+- **Варианты фикса:**
+  1. Добавить `if not is_admin() then raise exception` внутрь функции,
+     потом дать EXECUTE для authenticated.
+  2. Заменить RPC на server-side meeting-completion через push-server
+     или отдельный auth endpoint.
+  3. SECURITY DEFINER → SECURITY INVOKER + узкая RLS-policy на
+     UPDATE profiles.seeds (через mentor_links или admin).
+- **Связано:** migrations/2026-05-03_phase17_grant_execute_rls_helpers.sql
+  (deferred-список); UserApp.jsx:335,376 (callsites).
+
+### ANOM-001: Учительская грузит 130+ профилей вместо менти ментора
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (избыточная нагрузка на DB, не корректность)
+- **Создано:** 2026-05-03 (smoke v3)
+- **Контекст:** При открытии Учительской ментором фронт делает
+  130+ GET /profiles запросов ко всем профилям системы, не только к
+  менти этого ментора. После phase 16 bulk GRANT все 200 (раньше тихо
+  валилось в 403 — silent fail flow, который обнаружился на smoke
+  v3 как ANOM-001). RLS-policy `profiles_select_authenticated` сейчас
+  пускает любого authenticated на любой профиль — это намеренно по
+  «trusted community» модели Ольги, но фронту это даёт право грести
+  без фильтров.
+- **Варианты фикса:**
+  - Узкая SELECT-policy на profiles для роли mentor через
+    `is_mentor_for(profiles.id)` или подобный селект — DB-уровень,
+    меньше клиентского кода.
+  - Client-side фильтр в pvlMockApi.js — менее надёжно, но проще.
+  - Кэш на стороне фронта — снимет нагрузку, но не решит проблему
+    избыточности.
+- **Связано:** docs/EXEC_2026-05-03_post_smoke_repeat_v3.md (раздел
+  Anomalies); RLS profiles_select_authenticated.
+
+### BUG-LOGIN-RAW-ERROR-MSG: alert(JSON.stringify) показывает PostgREST raw JSON юзеру
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (UX, видимо обычным пользователям при любой DB-ошибке)
+- **Создано:** 2026-05-03 (NEW-BUG-007 incident)
+- **Контекст:** В App.jsx:271 в catch handleLogin вызывается
+  `alert(e.message)`, а e.message — текст ошибки из dataService.js:63
+  (`new Error(text || ...)`), куда попадает raw response body от
+  PostgREST. На NEW-BUG-007 юзерам всплывал `{"code":"42501",...,
+  "message":"permission denied for table profiles"}` как браузерная
+  alert-модалка, блокирующая UI.
+- **Фикс:**
+  - Нормализовать error.message в dataService.js перед throw
+    (выделять `message` из JSON, если parseable).
+  - Заменить alert на UI-banner с человеческим сообщением.
+  - Сохранить raw в console.error для debug.
+
+### BUG-LOGIN-SILENT-PROFILE-FAIL: при 403 на _fetchProfile фронт тихо возвращает на AuthScreen
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (UX, юзеры думают, что login сломан, без понятной
+  причины)
+- **Создано:** 2026-05-03 (smoke v3 detail)
+- **Контекст:** В smoke v3 студент успешно прошёл аутентификацию
+  (JWT выдан, /auth/login → 200), но при последующем GET /profiles → 403
+  фронт ловил ошибку в `_fetchProfile`, считал логин провалившимся и
+  возвращал на AuthScreen без какого-либо сообщения юзеру. Тихий
+  провал. Юзер видит «ничего не произошло».
+- **Фикс:**
+  - В catch _fetchProfile не маркировать login как failure при 403.
+  - Показать UI-banner «Не удалось загрузить профиль, попробуйте
+    позже» — даёт пользователю понять, что что-то пошло не так.
+  - Логировать детали в console для диагностики.
+
+### FEAT-001: Балловая система для следующего потока ПВЛ + UI cleanup в текущем
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (на следующий поток)
+- **Создано:** 2026-05-03
+- **Контекст:** Балловая система задумывалась с предварительным
+  расчётом «400 баллов максимум». Сейчас уроки и материалы
+  переписываются — старые цифры неактуальны. В текущем потоке
+  фичу не внедряем; в следующем — да, с обновлёнными правилами.
+- **Подзадачи:**
+  - **UI cleanup в текущем потоке:** убрать чип «Баллы 0/400» из
+    карточек студентов в менторской view. Скорее всего в
+    `views/PvlPrototypeApp.jsx` или подкомпоненте. Не показывать
+    стейл-цифры пользователям до реального внедрения.
+  - **Внедрение в следующем потоке:** проектирование правил
+    начисления (за чекпоинты, за ДЗ accepted, за активность в чате?),
+    UI отображения, lifecycle сброса при смене когорты.
+
 ## ⚪ P3 — Хотелось бы (потом)
 
 ### ARCH-005: Решить про monorepo vs multi-repo
@@ -628,12 +969,21 @@ related_docs:
 - **Связано:** docs/SUPABASE_LEGACY_AUDIT.md, docs/DB_SECURITY_AUDIT.md
 
 ### CLEAN-007: PVL — schema cleanup и data integrity
-- **Статус:** 🔴 TODO
-- **Приоритет:** P3 (откладываемое, не блокирует SEC-001)
+- **Статус:** 🟡 IN PROGRESS (2026-05-03 P3 → P2 после live-smoke)
+- **Приоритет:** **P2** (повышено с P3 — пункт про legacy-id в
+  pvl_student_questions реально сломал mentor-UI после открытия
+  Caddy; быстрый фикс DELETE 5 seed-строк применён в проде, но
+  основная миграция TEXT → UUID остаётся открытой)
 - **Контекст:** В сессии 2026-05-02 при инвентаризации схем
   24 PVL-таблиц всплыло несколько незаконченных миграций и
   отсутствующих constraints. Само по себе RLS не блокирует,
   но усложняет читаемость и оставляет dangling-данные.
+  **Update 2026-05-03**: пункт про TEXT-id в pvl_student_questions
+  стал реальной production-проблемой — битые seed-значения
+  `'u-st-1'` валили cast в RLS-политике, что обвалило весь
+  PVL-UI на mentor-логине. Hotfix DELETE применён, но
+  фундаментально проблема (TEXT-id с потенциальными legacy-
+  значениями) сохраняется до миграции колонки на UUID.
 - **Найденное:**
   - **Мёртвые колонки в pvl_students:** mentor_id и
     cohort_id заполнены NULL у всех 23 строк. Реальная
@@ -684,6 +1034,49 @@ related_docs:
     рискованным.
 - **Связано:** docs/REPORT_2026-05-02_db_audit_v3.md
   (раздел "Что неожиданно")
+
+### DEV-001: Убрать `dangerous-clean-slate` из deploy.yml для near-zero downtime
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (улучшение UX, не блокер)
+- **Контекст:** В `.github/workflows/deploy.yml` шаг
+  `Deploy via FTP` использует `SamKirkland/FTP-Deploy-Action`
+  с флагом `dangerous-clean-slate: true`. Это значит, что
+  перед заливкой новых файлов FTP-папка прода
+  `/www/liga.skrebeyko.ru/` **полностью стирается**, и пока
+  идёт upload (~30-60 сек) — для пользователей, которые
+  делают navigation или hard-refresh, сайт сломан (404 на
+  все ассеты).
+- **Что НЕ ломается даже сейчас:** in-flight API-вызовы
+  (например, «сохранить ДЗ») — они идут через Caddy/PostgREST,
+  а не через FTP. DB-запись проходит нормально.
+- **Что улучшится:**
+  - Vite собирает ассеты с content-hashed именами
+    (`index-CTuO4hEU.js`). Каждая версия — свой набор файлов.
+  - Без clean-slate: старые ассеты остаются на FTP, новые
+    заливаются поверх (имена разные → не конфликтуют),
+    `index.html` атомарно перезаписывается.
+  - Окно даунтайма ~0 сек: пользователь либо получает старый
+    `index.html` (со старыми ассетами, всё работает), либо
+    новый (с новыми, тоже всё работает). Между ними нет
+    «пустого» состояния.
+- **Минус:** старые ассеты накапливаются на FTP (мусор).
+  Решается периодической ручной чисткой раз в полгода
+  (можно потом сделать чистку файлов > N дней через
+  отдельный workflow-step).
+- **Шаги:**
+  - [ ] В `.github/workflows/deploy.yml` найти строку
+    `dangerous-clean-slate: true` → заменить на `false` или
+    удалить (default = false).
+  - [ ] Push в feature-branch, триггернуть workflow, проверить
+    что деплой прошёл и старые/новые ассеты сосуществуют на FTP.
+  - [ ] Merge в `main`.
+  - [ ] Прогнать тестовый деплой и убедиться через DevTools
+    Network, что нет окна 404 на ассетах.
+  - [ ] (Опционально) Завести отдельный workflow для очистки
+    орфанных ассетов (старше 90 дней) раз в квартал.
+- **Связано:** docs/EXEC_2026-05-02_etap4_frontend_patch.md
+  (где впервые зафиксирован этот вопрос с пользовательским
+  волнением про «сохранение ДЗ во время деплоя»).
 
 ### CLEAN-008: Удалить legacy VITE_SUPABASE_* из deploy.yml
 - **Статус:** 🔴 TODO
@@ -806,6 +1199,32 @@ related_docs:
 - **Связано:** docs/EXEC_2026-05-02_phase3_is_mentor_for.md
   (выдача), docs/RUNBOOK_garden.md (5.1, 5.4).
 
+### CLEAN-012: Зачистить 1621 stub-id в pvl_audit_log.actor_user_id
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (выполнять ПОСЛЕ BUG-003 — иначе фронт
+  допишет новых стабов поверх зачистки)
+- **Контекст:** В `pvl_audit_log.actor_user_id` лежит 1621
+  значение типа `u-adm-1`, `u-st-1` — legacy stub-id из
+  старых seed/test данных и текущей фронт-логики (см. BUG-003).
+  Из 2205 строк только 584 имеют валидный UUID-shape
+  `actor_user_id`. Не блокер (RLS не cast'ит эту колонку),
+  но audit-trail несостоятелен.
+- **Зависимости:**
+  - **BUG-003 должен быть закрыт первым.** Иначе фронт после
+    cleanup'а сразу вернёт стабы обратно.
+- **Шаги (после BUG-003):**
+  - [ ] Решить: удалять stub-rows или маппить их к UUID
+    по контексту (event_type / created_at — может, можно
+    угадать актора по совокупности признаков).
+  - [ ] Если удалить — `DELETE FROM pvl_audit_log
+    WHERE actor_user_id IS NOT NULL AND NOT actor_user_id
+    ~* '<uuid-regex>'`.
+  - [ ] Если миграция — отдельный план UPDATE'ов с маппингом.
+  - [ ] (Опционально, после) ALTER COLUMN actor_user_id TYPE uuid
+    USING actor_user_id::uuid + FK на profiles(id).
+- **Связано:** BUG-003 (источник stub'ов), CLEAN-007 (общая
+  миграция TEXT → UUID для PVL-таблиц), docs/EXEC_2026-05-03_post_smoke_text_id_sweep.md.
+
 ### CLEAN-011: Чужие таблицы в Garden DB — notebooks, questions
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3
@@ -883,6 +1302,115 @@ related_docs:
   упражнение, не техническое — связано с ARCH-008.
 - **Когда:** в спокойное время после security-починки
 
+### UX-001: Прогнать платформу через design-/UX-скиллы (Emil Kowalski / impeccable / taste)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-03
+- **Контекст:** Уже использовался frontend-скилл. Следующий слой —
+  визуальная и UX-полировка. На рынке 3 заметных скилла, каждый со
+  своим профилем и риском для авторской платформы вроде Garden.
+
+  **Emil Kowalski (animations).** Эмиль — известный референс по
+  interaction-дизайну, скилл скорее всего качественный. Риск для
+  Garden: ты строишь авторскую платформу с интимной атмосферой,
+  не SaaS-продукт. Слишком много анимаций может убить ощущение
+  рукодельности. Брать выборочно — микро-интеракции на
+  кнопках/тостах/переходах между состояниями, не повсеместно.
+
+  **impeccable (20 команд + polish).** Pre-baked design system
+  enforcement, команда `polish` перед релизом мощная. Главный риск
+  opinionated-скиллов: гомогенизация. То, что для одного проекта
+  «отполировано», другому добавляет generic-SaaS-флёра. У Garden
+  есть характер (мягкие зелёные, спокойное, скруглённое), и его
+  нельзя терять. Прогнать `polish` сначала на ОДНОМ компоненте,
+  оценить, не размыло ли идентичность, и только потом расширять.
+
+  **taste skill.** Концептуально самый интересный из трёх: учит
+  Claude *судить*, а не применять правила. Для авторских проектов
+  теоретически работает лучше остальных — меньше шансов
+  гомогенизации. Но эффективность зависит от того, *чьему* вкусу
+  скилл обучен, это лотерея. Попробовать первым на low-stakes
+  экране (404, welcome-email, что-то периферийное).
+
+- **Рекомендуемый порядок для Garden:**
+  1. taste skill на одном экране → если результат нравится, расширяем
+  2. impeccable.polish точечно (формы — там сетка реально нужна)
+  3. animations самым последним, и только микро-уровень
+
+- **Главный риск:** не запускать все три сразу. Велик шанс потерять
+  авторский тон, потом долго возвращать.
+
+- **Когда:** после стабилизации платформы (закрытие SEC-001,
+  затем ARCH/BUG из P0/P1), в спокойное окно.
+
+- **Связано:** косвенно с MON-001 (observability — параллельный
+  трек продуктового качества, не визуального).
+
+### SEC-007: Восстановить RLS-policies для public.messages (legacy чат)
+- **Статус:** 🔴 TODO (deferred)
+- **Приоритет:** P3
+- **Создано:** 2026-05-03 (Q7 SEC-001 phase 16)
+- **Контекст:** Таблица `public.messages` имеет RLS=on, но 0 policies →
+  все операции тихо блокируются deny-by-default. На фронте 5 callsites
+  (dataService.js:2273,2294,2307,2326,2335 — SELECT/INSERT/UPDATE/DELETE).
+  Ольга подтвердила (2026-05-03): legacy фича из старого чата, активный
+  пользовательский чат идёт через `pvl_direct_messages`, который работает
+  и имеет policies. Поэтому отложено как P3 — фича вернётся, когда
+  понадобится.
+- **Шаги при возврате:**
+  - Спроектировать модель доступа: участники переписки
+    (sender_id/recipient_id или групповая модель).
+  - Написать SELECT/INSERT/UPDATE/DELETE policies через `auth.uid()`.
+  - GRANT SELECT, INSERT, UPDATE, DELETE на public.messages для
+    authenticated.
+  - Smoke на legacy-чат, если он восстанавливается.
+- **Связано:** migrations/2026-05-03_phase16_grant_role_switch_bulk.sql
+  (deferred-список).
+
+### SEC-008: Восстановить RLS-policies для public.push_subscriptions
+- **Статус:** 🔴 TODO (deferred)
+- **Приоритет:** P3
+- **Создано:** 2026-05-03 (Q7 SEC-001 phase 16)
+- **Контекст:** Таблица `push_subscriptions` имеет RLS=on, без policies.
+  На фронте используется как fallback INSERT (dataService.js:2400) —
+  основной путь идёт через push-server `/push/subscribe`. Не блокер
+  пользовательского flow, но fallback не работает.
+- **Шаги при возврате:**
+  - SELECT-policy: только владелец подписки (user_id = auth.uid()).
+  - INSERT-policy: WITH CHECK user_id = auth.uid().
+  - DELETE-policy: только владелец (для unsubscribe).
+  - GRANT SELECT, INSERT, DELETE для authenticated.
+- **Связано:** migrations/2026-05-03_phase16_grant_role_switch_bulk.sql
+  (deferred-список); push-server (отдельный сервис).
+
+### SEC-010: GRANT-level minimum-privilege hardening для append-only/read-only таблиц
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-03 (post-SEC-001 polish)
+- **Контекст:** Phase 16 выдала blanket SELECT/INSERT/UPDATE/DELETE
+  на 39 Tier-1 таблиц для authenticated, доверяя RLS-политикам как
+  единственному реальному барьеру. Defense-in-depth: для таблиц,
+  чьи policies явно append-only или read-only, GRANT-уровень тоже
+  должен это отражать. Если когда-нибудь по ошибке добавят
+  permissive UPDATE/DELETE policy, GRANT-слой страхует.
+- **Кандидаты на даунгрейд:**
+  - `pvl_homework_status_history` (a, r — append-only) → SELECT, INSERT
+  - `news` (a, r — append+read) → SELECT, INSERT
+  - `course_progress` (a, r) → SELECT, INSERT (если по семантике
+    подтвердится append-only — структура колонок проверяется отдельно)
+  - `notebooks` (r) → SELECT only
+  - `questions` (r) → SELECT only
+  - `notifications` (r, w) → SELECT, UPDATE (без INSERT/DELETE)
+  - `profiles` (a, r, w — без DELETE policy) → SELECT, INSERT, UPDATE
+- **Сейчас:** RLS закрывает несоответствующие операции, GRANT-слой
+  избыточен, но безвреден. Это «улучшение состояния», не блокер.
+- **Шаги:**
+  - Миграция REVOKE для лишних privilege на каждой таблице из списка.
+  - Сверка с фронт-callsites — убедиться, что никакой код не делает
+    операций, которые мы хотим закрыть (если делает — это уже
+    архитектурный мисматч с RLS).
+  - Smoke на затронутых flow'ах.
+
 ## 🤔 К обсуждению / решению
 
 ### DEC-001: Закрыть продукт на 1-2 недели для большой починки
@@ -905,3 +1433,17 @@ related_docs:
 
 #### 2026-05-02
 - SEC-001 этап 0: Caddy 503 закрыл дыру (15 минут работы) ✅
+
+#### 2026-05-03
+- **SEC-001 закрыт целиком** — RLS на 28 таблицах + JWT в PostgREST + frontend patch (jwt-fallback removal, Promise.allSettled, maintenance banner) + Caddy открыт (~03:00 МСК)
+- **Live smoke 1** выявил 4 P0/P1 бага: BUG-004 white screen, BUG-PVL-STUDENTS-RETRY (ARCH-012), BUG-005 audit_log RETURNING, BUG-006 changed_by null
+- **Batch frontend fix** (5 коммитов в одном деплое): bf57606 BUG-004, 45f1402 ARCH-012 hotfix, cd72e44 BUG-005, f46049d BUG-006, e3bd767 BUG-003
+- **Repeat smoke v2** показал NEW-BUG-007 (profiles 42501) и WARN-008 (is_mentor_for EXECUTE missing) — обнажены SW caches purge'ем
+- **Phase 16 миграция**: bulk GRANT для authenticated на 40 таблиц (Tier-1 full CRUD: 39, Tier-2 SELECT+INSERT: pvl_audit_log) + GRANT USAGE на sequences + NOTIFY pgrst
+- **Phase 17 миграция**: GRANT EXECUTE на is_admin() и is_mentor_for(uuid) для authenticated
+- **BUG-003 retry** (commit 7585407): новый helper getAuthUserId через JWT sub claim (jwtUtils.js), исправил ложно-блокирующий skip и закрыл BUG-006 уточнением (changed_by теперь real UUID)
+- **Repeat smoke v3** READY_FOR_ANNOUNCE — все 8 регрессий закрыты, реальные доказательства (UUID actor_user_id, 201 на audit_log + status_history, Канбан загружен, прогресс студента 9/13)
+- Закрытые: SEC-001, BUG-003, BUG-004, BUG-005, BUG-006. Частично: ARCH-012 (hotfix done, архитектурный фикс остался P2).
+- Новые таски от инцидента: SEC-007 (messages), SEC-008 (push_sub), SEC-009 (increment_user_seeds privilege escalation), SEC-010 (GRANT-level hardening), ANOM-001 (mentor 130+ profile requests), BUG-LOGIN-RAW-ERROR-MSG, BUG-LOGIN-SILENT-PROFILE-FAIL, FEAT-001 (балловая система след потока + UI cleanup чипа)
+- **Артефакты:** docs/HANDOVER_2026-05-03_session3.md, docs/EXEC_2026-05-03_post_smoke_browser_full.md, docs/EXEC_2026-05-03_post_smoke_diag_403_inserts.md, docs/EXEC_2026-05-03_post_smoke_repeat.md, docs/EXEC_2026-05-03_post_smoke_repeat_v3.md
+- **Уроки** (docs/lessons/2026-05-03-*.md): RLS RETURNING implies SELECT-policy; RLS INSERT ON CONFLICT checks INSERT WITH CHECK; PVL student_questions cast errors propagation

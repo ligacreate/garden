@@ -1444,9 +1444,17 @@ const addAuditEvent = (actorUserId, actorRole, actionType, entityType, entityId,
         createdAt: nowIso(),
     };
     auditLog.push(row);
+    const currentUser = readGardenCurrentUserFromStorage();
+    const dbActorUserId = currentUser?.id;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!dbActorUserId || !UUID_RE.test(String(dbActorUserId))) {
+        // eslint-disable-next-line no-console
+        console.warn('[PVL audit] skip DB INSERT: actor_user_id is not a valid UUID', { got: dbActorUserId ?? null });
+        return;
+    }
     fireAndForget(() => pvlPostgrestApi.createAuditLog({
         id: row.id,
-        actor_user_id: actorUserId || null,
+        actor_user_id: dbActorUserId,
         action: actionType,
         entity_type: entityType,
         entity_id: entityId || null,

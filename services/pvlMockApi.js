@@ -2016,6 +2016,12 @@ async function doPersistSubmissionToDb(studentId, taskId) {
         return;
     }
     await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
+    const currentUser = readGardenCurrentUserFromStorage();
+    const changedBy = currentUser?.id;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!changedBy || !UUID_RE.test(String(changedBy))) {
+        throw new Error(`pvl status_history: changed_by is not a valid UUID (got=${changedBy ?? 'null'})`);
+    }
     const historyRows = db.statusHistory.filter((h) => h.studentId === studentId && h.taskId === taskId);
     for (const h of historyRows.slice(-3)) {
         // eslint-disable-next-line no-await-in-loop
@@ -2024,7 +2030,7 @@ async function doPersistSubmissionToDb(studentId, taskId) {
             from_status: h.fromStatus || null,
             to_status: h.toStatus || null,
             comment: h.comment || '',
-            changed_by: null,
+            changed_by: changedBy,
             changed_at: h.createdAt || nowIso(),
             payload: { studentId, taskId },
         });

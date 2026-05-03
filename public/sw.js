@@ -1,9 +1,27 @@
-self.addEventListener('install', () => {
+// Сразу активируем новый SW, не ждём закрытия всех табов
+self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// При активации: убиваем ВСЕ caches (включая legacy от предыдущих версий SW)
+// и берём контроль над всеми открытыми клиентами
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+// Network-first для navigation requests (index.html) — bypass browser cache.
+// Остальные запросы (bundles с хешем в имени) не перехватываем — у них immutable-cache корректный.
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req, { cache: 'reload' }).catch(() => Response.error())
+    );
+  }
 });
 
 self.addEventListener('push', (event) => {

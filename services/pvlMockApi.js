@@ -7,6 +7,7 @@ import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS, pvlPlat
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import { pvlPostgrestApi } from './pvlPostgrestApi';
 import { readGardenCurrentUserFromStorage, resolvePvlRoleFromGardenProfile } from './pvlRoleResolver';
+import { getAuthUserId } from './jwtUtils';
 import {
     buildAdminRisks,
     buildAntiDebtProtocol,
@@ -1444,8 +1445,7 @@ const addAuditEvent = (actorUserId, actorRole, actionType, entityType, entityId,
         createdAt: nowIso(),
     };
     auditLog.push(row);
-    const currentUser = readGardenCurrentUserFromStorage();
-    const dbActorUserId = currentUser?.id;
+    const dbActorUserId = getAuthUserId();
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!dbActorUserId || !UUID_RE.test(String(dbActorUserId))) {
         // eslint-disable-next-line no-console
@@ -2024,8 +2024,7 @@ async function doPersistSubmissionToDb(studentId, taskId) {
         return;
     }
     await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
-    const currentUser = readGardenCurrentUserFromStorage();
-    const changedBy = currentUser?.id;
+    const changedBy = getAuthUserId();
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!changedBy || !UUID_RE.test(String(changedBy))) {
         throw new Error(`pvl status_history: changed_by is not a valid UUID (got=${changedBy ?? 'null'})`);

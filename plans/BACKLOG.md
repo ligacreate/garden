@@ -163,6 +163,68 @@ related_docs:
 
 ## 🟡 P1 — Важно (на этой неделе)
 
+### SEC-014: расследование причины GRANT wipeout 2026-05-04 + защита
+- **Статус:** 🔴 TODO
+- **Приоритет:** P1 (повтор инцидента = повтор 2-часового outage у всех пользователей, пока кто-то не заметит)
+- **Создано:** 2026-05-04 (после P0 GRANT WIPEOUT)
+- **Контекст:** Phase 16/17/18 GRANT'ы для `authenticated` и `web_anon`
+  на 45 public-таблицах были стёрты целиком (см.
+  [docs/INCIDENT_2026-05-04_grant_wipeout.md](../docs/INCIDENT_2026-05-04_grant_wipeout.md)).
+  Самая вероятная причина — Timeweb UI quirk «Привилегии роли»
+  делает REVOKE ALL on save (тот же механизм, что в RUNBOOK 1.2 для
+  `gen_user`, см.
+  [docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md](../docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md)).
+  Recovery занял минуты, но детект инцидента — 2 часа (через жалобу
+  ведущей). Нужны и расследование, и защитный мониторинг, и
+  one-click playbook.
+- **Scope:**
+  1. **Расследование.** Проверить Timeweb activity log за 2026-05-04
+     (если он доступен), идентифицировать конкретное действие в UI
+     и аккаунт, который его выполнил.
+  2. **RUNBOOK update.** В `docs/RUNBOOK_garden.md` раздел 1.2
+     добавить явное предупреждение: «НЕ открывать раздел "Привилегии
+     роли" в Timeweb UI ни для просмотра, ни для редактирования —
+     любое сохранение делает REVOKE ALL FROM <role>». Для инспекции
+     прав — только psql (`\dp`, `information_schema.role_table_grants`).
+  3. **Защитный мониторинг.** Cron-job (или системный таймер),
+     который раз в N минут проверяет:
+     ```sql
+     SELECT grantee, count(*)
+     FROM information_schema.role_table_grants
+     WHERE table_schema='public'
+       AND grantee IN ('authenticated','web_anon')
+     GROUP BY grantee;
+     ```
+     и шлёт alert (Telegram-бот / email), если `authenticated < 100`
+     или `web_anon < 4`. Threshold подобрать после инвентаризации;
+     стартовый baseline — `authenticated=158`, `web_anon=4` (post-recovery).
+  4. **Idempotent recovery-скрипт** `scripts/recover_grants.sh` —
+     одной командой re-apply phase 16 + 17 + phase 18 PART 1+3 с
+     verify-блоком. **Без PART 2** (REVOKE writes на events) —
+     откатано phase 19. Скрипт должен брать creds из
+     `/opt/garden-auth/.env`, избегать heredoc через ssh
+     (экранирование ломается), использовать scp + psql -f (как в
+     успешном recovery 2026-05-04). После apply — печатать
+     GRANT-rows count для контроля.
+- **Why:** wipeout 2026-05-04 длился ~2 часа от первой жалобы до
+  recovery. Без мониторинга следующий wipe будет обнаружен по той
+  же траектории (через жалобы пользователей), и каждый раз кто-то
+  должен помнить точный recovery-плейбук. Метрика + скрипт сводят
+  оба риска к минутам.
+- **Acceptance:**
+  - RUNBOOK 1.2 содержит предупреждение про «Привилегии роли» UI.
+  - Cron/systemd-timer пишет результат проверки в лог + шлёт alert
+    при падении ниже threshold. Проверено принудительным понижением
+    threshold (alert приходит).
+  - `scripts/recover_grants.sh` отрабатывает на чистом prod, smoke
+    проходит (158/4 GRANT-rows, profiles/events читаются под
+    SET ROLE без 42501).
+  - Активность Timeweb за 2026-05-04 либо идентифицирована, либо
+    зафиксировано «activity log недоступен» — чтобы знать на будущее.
+- **Связано:** [docs/INCIDENT_2026-05-04_grant_wipeout.md](../docs/INCIDENT_2026-05-04_grant_wipeout.md),
+  [docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md](../docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md),
+  RUNBOOK 1.2, phase 16/17/18 миграции.
+
 ### ARCH-001: Связка ментор-ученик в курсе ПВЛ
 - **Статус:** 🟢 DONE (2026-05-04 — учительская и API-flow задокументированы в PVL_RECONNAISSANCE.md разделе 2.4)
 - **Контекст:** Из PVL_RECONNAISSANCE.md: связка существует
@@ -1900,3 +1962,8 @@ related_docs:
 - **Документация:**
   - docs/DECISION_2026-05-04_pause_hides_meetings.md — добавлено уточнение про реальное состояние схемы (Путь A на `status`, не `access_status`).
   - migrations/2026-05-04_phase21_pause_hides_events.sql — phase 21 миграция, applied.
+
+- **P0 GRANT WIPEOUT — outage логина у всех ведущих ~2 ч.** Vasilina Luzina (~14:44 UTC) и остальные ведущие получали `42501 permission denied for table profiles` при логине; публичное Meetings — то же на `events/cities/notebooks/questions`. Diagnostic (read-only ssh + psql): table-level GRANT'ы для `authenticated` и `web_anon` отозваны полностью на всех 45 public-таблицах + EXECUTE на `is_mentor_for(uuid)` стёрт; БД/PostgREST/Caddy/garden-auth живы, JWT-секреты совпадают, RLS/функции/триггеры (включая phase 19 SECURITY DEFINER и phase 21 trigger) не затронуты. Самая вероятная причина — Timeweb UI quirk «Привилегии роли» делает REVOKE ALL on save (тот же механизм, что в RUNBOOK 1.2 для `gen_user`). Recovery: re-apply phase 16 + phase 17 + phase 18 PART 1+3 (PART 2 НЕ повторяли — откатана phase 19). Smoke: 158 grant-rows для authenticated, 4 для web_anon, profiles/events читаются без 42501, helper-функции исполняются. Outage от первого report'а до recovery ~2 часа. Конкретный запрос Vasilina с 42501 в логах увидеть нельзя (Caddy access-log не настроен, PostgREST request-log выключен в default, garden-auth не логгирует операций).
+- **Открытия (для backlog):** SEC-014 — расследование причины wipe + защитный мониторинг + idempotent recovery-скрипт + обновление RUNBOOK 1.2.
+- **Закрыто:** инцидент. **Открыто:** SEC-014.
+- **Артефакты:** docs/INCIDENT_2026-05-04_grant_wipeout.md, docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md.

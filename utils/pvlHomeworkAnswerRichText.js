@@ -1,13 +1,16 @@
 import DOMPurify from 'dompurify';
 
 /**
- * Word/браузер при вставке часто добавляют HTML-комментарии; DOMPurify их удаляет,
- * из‑за чего текст между ними пропадает при рендере через innerHTML.
+ * Префильтр перед DOMPurify: вырезает Office/Word-мусор целиком (с содержимым).
+ * DOMPurify в whitelist-режиме при KEEP_CONTENT:true по умолчанию режет тег, но
+ * оставляет текст внутри — поэтому CSS из <style> и т.п. иначе вылезают как plain text.
  */
 export function stripMsOfficeHtmlNoise(dirty) {
     return String(dirty || '')
-        .replace(/<!--\s*StartFragment\s*-->/gi, '')
-        .replace(/<!--\s*EndFragment\s*-->/gi, '');
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/<\/?[a-z]+:[a-z][^>]*>/gi, '');
 }
 
 /** Те же семантические теги, что и в RichEditor (ответы менти / ментора). */

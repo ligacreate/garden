@@ -164,7 +164,7 @@ related_docs:
 ## 🟡 P1 — Важно (на этой неделе)
 
 ### ARCH-001: Связка ментор-ученик в курсе ПВЛ
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE (2026-05-04 — учительская и API-flow задокументированы в PVL_RECONNAISSANCE.md разделе 2.4)
 - **Контекст:** Из PVL_RECONNAISSANCE.md: связка существует
   только в захардкоженном seed.js. Назначение требует
   деплоя. Нужен админ-UI и API endpoint.
@@ -187,11 +187,31 @@ related_docs:
     возникает, если связки в `pvl_garden_mentor_links` есть
 
 ### ARCH-002: Реальное сохранение ДЗ ПВЛ в БД
-- **Статус:** 🔴 TODO
-- **Контекст:** Из API_OUTAGE_IMPACT_ANALYSIS.md: ДЗ хранятся
+- **Статус:** 🟢 DONE (2026-05-04, верификация на production data)
+- **Контекст (исходный):** Из API_OUTAGE_IMPACT_ANALYSIS.md: ДЗ хранятся
   в memory state, теряются при закрытии вкладки.
-- **Влияние:** жалобы "плохо сохраняются ДЗ"
-- **Связано:** docs/API_OUTAGE_IMPACT_ANALYSIS.md
+- **Что выяснилось:** структурно ДЗ сохраняются корректно. Полная
+  цепочка работает: HomeworkInlineForm → saveStudentDraft /
+  submitStudentTask → buildSubmissionPayload → createHomeworkSubmission /
+  updateHomeworkSubmission → `pvl_student_homework_submissions.payload`
+  (jsonb). Текст хранится в `payload.versions[].textContent` (rich-text
+  HTML), с поддержкой версионирования (versionNumber растёт при доработках).
+- **Верификация на проде (2026-05-04):**
+  - Всего submissions в БД: 48. С непустым `payload.versions`: **48/48** ✅
+  - Свежих за 7 дней: 28. Все 28 содержат rich-text contentт: **28/28** ✅
+  - Sample показал versionNumber до 3 (итерации с доработками работают).
+  - Ни одной потерянной submission на production data за месяцы
+    использования.
+- **Влияние:** Исходные жалобы "плохо сохраняются ДЗ" объясняются
+  не структурной потерей, а edge-case race condition'ами (см.
+  ARCH-013 ниже): `persistSubmissionToDb` — fireAndForget с retry-loop,
+  UX показывает "Сохранено" до подтверждения от БД, закрытие вкладки
+  в первые ~7 секунд может реально терять данные.
+- **Известные ограничения (отдельные таски):**
+  - ARCH-013 — blocking flow для critical save (заменить fireAndForget)
+  - REFACTOR-002 — разделить version content и thread в схеме (сейчас
+    весь thread пишется в payload каждой submission, race-prone)
+- **Связано:** docs/API_OUTAGE_IMPACT_ANALYSIS.md, ARCH-013, REFACTOR-002
 
 ### ARCH-003: Graceful degradation в App.jsx init()
 - **Статус:** 🔴 TODO
@@ -206,7 +226,7 @@ related_docs:
 - **Связано:** docs/API_OUTAGE_IMPACT_ANALYSIS.md, Проблема 3
 
 ### ARCH-009: Найти "учительскую" — где админ назначает учеников менторам
-- **Статус:** 🟡 IN PROGRESS (повторная разведка запущена 2026-05-02)
+- **Статус:** 🟢 DONE (2026-05-04 — UI и flow найдены, документированы в PVL_RECONNAISSANCE.md раздел 2.4; banner про устаревшие блоки добавлен в DB_SECURITY_AUDIT.md)
 - **Приоритет:** P1 (важно для понимания архитектуры PVL до
   Шага 2.4)
 - **Контекст:** Владелец платформы подтвердил, что есть рабочая
@@ -226,28 +246,40 @@ related_docs:
   - Закрыть либо переоткрыть ARCH-001 (зависит от находок)
 - **Связано:** ARCH-001 (связка ментор-ученик), PVL_RECONNAISSANCE
 
-### ARCH-011: Включить _assertActive обратно после открытия платформы
-- **Статус:** 🔴 TODO
-- **Приоритет:** P1
+### ARCH-011: Подписочная модель Garden — спроектировать и реализовать
+- **Статус:** 🔴 TODO (переформулировано 2026-05-04 — раньше формулировалось
+  как «включить _assertActive обратно», но Ольга уточнила: самой подписочной
+  системы как фичи в продукте сейчас нет, обратно «включать» нечего)
+- **Приоритет:** P3 (продуктовая фича, не баг безопасности — на calm-time)
 - **Контекст:**
-  - В services/dataService.js строки 1190-1193 функция
-    _assertActive сейчас no-op (комментарий
-    "Temporary open access mode"). Это значит, что фронт
-    не блокирует доступ пользователям с
-    SUBSCRIPTION_EXPIRED или ACCESS_PAUSED_MANUAL.
-  - В App.jsx init() catch-блок обрабатывает именно эти
-    два кода (строки 121-127), но их некому генерировать,
-    пока _assertActive выключена.
-  - На время восстановления безопасности это терпимо —
-    у нас другие приоритеты. После открытия платформы
-    (SEC-001 закрыт) включить обратно.
-- **Шаги:**
-  - [ ] После закрытия SEC-001 — восстановить логику
-    _assertActive (восстановить из git history до отметки
-    "Temporary open access mode").
-  - [ ] Smoke-тест: пользователь с истёкшей подпиской видит
-    блокирующий экран.
-- **Связано:** SEC-001, services/dataService.js:1190-1193
+  - В services/dataService.js строки 1190-1193 функция `_assertActive`
+    сейчас no-op (комментарий "Temporary open access mode"). Заглушка
+    проверяет `SUBSCRIPTION_EXPIRED` / `ACCESS_PAUSED_MANUAL` коды.
+  - В App.jsx init() catch-блок (строки 121-127) умеет обрабатывать
+    эти коды и показывать блокирующий экран.
+  - **Но самой подписочной системы как фичи нет:** нет UI оплаты, нет
+    бэкенда для статуса подписки, нет интеграции с платёжным провайдером,
+    нет cron'а на проверку expiry. Был только заглушечный код, готовый
+    к подключению.
+- **Что нужно решить (продуктово):**
+  - Какая модель подписки? Месяц / год / lifetime / freemium?
+  - Какие тарифы? Совпадают ли с курсом ПВЛ или отдельно?
+  - Какой платёжный провайдер (ЮKassa / Stripe / Robokassa / другой)?
+  - Что происходит при просрочке: hard-block? grace period? read-only mode?
+  - Где интеграция с зачислением на курс ПВЛ (paid → enrolled)?
+- **Что нужно сделать (технически, после продуктового решения):**
+  - DB: поля `subscription_status`, `subscription_expires_at`,
+    `subscription_tier` на `profiles` (или отдельная таблица
+    `subscriptions`).
+  - Backend: webhook от платёжного провайдера, обновление статуса.
+  - Backend: cron-функция «истёк ли срок» для перехода в expired.
+  - Frontend: восстановить `_assertActive` (есть в git history до
+    отметки "Temporary open access mode") + UI оплаты + страница
+    просроченной подписки.
+  - Smoke: пользователь с истёкшей подпиской видит блокирующий экран.
+- **Связано:** services/dataService.js:1190-1193 (заглушка), App.jsx:121-127
+  (catch-блок), потенциальная интеграция с курсом ПВЛ (когорты,
+  enrollment).
 
 ### BUG-006: Frontend пишет `changed_by: null` в pvl_homework_status_history — нарушение audit-trail
 - **Статус:** 🟢 DONE (2026-05-03, batch fix f46049d + retry на JWT sub в этом же batch'е)
@@ -645,6 +677,49 @@ related_docs:
   ARCH-002 (реальное сохранение ДЗ ПВЛ — связанный архитектурный
   переход PVL с mock на сервер).
 
+### ARCH-013: Critical save через blocking flow вместо fireAndForget
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (риск тихой потери пользовательской работы)
+- **Создано:** 2026-05-04 (ARCH-002 диагностика)
+- **Контекст:** `persistSubmissionToDb` (вызывается при сохранении
+  ДЗ студентом) — fireAndForget с retry-loop `[0, 2000, 5000] ms`.
+  Из-за этого:
+  - UI показывает "Сохранено" через `setSaved(true)` ДО того, как
+    DB подтвердит запись.
+  - При закрытии вкладки в течение ~7 сек после save — данные могут
+    не дойти до DB. Студент видел подтверждение, в реальности — потеря.
+  - При 3-кратном fail (JWT expired, network down) — UI ничего не
+    показывает, тихая потеря.
+- **Решение:** для critical-save flow (отправка ДЗ, статус смены)
+  заменить fireAndForget на blocking flow:
+  - "Сохранено" показывать только после реального 201/200 от
+    PostgREST.
+  - На fail — toast "Не удалось сохранить, попробуйте ещё раз" + не
+    закрывать draft из state.
+  - Опционально — beforeunload warning, если есть unsaved draft.
+- **Связано:** ARCH-002 (родитель), services/pvlMockApi.js
+  (persistSubmissionToDb / doPersistSubmissionToDb).
+
+### REFACTOR-002: Разделить version content и thread в pvl_student_homework_submissions
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (perf + race-prone, но не блокер)
+- **Создано:** 2026-05-04 (ARCH-002 диагностика)
+- **Контекст:** Текущий `buildSubmissionPayload` кладёт ВЕСЬ
+  `db.threadMessages` (включая ментор-комменты) в `payload jsonb`
+  каждой submission при каждом update. Это значит:
+  - Inefficient: thread переписывается целиком при сохранении новой
+    версии ответа студента.
+  - Race-prone: если ментор пишет коммент одновременно со студентом-
+    save'ом, последний writer wins — потеря коммента или ответа.
+  - Несимметрично с `pvl_homework_status_history`, который вынесен
+    в отдельную таблицу.
+- **Решение:** вынести thread в отдельную таблицу
+  `pvl_homework_thread_messages` (или подобную) с FK на submission_id
+  + RLS-policies (видит студент-владелец + ментор-связанный + админ).
+  Submissions.payload оставить только для версий ответа студента.
+- **Связано:** REFACTOR-001 (общая нормализация PVL-схемы),
+  ARCH-002.
+
 ### CLEAN-001: Удалить legacy скрипты Supabase
 - **Статус:** 🔴 TODO
 - **Файлы:**
@@ -861,9 +936,13 @@ related_docs:
   Anomalies); RLS profiles_select_authenticated.
 
 ### ANOM-002 / SEC-011: events writes wide-open — RLS пропускает любой INSERT/UPDATE/DELETE
-- **Статус:** 🟢 DONE (2026-05-04, phase 18 — REVOKE INSERT/UPDATE/DELETE ON events FROM authenticated)
+- **Статус:** 🔴 REOPENED (2026-05-04 — phase 19 откатил REVOKE из-за регрессии. Окончательное закрытие — phase 20 через узкие RLS-policies, см. SEC-013)
 - **Приоритет:** P2 (security, но closed community → не P0/P1)
 - **Создано:** 2026-05-04 (post-phase-16 архитектурная ревизия)
+- **История:**
+  - 2026-05-04 — phase 18 закрыла через REVOKE INSERT/UPDATE/DELETE ON events FROM authenticated.
+  - 2026-05-04 — phase 18 регрессия: ведущие не могли сохранить событие. Phase 19 откатил REVOKE (revert GRANT) + дополнительно ALTER trigger sync_meeting_to_event() SECURITY DEFINER. Authenticated снова имеет full CRUD на events, ANOM-002/SEC-011 временно открыта.
+  - **План закрытия (phase 20):** заменить RLS-policies USING(true) на узкие policies через JOIN на meetings.user_id (ведущая может писать только свои события). См. SEC-013.
 - **Контекст:**
   - RLS-policies на `public.events`:
     - `Allow insert events`: WITH CHECK = `true`
@@ -922,6 +1001,140 @@ related_docs:
     либо админ через owner-роль, либо trigger/RPC.
   - Если policies узкие (например, только admin) — оставить как есть.
 - **Связано:** ANOM-002/SEC-011, phase 18, AUDIT-001 (code review meetings).
+
+### ANOM-005: knowledge_base — KB_Edit_Auth permissive ALL перекрывает admin policies
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (security misconfiguration, closed community = умеренный риск)
+- **Создано:** 2026-05-04 (зафиксировано Ольгой во время SEC-001 миграции, не успели завести таск)
+- **Контекст:** На таблице `public.knowledge_base` есть policy
+  `KB_Edit_Auth` с `cmd = ALL` для роли `authenticated`. Postgres
+  PERMISSIVE policies складываются по **OR** — это значит: даже если
+  параллельно есть admin-only policies, широкая `ALL для authenticated`
+  их перекрывает. Любой залогиненный может читать / писать / удалять
+  любую запись в knowledge_base.
+  - Hardcoded email Ольги в admin-policies был убран в SEC-001 phase 3
+    (миграция на role='admin'), но эта легаси-policy осталась.
+  - Phase 16 GRANT'ы дали authenticated full CRUD на таблицу,
+    усилив проблему: GRANT-слой не отбивает.
+  - Та же логика, что в ANOM-002/SEC-011 (events writes), но через
+    другой механизм (PERMISSIVE-OR вместо USING(true)).
+- **Что нужно проверить (DB-side, read-only):**
+  - Подтвердить, что KB_Edit_Auth существует и PERMISSIVE:
+    `SELECT polname, polcmd, polpermissive,
+            pg_get_expr(polqual, polrelid) AS using_expr,
+            pg_get_expr(polwithcheck, polrelid) AS with_check_expr
+     FROM pg_policy WHERE polrelid = 'public.knowledge_base'::regclass;`
+- **Решение (после подтверждения):**
+  - Drop `KB_Edit_Auth` ИЛИ заменить её на RESTRICTIVE (тогда она
+    режет, а не расширяет).
+  - Альтернатива: перевести admin-only policies в RESTRICTIVE — RESTRICTIVE
+    политики всегда применяются (combine по AND с PERMISSIVE).
+  - Smoke: ментор/студент пытается PATCH /knowledge_base?id=eq.X →
+    должно быть 403/42501 после фикса.
+- **Связано:** ANOM-002/SEC-011 (тот же класс проблемы), SEC-001 phase 3
+  (где hardcoded email убрали, но legacy KB_Edit_Auth не тронули),
+  phase 16 (table GRANT, обнажил проблему).
+
+### ANOM-006: events.time NOT NULL — trigger падает, если в meetings.time NULL
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (минорный, проявляется только если фронт допускает пустой time в meeting)
+- **Создано:** 2026-05-04 (обнаружено при verify phase 19)
+- **Контекст:** В таблице `public.events` колонка `time` имеет NOT NULL
+  constraint. В `public.meetings` колонка `time` (вероятно) NULL-able.
+  Trigger `sync_meeting_to_event()` копирует `NEW.time → events.time`
+  без COALESCE. Если фронт создаст meeting с пустым time, trigger
+  упадёт с NOT NULL violation, и весь UPDATE/INSERT meeting откатится.
+- **Воспроизведено:** при попытке создать тестовую meeting с пустым
+  time во время verify phase 19 — INSERT упал на events.time NOT NULL.
+  Добавление `time: '12:00'` устранило проблему.
+- **Возможные решения (в порядке предпочтения):**
+  1. `COALESCE(NEW.time, '00:00')` в trigger'е — graceful default,
+     не теряем функционал.
+  2. Добавить NOT NULL constraint на `meetings.time` + frontend
+     валидация — синхронизировать модели.
+  3. Сделать `events.time` NULL-able — потеряет смысл колонки.
+- **Связано:** trigger sync_meeting_to_event(), schema events / meetings.
+
+### SEC-013: Phase 20 — узкие RLS-policies на events writes (закрытие ANOM-002/SEC-011 без блокировки фронта)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (security, временно открыто после phase 19 revert'а)
+- **Создано:** 2026-05-04 (после phase 19 hot-fix)
+- **Контекст:** Phase 18 закрыла ANOM-002/SEC-011 через REVOKE
+  INSERT/UPDATE/DELETE на events от authenticated, но это вызвало
+  регрессию у ведущих (фронт делает PATCH /events напрямую, не через
+  trigger). Phase 19 откатил REVOKE — ANOM-002/SEC-011 снова открыта.
+- **Решение (phase 20):** заменить RLS-policies на events для
+  INSERT/UPDATE/DELETE с `USING (true)` / `WITH CHECK (true)` на
+  узкие через JOIN к meetings.user_id. Пример:
+  ```sql
+  DROP POLICY "Allow update events" ON public.events;
+  CREATE POLICY events_update_owner ON public.events
+    FOR UPDATE TO authenticated
+    USING (EXISTS (
+      SELECT 1 FROM public.meetings m
+      WHERE m.id = events.garden_id AND m.user_id = auth.uid()
+    ))
+    WITH CHECK (EXISTS (
+      SELECT 1 FROM public.meetings m
+      WHERE m.id = events.garden_id AND m.user_id = auth.uid()
+    ));
+  -- аналогично для INSERT, DELETE
+  ```
+- **После phase 20:**
+  - Ведущие могут редактировать ТОЛЬКО свои события через PATCH /events.
+  - Никто другой не может переписать чужие события.
+  - GRANT на authenticated остаётся (нужен для UPDATE через RLS).
+  - ANOM-002/SEC-011 закрыта окончательно, не требует phase 21.
+- **Verify-план:**
+  - PATCH /events?id=eq.<свой> под mentor JWT → 204
+  - PATCH /events?id=eq.<чужой> под mentor JWT → 0 строк затронуто
+    (RLS отбивает молча, не 403; PostgREST показывает 0 rows)
+  - DELETE /events?id=eq.<чужой> под mentor JWT → 0 строк затронуто
+- **Альтернативный путь (архитектурный, отдельный таск):** переделать
+  фронт, чтобы UPDATE'ы шли в meetings (а не в events), и trigger
+  sync_meeting_to_event делал работу под gen_user. Тогда GRANT/RLS
+  на events можно вообще закрыть. Это больше работы (frontend), но
+  чище.
+- **Связано:** ANOM-002/SEC-011 (parent), phase 18, phase 19.
+
+### BUG-MEETINGS-COVER-UPLOAD: race между async upload и Save в редакторе события
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (реальный пользовательский блокер — ведущие не могут сохранить событие, если торопятся)
+- **Создано:** 2026-05-04 (зафиксировано на ведущей в проде)
+- **Контекст (views/MeetingsView.jsx:799-840):**
+  - Когда юзер выбирает файл обложки, фронт делает два действия
+    параллельно:
+    1. Сразу: `setFormData(prev => ({..., cover_image: e.target.result }))` —
+       это base64 data URL, мгновенный preview.
+    2. Async: upload файла в storage (через `/storage/sign` presigned
+       URL endpoint, см. STORAGE_SIGN_PATHS в dataService.js:162) →
+       по завершении `setFormData(prev => ({..., cover_image: url }))` с
+       финальной HTTPS-ссылкой.
+  - При нажатии «Сохранить» валидация (line 801) проверяет: если
+    `cover_image` начинается с `data:` — значит upload не завершился,
+    показывает alert «Обложка (загрузка не завершена — нажмите
+    Загрузить фото снова)».
+- **Симптом:** валидация сработает в двух случаях:
+  1. **Race:** юзер быстро нажимает Save, не дождавшись завершения
+     upload'а. Лечится ожиданием 10-15 сек перед Save.
+  2. **Реальный fail upload'а:** /storage/sign endpoint возвращает
+     ошибку, или сетевой сбой — data URL остаётся навсегда, при
+     любом Save та же ошибка.
+- **Что нужно сделать:**
+  - **UI-фикс:** блокировать кнопку «Сохранить» во время активного
+    upload'а (показывать loader / progress bar), не давать юзеру
+    нажимать Save до получения финальной ссылки.
+  - **UX:** если upload падает — показать ошибку прямо в форме
+    (а не оставлять data URL в state без видимого сигнала).
+  - **Не использовать native alert()** — то же замечание как в
+    BUG-LOGIN-RAW-ERROR-MSG, заменить на inline-сообщение.
+- **Связано:** BUG-LOGIN-RAW-ERROR-MSG (общий паттерн «убрать
+  native alert»), services/dataService.js:162 (STORAGE_SIGN_PATHS).
+- **NB:** Phase 18 проверена — она не виновата. Edit события идёт
+  через таблицу `meetings` (full CRUD у authenticated сохранён),
+  events пишется trigger'ом sync_meeting_to_event под owner-ролью.
+
+### BUG-LOGIN-RAW-ERROR-MSG: alert(JSON.stringify) показывает PostgREST raw JSON юзеру
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2 (UX, видимо обычным пользователям при любой DB-ошибке)
 - **Создано:** 2026-05-03 (NEW-BUG-007 incident)
@@ -953,6 +1166,43 @@ related_docs:
     позже» — даёт пользователю понять, что что-то пошло не так.
   - Логировать детали в console для диагностики.
 
+### FEAT-013: Пауза ведущей скрывает её встречи в публичном Meetings
+- **Статус:** 🔴 запланировано (после стабилизации post-SEC-001)
+- **Приоритет:** P2
+- **Создано:** 2026-05-04
+- **Связан с:** [docs/REPORT_2026-05-04_pause_hides_meetings_recon.md](../docs/REPORT_2026-05-04_pause_hides_meetings_recon.md), [docs/DECISION_2026-05-04_pause_hides_meetings.md](../docs/DECISION_2026-05-04_pause_hides_meetings.md)
+- **Суть:** Когда ведущая на паузе (`access_status='paused_manual'` или `'paused_expired'`),
+  её встречи не должны появляться в публичном Meetings (meetings.skrebeyko.ru).
+  При возврате на `active` — все встречи автоматически снова публикуются.
+  Сами `meetings` не удаляются и не модифицируются.
+- **Точки изменений (по разведке):**
+  - **Триггер `sync_meeting_to_event`** ([migrations/14_schedule_city_contract.sql:42-162](../migrations/14_schedule_city_contract.sql#L42-L162))
+    — добавить чтение `profiles.access_status` и условие: писать в `events` только
+    если `access_status='active'`.
+  - **Хук в `services/dataService.js:toggleUserStatus`** ([services/dataService.js:1571-1579](../services/dataService.js#L1571-L1579))
+    или новый триггер на `profiles` (AFTER UPDATE OF access_status) — массово
+    удалять/переинсертить зеркала в `events` для всех `meetings.user_id = <ведущая>`.
+    Условие защиты: `WHEN NEW.access_status IS DISTINCT FROM OLD.access_status`.
+- **НЕ трогаем:**
+  - `meetings` (данные ведущей сохраняются как есть)
+  - RESTRICTIVE-гарды на 13 таблиц (миграция 21) — смысл паузы не меняется
+  - AdminPanel UI — кнопка ⏸ остаётся как есть
+- **Acceptance:**
+  - Ведущая на паузе → её встречи мгновенно (в течение 1–2 секунд) исчезают
+    из `events` и из публичного Meetings.
+  - Возврат с паузы → встречи появляются обратно.
+  - Админы продолжают видеть все встречи в админских view (читают `meetings`,
+    не `events`).
+  - Внешние ссылки регистрации (Продамус) продолжают работать — это вне нашей
+    зоны.
+- **Риски / проверки перед мержем:**
+  - Идемпотентность массового переинсерта при возврате (если миграция 14 будет
+    менять формат `events` — учесть).
+  - Если в момент паузы триггер на `profiles` пройдёт по 50+ встречам —
+    проверить производительность.
+  - Не должно сломаться при `paused_expired` (автопауза по подписке) —
+    поведение симметрично `paused_manual`.
+
 ### FEAT-001: Балловая система для следующего потока ПВЛ + UI cleanup в текущем
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3 (на следующий поток)
@@ -969,6 +1219,33 @@ related_docs:
   - **Внедрение в следующем потоке:** проектирование правил
     начисления (за чекпоинты, за ДЗ accepted, за активность в чате?),
     UI отображения, lifecycle сброса при смене когорты.
+
+### FEAT-002: ВК-контакт ведущего в профиле Garden + кнопка «Связаться в ВК» в Meetings
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-04
+- **Контекст:** Сейчас в профиле ведущего в Саду нет ссылки на ВК-профиль.
+  В приложении Meetings на странице события есть кнопка
+  «Зарегистрироваться» — её формулировка не отражает реальное действие
+  (скорее всего ведёт в Телеграм для связи с ведущим). Ольга хочет
+  явно разделить два канала контакта.
+- **Подзадачи:**
+  - **Garden — profiles:** добавить в схему профиля поле под VK-ссылку
+    (если ещё нет колонки в `public.profiles` для социальных сетей —
+    проверить; если есть `social_links` или подобное — переиспользовать,
+    иначе DB-миграция + UI поля редактирования).
+  - **Garden — UI:** показывать VK-ссылку в карточке/странице ведущего
+    наряду с текущими каналами (телеграм, email).
+  - **Meetings — UI:** на странице события добавить кнопку «Связаться
+    в ВК» (использует ВК-ссылку ведущего из общей БД). Существующую
+    кнопку «Зарегистрироваться» переименовать на формулировку,
+    отражающую реальное действие («Связаться в ТГ» или подобное —
+    зависит от того, что она реально делает; уточнить при работе).
+- **Связано:** AUDIT-001 (code review meetings — заодно понять,
+  где сейчас формируется кнопка «Зарегистрироваться» и как она
+  устроена). При изменении схемы profiles — учесть RLS-policies
+  (там USING auth.uid() IS NOT NULL для SELECT, добавление новой
+  колонки policy не задевает).
 
 ## ⚪ P3 — Хотелось бы (потом)
 
@@ -1546,3 +1823,18 @@ related_docs:
   - `events` RLS = `USING (true)` для всех CRUD → защищались только GRANT-слоем; phase 18 закрыла дыру.
 - **Закрыто:** ANOM-002/SEC-011 (phase 18). **Открыто:** ANOM-003 (co_hosts не sync'ится), ANOM-004 (writes на cities/notebooks/questions — audit паттерна), AUDIT-001 (code review репо meetings).
 - **Урок** (docs/lessons/2026-05-04-postgrest-role-switch-anon-clients.md): при включении role-switch в API-gateway (PostgREST) GRANT-слой должен покрывать ВСЕХ клиентов API, включая отдельные сервисы и анонимных читателей, а не только основной фронт.
+
+- **Cover-upload incident у ведущей.** Несколько часов после phase 18 ведущая не могла сохранить событие — alert «Обложка (загрузка не завершена)», затем «Ошибка обновления встречи». Двойной симптом:
+  1. Cover upload race: фронт показывает превью data-URL, async upload в твоё S3 (twcstorage.ru) иногда возвращает 503 (intermittent). Валидация ловит data-URL и не даёт сохранить. Это давний UI-баг — не наша регрессия. Зафиксировано как BUG-MEETINGS-COVER-UPLOAD.
+  2. Phase 18 регрессия: фронт делает PATCH /events напрямую (не через meetings + trigger), а phase 18 REVOKE'нула writes на events от authenticated → 403. Дополнительно trigger sync_meeting_to_event имеет SECURITY INVOKER → тоже падает 42501. Подтверждено через Claude in Chrome diagnostic.
+- **Phase 19 миграция:** revert REVOKE INSERT/UPDATE/DELETE на events для authenticated + ALTER FUNCTION sync_meeting_to_event() SECURITY DEFINER + SET search_path = public. Регрессия закрыта, ведущие снова могут сохранять события. ⚠️ ANOM-002/SEC-011 временно открыта — окончательное закрытие через phase 20 (узкие RLS-policies, см. SEC-013).
+- **Открытия (для backlog):**
+  - ANOM-005: `KB_Edit_Auth` permissive ALL policy перекрывает admin-only policies на knowledge_base.
+  - ANOM-006: `events.time NOT NULL` — trigger падает, если в meetings.time NULL.
+  - SEC-013: phase 20 task (узкие RLS на events writes).
+  - FEAT-002: VK-контакт ведущего в профиле + кнопка «Связаться в ВК» в Meetings.
+- **Закрыто:** ARCH-009 (учительская найдена и задокументирована), ARCH-001 (та же тема), ARCH-002 (DB сохранение ДЗ верифицировано на production data — 48/48 submissions с непустым payload).
+- **Документация:**
+  - docs/PVL_RECONNAISSANCE.md раздел 2.4 — обновлён с актуальной архитектурой ментор-ученик flow (3 admin-API функции, реальные production data, известные ограничения).
+  - docs/DB_SECURITY_AUDIT.md — добавлен banner «снимок до SEC-001», документ остаётся как исторический artifact.
+  - docs/lessons/2026-05-04-postgrest-role-switch-anon-clients.md — урок про anon-клиентов.

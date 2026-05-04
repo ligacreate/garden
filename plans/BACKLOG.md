@@ -860,7 +860,68 @@ related_docs:
 - **Связано:** docs/EXEC_2026-05-03_post_smoke_repeat_v3.md (раздел
   Anomalies); RLS profiles_select_authenticated.
 
-### BUG-LOGIN-RAW-ERROR-MSG: alert(JSON.stringify) показывает PostgREST raw JSON юзеру
+### ANOM-002 / SEC-011: events writes wide-open — RLS пропускает любой INSERT/UPDATE/DELETE
+- **Статус:** 🟢 DONE (2026-05-04, phase 18 — REVOKE INSERT/UPDATE/DELETE ON events FROM authenticated)
+- **Приоритет:** P2 (security, но closed community → не P0/P1)
+- **Создано:** 2026-05-04 (post-phase-16 архитектурная ревизия)
+- **Контекст:**
+  - RLS-policies на `public.events`:
+    - `Allow insert events`: WITH CHECK = `true`
+    - `Allow update events`: USING = `true`
+    - `Allow delete events`: USING = `true`
+    - `Allow public read access to events` + `Public read events check`
+      (дубль): USING = `true`
+  - Phase 16 bulk GRANT дала `authenticated` full CRUD на events.
+    До phase 16 защита держалась на отсутствии table-GRANT'а; теперь
+    GRANT есть, RLS как barrier ничего не отбивает.
+  - Любой залогиненный JWT может через `POST /events`,
+    `PATCH /events?id=eq.X`, `DELETE /events?id=eq.X` создать /
+    переписать / удалить произвольное событие.
+- **Архитектурно:** events пишутся ТОЛЬКО триггером
+  `sync_meeting_to_event()` (под owner-ролью при изменении meetings).
+  Прямой записи authenticated в events не нужен.
+- **Решение:** phase 18 мини-миграция —
+  `REVOKE INSERT, UPDATE, DELETE ON public.events FROM authenticated;`
+  SELECT оставить (events public read через trigger-синхронизацию).
+- **Связано:** migrations/2026-05-03_phase16_grant_role_switch_bulk.sql,
+  trigger sync_meeting_to_event(), RLS policies на events.
+
+### ANOM-003: co_hosts не sync'ится из meetings в events
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (продуктовая фича, не блокер security)
+- **Создано:** 2026-05-04 (post-phase-16 архитектурная ревизия)
+- **Контекст:**
+  - `meetings.co_hosts` — `uuid[]` (массив UUID со-ведущих).
+  - `events.co_hosts` — `text` (колонка существует).
+  - Trigger `sync_meeting_to_event()` НЕ переносит `co_hosts` ни при
+    INSERT, ни при UPDATE — поле в events остаётся NULL/пустым.
+- **Симптом:** если в UI на странице события ожидается отображение
+  со-ведущих — фича сломана. Пользователь видит только основного
+  ведущего (поле `speaker`), но не co-hosts.
+- **Решение:** дополнить trigger sync_meeting_to_event() — добавить
+  conversion `meetings.co_hosts (uuid[])` → `events.co_hosts (text)`
+  через JOIN на profiles + array_to_string или JSON-aggregation
+  имён со-ведущих.
+- **Связано:** trigger sync_meeting_to_event(), schema events.
+
+### ANOM-004: writes на cities / notebooks / questions — audit паттерна events
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (теоретическая дыра по аналогии, не подтверждена)
+- **Создано:** 2026-05-04 (после phase 18, по аналогии с ANOM-002/SEC-011)
+- **Контекст:** ANOM-002/SEC-011 показал паттерн: на `events` была
+  RLS-policy `USING(true)` для INSERT/UPDATE/DELETE + phase 16 GRANT —
+  любой залогиненный мог переписать. На `cities`, `notebooks`,
+  `questions` (которые phase 18 открыл для web_anon SELECT) RLS-policies
+  на запись мы не смотрели. Если там USING(true) — тот же класс дыры.
+- **Что нужно:**
+  - Проверить policies на INSERT/UPDATE/DELETE для cities, notebooks,
+    questions (analog Q3 запрос pg_policy).
+  - Если USING(true) — REVOKE writes от authenticated (фаза 19 mini),
+    как в phase 18 для events. Архитектурно эти таблицы — справочник
+    (cities) и контент Meetings (notebooks/questions), записывает их
+    либо админ через owner-роль, либо trigger/RPC.
+  - Если policies узкие (например, только admin) — оставить как есть.
+- **Связано:** ANOM-002/SEC-011, phase 18, AUDIT-001 (code review meetings).
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2 (UX, видимо обычным пользователям при любой DB-ошибке)
 - **Создано:** 2026-05-03 (NEW-BUG-007 incident)
@@ -1225,36 +1286,31 @@ related_docs:
 - **Связано:** BUG-003 (источник stub'ов), CLEAN-007 (общая
   миграция TEXT → UUID для PVL-таблиц), docs/EXEC_2026-05-03_post_smoke_text_id_sweep.md.
 
-### CLEAN-011: Чужие таблицы в Garden DB — notebooks, questions
-- **Статус:** 🔴 TODO
+### CLEAN-011: notebooks и questions — таблицы Meetings, не «чужие»
+- **Статус:** 🟡 PARTIALLY DONE (2026-05-04 — выяснено происхождение, переоформление контекста; полное решение архитектуры — отдельной задачей)
 - **Приоритет:** P3
-- **Контекст:** При выполнении SEC-001 фаза 14 (Grants) обнаружены
-  две таблицы в `public` схеме Garden-БД (`default_db`), которые,
-  по словам владельца, относятся к **другому приложению**
-  (приложение расписания событий, куда ведущие сохраняют события
-  из Сада):
-  - `public.notebooks` — RLS=on, 0 политик
-  - `public.questions` — RLS=on, 0 политик
-- **Поведение под SEC-001:** RLS-on без политик блокирует все
-  CRUD под web_anon/authenticated, поэтому угрозы безопасности
-  нет. Grants на эти таблицы не выданы (`authenticated` не имеет
-  INSERT/UPDATE/DELETE). Owner-bypass для `gen_user` сохранён.
-- **Что нужно выяснить:**
-  - Откуда они появились в этой БД? (миграция с Supabase, общая
-    БД с приложением расписания, забытая копия?)
-  - Используются ли они активно вторым приложением сейчас?
-  - Если да — должны ли они вообще быть в Garden-БД, или нужно
-    их вынести в отдельную БД?
-  - Если нет — DROP TABLE.
-- **Шаги:**
-  - [ ] grep по 4 репо Garden (garden, garden-auth, garden-db,
-    meetings) на упоминания `notebooks` / `questions` — точно ли
-    Garden их не использует.
-  - [ ] Найти владельца приложения расписания, узнать, использует
-    ли оно эти таблицы из Garden-БД.
-  - [ ] По результатам — DROP, миграция в отдельную БД, или
-    оставить.
-- **Связано:** docs/EXEC_2026-05-02_phase14_part1_grants.md
+- **Контекст (обновлён 2026-05-04):** Эти две таблицы в `public` схеме
+  Garden-БД (`default_db`) изначально казались «чужими». При диагностике
+  Meetings-блокера 2026-05-04 (DevTools Console + Claude in Chrome
+  smoke) выяснилось: `public.notebooks` и `public.questions` — это
+  **таблицы приложения Meetings** (отдельный сервис расписания
+  meetings.skrebeyko.ru). Meetings ходит к ним анонимно (без JWT)
+  через api.skrebeyko.ru:
+  - `GET /notebooks?select=id,title,description,image_url,pdf_url,created_at`
+  - `GET /questions?select=question,order_index`
+- **После phase 18:** обе получили `GRANT SELECT TO web_anon`, читаются
+  Meetings приложением корректно. RLS-policies остались (RLS=on, без
+  policies) — read pass через GRANT, write блокируется RLS deny-by-default.
+- **Что осталось решить (для следующих заходов, не сейчас):**
+  - Архитектурно правильнее ли держать таблицы Meetings в общей
+    Garden-БД, или вынести в отдельную DB (но тогда теряется единый
+    PostgREST-фасад)?
+  - Чьи ещё репо (Sad, Meetings) ходят в эти таблицы — для записи?
+    Если есть write-сценарии без policies → нужны policies, иначе
+    блокировано deny-by-default.
+- **Связано:** docs/EXEC_2026-05-02_phase14_part1_grants.md;
+  migrations/2026-05-04_phase18_meetings_anon_read_revoke_events_writes.sql;
+  AUDIT-001 (code review meetings).
   (pre-flight 14.0)
 
 ### MON-001: Поставить Sentry
@@ -1345,6 +1401,39 @@ related_docs:
 
 - **Связано:** косвенно с MON-001 (observability — параллельный
   трек продуктового качества, не визуального).
+
+### AUDIT-001: Code review отдельного репозитория meetings
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-04
+- **Контекст:** Сервис встреч живёт в отдельном репо `ligacreate/meetings`.
+  В Garden он связан через trigger `sync_meeting_to_event` (meetings →
+  events). При диагностике 2026-05-04 (девушки жаловались, что встреча
+  не видна гостям) обнаружили побочно:
+  - `events.RLS = USING (true)` на INSERT/UPDATE/DELETE — после phase 16
+    GRANT'ов любой залогиненный может создать/переписать/удалить любое
+    событие. Зафиксировано отдельно как ANOM-002/SEC-011.
+  - `co_hosts` не синхронизируется в events — возможно bug, возможно
+    intentional. Зафиксировано как ANOM-003.
+  - Аналогичные структурные паттерны могут быть и в самом коде сервиса
+    meetings (auth-модель, RLS-предположения, обработка ошибок).
+- **Что включить в audit:**
+  - Структура auth — под какой ролью сервис ходит в БД, есть ли свой
+    JWT, как читает meetings/events.
+  - Обработка ошибок — silent fails / loud fails, нормализация
+    сообщений для пользователя.
+  - Точки записи в БД — все ли проходят через trigger или есть прямые
+    INSERT'ы из сервиса в events (если есть — значит trigger не
+    единственный источник истины, и надо понимать архитектуру).
+  - Интеграция с Garden — webhook'и, polling, общие таблицы — где
+    реально формируется список встреч для пользователя.
+  - Зеркальные SEC-001 моменты — есть ли свои hardcoded id, забытые
+    GRANT'ы, отсутствующие тесты.
+- **Когда:** в спокойное окно после стабилизации Garden (закрытие
+  P2-багов из этой сессии: SEC-009, ANOM-001, ANOM-002/SEC-011,
+  BUG-LOGIN-*).
+- **Способ:** новая сессия VS Code Claude Code с открытым репо meetings,
+  либо через агентов в Claude Code из Garden-сессии.
 
 ### SEC-007: Восстановить RLS-policies для public.messages (legacy чат)
 - **Статус:** 🔴 TODO (deferred)
@@ -1447,3 +1536,13 @@ related_docs:
 - Новые таски от инцидента: SEC-007 (messages), SEC-008 (push_sub), SEC-009 (increment_user_seeds privilege escalation), SEC-010 (GRANT-level hardening), ANOM-001 (mentor 130+ profile requests), BUG-LOGIN-RAW-ERROR-MSG, BUG-LOGIN-SILENT-PROFILE-FAIL, FEAT-001 (балловая система след потока + UI cleanup чипа)
 - **Артефакты:** docs/HANDOVER_2026-05-03_session3.md, docs/EXEC_2026-05-03_post_smoke_browser_full.md, docs/EXEC_2026-05-03_post_smoke_diag_403_inserts.md, docs/EXEC_2026-05-03_post_smoke_repeat.md, docs/EXEC_2026-05-03_post_smoke_repeat_v3.md
 - **Уроки** (docs/lessons/2026-05-03-*.md): RLS RETURNING implies SELECT-policy; RLS INSERT ON CONFLICT checks INSERT WITH CHECK; PVL student_questions cast errors propagation
+
+#### 2026-05-04
+- **Meetings-блокер обнаружен и закрыт.** Девушки сообщили, что встречи, созданные в Саду, не показываются гостям. Diagnostic: trigger sync_meeting_to_event() работает корректно (6/6 встреч за сутки синхронизировались), но Meetings приложение читает api.skrebeyko.ru анонимно (без JWT), а у роли web_anon после phase 16 — 0 GRANT'ов. Каждый запрос → 42501.
+- **Phase 18 миграция:** GRANT SELECT ON {events, cities, notebooks, questions} TO web_anon + REVOKE INSERT/UPDATE/DELETE ON events FROM authenticated. Закрыла Meetings-блокер + параллельно ANOM-002/SEC-011 (events writes wide-open).
+- **Открытия:**
+  - `notebooks` и `questions` — это таблицы Meetings, не «чужие» (CLEAN-011 переоформлен).
+  - RLS-policy `meetings` = `auth.uid() = user_id` для всех операций — owner-only by design; гости видят встречу через `events` (sync trigger).
+  - `events` RLS = `USING (true)` для всех CRUD → защищались только GRANT-слоем; phase 18 закрыла дыру.
+- **Закрыто:** ANOM-002/SEC-011 (phase 18). **Открыто:** ANOM-003 (co_hosts не sync'ится), ANOM-004 (writes на cities/notebooks/questions — audit паттерна), AUDIT-001 (code review репо meetings).
+- **Урок** (docs/lessons/2026-05-04-postgrest-role-switch-anon-clients.md): при включении role-switch в API-gateway (PostgREST) GRANT-слой должен покрывать ВСЕХ клиентов API, включая отдельные сервисы и анонимных читателей, а не только основной фронт.

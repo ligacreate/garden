@@ -197,44 +197,82 @@ submitStudentTaskForReview(studentId, taskId, payload):
 
 → Это объясняет жалобу «ментор не видит ДЗ»: либо ученик новый и не в seed, либо данные потерялись при reload, либо у ментора нет привязанного `mentorId` в `studentProfiles`.
 
-### 2.4 Как фактически назначается ментор (подтверждено)
+### 2.4 Как фактически назначается ментор
 
-Владелец продукта подтверждает, что **вручную назначает менторов** новым платным ученикам. Целевая разведка показала: программного механизма нет ни на одном уровне.
+Назначение ментора **реализовано полностью** через UI учительской ПВЛ
+(не через правку `seed.js`, как утверждалось в первой версии этого
+раздела от 2026-05-02). Подтверждено production-данными: 19 активных
+связок в `pvl_garden_mentor_links`, 27 событий `assign_student_mentor`
+в `pvl_audit_log`, smoke v3 (2026-05-03) показал работу через
+RLS-policy `is_mentor_for(student_id)` — ментор «Настин фиксик»
+увидел 4 закреплённых студентов.
 
-#### Что проверено и отвергнуто
+#### Подтверждённая цепочка (основной flow)
 
-| Кандидат | Результат | Доказательство |
+1. Админ открывает учительскую ПВЛ (роль admin → раздел студентов /
+   когорт).
+2. В таблице студентов — `<select>` со списком менторов.
+3. Изменение dropdown'а триггерит wrapper
+   [`assignStudentMentor`](../views/PvlPrototypeApp.jsx#L6942-L6961)
+   на UI (call-points в `PvlPrototypeApp.jsx:7043, 7105, 7190`).
+4. Wrapper вызывает
+   [`pvlDomainApi.adminApi.assignStudentMentor`](../services/pvlMockApi.js#L3713-L3740):
+   - Снимает студента с прежнего ментора в `db.mentorProfiles[*].menteeIds`.
+   - Обновляет `profile.mentorId` в `db.studentProfiles`.
+   - Пишет audit-event: `assign_student_mentor` (или
+     `clear_student_mentor` при `mentorUserId = null`).
+   - Вызывает `persistGardenMentorLink(studentUserId, mentorId)` —
+     INSERT/UPSERT в `pvl_garden_mentor_links` через
+     [pvlPostgrestApi.js:548-590](../services/pvlPostgrestApi.js#L548-L590).
+5. На стороне ментора список менти фильтруется RLS-policy
+   `is_mentor_for(student_id)` на `pvl_student_homework_submissions`,
+   `pvl_students` и др. — ментор видит только своих закреплённых.
+
+#### Дополнительные admin-API функции
+
+Три функции в `pvlDomainApi.adminApi`, все ведут к
+`persistGardenMentorLink`:
+
+| Функция | UI callsites | Назначение |
 |---|---|---|
-| Admin-эндпоинт в push-server | ❌ нет | в [push-server/server.mjs](../push-server/server.mjs) ни одного роута со словами `pvl` / `mentor` / `student` |
-| Admin-UI на платформе | ❌ нет | в [views/AdminPanel.jsx](../views/AdminPanel.jsx) нет упоминаний PVL / mentor_id / mentee |
-| Прямые SQL к БД (вне приложения) | ⚠️ маловероятно | таблица `pvl_students` с колонкой `mentor_id` декларирована в [миграции 001](../database/pvl/migrations/001_pvl_scoring_system.sql#L24), но приложение её не читает и не пишет; `UPDATE pvl_students` в коде нет; скриптов/runbook'ов в репо не нашли |
-| RPC / hidden function | ❌ нет | grep по `assignMentor`, `setMentor`, `linkMentor`, `attachMentor`, `bindMentor`, `updateStudentMentor` — пусто во всём репо |
-| Правка `seed.js` + редеплой | ✅ **подтверждено** | см. ниже |
+| `assignStudentMentor` | dropdown в таблице студентов (4 call-points) | основной flow, студент-центричный |
+| `removeMenteeFromMentor` | карточка ментора (1 callsite) | снять менти со стороны ментора |
+| `addMenteeToMentor` | **нет** | legacy / API-only, не используется UI |
 
-#### Подтверждённая цепочка
+Audit-event types: `assign_student_mentor`, `clear_student_mentor`,
+`assign_mentee_to_mentor`, `remove_mentee_from_mentor`.
 
-1. Владелец узнаёт о новой оплате (вручную, не через систему).
-2. Открывает [data/pvl/seed.js:66-69](../data/pvl/seed.js#L66-L69), находит нужного студента в массиве `studentProfiles`.
-3. Меняет `mentorId: 'u-men-1'` → нужный mentor id.
-4. Коммит и деплой бандла.
-5. У клиентов после reload подгружается новый бандл с обновлённым seed.
+#### Production data (snapshot 2026-05-04)
 
-#### Косвенные подтверждения
-
-- Внутри ПВЛ-админки ([PvlPrototypeApp.jsx:3224-3288](../PvlPrototypeApp.jsx#L3224-L3288), функция `AdminStudents`) — только таблица для чтения. Ни `<select>`, ни кнопки «назначить ментора».
-- В карточке менти ([views/PvlMenteeCardView.jsx:641](../views/PvlMenteeCardView.jsx#L641)) — `const mentorId = profileRow?.mentorId || 'u-men-1'` — fallback на жёстко зашитый id первого ментора. Признак того, что данные могут отсутствовать у нового студента.
-- В [services/pvlMockApi.js](../services/pvlMockApi.js) функции `changeMentorTaskStatus`, `assignMentorBonus` существуют — но это про статусы ДЗ и бонусные баллы, не про привязку ментора к студенту.
-- `git log data/pvl/seed.js` показывает регулярные коммиты с правками seed («Правка 0304/N», «Большой пакет правок») — что совпадает с описанным процессом.
-
-#### Что это значит для продукта
-
-| Последствие | Описание |
+| Источник истины | Значение |
 |---|---|
-| Каждый новый платный ученик требует деплоя | Задержка между оплатой и доступом к курсу = время до следующего деплоя |
-| Данные ученика теряются при следующем деплое seed | Любые правки в памяти браузера откатятся к версии в файле |
-| Нет аудита назначений | Только `git blame` на seed.js, и только для текущей версии |
-| Нет защиты от опечаток | Опечатка в `mentorId` → студент попадёт на несуществующего ментора (или fallback `'u-men-1'`), и реальный ментор не увидит его в очереди |
-| Не масштабируется | При 10–20+ учеников процесс становится узким горлышком и источником багов |
+| `pvl_garden_mentor_links` (активные записи) | 19 |
+| `pvl_audit_log` события `assign_student_mentor` | 27 |
+| Smoke v3 (2026-05-03): ментор «Настин фиксик» | увидел 4 закреплённых |
+
+#### Что было неверно в первой версии раздела
+
+Изначальная разведка (до 2026-05-03) зафиксировала состояние «нет
+программного механизма, только seed.js + редеплой» — это было верно
+для первой итерации проекта. Появление `assignStudentMentor` /
+`addMenteeToMentor` / `removeMenteeFromMentor` в коде и переход
+на DB-flow через `pvl_garden_mentor_links` не были отражены в
+этом документе.
+
+#### Известные ограничения
+
+- В `addAuditEvent` локальная in-memory копия пишется со stub-id
+  `'u-adm-1'` в `actorUserId`. В DB-INSERT этот stub перехватывается
+  через `getAuthUserId()` из JWT sub claim ([BUG-003 retry, commit
+  7585407](../services/jwtUtils.js)), и в `pvl_audit_log.actor_user_id`
+  попадает реальный UUID админа. Локальный `auditLog.push` остаётся
+  со stub — это сознательное решение, чтобы не задеть UI/local mock.
+- Fallback `mentorId || 'u-men-1'` в [PvlMenteeCardView.jsx:641](../views/PvlMenteeCardView.jsx#L641) —
+  defensive code на случай отсутствия привязки. Реальный flow — через
+  `pvl_garden_mentor_links`.
+- Нет UI для bulk-операций: одно назначение за раз через dropdown.
+- `addMenteeToMentor` — admin-API функция без UI; вызывается, видимо,
+  только из API-прямых сценариев (если такие есть).
 
 ---
 

@@ -1150,6 +1150,59 @@ related_docs:
   - Заменить alert на UI-banner с человеческим сообщением.
   - Сохранить raw в console.error для debug.
 
+### BUG-HOMEWORK-PASTE-MSO: при копировании ДЗ из Word в форму вставляется HTML-мусор Office
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (реальная проблема ученика — текст ДЗ перемешивается с MSO-стилями)
+- **Создано:** 2026-05-04 (зафиксировано Еленой Курдюковой через Telegram)
+- **Контекст:** Когда студент копирует ответ ДЗ из Word/Office-документа
+  в HomeworkInlineForm, в payload попадает не только текст, но и весь
+  Office HTML-мусор: `<!-- /* Font Definitions */ @font-face`, MSO-стили
+  (`mso-font-family`, `mso-style-parent`, `mso-pagination` и т.п.),
+  `<style>` блоки, классы `MsoNormal`. Студент видит этот мусор в
+  превью/после reload.
+- **Текущее состояние:** в `utils/pvlHomeworkAnswerRichText.js`
+  существует `sanitizeHomeworkAnswerHtml` (известна по разведке
+  ARCH-002), но она MSO-паттерны не вычищает.
+- **Где вмешиваемся:**
+  - Расширить `sanitizeHomeworkAnswerHtml` — стрипать `<!--...-->` 
+    HTML-комментарии, `<style>...</style>` блоки, любые CSS-свойства
+    `mso-*`, классы `Mso*`, conditional comments `<!--[if mso]>...`.
+  - Вариант лучше — обработка на paste-event'е в форме (DOM event handler):
+    инстант-очистка перед попаданием в state. UX выигрывает: студент
+    сразу видит чистый текст.
+  - Минимум: cleanup на submit (через extended sanitizer). UX чуть
+    хуже (грязно в превью до save), но безопасно для данных.
+- **Acceptance:** студент копирует абзац из Word → в форме чистый
+  текст без `<!-- @font-face`, без `mso-*`, без классов `MsoNormal`.
+  После save → reload → текст на месте.
+- **Связано:** ARCH-002 (родитель — реализация ДЗ persist), 
+  utils/pvlHomeworkAnswerRichText.js, views/pvlLibraryMaterialShared.jsx
+  (HomeworkInlineForm).
+
+### BUG-TOGGLE-USER-STATUS-GHOST-COLUMN: фронт PATCH'ит несуществующее поле profiles.access_status
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (косметический — поле игнорируется PostgREST'ом, но захламляет код)
+- **Создано:** 2026-05-04 (обнаружено при FEAT-013 разведке)
+- **Контекст:** В `services/dataService.js:1571-1579` функция
+  `toggleUserStatus` отправляет PATCH с двумя полями:
+  ```
+  body: { status: newStatus, access_status: accessStatus }
+  ```
+  Колонки `profiles.access_status` в БД сейчас НЕТ (она появится только
+  после миграции 21, которая не применена). PostgREST либо тихо
+  игнорирует unknown column, либо отдаёт ошибку, которую фронт глушит.
+- **Симптом:** не виден пользователю, но:
+  - Каждый PATCH в `toggleUserStatus` шлёт лишний payload, который
+    игнорируется.
+  - При логировании / debug ошибок может вылезать non-blocking warning.
+  - Когда миграция 21 будет применена, поведение станет полу-определённым
+    (фронт начнёт писать `access_status`, который ожидает определённые
+    enum-значения — нужна синхронизация с миграцией 21).
+- **Решение в Пути A FEAT-013:** убрать `access_status` из тела PATCH,
+  пока миграции 21 нет. Когда миграция 21 применится — отдельным
+  таском вернуть поле + согласовать enum-значения.
+- **Связано:** FEAT-013, services/dataService.js:1571-1579, миграция 21.
+
 ### BUG-LOGIN-SILENT-PROFILE-FAIL: при 403 на _fetchProfile фронт тихо возвращает на AuthScreen
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2 (UX, юзеры думают, что login сломан, без понятной
@@ -1167,7 +1220,7 @@ related_docs:
   - Логировать детали в console для диагностики.
 
 ### FEAT-013: Пауза ведущей скрывает её встречи в публичном Meetings
-- **Статус:** 🔴 запланировано (после стабилизации post-SEC-001)
+- **Статус:** 🟢 DONE (2026-05-04, phase 21 migration applied + double smoke verified)
 - **Приоритет:** P2
 - **Создано:** 2026-05-04
 - **Связан с:** [docs/REPORT_2026-05-04_pause_hides_meetings_recon.md](../docs/REPORT_2026-05-04_pause_hides_meetings_recon.md), [docs/DECISION_2026-05-04_pause_hides_meetings.md](../docs/DECISION_2026-05-04_pause_hides_meetings.md)
@@ -1838,3 +1891,12 @@ related_docs:
   - docs/PVL_RECONNAISSANCE.md раздел 2.4 — обновлён с актуальной архитектурой ментор-ученик flow (3 admin-API функции, реальные production data, известные ограничения).
   - docs/DB_SECURITY_AUDIT.md — добавлен banner «снимок до SEC-001», документ остаётся как исторический artifact.
   - docs/lessons/2026-05-04-postgrest-role-switch-anon-clients.md — урок про anon-клиентов.
+
+- **FEAT-013 — пауза ведущей скрывает её встречи в публичном Meetings.** Продуктовое решение Ольги (DECISION_2026-05-04_pause_hides_meetings.md): когда ведущая на паузе, её события исчезают из публичного Meetings; данные `meetings` сохраняются; при возврате на active — события автоматически восстанавливаются. Recon обнажил, что миграция 21 (биллинг + access_status) НЕ применена; реально работает старое поле `profiles.status` со значениями `active`/`suspended`. Выбрали Путь A — строимся на текущем поле, миграция 21 откладывается. Phase 21 миграция: модификация `sync_meeting_to_event` (добавлено чтение `profiles.status`, зеркалит только если active), новая функция `resync_events_for_user(uuid)`, trigger `on_profile_status_change_resync_events` на profiles AFTER UPDATE OF status, одноразовый cleanup 12 зомби-зеркал у Елены Мельниковой. Double smoke (0→12→0) подтвердил полный cycle suspended↔active.
+- **BUG-HOMEWORK-PASTE-MSO — Word HTML-мусор в payload ДЗ.** Зафиксировано Еленой Курдюковой через Telegram. Корень: DOMPurify в whitelist-режиме режет ТЕГИ, но KEEP_CONTENT:true сохраняет их текстовое содержимое — CSS из `<style>` вылезал как plain text. Решение: расширил `stripMsOfficeHtmlNoise` в `utils/pvlHomeworkAnswerRichText.js` (regex-препроцессинг до DOMPurify) — стрипает `<style>`, `<script>`, HTML-комментарии (включая conditional `<!--[if mso]>`), XML-namespaced теги (`<o:p>`, `<w:WordDocument>`, `<v:*>`). Покрывает render+save в 19 точках, не требует миграции данных — старые записи будут чисто рендериться при следующем открытии. Commit 90e0987. Урок: `docs/lessons/2026-05-04-dompurify-keep-content-leaks-style-text.md` — общий паттерн «whitelist-санитайзеры с default KEEP_CONTENT пропускают текст из тегов с не-HTML контентом».
+- **Открытия (для backlog):**
+  - BUG-TOGGLE-USER-STATUS-GHOST-COLUMN: фронт PATCH'ит `profiles.access_status`, которой нет в схеме. Игнорируется PostgREST'ом, но захламляет код. Чинить когда будет миграция 21 (синхронизация enum-значений).
+- **Закрыто:** FEAT-013, BUG-HOMEWORK-PASTE-MSO. ARCH-002/009/001 закрыты ранее в этот день.
+- **Документация:**
+  - docs/DECISION_2026-05-04_pause_hides_meetings.md — добавлено уточнение про реальное состояние схемы (Путь A на `status`, не `access_status`).
+  - migrations/2026-05-04_phase21_pause_hides_events.sql — phase 21 миграция, applied.

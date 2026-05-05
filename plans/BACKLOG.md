@@ -1088,22 +1088,17 @@ related_docs:
 - **Связано:** trigger sync_meeting_to_event(), schema events.
 
 ### ANOM-004: writes на cities / notebooks / questions — audit паттерна events
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE (2026-05-05)
 - **Приоритет:** P3 (теоретическая дыра по аналогии, не подтверждена)
 - **Создано:** 2026-05-04 (после phase 18, по аналогии с ANOM-002/SEC-011)
+- **Закрыто:** 2026-05-05 — verified by anon write attempt → 42501. Ольга через Claude in Chrome выполнила POST `/notebooks` без JWT — получила `permission denied` (42501). Дыры нет: web_anon не имеет GRANT INSERT/UPDATE/DELETE на эти таблицы (phase 18 открывала только SELECT), а authenticated-роль для попытки write падает на RLS / ACL. См. Историю 2026-05-05.
 - **Контекст:** ANOM-002/SEC-011 показал паттерн: на `events` была
   RLS-policy `USING(true)` для INSERT/UPDATE/DELETE + phase 16 GRANT —
   любой залогиненный мог переписать. На `cities`, `notebooks`,
   `questions` (которые phase 18 открыл для web_anon SELECT) RLS-policies
   на запись мы не смотрели. Если там USING(true) — тот же класс дыры.
-- **Что нужно:**
-  - Проверить policies на INSERT/UPDATE/DELETE для cities, notebooks,
-    questions (analog Q3 запрос pg_policy).
-  - Если USING(true) — REVOKE writes от authenticated (фаза 19 mini),
-    как в phase 18 для events. Архитектурно эти таблицы — справочник
-    (cities) и контент Meetings (notebooks/questions), записывает их
-    либо админ через owner-роль, либо trigger/RPC.
-  - Если policies узкие (например, только admin) — оставить как есть.
+- **Что нужно (закрыто):** проверить policies на INSERT/UPDATE/DELETE
+  для cities, notebooks, questions — закрыто фактом anon-write attempt.
 - **Связано:** ANOM-002/SEC-011, phase 18, AUDIT-001 (code review meetings).
 
 ### ANOM-005: knowledge_base — KB_Edit_Auth permissive ALL перекрывает admin policies
@@ -2019,3 +2014,9 @@ related_docs:
 - **Закрыто:** FEAT-002 этап 1 (гигиена). **Открыто:** CLEAN-013, FEAT-002 этап 2 (VK-поле).
 - **Артефакты:** `migrations/data/2026-05-05_feat002_hygiene.sql`, `docs/RECON_2026-05-04_feat002_data_hygiene.md` (зоопарк), `docs/RECON_2026-05-04_feat002_telegram_match.md` (Telethon-match отчёт + apply-результат). Telethon-скрипты `scripts/feat002-tg-recon/*` НЕ в git (private: `.env`, `*.session`, `members.json`, `match_result.json`).
 - **Followup:** `migrations/data/2026-05-05_feat002_hygiene_followup_islamova_tg.sql` — backfill TG для Светланы Исламовой (`https://t.me/SwetlanaIslamova`, прислан Ольгой после основной гигиены; в основной миграции её `telegram` был очищен в `''`, так как там лежал VK). Эффект: `active+empty_telegram` 4 → 3 (остаются 3 кандидата CLEAN-013). VK по-прежнему сохраняем для UI-backfill после phase 22.
+
+- **FEAT-002 этап 2 — phase 22 миграция: денормализация контактов в events.** Добавлены поля `profiles.vk` + `events.host_telegram` + `events.host_vk`. Расширена функция `sync_meeting_to_event` (читает `profiles.telegram`/`vk` → пишет в `events.host_*`). Добавлен новый trigger `on_profile_contacts_change_resync_events` на `profiles` AFTER UPDATE OF `telegram`, `vk`. Backfill: **149 events** получили `host_telegram`, **0** — `host_vk` (vk пока пустое у всех; UI-backfill 4 ведущим после этапа 3). Verify V1–V6 зелёные.
+- **Открыто:** Garden этап 3 FEAT-002 (форма с полем VK + required на TG + автонормализация + кнопка ВК на LeaderPageView + выпил auto-fill `payment_link` в MeetingsView).
+- **Артефакт:** `migrations/2026-05-05_phase22_vk_field_and_event_contacts.sql`.
+
+- **ANOM-004 закрыт фактом.** Анонимные writes на `cities` / `notebooks` / `questions` — verified by anon write attempt → 42501. Ольга через Claude in Chrome выполнила `POST /notebooks` без JWT — получила `permission denied` (42501). Дыры нет: phase 18 открывала web_anon только на SELECT, INSERT/UPDATE/DELETE-grant'ов нет; authenticated-write для непривилегированных тоже падает. Статус задачи в P3-секции переведён в 🟢 DONE.

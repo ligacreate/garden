@@ -164,9 +164,10 @@ related_docs:
 ## 🟡 P1 — Важно (на этой неделе)
 
 ### SEC-014: расследование причины GRANT wipeout 2026-05-04 + защита
-- **Статус:** 🔴 TODO
+- **Статус:** 🟡 IN PROGRESS (большая часть scope закрыта 2026-05-05 phase 23 hot-fix; остаётся: тикет в Timeweb support для root cause)
 - **Приоритет:** P1 (повтор инцидента = повтор 2-часового outage у всех пользователей, пока кто-то не заметит)
 - **Создано:** 2026-05-04 (после P0 GRANT WIPEOUT)
+- **Обновлено 2026-05-05:** второй P0 GRANT WIPEOUT (через ~30 минут после phase 22 apply) подтвердил гипотезу «не Timeweb UI quirk, а post-DDL ACL-resync managed-Postgres». Защита перестроена в трёхслойную (см. ниже), open остался **только тикет в Timeweb support** для понимания root cause (не блокер прода).
 - **Контекст:** Phase 16/17/18 GRANT'ы для `authenticated` и `web_anon`
   на 45 public-таблицах были стёрты целиком (см.
   [docs/INCIDENT_2026-05-04_grant_wipeout.md](../docs/INCIDENT_2026-05-04_grant_wipeout.md)).
@@ -212,18 +213,17 @@ related_docs:
   должен помнить точный recovery-плейбук. Метрика + скрипт сводят
   оба риска к минутам.
 - **Acceptance:**
-  - RUNBOOK 1.2 содержит предупреждение про «Привилегии роли» UI.
-  - Cron/systemd-timer пишет результат проверки в лог + шлёт alert
-    при падении ниже threshold. Проверено принудительным понижением
-    threshold (alert приходит).
-  - `scripts/recover_grants.sh` отрабатывает на чистом prod, smoke
-    проходит (158/4 GRANT-rows, profiles/events читаются под
-    SET ROLE без 42501).
-  - Активность Timeweb за 2026-05-04 либо идентифицирована, либо
-    зафиксировано «activity log недоступен» — чтобы знать на будущее.
+  - ✅ RUNBOOK 1.2 содержит предупреждение про «Привилегии роли» UI.
+  - ✅ RUNBOOK 1.3 (новый, 2026-05-05) — обязательное правило `SELECT public.ensure_garden_grants()` в конце каждой DDL-миграции.
+  - ✅ stored procedure `public.ensure_garden_grants()` создана в phase 23 (см. `migrations/2026-05-05_phase23_grants_safety_net.sql`). Идемпотентная, повторяет phase 16/17/18 PART 1.
+  - ✅ `scripts/recover_grants.sh` отработал на проде 2026-05-05, counts 158/4 (см. `/var/log/garden-monitor.log`).
+  - ✅ `scripts/check_grants.sh` — cron-monitor каждые 5 минут (`/etc/cron.d/garden-monitor`), при wipe (authenticated < 100 ИЛИ web_anon < 4) шлёт Telegram-alert (no-op если бот не настроен) и авто-вызывает `recover_grants.sh`.
+  - ⏸ **Открыто:** тикет в Timeweb support — описать паттерн (DDL → wipe), попросить explain root cause. Не блокер.
+  - ⏸ **Открыто:** Telegram-бот для алертов (env-vars `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` в `/opt/garden-auth/.env` пока пусты — см. отчёт session 2026-05-05). Без бота cron-monitor работает в logging-only режиме.
 - **Связано:** [docs/INCIDENT_2026-05-04_grant_wipeout.md](../docs/INCIDENT_2026-05-04_grant_wipeout.md),
   [docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md](../docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md),
-  RUNBOOK 1.2, phase 16/17/18 миграции.
+  [docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md](../docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md),
+  RUNBOOK 1.2 + 1.3, phase 16/17/18/23 миграции.
 
 ### ARCH-001: Связка ментор-ученик в курсе ПВЛ
 - **Статус:** 🟢 DONE (2026-05-04 — учительская и API-flow задокументированы в PVL_RECONNAISSANCE.md разделе 2.4)
@@ -2020,3 +2020,12 @@ related_docs:
 - **Артефакт:** `migrations/2026-05-05_phase22_vk_field_and_event_contacts.sql`.
 
 - **ANOM-004 закрыт фактом.** Анонимные writes на `cities` / `notebooks` / `questions` — verified by anon write attempt → 42501. Ольга через Claude in Chrome выполнила `POST /notebooks` без JWT — получила `permission denied` (42501). Дыры нет: phase 18 открывала web_anon только на SELECT, INSERT/UPDATE/DELETE-grant'ов нет; authenticated-write для непривилегированных тоже падает. Статус задачи в P3-секции переведён в 🟢 DONE.
+
+- **Второй P0 GRANT WIPEOUT — 2026-05-05.** Через ~30 минут после phase 22 apply снова все кастомные `GRANT TO authenticated/web_anon` на public-таблицах исчезли (counts 158/4 → 0/0), фронт ловит `42501`. Recovery (re-apply phase 16/17/18 PART 1) сделан стратегом за минуту по готовому playbook. **Корреляция с phase 22 apply** опровергает гипотезу про Timeweb UI quirk (никто в UI не заходил, event-triggers пустые) — новая гипотеза: managed-Postgres делает ACL-resync с baseline после schema-changing операций (DDL-revoke). Подробности — в `docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md`.
+- **SEC-014 phase 23 hot-fix — трёхслойная защита.**
+  1. `migrations/2026-05-05_phase23_grants_safety_net.sql` — stored procedure `public.ensure_garden_grants()`, идемпотентно повторяет phase 16 + 17 + 18 PART 1. SECURITY DEFINER. Apply прошёл, V1–V4 зелёные (V1: 158 authenticated grants, V2: 4 web_anon, V3: функция создана, V4: EXECUTE на helper'ах). Wipe сразу после COMMIT **не наблюдался** — counts остались 158/4 (либо revoke асинхронный, либо в этот раз не сработал).
+  2. `scripts/recover_grants.sh` — idempotent CLI-обёртка над `ensure_garden_grants()`. Положена в `/opt/garden-monitor/recover_grants.sh`, тестовый прогон OK (counts 158/4, лог в `/var/log/garden-monitor.log`).
+  3. `scripts/check_grants.sh` — cron-monitor каждые 5 минут (`/etc/cron.d/garden-monitor`). При wipe (authenticated < 100 ИЛИ web_anon < 4) шлёт Telegram-alert и авто-вызывает `recover_grants.sh`. Тестовый health-check на проде: silent OK. Telegram-alert — no-op (бот пока не настроен, env-vars пусты), работает в logging-only режиме.
+  4. RUNBOOK раздел 1.3 (новый, существующие 1.3-1.5 сдвинуты в 1.4-1.6) — обязательное правило: после любой DDL-миграции в конце транзакции, ДО `COMMIT`, ставить `SELECT public.ensure_garden_grants()`.
+- **Открыто:** тикет в Timeweb support про DDL-wipeout (для понимания root cause, не блокер). Telegram-бот для алертов (создание через @BotFather, ~5 минут — попросить Ольгу через стратега).
+- **Артефакты:** `migrations/2026-05-05_phase23_grants_safety_net.sql`, `scripts/recover_grants.sh`, `scripts/check_grants.sh`, `docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md`, RUNBOOK 1.3 + cron entry на проде (`/etc/cron.d/garden-monitor` — не в git).

@@ -18,31 +18,63 @@ related_docs:
 
 Если в проде что-то ведёт себя неожиданно — сначала смотри сюда.
 
-### 1.1. «Студент не видит свой вопрос в pvl_student_questions»
+### 1.1. «Студент не видит свой вопрос в pvl_student_questions» / «Весь PVL UI ложится при логине»
 
-**Возможная причина:** в строке `pvl_student_questions.student_id`
-лежит невалидный UUID. RLS-политика делает `student_id::uuid`
-для передачи в `is_mentor_for(uuid)`, и cast падает с
-`invalid input syntax for type uuid`. Postgres интерпретирует
-такую ошибку как «строка не прошла политику» — fail-closed.
-Owner-bypass (`gen_user`) видит строку, обычные роли — нет.
+**🔴 ВАЖНОЕ ИСПРАВЛЕНИЕ от 2026-05-02 после live-smoke:**
+изначально я думала, что cast `student_id::uuid` в RLS-политике
+работает как fail-closed (битая строка просто невидима, остальные
+видны). **Это не так.** Postgres при ошибке cast в политике
+**пропагирует ошибку наружу**:
+```
+ERROR: invalid input syntax for type uuid: "u-st-1"
+```
+Это значит, что **одна битая строка валит весь запрос на
+таблицу** для всех пользователей, кроме owner-bypass (gen_user).
+
+**Симптом в проде:** Под mentor- или student-логином в
+`PvlPrototypeApp` обвал виджета «вопросы», а если фронт делает
+batch-запрос на несколько PVL-таблиц одновременно — может
+обваливаться весь PVL-экран. У `gen_user` через owner-bypass
+видно нормально, у живых ролей — 500/400.
+
+**Возможная причина:** в `pvl_student_questions.student_id`
+лежат значения типа `"u-st-1"` (legacy seed/smoke-тесты).
+RLS-политика делает `student_id::uuid` для передачи в
+`is_mentor_for(uuid)`, cast падает на каждой битой строке.
 
 **Диагностика (под gen_user):**
 
 ```sql
+-- Найти битые строки
 SELECT id, student_id, length(student_id) AS len
 FROM public.pvl_student_questions
 WHERE NOT student_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+-- Подтвердить, что под authenticated запрос реально падает
+BEGIN;
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claim.sub TO '<любой_real_user_uuid>';
+SELECT count(*) FROM public.pvl_student_questions;
+-- ожидаемо: ERROR, если есть битые строки
+ROLLBACK;
 ```
 
-Если результат непуст — это «слепые» строки.
+**Решение (быстрое):** удалить битые seed-строки —
+```sql
+DELETE FROM public.pvl_student_questions WHERE student_id = 'u-st-1';
+```
 
-**Решение:** либо починить student_id (UPDATE), либо удалить
-строку. После CLEAN-007 (миграция таблицы на UUID) проблема
-исчезнет.
+**Решение (долгосрочное):** CLEAN-007 — миграция колонки на
+UUID + FK на `pvl_students(id)`. Это выкинет проблему навсегда.
+
+**Решение (защитное):** обновить RLS-политику с regex pre-check
+перед cast — пропускать только UUID-shape строки. Минус: битые
+строки становятся невидимы для UI, но не ломают запрос.
 
 **Связано:** docs/EXEC_2026-05-02_phase10_2_pvl_student_questions.md
-(урок 9), CLEAN-007 в backlog.
+(урок 9 — изначально неверно описан как fail-closed),
+docs/EXEC_2026-05-02_etap5_post_smoke_fix1_pvl_student_questions.md
+(где это починено DELETE'ом seed-строк), CLEAN-007 в backlog.
 
 ### 1.2. «gen_user внезапно потерял права, прод не работает»
 
@@ -72,7 +104,54 @@ WHERE relnamespace = 'public'::regnamespace AND relkind='r' LIMIT 10;
 **Связано:** EXEC_2026-05-02_phase3_is_mentor_for.md (урок про
 форму Timeweb).
 
-### 1.3. «Список пользователей пуст после логина»
+### 1.3. DDL-миграции и Timeweb GRANT-wipeout — обязательное правило
+
+**Контекст:** 2 P0 GRANT WIPEOUT за 2026-05-04 / 2026-05-05 — оба
+случились в течение ~30 минут после schema-changing миграций
+(phase 21, phase 22). Кастомные `GRANT … TO authenticated` /
+`web_anon` на public-таблицах массово исчезали (counts падали с
+158/4 до 0/0), фронт ловил `42501 permission denied` на каждом
+запросе. Гипотеза: managed-Postgres Timeweb запускает policy /
+ACL-resync после DDL.
+
+**Правило:** после **любой** schema-changing миграции (`ALTER
+TABLE`, `CREATE FUNCTION`, `CREATE TRIGGER`, `DROP …`, и т.п.) —
+добавить в **конец транзакции, ДО `COMMIT`**:
+
+```sql
+SELECT public.ensure_garden_grants();
+```
+
+`ensure_garden_grants()` — stored procedure из phase 23
+(`migrations/2026-05-05_phase23_grants_safety_net.sql`),
+SECURITY DEFINER, идемпотентная, точно повторяет phase 16/17/18
+PART 1 → counts должны выйти на 158/4. Это первый защитный слой
+из трёх.
+
+**Дополнительные слои (живут отдельно, не отменяют правило):**
+- `/opt/garden-monitor/check_grants.sh` — cron каждые 5 минут,
+  ловит wipe (порог authenticated < 100 ИЛИ web_anon < 4),
+  шлёт Telegram-алерт, авто-вызывает recovery.
+- `/opt/garden-monitor/recover_grants.sh` — idempotent
+  `SELECT public.ensure_garden_grants()`-обёртка, log + verify.
+
+**Что делать при подтверждённом wipe вручную:**
+
+```bash
+ssh root@5.129.251.56 /opt/garden-monitor/recover_grants.sh
+# или:
+ssh root@5.129.251.56 'set -a && . /opt/garden-auth/.env && set +a && \
+  PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
+  -c "SELECT public.ensure_garden_grants();"'
+```
+
+**Связано:**
+- `docs/INCIDENT_2026-05-04_grant_wipeout.md` (первый wipe)
+- `docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md`
+- `docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md`
+- SEC-014 в `plans/BACKLOG.md`
+
+### 1.4. «Список пользователей пуст после логина»
 
 **Возможная причина 1:** токен в localStorage есть, но истёк/
 невалиден. PostgREST возвращает 401, фронт получает пустой
@@ -94,7 +173,7 @@ has401 → api.logout() → setCurrentUser(null), но если патч
 **Связано:** docs/FRONTEND_PATCH_2026-05-02_jwt_fallback.md
 (патч 1, патч 3).
 
-### 1.4. «После применения миграции messages начал возвращать пусто, а раньше там было 4 строки»
+### 1.5. «После применения миграции messages начал возвращать пусто, а раньше там было 4 строки»
 
 Это не баг, это намеренно. 4 тестовые строки от 2026-03-17
 оставлены в БД для упрощения миграции (см. CLEAN-010). Они
@@ -103,7 +182,7 @@ authenticated RLS-on без политик возвращает 0. Когда ф
 чата активируется — отдельная задача (включить политики,
 дать grants).
 
-### 1.5. «Студент видит только себя в списке студентов курса (cohort/одногруппники)»
+### 1.6. «Студент видит только себя в списке студентов курса (cohort/одногруппники)»
 
 **Возможная причина:** это намеренно, не баг. После SEC-001 фаза
 11.1 (`pvl_students` под шаблоном C) студент через RLS видит

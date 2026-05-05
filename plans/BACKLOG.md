@@ -822,6 +822,48 @@ related_docs:
   - [ ] Записать процедуру для будущих случаев
 - **Связано:** ARCH-004 (транзакционность регистрации)
 
+### CLEAN-013: Data hygiene profiles — тестовые аккаунты + дубль
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2
+- **Контекст:** Побочный поток FEAT-002 этап 1
+  (`docs/RECON_2026-05-04_feat002_telegram_match.md`). После apply
+  гигиены `profiles.telegram` остались 5 строк, требующих отдельного
+  решения: 4 тестовых аккаунта (засоряют публичные списки ведущих и
+  орграсчёты) + 1 дубль профиля по email-корню `malaglilia@gmail.com`.
+- **Скоп — 5 кандидатов:**
+  - **4 тестовых:**
+    - Лена Ф           (`037603f7-…-32fa`) — email `https://t.me/fedotova_elen` (TG-ссылка вместо email, поля переломаны)
+    - Настин фиксик    (`1b10d2ef-…-8751`) — `zobyshka@gmail.com`
+    - Настина фея      (`1085e06d-…-c43f`) — `viktorovna7286@gmail.com` (telegram до apply содержал чужой `olga@skrebeyko.com`)
+    - Рита             (`3746da91-5c66-4e91-9966-15643136dae6`) — `gatikoeva.rv@gmail.com`
+  - **1 дубль:**
+    - LIlia MALONG     (`1431f70e-63bd-4709-803a-5643540fc759`) — email `malaglilia@gmail,com` (с запятой ⚠), дубль основной Лилии Мaлонг (`d302b93d-5d29-4787-82d3-526dfe8c4a15`)
+- **Refs-check 2026-05-05** (под `gen_user`, через `scripts/feat002-tg-recon/clean013_refs_check.sql`): дубль **не пустой** — 3 живые ссылки в `pvl_audit_log.actor_user_id`, `pvl_students.id`, `users_auth.id`. Поэтому решение по дублю — **MERGE** (перенос ссылок на основной профиль, потом DELETE), не прямой DELETE.
+  - ⚠ Refs-check скрипт упал на 3 несуществующих колонках (`pvl_audit_log.target_user_id`, `notifications.recipient_id`, `messages.sender_id/recipient_id`) — generic-паттерн не подошёл. На старте CLEAN-013 нужно перепроверить ВСЕ user-id-колонки через `information_schema.columns` динамически, а не по предположенному списку.
+- **Шаги:**
+  - [ ] Перепроверить все user-id-колонки на `1431f70e-…-c759`:
+    ```sql
+    SELECT table_name, column_name FROM information_schema.columns
+    WHERE table_schema='public' AND data_type='uuid'
+      AND column_name ~ '(user|student|mentor|actor|target|sender|recipient|host|owner|profile)_id|^id$';
+    ```
+    Для каждой найденной колонки — `count(*)` на дубль.
+  - [ ] Сравнить две `users_auth`-записи (Лилии Мaлонг vs LIlia MALONG): какой email-вариант рабочий (без запятой почти точно основной).
+  - [ ] **MERGE** дубля LIlia MALONG → Лилия Мaлонг:
+    - Перенести ссылки: `UPDATE pvl_audit_log SET actor_user_id = '<main>' WHERE actor_user_id = '<dupe>'`, аналогично для `pvl_students.id` (или `mentor_id` — проверить какая колонка) и `users_auth.id`.
+    - После переноса — `DELETE FROM profiles WHERE id = '1431f70e-…-c759'` (и `users_auth` если применимо).
+  - [ ] Для каждого тестового — решить: `DELETE` или `role='disabled'`/`status='archived'`. Проверить публичную страницу ведущих и админские списки — не должны показываться.
+  - [ ] Зафиксировать решение по каждой записи в комментарии миграции для future audit.
+- **Acceptance:**
+  - 4 тестовых profile не показываются в публичных списках ведущих и в админских интерфейсах.
+  - LIlia MALONG-профиль удалён, все ссылки перенесены на основную Лилию Мaлонг.
+  - В `users_auth` остался только один email-вариант (без запятой).
+- **Связано:**
+  - `docs/RECON_2026-05-04_feat002_data_hygiene.md` («Побочные находки»)
+  - `docs/RECON_2026-05-04_feat002_telegram_match.md` (секции 🧪 Тестовые и 👥 Дубль)
+  - `migrations/data/2026-05-05_feat002_hygiene.sql` (FEAT-002 этап 1 apply, эти 5 строк намеренно пропущены)
+  - `scripts/feat002-tg-recon/clean013_refs_check.sql` (read-only refs-check, не в git)
+
 ### CLEAN-010: Удалить 4 тестовых сообщения из public.messages
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3
@@ -1967,3 +2009,12 @@ related_docs:
 - **Открытия (для backlog):** SEC-014 — расследование причины wipe + защитный мониторинг + idempotent recovery-скрипт + обновление RUNBOOK 1.2.
 - **Закрыто:** инцидент. **Открыто:** SEC-014.
 - **Артефакты:** docs/INCIDENT_2026-05-04_grant_wipeout.md, docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md.
+
+#### 2026-05-05
+- **FEAT-002 этап 1 — гигиена `profiles.telegram` + `meetings.payment_link`.** Через 2-чатовый Telethon-match (приватные чаты Лиги «Лига 💬» и «Чат Пиши, веди, люби 2026» под админ-аккаунтом Ольги, 56 уникальных участников) вытянули `@username` для 14 ведущих: 10 high (точное совпадение токенов, иногда через ru→latin транслит) + 4 medium с подтверждением Ольги глазами. Дополнительно: 4 manual (Ольга нашла руками — Колотилова, Бородина, Колкова + Романова, у которой TG поднят из её собственного `meetings.payment_link` встречи 204), 7 нормализация B-секции (`@username`/bare → `https://t.me/...`, в т.ч. **расщепление composite-поля Инны Кулиш** на TG-handle и VK-ссылку — VK уйдёт в `profiles.vk` через UI после phase 22), 3 локальные правки A-секции (тримм ведущего пробела у Кокориной, добавление протокола `https://` Шульге, **очистка VK-значения** Светланы Исламовой — тоже backfill через UI после phase 22). Очищено 17 `meetings.payment_link` (4 VK для будущего backfill, 10 прошлых `@AneleRay` Мельниковой как suspended-ведущей, 3 прочих включая лендинг издательства Ольги). **45 UPDATE одной транзакцией под `gen_user` через psql -f, V1–V4 зелёные.**
+- **Refs-check дубля LIlia MALONG (для CLEAN-013):** дубль **активный** — 3 живые ссылки в `pvl_audit_log.actor_user_id`, `pvl_students.id`, `users_auth.id`. Поэтому CLEAN-013 решает дубль через **MERGE** (перенос ссылок на основной профиль `d302b93d…fa15`, затем DELETE дубля), не прямой DELETE. Refs-check скрипт упал на 3 несуществующих колонках (`pvl_audit_log.target_user_id`, `notifications.recipient_id`, `messages.sender_id/recipient_id`) — generic-паттерн не подошёл; CLEAN-013 при работе перепроверит все user-id-колонки динамически через `information_schema`.
+- **Открытия (для backlog):**
+  - **CLEAN-013** — data hygiene profiles: 4 тестовых аккаунта (Лена Ф, Настин фиксик, Настина фея, Рита) + дубль LIlia MALONG (MERGE по 3 ссылкам). Заведён в P2.
+  - **VK-backfill через UI после phase 22** — для 4 ведущих (Инна Кулиш, Юлия Громова, Светлана Исламова, Колотилова Светлана). Не отдельный таск пока, фиксируется как часть FEAT-002 этап 2 (новое поле `profiles.vk` + UI-форма).
+- **Закрыто:** FEAT-002 этап 1 (гигиена). **Открыто:** CLEAN-013, FEAT-002 этап 2 (VK-поле).
+- **Артефакты:** `migrations/data/2026-05-05_feat002_hygiene.sql`, `docs/RECON_2026-05-04_feat002_data_hygiene.md` (зоопарк), `docs/RECON_2026-05-04_feat002_telegram_match.md` (Telethon-match отчёт + apply-результат). Telethon-скрипты `scripts/feat002-tg-recon/*` НЕ в git (private: `.env`, `*.session`, `members.json`, `match_result.json`).

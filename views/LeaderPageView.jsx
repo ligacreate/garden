@@ -238,6 +238,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
     const skills = useMemo(() => normalizeSkills(leader?.skills), [leader?.skills]);
     const signatureText = leader?.leader_signature || '';
     const telegramLink = leader?.telegram || leader?.telegram_link || '';
+    const vkLink = leader?.vk || '';
 
     if (!leader) {
         return (
@@ -397,11 +398,16 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
                             <div className="flex flex-col gap-3 min-w-[160px] self-start md:items-end">
                                 {telegramLink ? (
                                     <Button className="!rounded-xl" onClick={() => window.open(telegramLink, '_blank')}>
-                                        Написать ведущей
+                                        Написать в Telegram
                                     </Button>
                                 ) : (
                                     <Button className="!rounded-xl opacity-50 pointer-events-none">
-                                        Написать ведущей
+                                        Написать в Telegram
+                                    </Button>
+                                )}
+                                {vkLink && (
+                                    <Button variant="secondary" className="!rounded-xl" onClick={() => window.open(vkLink, '_blank')}>
+                                        Написать ВКонтакте
                                     </Button>
                                 )}
                             </div>

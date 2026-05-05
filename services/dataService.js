@@ -1,6 +1,7 @@
 import { INITIAL_USERS, INITIAL_KNOWLEDGE, INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES } from '../utils/roles';
 import { DEFAULT_TIMEZONE } from '../utils/timezone';
+import { normalizeTelegram, normalizeVk, isValidTelegram, isValidVk } from '../lib/contactNormalize';
 import DOMPurify from 'dompurify';
 import imageCompression from 'browser-image-compression';
 
@@ -603,6 +604,7 @@ class LocalStorageService {
             leader_about: sanitizeIfString(updatedUser.leader_about),
             leader_signature: sanitizeIfString(updatedUser.leader_signature),
             telegram: sanitizeIfString(updatedUser.telegram),
+            vk: sanitizeIfString(updatedUser.vk),
             tree: sanitizeIfString(updatedUser.tree),
             tree_desc: sanitizeIfString(updatedUser.tree_desc),
             treeDesc: sanitizeIfString(updatedUser.treeDesc)
@@ -1417,6 +1419,7 @@ class RemoteApiService {
                 leader_signature: user.leader_signature || meta.leader_signature || null,
                 leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : (Array.isArray(meta.leader_reviews) ? meta.leader_reviews : []),
                 telegram: user.telegram || meta.telegram || null,
+                vk: user.vk || meta.vk || null,
                 join_date: user.join_date || meta.join_date || null
             };
 
@@ -1493,6 +1496,7 @@ class RemoteApiService {
             leader_about: this._sanitizeIfString(updatedUser.leader_about),
             leader_signature: this._sanitizeIfString(updatedUser.leader_signature),
             telegram: this._sanitizeIfString(updatedUser.telegram),
+            vk: this._sanitizeIfString(updatedUser.vk),
             tree: this._sanitizeIfString(updatedUser.tree),
             tree_desc: this._sanitizeIfString(updatedUser.tree_desc),
             treeDesc: this._sanitizeIfString(updatedUser.treeDesc),
@@ -1540,7 +1544,20 @@ class RemoteApiService {
             if (hasField(updatedUser, 'leader_about')) dbUser.leader_about = clean.leader_about;
             if (hasField(updatedUser, 'leader_signature')) dbUser.leader_signature = clean.leader_signature;
             if (hasField(updatedUser, 'leader_reviews')) dbUser.leader_reviews = updatedUser.leader_reviews;
-            if (hasField(updatedUser, 'telegram')) dbUser.telegram = clean.telegram;
+            if (hasField(updatedUser, 'telegram')) {
+                const normalizedTg = normalizeTelegram(clean.telegram);
+                if (!isValidTelegram(normalizedTg)) {
+                    throw new Error('Telegram обязателен и должен быть в формате https://t.me/username');
+                }
+                dbUser.telegram = normalizedTg;
+            }
+            if (hasField(updatedUser, 'vk')) {
+                const normalizedVk = normalizeVk(clean.vk);
+                if (normalizedVk && !isValidVk(normalizedVk)) {
+                    throw new Error('VK должен быть в формате https://vk.me/username');
+                }
+                dbUser.vk = normalizedVk;
+            }
             if (safeJoinDate !== undefined) dbUser.join_date = safeJoinDate;
             if (safeAvatarFocusX !== undefined) dbUser.avatar_focus_x = Math.max(0, Math.min(100, safeAvatarFocusX));
             if (safeAvatarFocusY !== undefined) dbUser.avatar_focus_y = Math.max(0, Math.min(100, safeAvatarFocusY));
@@ -1569,10 +1586,11 @@ class RemoteApiService {
     }
 
     async toggleUserStatus(userId, newStatus) {
-        const accessStatus = newStatus === 'suspended' ? ACCESS_STATUS.PAUSED_MANUAL : ACCESS_STATUS.ACTIVE;
+        // access_status удалён: колонки нет в схеме (BUG-TOGGLE-USER-STATUS-GHOST-COLUMN).
+        // PostgREST раньше игнорировал поле молча; чистим body для ясности.
         await postgrestFetch('profiles', { id: `eq.${userId}` }, {
             method: 'PATCH',
-            body: { status: newStatus, access_status: accessStatus },
+            body: { status: newStatus },
             returnRepresentation: true
         });
         return true;
@@ -2633,6 +2651,7 @@ class RemoteApiService {
             leader_signature: data.leader_signature || '',
             leader_reviews: Array.isArray(data.leader_reviews) ? data.leader_reviews : [],
             telegram: data.telegram || '',
+            vk: data.vk || '',
             join_date: data.join_date,
             access_status: data.access_status || ACCESS_STATUS.ACTIVE,
             subscription_status: data.subscription_status || SUBSCRIPTION_STATUS.ACTIVE,

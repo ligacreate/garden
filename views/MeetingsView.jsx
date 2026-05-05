@@ -1284,7 +1284,7 @@ const MeetingsView = ({
                                                         ...prev,
                                                         is_public: next,
                                                         cost: next ? (prev.cost || '1000 рублей') : prev.cost,
-                                                        payment_link: next && !prev.payment_link ? (user.telegram || '') : prev.payment_link
+                                                        payment_link: prev.payment_link
                                                     }));
                                                 }}
                                             />
@@ -1492,21 +1492,11 @@ const MeetingsView = ({
                                                 </div>
                                             </div>
                                             <Input
-                                                label="Ссылка на запись / Telegram"
+                                                label="Ссылка для регистрации/оплаты (опционально)"
                                                 value={formData.payment_link}
                                                 onChange={e => setFormData({ ...formData, payment_link: e.target.value })}
-                                                onFocus={() => {
-                                                    if (!formData.payment_link && user.telegram) {
-                                                        setFormData(prev => ({ ...prev, payment_link: user.telegram }));
-                                                    }
-                                                }}
-                                                placeholder="https://t.me/username или ссылка на оплату"
+                                                placeholder="https://... (если есть отдельная регистрация на платформе)"
                                             />
-                                            {user.telegram && (
-                                                <div className="text-[11px] text-slate-400">
-                                                    Ссылка на запись / Telegram — в полном формате (например, https://t.me/username), не через @.
-                                                </div>
-                                            )}
                                         </div>
                                     )}
                                 </div>

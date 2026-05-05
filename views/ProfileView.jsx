@@ -147,6 +147,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
         leader_signature: user.leader_signature || '',
         leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : [],
         telegram: user.telegram || '',
+        vk: user.vk || '',
         avatar_focus_x: Number.isFinite(Number(user.avatar_focus_x)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_x))) : 50,
         avatar_focus_y: Number.isFinite(Number(user.avatar_focus_y)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_y))) : 50,
     });
@@ -180,6 +181,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
             leader_signature: user.leader_signature || '',
             leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : [],
             telegram: user.telegram || '',
+            vk: user.vk || '',
             avatar_focus_x: Number.isFinite(Number(user.avatar_focus_x)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_x))) : prev.avatar_focus_x,
             avatar_focus_y: Number.isFinite(Number(user.avatar_focus_y)) ? Math.max(0, Math.min(100, Number(user.avatar_focus_y))) : prev.avatar_focus_y,
         }));
@@ -212,6 +214,11 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
     const useFormAvatarFocus = isEditing || Boolean(avatarPickPending);
 
     const handleSave = () => {
+        if (!form.telegram || !form.telegram.trim()) {
+            onNotify && onNotify('Telegram обязателен. Заполните поле «Ссылка на Telegram».');
+            return;
+        }
+
         // Recalculate tree based on current form DOB
         const treeData = form.dob ? getDruidTree(form.dob) : null;
 
@@ -563,12 +570,24 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                 {isEditing ? (
                                     <>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700">Ссылка на Telegram</label>
+                                            <label className="text-sm font-medium text-slate-700">Ссылка на Telegram (обязательно)</label>
                                             <Input
                                                 value={form.telegram}
                                                 onChange={e => setForm({ ...form, telegram: e.target.value })}
                                                 placeholder="https://t.me/username"
+                                                required
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700">Ссылка на ВКонтакте (необязательно)</label>
+                                            <Input
+                                                value={form.vk}
+                                                onChange={e => setForm({ ...form, vk: e.target.value })}
+                                                placeholder="https://vk.me/username или vk.com/id123"
+                                            />
+                                            <p className="text-[11px] text-slate-400">
+                                                Если у вас есть ВК — это альтернативный канал связи в публичных встречах. Можно ввести как https://vk.com/username, мы автоматически приведём к ссылке на личку.
+                                            </p>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700">Что я хочу, чтобы вы про меня знали</label>
@@ -594,6 +613,10 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                                         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                             <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Telegram</label>
                                             <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.telegram || '—'}</p>
+                                        </div>
+                                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">ВКонтакте</label>
+                                            <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.vk || '—'}</p>
                                         </div>
                                         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                             <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Что я хочу, чтобы вы про меня знали</label>

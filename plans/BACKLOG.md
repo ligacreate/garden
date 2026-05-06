@@ -1373,6 +1373,52 @@ related_docs:
   таском вернуть поле + согласовать enum-значения.
 - **Связано:** FEAT-013, services/dataService.js:1571-1579, миграция 21.
 
+### BUG-ADMIN-DELETE-USER: невозможно удалить пользователя из админки Garden
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (блокирует CLEAN-013 нормальным flow; обходится через прямой psql под gen_user)
+- **Создано:** 2026-05-06
+- **Контекст:** Ольга попыталась удалить тестового пользователя
+  через админ-панель Garden (`AdminPanel.jsx`). Операция не
+  прошла. Точный симптом не зафиксирован — на recon выяснить:
+  - какая именно кнопка/flow в UI;
+  - что в Network (status code, response body, какой endpoint);
+  - что в Console (JS error, exception);
+  - валится ли это на UI-уровне (toast «нет прав») или
+    на БД-уровне (FK constraint, RLS, missing GRANT, etc.).
+- **Возможные причины (гипотезы — проверить на recon):**
+  1. **FK constraint:** у тестовых profiles есть связи в
+     `pvl_audit_log.actor_user_id`, `pvl_students.id`,
+     `users_auth.id` (см. CLEAN-013 refs-check). Простой
+     DELETE из profiles упирается в FK → нужен MERGE или
+     ON DELETE CASCADE. Сейчас CASCADE есть только на
+     `course_progress.user_id`.
+  2. **Frontend-flow ошибки:** `services/dataService.js`
+     может слать DELETE-запрос с неправильным URL/headers,
+     или admin-проверка `is_admin()` где-то сломана.
+  3. **Auth/RLS:** RLS-policy `profiles_update_admin` есть,
+     но `profiles_delete_admin` — может не существовать,
+     и DELETE проваливается.
+- **Скоп:**
+  - Recon (с участием Ольги для воспроизведения и снятия
+    Network/Console).
+  - Зависимости от CLEAN-013 (если flow требует MERGE
+    зависимостей перед DELETE — фиксить совместно).
+  - Если нужен только UX-фикс (понятный error toast вместо
+    тихого фейла) — отдельная мини-задача.
+- **Why:** Ольга должна мочь удалять профили (тестовые,
+  устаревшие, по запросу пользователя) без обращения к
+  стратегу/psql.
+- **Acceptance:**
+  - Ольга через админ-UI удаляет тестового пользователя.
+  - Связанные записи (`audit_log`, `pvl_students`,
+    `users_auth`) обрабатываются корректно (либо MERGE,
+    либо CASCADE, либо явное предупреждение «у пользователя
+    есть N связей, подтвердите удаление»).
+  - Smoke на одном из CLEAN-013 кандидатов (Лена Ф или Рита).
+- **Связано:** CLEAN-013 (общий flow data hygiene profiles),
+  `views/AdminPanel.jsx`, `services/dataService.js`,
+  refs-check скрипт `scripts/feat002-tg-recon/clean013_refs_check.sql`.
+
 ### BUG-LOGIN-SILENT-PROFILE-FAIL: при 403 на _fetchProfile фронт тихо возвращает на AuthScreen
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2 (UX, юзеры думают, что login сломан, без понятной
@@ -2029,6 +2075,41 @@ related_docs:
   упражнение, не техническое — связано с ARCH-008.
 - **Когда:** в спокойное время после security-починки
 
+### UX-002: Админка Garden — на всю ширину экрана + улучшение UX
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (QoL для админов — Ольги, Насти, Ирины)
+- **Создано:** 2026-05-06
+- **Контекст:** Текущая админ-панель `views/AdminPanel.jsx`
+  ограничена по ширине (видимо, наследует общий контейнер
+  Garden с max-width). Для админов это неудобно: длинные
+  списки пользователей / встреч / контента переносятся на
+  несколько колонок, фильтры тесные, операции с большим
+  числом строк требуют скролла.
+- **Скоп (когда дойдёт ход):**
+  1. Layout: убрать max-width контейнер для админ-маршрутов,
+     раздвинуть на 100% viewport.
+  2. UX-полировка: улучшить таблицы пользователей/встреч —
+     sortable колонки, sticky header, поиск/фильтры, badge'ы
+     для статусов.
+  3. Возможно: вынести админку на отдельный layout (без общей
+     навигации Garden), как «admin app inside app».
+  4. Согласовать с FEAT-014 (магазин в админке) и
+     NB-RESTORE (notebooks/questions/cities админка) —
+     все три фичи добавляют разделы в админ-панель, удобнее
+     спроектировать layout единым подходом.
+- **Why:** Снижает усталость Ольги при работе со списками;
+  особенно важно с ростом числа ведущих и студентов.
+- **Acceptance:**
+  - Админ-маршруты используют 100% ширины экрана.
+  - Основные таблицы имеют sortable + filter.
+  - Smoke: на проде Ольга подтверждает, что работа со списком
+    из 60+ профилей стала удобнее.
+- **Связано:** `views/AdminPanel.jsx`, FEAT-014 (магазин админка),
+  NB-RESTORE (notebooks/questions/cities админка), UX-001
+  (общая UX-полировка).
+- **Оценка:** 1-2 сессии. Лучше совместить с FEAT-014 / NB-RESTORE
+  (чтобы layout раз пересмотреть и больше не возвращаться).
+
 ### UX-001: Прогнать платформу через design-/UX-скиллы (Emil Kowalski / impeccable / taste)
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3
@@ -2289,3 +2370,7 @@ related_docs:
   - **INFRA-002** (P3) заведён — мёртвый `public/.htaccess` в meetings (nginx ignores).
 - **Meetings приступает к FEAT-002 этап 4 apply** (две кнопки контакта в meetings-фронте). Сигнал «этап 4 apply закончен» придёт от meetings-стратега после prod smoke на новой ветке.
 - **Followup: http:// → https:// в profiles.telegram** (перед релизом этапа 4). Meetings-стратег через curl по api.skrebeyko.ru/events нашёл расхождение с canonical-контрактом: 2 profiles (Мария Бардина, Рухшана) с `http://t.me/...`, 31 events через них. Источник — дыра в этапе 1 гигиены: RECON засчитывал `http://` как «full_url валиден» (regex `^https?://`). Применён UPDATE через psql, trigger phase 22 автоматически пересинкнул 31 events. Финал: 149 canonical / 9 empty / 0 http. Артефакт: `migrations/data/2026-05-06_feat002_http_to_https_telegram.sql`.
+- **Заведены 2 новых таска по запросу Ольги** (на финале сессии):
+  - **BUG-ADMIN-DELETE-USER** (P2) — нельзя удалить тестового пользователя через админ-панель Garden (точный симптом — на recon). Возможно FK constraint от `pvl_audit_log`/`pvl_students`/`users_auth` или missing RLS-policy `profiles_delete_admin`. Связан с CLEAN-013.
+  - **UX-002** (P3) — админка Garden на всю ширину экрана + улучшение UX (sortable таблицы, sticky header, фильтры). Лучше совместить с FEAT-014 (магазин админка) + NB-RESTORE (notebooks админка) — единым подходом к layout.
+- **Manual escape hatch — DELETE notebook «Созвездие историй»** (через psql под `gen_user`, NB-RESTORE ещё не сделан, UI meetings выпилен SEC_PINS-ом, anon DELETE через PostgREST не пройдёт). 1 row affected, 0 FK references, total notebooks: 4 → 3. До NB-RESTORE такие операции делаются ad-hoc через стратега.

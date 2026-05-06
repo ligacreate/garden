@@ -1563,14 +1563,17 @@ related_docs:
     UI отображения, lifecycle сброса при смене когорты.
 
 ### FEAT-002: ВК-контакт ведущего в профиле Garden + кнопка «Связаться в ВК» в Meetings
-- **Статус:** 🟡 IN PROGRESS (Garden 3/4 этапов; meetings 0/1)
+- **Статус:** 🟢 DONE (2026-05-06 — все 4 этапа закрыты; meetings deploy 13:26 МСК, prod smoke 9/9 PASS)
 - **Приоритет:** P3
 - **Создано:** 2026-05-04
 - **Прогресс:**
   - [x] Этап 1 — гигиена `profiles.telegram` + `meetings.payment_link` (2026-05-05)
   - [x] Этап 2 — phase 22: `profiles.vk` + `events.host_telegram/vk` + sync trigger (2026-05-05)
   - [x] Этап 3 — Garden фронт: VK-поле в форме профиля + required TG + автонормализация контактов + кнопка «ВКонтакте» на LeaderPageView + выпил auto-fill `payment_link` в MeetingsView (deploy 2026-05-06 18:36 UTC, commit aead805, smoke V1-V5 5/5 PASS)
-  - [ ] Этап 4 — meetings-сторона: на странице события показать `host_vk`/`host_telegram` из events; разделить кнопки контакта; убрать legacy registration_link/payment_link (см. CLEAN-014)
+  - [x] Этап 4 — meetings-сторона: на карточке события две кнопки контакта (TG + VK) в slate-pill стиле, старая «Записаться» удалена. Defence-in-depth XSS protection через `safeHref` helper с whitelist на `https://t.me/` и `https://vk.me/`. PR ligacreate/meetings#2, deploy 2026-05-06 13:26 МСК, prod smoke 9/9 PASS (Claude in Chrome + curl/PIN-grep/bundle-hash). Bundle delta +1.4 KB raw vs SEC_PINS base. Закрытые AUDIT findings этапа 4: P1-2 (XSS на href).
+- **Метрики (за два цикла SEC_PINS + FEAT-002 этап 4):**
+  - Bundle meetings: 2.4 MB → 664 KB → 515 KB на проде (gzip ≈166 KB).
+  - 7 AUDIT findings закрыто (P0-1, P1-1, P1-2, P1-4, P1-5, P2-2, P2-8) + npm vuln `protocol-buffers-schema`.
 - **Контекст:** Сейчас в профиле ведущего в Саду нет ссылки на ВК-профиль.
   В приложении Meetings на странице события есть кнопка
   «Зарегистрироваться» — её формулировка не отражает реальное действие
@@ -2026,22 +2029,23 @@ related_docs:
 - **Связано:** BUG-003 (источник stub'ов), CLEAN-007 (общая
   миграция TEXT → UUID для PVL-таблиц), docs/EXEC_2026-05-03_post_smoke_text_id_sweep.md.
 
-### CLEAN-014: удалить колонку meetings.payment_link (legacy после FEAT-002 этап 4)
-- **Статус:** 🔴 TODO
-- **Приоритет:** P3
+### CLEAN-014: удалить колонки meetings.payment_link + events.registration_link (legacy после FEAT-002)
+- **Статус:** 🟢 READY TO START (FEAT-002 закрыт 2026-05-06, зелёный свет дан meetings-стратегом)
+- **Приоритет:** P2 (повышен с P3 — фича закрыта, можно убирать legacy чисто)
 - **Создано:** 2026-05-06 (после deploy FEAT-002 этап 3 в Garden)
-- **Контекст:** В FEAT-002 этап 3 на Garden-стороне MeetingsView выпилен auto-fill `meetings.payment_link` (commit aead805). Поле осталось как legacy для миграционной совместимости с meetings-фронтом. После FEAT-002 этап 4 (meetings-сторона перейдёт на `events.host_telegram`/`host_vk`) поле становится мёртвым на обоих концах и его можно дропнуть.
-- **Условия запуска:** FEAT-002 этап 4 задеплоен в meetings + grep по обоим репо подтвердил, что поле нигде не читается/пишется.
+- **Обновлено 2026-05-06:** FEAT-002 этап 4 закрыт (meetings deploy 13:26 МСК), `host_telegram`/`host_vk` стали основными каналами контакта на проде. Зелёный свет на cleanup. Meetings-стратег предлагает делать в одном PR с удалением `registration_link` из типа Event, **после 1-2 спринтов наблюдения** (когда CACHE_VERSION v4 у всех клиентов отстоится — иначе старые клиенты, не получившие новый бандл, могут остаться без CTA).
 - **Скоп:**
   - grep по обоим репо (`garden`, `meetings`) на использование `payment_link` и `registration_link` — выписать все места.
+  - В meetings: убрать поле `registration_link` из типа `Event` (TS), убрать из `?select=` запроса (`src/pages/Index.tsx`), убрать из рендеринга (если осталось).
   - `ALTER TABLE meetings DROP COLUMN payment_link` под `gen_user`.
-  - При условии что `events.registration_link` тоже мёртв (читается ли где-то фронтом meetings?) — `ALTER TABLE events DROP COLUMN registration_link`.
-  - Обновить `sync_meeting_to_event()` — убрать строку `registration_link = NEW.payment_link` из тела функции (если ещё там).
+  - `ALTER TABLE events DROP COLUMN registration_link` (после grep подтверждения, что нигде не читается).
+  - Обновить `sync_meeting_to_event()` — убрать строку `registration_link = NEW.payment_link` из тела функции.
   - Обязательно `SELECT public.ensure_garden_grants();` в конце DDL-транзакции (RUNBOOK 1.3).
+- **Условия запуска:** 1-2 спринта наблюдения после FEAT-002 этап 4 deploy (CACHE_VERSION v4 проотстаивается); затем grep чистый по обоим репо.
 - **Связано:**
   - `docs/RECON_2026-05-04_feat002_data_hygiene.md` (зоопарк значений `payment_link`)
   - commit aead805 (FEAT-002 этап 3 — выпил auto-fill)
-  - FEAT-002 этап 4 (предусловие)
+  - PR ligacreate/meetings#2 (FEAT-002 этап 4)
   - migration phase 22 (sync_meeting_to_event с расширенным телом)
 
 ### CLEAN-011: notebooks и questions — таблицы Meetings, не «чужие»
@@ -2147,6 +2151,32 @@ related_docs:
   стоит подумать, кто что должен мочь делать. Это продуктовое
   упражнение, не техническое — связано с ARCH-008.
 - **Когда:** в спокойное время после security-починки
+
+### UX-003: Redesign страницы 404 в meetings
+- **Статус:** 🔴 TODO (ждёт brief'а от Ольги)
+- **Приоритет:** P3
+- **Создано:** 2026-05-06 (после FEAT-002 этап 4 closure отчёта meetings-стратега)
+- **Контекст:** В рамках PR ligacreate/meetings#2 (commit 562f0b8)
+  meetings-сторона удалила DEBUG INFO leak со страницы 404
+  (служебная информация утекала в публичный бандл). Полный
+  redesign самой страницы — отдельный мини-цикл, ждёт
+  продуктовый brief от Ольги.
+- **Скоп (когда дойдёт):**
+  - Какой текст показывать на 404 (тон в духе Лиги, не
+    SaaS-generic).
+  - Иллюстрация / эмодзи / минимальный визуал.
+  - Кнопка возврата на главную / в расписание встреч.
+  - Возможно: ссылки на популярные разделы (FAQ, контакт).
+- **Why:** Сейчас 404 — голая страница без UX. Маленькая,
+  но видимая часть платформы.
+- **Acceptance:**
+  - Текст и визуал согласованы с Ольгой.
+  - Reachable из любой ошибки роутера (HashRouter в meetings).
+  - Smoke на проде: переход на `/несуществующий-путь` →
+    показывает дружелюбную страницу.
+- **Связано:** commit ligacreate/meetings@562f0b8 (DEBUG INFO
+  leak removed), UX-001 (общий UX-проход).
+- **Оценка:** 1 короткая сессия после brief'а Ольги.
 
 ### UX-002: Админка Garden — на всю ширину экрана + улучшение UX
 - **Статус:** 🔴 TODO
@@ -2448,3 +2478,7 @@ related_docs:
   - **UX-002** (P3) — админка Garden на всю ширину экрана + улучшение UX (sortable таблицы, sticky header, фильтры). Лучше совместить с FEAT-014 (магазин админка) + NB-RESTORE (notebooks админка) — единым подходом к layout.
 - **Manual escape hatch — DELETE notebook «Созвездие историй»** (через psql под `gen_user`, NB-RESTORE ещё не сделан, UI meetings выпилен SEC_PINS-ом, anon DELETE через PostgREST не пройдёт). 1 row affected, 0 FK references, total notebooks: 4 → 3. До NB-RESTORE такие операции делаются ad-hoc через стратега.
 - **Заведена FEAT-018** (P1) — Часовые пояса встреч: офлайн в TZ города + фильтр городов + корректное локальное время + flow добавления нового города (как город попадает в `cities` и фильтр meetings, когда ведущая создаёт встречу в новом городе). Recon перед планом. Без этой фичи география Лиги ломается. Пересекается с NB-RESTORE (cities Admin переедет в Garden).
+- 🎉 **FEAT-002 ЗАКРЫТА ЦЕЛИКОМ — 4/4 этапа.** Meetings-сторона: PR ligacreate/meetings#2 (commits e3c0bf2 + 562f0b8), FTP-deploy 2026-05-06 13:26 МСК, prod smoke 9/9 PASS (Claude in Chrome + auto curl/PIN-grep/bundle-hash). На карточке встречи теперь две кнопки контакта (TG + VK) в slate-pill стиле. Закрыта AUDIT P1-2 (XSS на href, defence-in-depth через `safeHref` helper с whitelist `https://t.me/` и `https://vk.me/`). Bundle delta meetings: +1.4 KB raw vs SEC_PINS base. Подтверждён hotfix http→https Рухшаны (id 339, 347 на проде). Бандл-хеш `index-Zk3XqCO9.js`, FTP clean-slate сработал. **Сводные метрики FEAT-002 + SEC_PINS (за два цикла):** Bundle meetings 2.4 MB → 515 KB (gzip ≈166 KB); 7 closed AUDIT findings (P0-1 PINs, P1-1 setShowAllCities, P1-2 XSS href, P1-4 postgrest dup, P1-5 Mapbox token, P2-2 dead MapView, P2-8 dead admin-write) + npm vuln `protocol-buffers-schema`.
+- **Зелёный свет на CLEAN-014** — приоритет повышен P3 → P2; теперь покрывает удаление обеих legacy-колонок (`meetings.payment_link` + `events.registration_link`) + cleanup `Event` типа в meetings. Делать в одном PR через 1-2 спринта наблюдения (CACHE_VERSION v4 у всех клиентов отстоится).
+- **Заведена UX-003** (P3) — Redesign страницы 404 в meetings. В PR meetings#2 удалили только DEBUG INFO leak; полный redesign — отдельным мини-циклом после brief'а от Ольги.
+- **Зелёный свет на NB-RESTORE planning** (P1, переезд админки notebooks/questions/cities в Garden, Variant 3).

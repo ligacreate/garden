@@ -3,7 +3,7 @@ title: Backlog — Garden Project
 type: task tracker
 version: 1.0
 created: 2026-05-02
-last_updated: 2026-05-02
+last_updated: 2026-05-06
 status: active
 purpose: единый источник правды для задач на починку, чистку
   кода, развитие. Обновляется по мере работы.
@@ -224,6 +224,27 @@ related_docs:
   [docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md](../docs/lessons/2026-05-04-timeweb-role-permissions-ui-revokes-all.md),
   [docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md](../docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md),
   RUNBOOK 1.2 + 1.3, phase 16/17/18/23 миграции.
+
+### NB-RESTORE: переезд админки notebooks/questions/cities из meetings в Garden
+- **Статус:** 🔴 TODO
+- **Приоритет:** P1
+- **Создано:** 2026-05-06 (в финале сессии FEAT-002 этап 3)
+- **Контекст:** После SEC_PINS Variant A в meetings админки нет — Ольга временно теряет UI для управления `notebooks`/`questions`/`cities`. Архитектурно правильно собрать единый источник правды в Garden, а meetings оставить чисто read-only публичной читалкой (CLEAN-011: эти таблицы — данные приложения meetings, лежат в общей Garden-БД).
+- **Решение:** meetings-стратег рекомендует Variant 3 — переезд CRUD в Garden. Оценка ~3-5 дней Garden-команды.
+- **Скоп:**
+  - UX-recon формы Garden — где разместить админ-секцию (вероятно, расширение AdminPanel под отдельный таб «Контент meetings» или подменю).
+  - Реализация форм для `notebooks`, `questions`, `cities` в Garden, role-based access (admin only).
+  - PostgREST writes под JWT `role='admin'` — RLS-policies на write для этих таблиц должны быть admin-only (проверить текущее состояние, дозаписать если нет).
+  - Удалить дубликаты в meetings (после переезда) — UI-формы и POST/PATCH/DELETE-флоу.
+- **Acceptance:**
+  - Ольга через Garden управляет `notebooks`, `questions`, `cities` (CRUD).
+  - Meetings-фронт остаётся read-only публичной читалкой, не имеет UI для записи.
+  - В CLEAN-011 контекст обновляется: «таблицы Meetings, админка в Garden».
+- **Связано:**
+  - `docs/SEC_PINS_2026-05-05.md` (meetings, Variant A)
+  - `docs/NB_RESTORE_PLAN.md` (meetings, план переезда)
+  - CLEAN-011 (notebooks/questions — таблицы Meetings)
+  - ANOM-004 (verified anon write → 42501; админка в Garden подразумевает admin JWT, дополнительной защиты на write пока хватает текущей)
 
 ### ARCH-001: Связка ментор-ученик в курсе ПВЛ
 - **Статус:** 🟢 DONE (2026-05-04 — учительская и API-flow задокументированы в PVL_RECONNAISSANCE.md разделе 2.4)
@@ -1279,7 +1300,7 @@ related_docs:
   (HomeworkInlineForm).
 
 ### BUG-TOGGLE-USER-STATUS-GHOST-COLUMN: фронт PATCH'ит несуществующее поле profiles.access_status
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE (2026-05-06, fixed in commit aead805 — `access_status` убран из тела PATCH в `services/dataService.js` в рамках FEAT-002 этап 3; PGRST204 больше не возникает)
 - **Приоритет:** P3 (косметический — поле игнорируется PostgREST'ом, но захламляет код)
 - **Создано:** 2026-05-04 (обнаружено при FEAT-013 разведке)
 - **Контекст:** В `services/dataService.js:1571-1579` функция
@@ -1373,9 +1394,14 @@ related_docs:
     UI отображения, lifecycle сброса при смене когорты.
 
 ### FEAT-002: ВК-контакт ведущего в профиле Garden + кнопка «Связаться в ВК» в Meetings
-- **Статус:** 🔴 TODO
+- **Статус:** 🟡 IN PROGRESS (Garden 3/4 этапов; meetings 0/1)
 - **Приоритет:** P3
 - **Создано:** 2026-05-04
+- **Прогресс:**
+  - [x] Этап 1 — гигиена `profiles.telegram` + `meetings.payment_link` (2026-05-05)
+  - [x] Этап 2 — phase 22: `profiles.vk` + `events.host_telegram/vk` + sync trigger (2026-05-05)
+  - [x] Этап 3 — Garden фронт: VK-поле в форме профиля + required TG + автонормализация контактов + кнопка «ВКонтакте» на LeaderPageView + выпил auto-fill `payment_link` в MeetingsView (deploy 2026-05-06 18:36 UTC, commit aead805, smoke V1-V5 5/5 PASS)
+  - [ ] Этап 4 — meetings-сторона: на странице события показать `host_vk`/`host_telegram` из events; разделить кнопки контакта; убрать legacy registration_link/payment_link (см. CLEAN-014)
 - **Контекст:** Сейчас в профиле ведущего в Саду нет ссылки на ВК-профиль.
   В приложении Meetings на странице события есть кнопка
   «Зарегистрироваться» — её формулировка не отражает реальное действие
@@ -1715,6 +1741,24 @@ related_docs:
 - **Связано:** BUG-003 (источник stub'ов), CLEAN-007 (общая
   миграция TEXT → UUID для PVL-таблиц), docs/EXEC_2026-05-03_post_smoke_text_id_sweep.md.
 
+### CLEAN-014: удалить колонку meetings.payment_link (legacy после FEAT-002 этап 4)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-06 (после deploy FEAT-002 этап 3 в Garden)
+- **Контекст:** В FEAT-002 этап 3 на Garden-стороне MeetingsView выпилен auto-fill `meetings.payment_link` (commit aead805). Поле осталось как legacy для миграционной совместимости с meetings-фронтом. После FEAT-002 этап 4 (meetings-сторона перейдёт на `events.host_telegram`/`host_vk`) поле становится мёртвым на обоих концах и его можно дропнуть.
+- **Условия запуска:** FEAT-002 этап 4 задеплоен в meetings + grep по обоим репо подтвердил, что поле нигде не читается/пишется.
+- **Скоп:**
+  - grep по обоим репо (`garden`, `meetings`) на использование `payment_link` и `registration_link` — выписать все места.
+  - `ALTER TABLE meetings DROP COLUMN payment_link` под `gen_user`.
+  - При условии что `events.registration_link` тоже мёртв (читается ли где-то фронтом meetings?) — `ALTER TABLE events DROP COLUMN registration_link`.
+  - Обновить `sync_meeting_to_event()` — убрать строку `registration_link = NEW.payment_link` из тела функции (если ещё там).
+  - Обязательно `SELECT public.ensure_garden_grants();` в конце DDL-транзакции (RUNBOOK 1.3).
+- **Связано:**
+  - `docs/RECON_2026-05-04_feat002_data_hygiene.md` (зоопарк значений `payment_link`)
+  - commit aead805 (FEAT-002 этап 3 — выпил auto-fill)
+  - FEAT-002 этап 4 (предусловие)
+  - migration phase 22 (sync_meeting_to_event с расширенным телом)
+
 ### CLEAN-011: notebooks и questions — таблицы Meetings, не «чужие»
 - **Статус:** 🟡 PARTIALLY DONE (2026-05-04 — выяснено происхождение, переоформление контекста; полное решение архитектуры — отдельной задачей)
 - **Приоритет:** P3
@@ -2029,3 +2073,10 @@ related_docs:
   4. RUNBOOK раздел 1.3 (новый, существующие 1.3-1.5 сдвинуты в 1.4-1.6) — обязательное правило: после любой DDL-миграции в конце транзакции, ДО `COMMIT`, ставить `SELECT public.ensure_garden_grants()`.
 - **Открыто:** тикет в Timeweb support про DDL-wipeout (для понимания root cause, не блокер). Telegram-бот для алертов (создание через @BotFather, ~5 минут — попросить Ольгу через стратега).
 - **Артефакты:** `migrations/2026-05-05_phase23_grants_safety_net.sql`, `scripts/recover_grants.sh`, `scripts/check_grants.sh`, `docs/lessons/2026-05-05-timeweb-revokes-grants-after-ddl.md`, RUNBOOK 1.3 + cron entry на проде (`/etc/cron.d/garden-monitor` — не в git).
+
+#### 2026-05-06
+- **FEAT-002 этап 3 — Garden фронт deployed.** Commit aead805, deploy через GitHub Actions FTP на 185.215.4.44 в 18:36 UTC. Smoke V1-V5 5/5 PASS через Claude in Chrome (Ольга): нормализация VK / required TG / две кнопки контакта (TG + ВК) на LeaderPageView / `toggleUserStatus` без PGRST204 / без auto-fill `payment_link` в MeetingsView. Артефакты: `lib/contactNormalize.js` + `services/dataService.js` + 3 view-файла (см. aead805).
+- **UI-backfill VK для 4 ведущих** через psql (стратегом, под `gen_user`): Инна Кулиш, Юлия Громова, Светлана Исламова, Колотилова Светлана. Trigger phase 22 `on_profile_contacts_change_resync_events` автоматически синкнул в events (11 events `host_vk` заполнен).
+- **Закрыто:** FEAT-002 этапы 1, 2, 3 (Garden-сторона); ANOM-004 (verified anon write → 42501); BUG-TOGGLE-USER-STATUS-GHOST-COLUMN (фикс в этапе 3 — `access_status` убран из тела PATCH); SEC-014 основной скоуп (трёхслойная защита active).
+- **Открыто:** FEAT-002 этап 4 (meetings-сторона — показ `host_vk`/`host_telegram` + разделение кнопок контакта); CLEAN-013 (тестовые профили + дубль LIlia MALONG MERGE); NB-RESTORE (переезд админки notebooks/questions/cities в Garden, P1); CLEAN-014 (удаление `meetings.payment_link` после этапа 4); SEC-014 остатки — тикет в Timeweb support + опциональный smoke + Telegram-бот для алертов.
+- **Артефакты:** `lib/contactNormalize.js`, `services/dataService.js` + 3 view файла (см. aead805); `docs/HANDOVER_2026-05-06_session_feat002_garden.md`.

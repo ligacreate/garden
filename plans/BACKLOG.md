@@ -1964,6 +1964,38 @@ related_docs:
   tests на критичные потоки (login, регистрация, открытие
   курса).
 
+### INFRA-002: Удалить мёртвый public/.htaccess в meetings (nginx, не Apache)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (не критично, но стоит убрать)
+- **Создано:** 2026-05-06 (по итогу SEC_PINS Variant A apply meetings)
+- **Контекст:** В репо meetings лежит `public/.htaccess` (для
+  Apache), но прод-сервер использует nginx → файл игнорируется.
+  Мёртвый конфиг. Сейчас не критично (HashRouter не использует
+  deep-paths), но потенциально:
+  - любой `/<deep-path>` URL возвращает 404 от nginx без
+    fallback'а на index.html;
+  - если когда-то перейдём на BrowserRouter (для SEO / sharing
+    deep links) — блокер;
+  - пересекает NB-RESTORE Вариант 2 (планировался Caddy/Apache
+    Basic Auth) — переформулировать под nginx, если этот
+    вариант когда-нибудь будет рассматриваться.
+- **Скоп:**
+  1. Удалить `public/.htaccess` из meetings репо.
+  2. Если нужна fallback-логика SPA (catchall на index.html)
+     → добавить в nginx server-config:
+     `try_files $uri $uri/ /index.html;`
+- **Why:** уборка мёртвого конфига; защита от внезапного
+  выбора BrowserRouter в будущем без обновления nginx.
+- **Acceptance:**
+  - `public/.htaccess` удалён из meetings.
+  - Если решено настраивать SPA fallback → nginx-config
+    обновлён + smoke на любом deep-path URL → отдаёт index.html.
+- **Связано:** AUDIT meetings 2026-05-06 (отчёт meetings-стратега),
+  NB-RESTORE Вариант 2 (если когда-то рассмотрим — переформулировать
+  под nginx).
+- **Оценка:** 30 мин (если просто удалить); 1-2 часа если
+  нужна nginx-конфигурация для SPA fallback.
+
 ### INFRA-003: Обновления Ubuntu и перезагрузка сервера Mysterious Bittern
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3
@@ -2251,3 +2283,8 @@ related_docs:
   - **FEAT-015** (P1) — Авто-пауза ведущей при неоплате Prodamus (webhook → `profiles.status`).
   - **FEAT-016** (P2) — Выгрузка результатов ДЗ ПВЛ (особенно feedback по модулю).
   - **FEAT-017** (P2) — Дашборд прогресса студентов ПВЛ (кто запаздывает по ДЗ).
+- **Meetings SEC_PINS Variant A apply ЗАКРЫТ** (отчёт meetings-стратега): PR в `ligacreate/meetings` merged → FTP-deploy → prod smoke 6/6 (curl/bundle/PIN-grep/hash-match) + 7/7 (Claude in Chrome UI). **Bundle 2.4M → 664K (−73%)**, npm audit 17 → 16. Закрыто AUDIT findings: P0-1 (hardcoded PINs 0000/1111 в публичном бандле), P1-1 (`setShowAllCities` ReferenceError), P1-4 (postgrest client duplication), P1-5 (Mapbox token UI prompt), P2-2 (dead MapView), P2-8 (dead admin-write code) + npm vuln `protocol-buffers-schema` (через mapbox-gl). После apply: meetings-фронт = чисто read-only публичная читалка. Артефакты: `meetings/docs/SEC_PINS_2026-05-05.md`, `meetings/docs/AUDIT_meetings_2026-05-05.md`, `meetings/docs/NB_RESTORE_PLAN.md`.
+- **Открыто** (после Meetings SEC_PINS apply):
+  - **NB-RESTORE стало горящим** — Ольга временно теряет UI для управления `notebooks`/`questions`/`cities` до переезда админки в Garden. Manual ad-hoc через Garden-стратега / psql.
+  - **INFRA-002** (P3) заведён — мёртвый `public/.htaccess` в meetings (nginx ignores).
+- **Meetings приступает к FEAT-002 этап 4 apply** (две кнопки контакта в meetings-фронте). Сигнал «этап 4 apply закончен» придёт от meetings-стратега после prod smoke на новой ветке.

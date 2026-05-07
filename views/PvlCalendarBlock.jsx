@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { ExternalLink } from 'lucide-react';
 import { loadViewPreferences, saveViewPreferences } from '../services/pvlAppKernel';
 import { pvlCohortIdsEquivalent, pvlDomainApi } from '../services/pvlMockApi';
 import {
@@ -470,17 +469,6 @@ function PvlPastArchiveListItem({ ev }) {
                         className="pvl-practicum-recording-embed mt-2 w-full min-w-0 overflow-hidden rounded-lg border border-[#E8E0D4]/70 bg-white [&>div]:relative [&>div]:aspect-video [&>div]:!h-auto [&>div]:!min-h-0 [&>div]:!w-full [&>div]:!p-0 [&>div]:![padding-top:0] [&_iframe]:!absolute [&_iframe]:!inset-0 [&_iframe]:!left-0 [&_iframe]:!top-0 [&_iframe]:!h-full [&_iframe]:!w-full [&_iframe]:!max-h-none"
                         dangerouslySetInnerHTML={{ __html: playerFromUrl }}
                     />
-                ) : null}
-                {ev.recordingUrl ? (
-                    <a
-                        href={ev.recordingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-emerald-200 bg-emerald-50/90 px-3 py-2 text-xs font-semibold text-emerald-900 shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 sm:py-2.5 sm:text-sm"
-                    >
-                        <ExternalLink className="h-4 w-4 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-                        Смотреть запись
-                    </a>
                 ) : null}
                 {ev.recapText ? (
                     <div

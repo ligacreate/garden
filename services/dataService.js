@@ -66,6 +66,9 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
         throw err;
     }
 
+    if (response.status === 204) {
+        return { data: null };
+    }
     const data = await response.json();
     let count;
     if (options.count) {

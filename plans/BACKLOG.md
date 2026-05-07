@@ -369,6 +369,52 @@ related_docs:
   если решим конвертировать в TZ читателя — добавляется
   client-side TZ-detection и edge-cases.
 
+### FEAT-019: Сокровищница + маркетплейс практик
+- **Статус:** 🔴 TODO (ждёт планирования + brief'а от Ольги)
+- **Приоритет:** P2-P3 (большая фича, ~8-11 сессий, после INFRA-N + UX-002 + NB-RESTORE)
+- **Создано:** 2026-05-07
+- **Полное ТЗ:** [`docs/_session/2026-05-07_10_idea_treasury_marketplace.md`](../docs/_session/2026-05-07_10_idea_treasury_marketplace.md)
+  (не дублируется здесь — единственный источник правды).
+- **Краткое summary:**
+  - Новый раздел **«Сокровищница»** — общая бесплатная база практик
+    ведущих (общинно-курируемая библиотека).
+  - Переименование текущего «Практики» → **«Мои практики»** (личная
+    коллекция).
+  - Механика **публикации** (приватная → в Сокровищницу),
+    **модерации** (админский ревью), **форка** (взять чужую практику в
+    свою коллекцию **с атрибуцией автору**).
+  - **Семена за публикацию** — gamification, расширение
+    `incrementUserSeeds` flow.
+  - Расширение модели `practices`: visibility, source/forked-from,
+    moderation_status, etc.
+  - **Заложить архитектуру маркетплейса** (платных премиум-практик
+    в будущем) без UI на этой итерации.
+- **Бюджет:** ~8-11 сессий (1 на план + 7 этапов реализации).
+- **Зависимости (рекомендуется закрыть до релиза):**
+  - **NB-RESTORE** (P1) — без переезда админки notebooks/cities
+    в Garden модерация форкнутых практик неудобна.
+  - **UX-002** (P3) — full-width админка с sortable + filter для
+    очереди модерации.
+  - **INFRA-N / INFRA-004** (P1) — cache-headers, иначе deploy фичи
+    бьёт по PVL-учительской.
+- **Why:** Сильный community-механизм. Ведущие учатся друг у друга
+  через готовые практики, общинная база растёт сама собой,
+  атрибуция формирует репутацию.
+- **Acceptance** (high-level, детали — в `_10`):
+  - Раздел Сокровищница доступен всем авторизованным.
+  - Ведущая может опубликовать свою практику — заявка идёт в
+    модерацию.
+  - Модератор (admin) одобряет → практика появляется в Сокровищнице.
+  - Любой ведущий может «forkнуть» — практика копируется в его
+    «Мои практики» с пометкой источника.
+  - Семена начисляются автору при first-fork и при публикации
+    (механика — на план).
+  - Заложена схема для премиум-маркетплейса (платежи отложены).
+- **Связано:** NB-RESTORE, UX-002, INFRA-004, `services/dataService.js`
+  методы по practices, ARCH-011 (подписочная модель — пересекается
+  с маркетплейсом).
+- **Оценка:** 8-11 сессий по этапам.
+
 ### ARCH-001: Связка ментор-ученик в курсе ПВЛ
 - **Статус:** 🟢 DONE (2026-05-04 — учительская и API-flow задокументированы в PVL_RECONNAISSANCE.md разделе 2.4)
 - **Контекст:** Из PVL_RECONNAISSANCE.md: связка существует
@@ -1158,7 +1204,7 @@ related_docs:
   - History API для смены URL без перезагрузки
 - **Когда:** после стабилизации безопасности и базовых фич
 
-### PROD-005: Soft-delete vs hard-delete — стратегия для реальных пользователей
+### PROD-USER-DELETE-MODEL: Soft-delete vs hard-delete — стратегия для реальных пользователей
 - **Статус:** 🔴 TODO (продуктовое решение)
 - **Приоритет:** P2
 - **Создано:** 2026-05-07 (открыто после BUG-ADMIN-DELETE-USER closure)
@@ -1578,6 +1624,54 @@ related_docs:
     позже» — даёт пользователю понять, что что-то пошло не так.
   - Логировать детали в console для диагностики.
 
+### BUG-PVL-COHORT-NULL-OVERWRITE: ensurePvlStudentInDb перетирает cohort_id/mentor_id в null
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (блокирует FEAT-017 frontend smoke; backfill регрессирует)
+- **Создано:** 2026-05-07
+- **Smoking gun:** [`services/pvlMockApi.js:622-628`](../services/pvlMockApi.js#L622-L628) —
+  `ensurePvlStudentInDb` self-heal upsert хардкодит `cohort_id: null`
+  и `mentor_id: null` в payload `pvlPostgrestApi.upsertPvlStudent`.
+  Через `Prefer: resolution=merge-duplicates` это перезаписывает
+  существующие значения в `pvl_students` каждый раз когда админ
+  заходит в учительскую и любой из 9 callsite'ов триггерит
+  `ensurePvlStudentInDb`.
+- **Реальный эффект 2026-05-07:** Все 22 активных студента имели
+  `cohort_id IS NULL` к моменту recon'а phase 25. Backfill
+  `migrations/data/2026-05-07_pvl_students_cohort_backfill.sql` (commit
+  `7b832f1`) проставил `'11111111-…-101'` для всех 22, **но при
+  следующем визите Ольги/Насти/Ирины в PVL backfill регрессирует**
+  до фикса этого хардкода.
+- **Лечение** — два варианта (выбрать на recon):
+  1. **Убрать `cohort_id` и `mentor_id` из payload** упсёрта когда
+     строка уже существует. Текущий `merge-duplicates` всегда
+     перезаписывает поля payload'а; альтернатива — INSERT…ON
+     CONFLICT DO NOTHING (не апдейтит вообще), либо отдельный
+     SELECT перед upsert'ом для проверки существования.
+  2. **Заменить null на корректную резолюцию:** `cohort_id =
+     seedCohortIdToSqlUuid(profile.cohortId || 'cohort-2026-1')`,
+     `mentor_id` — резолюция через `pvl_garden_mentor_links` или
+     mock-domain mentor profile. Mapping `seedCohortIdToSqlUuid`
+     уже есть в [`pvlMockApi.js:158-160, 187`](../services/pvlMockApi.js#L158-L160).
+- **Why:** Без фикса любой ручной backfill cohort_id (или будущая
+  ручная установка через psql) теряется при первом же визите
+  админа. Это делает `pvl_students.cohort_id` непригодным как
+  основа для FEAT-017 RPC.
+- **Acceptance:**
+  - После фикса: повторный backfill через psql даёт 22 строк с
+    cohort_id, и через сутки активных визитов админа в PVL
+    cohort_id остаётся.
+  - Smoke: open admin AdminPanel → выйти → SELECT cohort_id из
+    pvl_students → все 22 не NULL.
+  - Связано с ARCH-012 (общая ARCH-задача убрать клиентский
+    self-heal в пользу серверного flow).
+- **Связано:**
+  - phase 25 миграция (commit `66c7c0e`).
+  - backfill (commit `7b832f1`).
+  - cohort_id recon: [`docs/_session/2026-05-07_09_codeexec_cohort_id_recon.md`](../docs/_session/2026-05-07_09_codeexec_cohort_id_recon.md).
+  - ARCH-012 (родительская архитектурная задача).
+- **Оценка:** 1 короткая сессия. Recon уже сделан (Section 2 в `_09`),
+  фикс — точечный edit в одном файле + smoke.
+
 ### FEAT-013: Пауза ведущей скрывает её встречи в публичном Meetings
 - **Статус:** 🟢 DONE (2026-05-04, phase 21 migration applied + double smoke verified)
 - **Приоритет:** P2
@@ -1699,9 +1793,15 @@ related_docs:
 - **Оценка:** 1-2 сессии (recon + implement + smoke).
 
 ### FEAT-016: Выгрузка результатов домашек ПВЛ — особенно feedback по модулю
-- **Статус:** 🔴 TODO
+- **Статус:** 🟡 IN PROGRESS (фундамент готов 2026-05-07: phase 25 миграция)
 - **Приоритет:** P2 (нужно регулярно после каждого модуля; сейчас выгрузка через psql вручную не масштабируется)
 - **Создано:** 2026-05-06
+- **Прогресс 2026-05-07:**
+  - Code-recon executor'а: [`docs/_session/2026-05-07_02_codeexec_recon_feat016_017_report.md`](../docs/_session/2026-05-07_02_codeexec_recon_feat016_017_report.md)
+  - DB-recon стратега: [`docs/_session/2026-05-07_03_strategist_db_recon.md`](../docs/_session/2026-05-07_03_strategist_db_recon.md)
+  - Phase 25 миграция applied (commit `66c7c0e`) — добавлены поля `module_number` / `is_module_feedback` для структурного фильтра + `updated_at` для совместимости с триггером.
+  - Backfill cohort_id (commit `7b832f1`) — 22 студента привязаны к когорте Поток 1.
+- **Блокер:** `BUG-PVL-COHORT-NULL-OVERWRITE` (P2) — backfill регрессирует при следующем визите админа в PVL до фикса хардкода в `pvlMockApi.js:622-628`. Делать после фикса.
 - **Контекст:** Каждый модуль курса ПВЛ заканчивается домашкой
   «обратная связь по модулю / по работе менторов / по материалам».
   Этот feedback — ключевой сигнал для развития курса. Сейчас данные
@@ -1742,9 +1842,18 @@ related_docs:
 - **Оценка:** 1-2 сессии после продуктового решения формата.
 
 ### FEAT-017: Дашборд прогресса студентов ПВЛ — кто где запаздывает по ДЗ
-- **Статус:** 🔴 TODO
+- **Статус:** 🟡 IN PROGRESS (фундамент готов 2026-05-07: phase 25 RPC + backfill)
 - **Приоритет:** P2 (оперативный мониторинг для Ольги и менторов; сейчас приходится мысленно считать)
 - **Создано:** 2026-05-06
+- **Прогресс 2026-05-07:**
+  - Code-recon: [`docs/_session/2026-05-07_02_codeexec_recon_feat016_017_report.md`](../docs/_session/2026-05-07_02_codeexec_recon_feat016_017_report.md)
+  - DB-recon: [`docs/_session/2026-05-07_03_strategist_db_recon.md`](../docs/_session/2026-05-07_03_strategist_db_recon.md)
+  - Phase 25 план: [`docs/_session/2026-05-07_05_codeexec_phase25_plan.md`](../docs/_session/2026-05-07_05_codeexec_phase25_plan.md)
+  - **RPC `public.pvl_admin_progress_summary(p_cohort_id uuid)`** SECURITY DEFINER — applied (commit `66c7c0e`). Возвращает jsonb-массив объектов по студентам когорты: student_id / full_name / status / cohort_id / mentor_id / mentor_name / hw_total / hw_accepted / hw_in_review / hw_revision / hw_not_started / hw_overdue / last_activity / module_progress / state_line.
+  - Backfill `pvl_students.cohort_id = '11111111-…-101'` для 22 студентов (commit `7b832f1`).
+  - Apply-отчёты: [`_07_codeexec_phase25_apply_report.md`](../docs/_session/2026-05-07_07_codeexec_phase25_apply_report.md), [`_12_codeexec_backfill_apply_report.md`](../docs/_session/2026-05-07_12_codeexec_backfill_apply_report.md).
+- **Блокер до frontend:** `BUG-PVL-COHORT-NULL-OVERWRITE` (P2) — без фикса хардкода в `pvlMockApi.js:622-628` backfill регрессирует.
+- **Следующий шаг:** новый таб `pvl-progress` в `AdminPanel.jsx` (или новая admin-страница в учительской) с таблицей через `pvlPostgrestApi.callRpc('pvl_admin_progress_summary', { p_cohort_id })`.
 - **Контекст:** Сейчас прогресс по ДЗ виден только точечно — ментор
   видит свою группу, Ольга вынуждена опрашивать. Нужен общий
   дашборд: по каждой студентке — кол-во сданных ДЗ / последняя
@@ -2251,13 +2360,22 @@ related_docs:
 
 ### INFRA-004: cache-headers index.html — слишком агрессивный max-age
 - **Статус:** 🔴 TODO
-- **Приоритет:** P3 (~10 минут работы)
+- **Приоритет:** **P1** — повышен 2026-05-07 после реального проявления
+  у Ольги (`Failed to fetch dynamically imported module` в PVL-учительской
+  после deploy)
 - **Создано:** 2026-05-07
 - **Контекст:** Nginx-конфиг фронта `liga.skrebeyko.ru` отдаёт
   `index.html` с `Cache-Control: max-age=86400` (сутки). После
   каждого FTP-deploy юзеры до 24 часов видят старый bundle, пока
   не сделают hard reload (Cmd+Shift+R). Особенно болезненно при
   smoke-тестировании сразу после deploy.
+- **Реальный инцидент 2026-05-07:** Ольга в PVL-учительской ловила
+  `TypeError: Failed to fetch dynamically imported module` после
+  одного из deploy сегодня — старый `index.html` ссылался на
+  `assets/[hash].js`, удалённые при clean-slate FTP-upload новой
+  версии. Раньше это списывалось на «случайный browser cache»,
+  теперь зафиксировано как воспроизводимая регрессия каждого
+  deploy → P1.
 - **Стандарт:** хешированные ассеты (`/assets/*-[hash].js|css`)
   — `Cache-Control: public, immutable, max-age=31536000`;
   `index.html` — `Cache-Control: no-cache, must-revalidate`
@@ -2309,7 +2427,7 @@ related_docs:
   упражнение, не техническое — связано с ARCH-008.
 - **Когда:** в спокойное время после security-починки
 
-### ARCH-014: Контрактные FK на 3 таблицах + ON DELETE CASCADE на meetings.user_id
+### TECH-DEBT-FK-CONTRACTS: Контрактные FK на 3 таблицах + ON DELETE CASCADE на meetings.user_id
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3
 - **Создано:** 2026-05-07 (открыто после BUG-ADMIN-DELETE-USER recon)
@@ -2394,14 +2512,18 @@ related_docs:
   (админка на всю ширину), `views/PvlCalendarBlock.jsx`.
 
 ### BUG-MEETINGS-VK-BUTTON-OVERFLOW: подрезается кнопка ВКонтакте + опечатка «Телеграмма»
-- **Статус:** ⏸ HANDED OFF (передано meetings-стратегу 2026-05-07)
+- **Статус:** 🟢 DONE (2026-05-07, meetings-стратегом)
 - **Приоритет:** P3 (UX в meetings-репо)
 - **Создано:** 2026-05-07
+- **Закрыто:** 2026-05-07
 - **Контекст:** На карточке события в публичном Meetings
   (`meetings.skrebeyko.ru`) две кнопки контакта (TG + ВК),
   добавленные в FEAT-002 этап 4, не помещаются в одну строку
   на узких экранах — кнопка «ВКонтакте» подрезается. Также
   опечатка: текст «Телеграмма» вместо «Телеграм».
+- **Решение:** vertical stack (`flex flex-col` без `sm:flex-row`)
+  + текст «Телеграм». Commit `62cf08d` в репо `ligacreate/meetings`,
+  prod smoke 8/8 PASS.
 - **Где:** репо `ligacreate/meetings`, страница события.
 - **Why:** Видимый UX-косяк сразу после релиза двух кнопок;
   Ольга заметила и передала.
@@ -2796,14 +2918,78 @@ related_docs:
     runtime-`if`). Поддерживается phase 22 trigger + required-TG
     в Garden-форме.
 - **Закрыто:** BUG-ADMIN-DELETE-USER. **Прогрессирует:** CLEAN-013
-  (1/5 удалено). **Открыто:** PROD-005, ARCH-014, INFRA-004,
+  (1/5 удалено). **Открыто:** PROD-USER-DELETE-MODEL (был PROD-005),
+  TECH-DEBT-FK-CONTRACTS (был ARCH-014), INFRA-004,
   UX-QUICK-FIXES, CONTRACT-GARDEN-MEETINGS-001 (как живая
   документация).
-- **Коммиты:** `9fddae4` (RPC + AdminPanel + UI refetch + миграция
+- **Коммиты (фронт-часть):** `9fddae4` (RPC + AdminPanel + UI refetch + миграция
   phase 24 + удалён подзаголовок календаря), `f57d087` (204-guard
   в postgrestFetch + удалена кнопка «Смотреть запись»).
-- **Артефакты:** `migrations/2026-05-07_phase24_admin_delete_user_rpc.sql`,
-  `services/dataService.js` (deleteUser → POST RPC + 204-guard),
-  `views/AdminPanel.jsx` (refetch + читаемые тосты),
-  `views/PvlCalendarBlock.jsx` (удалён `<p>` и `<a>` с импортом
-  `ExternalLink`), `docs/journal/HANDOVER_2026-05-07_session_admin_delete.md`.
+
+- **Phase 25 — pvl_admin_progress_summary RPC + структурные поля.**
+  После закрытия BUG-ADMIN-DELETE-USER в этой же сессии прошёл цикл
+  recon → план → ревью → apply для FEAT-016/FEAT-017 фундамента.
+  Code-recon executor'а (`docs/_session/_02`), DB-recon стратега
+  (`_03`), план миграции (`_05`), ревью стратега с поправкой 3.4
+  (`_06`), apply-отчёт (`_07`). **Phase 25 миграция applied 2026-05-07
+  под gen_user:** `ALTER TABLE pvl_homework_items` добавил
+  `module_number int / is_module_feedback bool / updated_at timestamptz`
+  (последняя — попутный фикс латентного бага: pre-existing trigger
+  `trg_pvl_homework_items_updated_at BEFORE UPDATE` обращался к
+  `NEW.updated_at`, но колонки не было — backfill UPDATE падал на
+  первом UPDATE). Backfill через regex по `title` для module_number
+  (паттерн `'модул[ьюяе]\\s*(\\d+)'`) и ILIKE для is_module_feedback
+  («Рефлексия по модулю%», «Анкета обратной связи%») — 6 строк
+  module_number / 4 строки is_module_feedback. **Создана RPC**
+  `public.pvl_admin_progress_summary(p_cohort_id uuid)` SECURITY
+  DEFINER — возвращает jsonb-массив объектов по студентам когорты
+  (student_id / full_name / status / cohort_id / mentor_id /
+  mentor_name / hw_total / hw_accepted / hw_in_review / hw_revision /
+  hw_not_started / hw_overdue / last_activity / module_progress /
+  state_line). V1-V6 verify зелёные. Коммит `66c7c0e`.
+- **cohort_id recon + backfill.** Apply-отчёт phase 25 выявил
+  `pvl_students.cohort_id IS NULL` для всех 22 студентов → RPC
+  возвращает [] для любого UUID когорты. Recon executor'а
+  (`docs/_session/_09`) нашёл **smoking gun за 5 минут:**
+  [`services/pvlMockApi.js:622-628`](../services/pvlMockApi.js#L622-L628)
+  хардкодит `cohort_id: null` в self-heal upsert
+  `ensurePvlStudentInDb`. UI для назначения когорты в AdminPanel
+  отсутствует, frontend cohort-логика крутится через mock seed-id
+  `'cohort-2026-1'` с hardcode'ами в 23+ местах. **Backfill applied
+  2026-05-07** через `migrations/data/2026-05-07_pvl_students_cohort_backfill.sql`
+  (commit `7b832f1`) — 22 строк получили `cohort_id =
+  '11111111-1111-1111-1111-111111111101'`. ⚠ Backfill **регрессирует**
+  при следующем визите админа в PVL до фикса хардкода —
+  заведена `BUG-PVL-COHORT-NULL-OVERWRITE` (P2).
+- **Открытия (новые тикеты):**
+  - **BUG-PVL-COHORT-NULL-OVERWRITE** (P2) — `ensurePvlStudentInDb`
+    хардкодит null. Лечение точечное.
+  - **FEAT-019: Сокровищница + маркетплейс практик** (P2-P3) —
+    большая фича, ~8-11 сессий. Полное ТЗ в `_10_idea_treasury_marketplace.md`.
+  - **INFRA-004 повышен P3 → P1** — реальное проявление
+    `Failed to fetch dynamically imported module` у Ольги в
+    PVL-учительской после deploy. Фикс в nginx-конфиге фронта.
+  - Переименованы: `ARCH-014` → `TECH-DEBT-FK-CONTRACTS`,
+    `PROD-005` → `PROD-USER-DELETE-MODEL` (по запросу стратега).
+- **Закрытия дополнительные:**
+  - **BUG-MEETINGS-VK-BUTTON-OVERFLOW** → DONE (meetings-стратегом,
+    commit `62cf08d`, prod smoke 8/8).
+- **Прогрессируют:** **FEAT-016 + FEAT-017** → 🟡 IN PROGRESS
+  (фундамент готов: phase 25 + backfill); блокер до фикса
+  BUG-PVL-COHORT-NULL-OVERWRITE.
+- **Все коммиты сессии 2026-05-07** (4 шт., все push'нуты):
+  - `9fddae4` — fix: BUG-ADMIN-DELETE-USER + UX подзаголовок календаря.
+  - `f57d087` — fix: 204-guard в postgrestFetch + UX кнопка «Смотреть запись».
+  - `66c7c0e` — feat: phase 25 — pvl_admin_progress_summary RPC + структурные поля.
+  - `7b832f1` — data: backfill pvl_students.cohort_id для активной когорты Поток 1.
+- **Артефакты сессии:**
+  - `migrations/2026-05-07_phase24_admin_delete_user_rpc.sql`
+  - `migrations/2026-05-07_phase25_pvl_admin_progress_summary.sql`
+  - `migrations/data/2026-05-07_pvl_students_cohort_backfill.sql`
+  - `services/dataService.js` (`deleteUser` → POST RPC + 204-guard)
+  - `views/AdminPanel.jsx` (refetch + читаемые тосты)
+  - `views/PvlCalendarBlock.jsx` (удалён `<p>` и `<a>` с импортом
+    `ExternalLink`)
+  - 13 файлов переписки стратег↔executor в `docs/_session/`
+    (`_01` через `_13`)
+  - `docs/journal/HANDOVER_2026-05-07_session_admin_delete_phase25.md`

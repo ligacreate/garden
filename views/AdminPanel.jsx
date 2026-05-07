@@ -1241,8 +1241,18 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                                         async () => {
                                                                             try {
                                                                                 await api.deleteUser(u.id);
-                                                                                onNotify("Пользователь удален (обновите страницу)");
-                                                                            } catch (e) { alert(e.message); }
+                                                                                onNotify("Пользователь удалён");
+                                                                                if (onRefreshUsers) await onRefreshUsers();
+                                                                            } catch (e) {
+                                                                                const msg = String(e?.message || '');
+                                                                                if (msg.includes('forbidden')) {
+                                                                                    onNotify('Нет прав: требуется роль администратора');
+                                                                                } else if (msg.includes('p_user_id is null')) {
+                                                                                    onNotify('Внутренняя ошибка: пустой UUID');
+                                                                                } else {
+                                                                                    onNotify('Ошибка удаления: ' + (msg || 'неизвестная'));
+                                                                                }
+                                                                            }
                                                                         },
                                                                         'danger'
                                                                     );

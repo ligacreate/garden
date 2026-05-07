@@ -779,9 +779,6 @@ export function PvlDashboardCalendarBlock({
                 <div className="space-y-4">
                     <div className="rounded-2xl border border-[#E8E0D4]/55 bg-white p-4 md:p-5">
                         <h4 className="text-base font-semibold text-[#3D342B]">Записи проведённых практикумов</h4>
-                        <p className="mt-1 text-[11px] text-[#8B7D72]">
-                            События календаря с типом «Проведённый практикум» с прошедшей датой — те же точки в сетке выше и список здесь.
-                        </p>
                         {practicumDoneArchiveEntries.length === 0 ? (
                             <p className="mt-3 text-sm text-[#6B5D4F]">Пока нет записей проведённых практикумов в выбранном потоке.</p>
                         ) : (

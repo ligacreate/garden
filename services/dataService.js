@@ -1577,9 +1577,9 @@ class RemoteApiService {
     }
 
     async deleteUser(userId) {
-        await postgrestFetch('profiles', { id: `eq.${userId}` }, {
-            method: 'DELETE',
-            returnRepresentation: true
+        await postgrestFetch('rpc/admin_delete_user_full', {}, {
+            method: 'POST',
+            body: { p_user_id: userId }
         });
         this._invalidateCache('users');
         return true;

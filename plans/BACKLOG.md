@@ -967,46 +967,65 @@ related_docs:
 - **Связано:** ARCH-004 (транзакционность регистрации)
 
 ### CLEAN-013: Data hygiene profiles — тестовые аккаунты + дубль
-- **Статус:** 🔴 TODO
+- **Статус:** 🟡 IN PROGRESS (1/5 удалён 2026-05-07)
 - **Приоритет:** P2
 - **Контекст:** Побочный поток FEAT-002 этап 1
   (`docs/RECON_2026-05-04_feat002_telegram_match.md`). После apply
   гигиены `profiles.telegram` остались 5 строк, требующих отдельного
   решения: 4 тестовых аккаунта (засоряют публичные списки ведущих и
   орграсчёты) + 1 дубль профиля по email-корню `malaglilia@gmail.com`.
-- **Скоп — 5 кандидатов:**
-  - **4 тестовых:**
-    - Лена Ф           (`037603f7-…-32fa`) — email `https://t.me/fedotova_elen` (TG-ссылка вместо email, поля переломаны)
-    - Настин фиксик    (`1b10d2ef-…-8751`) — `zobyshka@gmail.com`
-    - Настина фея      (`1085e06d-…-c43f`) — `viktorovna7286@gmail.com` (telegram до apply содержал чужой `olga@skrebeyko.com`)
-    - Рита             (`3746da91-5c66-4e91-9966-15643136dae6`) — `gatikoeva.rv@gmail.com`
-  - **1 дубль:**
-    - LIlia MALONG     (`1431f70e-63bd-4709-803a-5643540fc759`) — email `malaglilia@gmail,com` (с запятой ⚠), дубль основной Лилии Мaлонг (`d302b93d-5d29-4787-82d3-526dfe8c4a15`)
-- **Refs-check 2026-05-05** (под `gen_user`, через `scripts/feat002-tg-recon/clean013_refs_check.sql`): дубль **не пустой** — 3 живые ссылки в `pvl_audit_log.actor_user_id`, `pvl_students.id`, `users_auth.id`. Поэтому решение по дублю — **MERGE** (перенос ссылок на основной профиль, потом DELETE), не прямой DELETE.
-  - ⚠ Refs-check скрипт упал на 3 несуществующих колонках (`pvl_audit_log.target_user_id`, `notifications.recipient_id`, `messages.sender_id/recipient_id`) — generic-паттерн не подошёл. На старте CLEAN-013 нужно перепроверить ВСЕ user-id-колонки через `information_schema.columns` динамически, а не по предположенному списку.
-- **Шаги:**
-  - [ ] Перепроверить все user-id-колонки на `1431f70e-…-c759`:
-    ```sql
-    SELECT table_name, column_name FROM information_schema.columns
-    WHERE table_schema='public' AND data_type='uuid'
-      AND column_name ~ '(user|student|mentor|actor|target|sender|recipient|host|owner|profile)_id|^id$';
-    ```
-    Для каждой найденной колонки — `count(*)` на дубль.
-  - [ ] Сравнить две `users_auth`-записи (Лилии Мaлонг vs LIlia MALONG): какой email-вариант рабочий (без запятой почти точно основной).
-  - [ ] **MERGE** дубля LIlia MALONG → Лилия Мaлонг:
-    - Перенести ссылки: `UPDATE pvl_audit_log SET actor_user_id = '<main>' WHERE actor_user_id = '<dupe>'`, аналогично для `pvl_students.id` (или `mentor_id` — проверить какая колонка) и `users_auth.id`.
-    - После переноса — `DELETE FROM profiles WHERE id = '1431f70e-…-c759'` (и `users_auth` если применимо).
-  - [ ] Для каждого тестового — решить: `DELETE` или `role='disabled'`/`status='archived'`. Проверить публичную страницу ведущих и админские списки — не должны показываться.
-  - [ ] Зафиксировать решение по каждой записи в комментарии миграции для future audit.
+- **Скоп — 5 кандидатов и текущее состояние:**
+  - 🟢 **Лена Ф** (`037603f7-f215-4a49-8d5c-e5e1c93632fa`) — **удалена 2026-05-07**
+    через RPC `admin_delete_user_full` (BUG-ADMIN-DELETE-USER smoke).
+  - 🔴 **Рита** (`3746da91-5c66-4e91-9966-15643136dae6`) — TODO. Чистая,
+    прямой DELETE через тот же RPC.
+  - ⏸ **LIlia MALONG dup** (`1431f70e-63bd-4709-803a-5643540fc759`) —
+    TODO, MERGE **НЕ нужен**. Гипотеза «случайная регистрация без
+    последующей значимой активности» **verified** read-only под
+    gen_user 2026-05-07: 8 строк `pvl_student_content_progress` —
+    все на материалах, которые main `d302b93d-…fa15` уже прошла на
+    100%; mentor_link дублирует main; pvl_students пустая (без
+    cohort/mentor); 1 audit-запись `library_complete` с пустым
+    payload. Решение — прямой DELETE через RPC.
+  - ⏸ **Настина фея** (`1085e06d-34ad-4e7e-b337-56a0c19cc43f`) — отложена,
+    требуется решение Ольги по «Настин тест-set». Активность реальная:
+    5 hw / 20 cont / 70 audit / 3 cprog → DELETE снесёт реальные данные.
+  - ⏸ **Настин фиксик** (`1b10d2ef-8504-4778-9b7b-5b04b24f8751`) —
+    отложен, тот же тест-set. ⚠ Числится фейк-ментором для 4 студентов,
+    включая **реального applicant Екатерину Салама**
+    (`49c267b1-7ef6-48f6-bb2f-0e6741491b90`, `yaroschuk@creativemarket.ru`).
+    Перед удалением — переподвесить Екатерину на реального ментора,
+    либо принять, что mentor_link исчезнет (других 3 — тест-set, удалятся
+    вместе).
+- **Шаги (актуализированные):**
+  - [x] Перепроверены user-id-колонки на 5 кандидатов через
+    `information_schema` (read-only под gen_user 2026-05-07).
+  - [x] Verified hypothesis по dup LIlia MALONG (см. выше).
+  - [x] Удалить Лену Ф через RPC `admin_delete_user_full` (smoke).
+  - [ ] Удалить Риту через RPC.
+  - [ ] Удалить LIlia MALONG dup через RPC.
+  - [ ] **Решение Ольги** по Настин тест-set (Настина фея + Настин
+    фиксик): удалять или сохранить как фикстуры?
+  - [ ] **Перед удалением Настин фиксик** — переподвесить Екатерину
+    Салама на реального ментора (либо явное OK от Ольги на потерю
+    mentor_link).
 - **Acceptance:**
-  - 4 тестовых profile не показываются в публичных списках ведущих и в админских интерфейсах.
-  - LIlia MALONG-профиль удалён, все ссылки перенесены на основную Лилию Мaлонг.
-  - В `users_auth` остался только один email-вариант (без запятой).
+  - 4 тестовых profile не показываются в публичных списках ведущих
+    и в админских интерфейсах.
+  - LIlia MALONG dup удалён через прямой DELETE (MERGE отменён —
+    активность дубля не значима).
+  - В `users_auth` остался только один email-вариант
+    `malaglilia@gmail.com` (без запятой).
+  - Екатерина Салама не остаётся «висящей» без ментора (если её
+    нужно сохранить — переподвешена на реального).
 - **Связано:**
-  - `docs/RECON_2026-05-04_feat002_data_hygiene.md` («Побочные находки»)
-  - `docs/RECON_2026-05-04_feat002_telegram_match.md` (секции 🧪 Тестовые и 👥 Дубль)
-  - `migrations/data/2026-05-05_feat002_hygiene.sql` (FEAT-002 этап 1 apply, эти 5 строк намеренно пропущены)
-  - `scripts/feat002-tg-recon/clean013_refs_check.sql` (read-only refs-check, не в git)
+  - BUG-ADMIN-DELETE-USER (closed 2026-05-07 — RPC, через который
+    идут удаления)
+  - `docs/journal/HANDOVER_2026-05-07_session_admin_delete.md`
+  - `migrations/2026-05-07_phase24_admin_delete_user_rpc.sql`
+  - `docs/RECON_2026-05-04_feat002_data_hygiene.md`
+  - `docs/RECON_2026-05-04_feat002_telegram_match.md`
+  - `migrations/data/2026-05-05_feat002_hygiene.sql`
 
 ### CLEAN-010: Удалить 4 тестовых сообщения из public.messages
 - **Статус:** 🔴 TODO
@@ -1138,6 +1157,53 @@ related_docs:
   - Настроить корректное поведение кнопок назад/вперёд
   - History API для смены URL без перезагрузки
 - **Когда:** после стабилизации безопасности и базовых фич
+
+### PROD-005: Soft-delete vs hard-delete — стратегия для реальных пользователей
+- **Статус:** 🔴 TODO (продуктовое решение)
+- **Приоритет:** P2
+- **Создано:** 2026-05-07 (открыто после BUG-ADMIN-DELETE-USER closure)
+- **Контекст:** RPC `public.admin_delete_user_full(uuid)` (phase 24,
+  2026-05-07) делает **hard DELETE** профиля + связанных записей.
+  Это корректно для тестовых аккаунтов (CLEAN-013), но для **реальных
+  пользователей** (когда ведущая просит «удалите меня», или нужно
+  убрать аккаунт по compliance) hard-delete не всегда правильный
+  ответ:
+  - Hard-delete теряет audit-trail активности (хотя
+    `pvl_audit_log.actor_user_id` сохраняется как orphan).
+  - Восстановление невозможно (если человек передумал — заново
+    регистрировать).
+  - Связанные history-таблицы (`pvl_homework_status_history.changed_by`)
+    становятся orphan.
+- **Варианты:**
+  1. **Soft-delete** — `profiles.status = 'deleted'` + frontend
+    скрывает такие профили из всех публичных и админских списков.
+    Плюсы: восстановимо, audit-trail цел. Минусы: «зомби-аккаунты»
+    в БД, нужна логика «период удержания → hard-purge через N дней».
+  2. **Hard-delete + audit-trail** — текущий RPC. Плюсы: чисто.
+    Минусы: невосстановимо.
+  3. **Гибрид:** soft-delete для реальных + hard для тестовых,
+    через два разных RPC.
+- **Скоп решения:**
+  - Какой вариант (1/2/3) принять как стандарт для Garden.
+  - Если soft-delete — какое значение в `profiles.status`
+    (`deleted` / `archived` / др.) и как фильтровать в `getUsers`,
+    public leaders, mentor_links и т.п.
+  - Какой период удержания до hard-purge (если гибрид).
+  - GDPR-аспект (право на забвение требует hard-purge в N дней
+    после запроса).
+- **Why:** Сейчас единственный механизм — hard-delete через
+  `admin_delete_user_full`. Это нормально для тестовых, но
+  опасно как универсальный flow для реальных людей.
+- **Acceptance:**
+  - Принято продуктовое решение, задокументировано в
+    `plans/` или `docs/`.
+  - Если выбран soft-delete или гибрид — спроектирован дополнительный
+    RPC `admin_archive_user(uuid)` или модификация существующего;
+    обновлены frontend-фильтры.
+- **Связано:** BUG-ADMIN-DELETE-USER (closed), CLEAN-013
+  (использует hard-delete для тестовых — это уместно), ARCH-014
+  (контрактные FK на 3 таблицах — если перейдём на soft, FK
+  не критичны).
 
 ### SEC-009: increment_user_seeds — privilege escalation в SECURITY DEFINER функции
 - **Статус:** 🔴 TODO
@@ -1447,50 +1513,54 @@ related_docs:
 - **Связано:** FEAT-013, services/dataService.js:1571-1579, миграция 21.
 
 ### BUG-ADMIN-DELETE-USER: невозможно удалить пользователя из админки Garden
-- **Статус:** 🔴 TODO
-- **Приоритет:** P2 (блокирует CLEAN-013 нормальным flow; обходится через прямой psql под gen_user)
+- **Статус:** 🟢 DONE (2026-05-07)
+- **Приоритет:** P2 (был; теперь закрыт)
 - **Создано:** 2026-05-06
-- **Контекст:** Ольга попыталась удалить тестового пользователя
-  через админ-панель Garden (`AdminPanel.jsx`). Операция не
-  прошла. Точный симптом не зафиксирован — на recon выяснить:
-  - какая именно кнопка/flow в UI;
-  - что в Network (status code, response body, какой endpoint);
-  - что в Console (JS error, exception);
-  - валится ли это на UI-уровне (toast «нет прав») или
-    на БД-уровне (FK constraint, RLS, missing GRANT, etc.).
-- **Возможные причины (гипотезы — проверить на recon):**
-  1. **FK constraint:** у тестовых profiles есть связи в
-     `pvl_audit_log.actor_user_id`, `pvl_students.id`,
-     `users_auth.id` (см. CLEAN-013 refs-check). Простой
-     DELETE из profiles упирается в FK → нужен MERGE или
-     ON DELETE CASCADE. Сейчас CASCADE есть только на
-     `course_progress.user_id`.
-  2. **Frontend-flow ошибки:** `services/dataService.js`
-     может слать DELETE-запрос с неправильным URL/headers,
-     или admin-проверка `is_admin()` где-то сломана.
-  3. **Auth/RLS:** RLS-policy `profiles_update_admin` есть,
-     но `profiles_delete_admin` — может не существовать,
-     и DELETE проваливается.
-- **Скоп:**
-  - Recon (с участием Ольги для воспроизведения и снятия
-    Network/Console).
-  - Зависимости от CLEAN-013 (если flow требует MERGE
-    зависимостей перед DELETE — фиксить совместно).
-  - Если нужен только UX-фикс (понятный error toast вместо
-    тихого фейла) — отдельная мини-задача.
-- **Why:** Ольга должна мочь удалять профили (тестовые,
-  устаревшие, по запросу пользователя) без обращения к
-  стратегу/psql.
-- **Acceptance:**
-  - Ольга через админ-UI удаляет тестового пользователя.
-  - Связанные записи (`audit_log`, `pvl_students`,
-    `users_auth`) обрабатываются корректно (либо MERGE,
-    либо CASCADE, либо явное предупреждение «у пользователя
-    есть N связей, подтвердите удаление»).
-  - Smoke на одном из CLEAN-013 кандидатов (Лена Ф или Рита).
-- **Связано:** CLEAN-013 (общий flow data hygiene profiles),
-  `views/AdminPanel.jsx`, `services/dataService.js`,
-  refs-check скрипт `scripts/feat002-tg-recon/clean013_refs_check.sql`.
+- **Закрыто:** 2026-05-07
+- **Корневая причина (verified read-only под gen_user):**
+  - На `public.profiles` отсутствовала RLS-policy `FOR DELETE`
+    (есть только insert_own, select_authenticated, update_own,
+    update_admin). GRANT DELETE для authenticated был, но без
+    policy RLS режет любой DELETE до 0 rows → silent no-op.
+  - Дополнительно: `postgrestFetch` в `services/dataService.js`
+    падал на HTTP 204 No Content (попытка `response.json()`
+    на пустом теле бросала `SyntaxError`). Этот баг был
+    латентным для `deleteShopItem` и других DELETE без
+    `returnRepresentation`.
+- **Решение:**
+  1. **Phase 24 миграция** —
+     `migrations/2026-05-07_phase24_admin_delete_user_rpc.sql`.
+     RPC `public.admin_delete_user_full(uuid)` SECURITY DEFINER:
+     проверка `is_admin()`, audit-запись BEFORE delete, удаление
+     в порядке «дети → родители» (meetings → pvl_direct_messages →
+     pvl_garden_mentor_links → pvl_students → users_auth →
+     profiles). Учитывает FK-карту: `meetings.user_id` без
+     CASCADE удаляется первым; pvl_audit_log/homework_status_history
+     остаются как audit-trail (orphan-actor by design).
+  2. **204-guard в `postgrestFetch`** — добавлено
+     `if (response.status === 204) return { data: null }`
+     перед `response.json()`. Generic-фикс, лечит и наш RPC,
+     и латентные DELETE-flows.
+  3. **UI refetch** — `views/AdminPanel.jsx` после успешного
+     RPC дёргает `onRefreshUsers()` (вместо тоста «обновите
+     страницу»). Тосты для forbidden / null / прочих ошибок.
+- **Smoke (Claude in Chrome, Ольга, 2026-05-07):**
+  - Smoke 1 (после commit `9fddae4`) — backend OK (POST RPC
+    → 204, профиль удалён в БД), но refetch не срабатывал —
+    ловили `SyntaxError: Unexpected end of JSON input` в Console
+    (тот самый 204-bug в `postgrestFetch`).
+  - Smoke 2 (после commit `f57d087`, 204-guard) — успех 5/5,
+    Лена Ф удалена через UI, список обновился без F5.
+- **Коммиты:** `9fddae4` (RPC + AdminPanel + UI refetch + миграция
+  phase 24) + `f57d087` (204-guard в postgrestFetch + удаление
+  кнопки «Смотреть запись» в PvlCalendarBlock).
+- **Артефакты:** `migrations/2026-05-07_phase24_admin_delete_user_rpc.sql`,
+  `services/dataService.js` (deleteUser → POST RPC + 204-guard),
+  `views/AdminPanel.jsx` (refetch + читаемые тосты).
+- **Связано:** CLEAN-013 (Лена Ф удалена через этот RPC),
+  ARCH-014 (контрактные FK на 3 таблицах — orphan-риск
+  отдельной задачей), PROD-005 (soft-delete vs hard-delete
+  для будущих реальных пользователей).
 
 ### BUG-LOGIN-SILENT-PROFILE-FAIL: при 403 на _fetchProfile фронт тихо возвращает на AuthScreen
 - **Статус:** 🔴 TODO
@@ -1712,6 +1782,53 @@ related_docs:
 - **Оценка:** 2-3 сессии (recon + продуктовое решение + implement
   + smoke). Может быть больше, если потребуется новый SQL view
   или RPC функции.
+
+### CONTRACT-GARDEN-MEETINGS-001: events.host_telegram NOT NULL и непуст
+- **Статус:** 🔵 ACTIVE CONTRACT (документация, не TODO)
+- **Приоритет:** P2 (видимость важна — нарушение ломает meetings-фронт)
+- **Создано:** 2026-05-07 (источник: meetings-стратег, апдейт)
+- **Контракт:** В таблице `public.events` поле `host_telegram`
+  должно быть **непустое** для всех будущих событий
+  (`event_starts_at > now()`). Meetings-фронт полагается на
+  это инвариант: рендерит TG-кнопку без runtime-`if`-проверки.
+- **Чем поддерживается:**
+  1. **Phase 22 trigger** `sync_meeting_to_event` — при каждом
+     INSERT/UPDATE meetings читает `profiles.telegram` и пишет
+     в `events.host_telegram`. См.
+     `migrations/2026-05-05_phase22_vk_field_and_event_contacts.sql`.
+  2. **Phase 22 trigger** `on_profile_contacts_change_resync_events`
+     — при UPDATE OF telegram, vk на profiles ресинкает все
+     события этого пользователя.
+  3. **Required-TG валидация** в Garden-форме профиля —
+     `services/dataService.js` (FEAT-002 этап 3, commit `aead805`):
+     пустой `profiles.telegram` блокирует save.
+- **Импликации (для будущего стратега):**
+  - При **изменении `sync_meeting_to_event`** (например, в рамках
+    отложенной миграции 21 биллинга) — проверить, что
+    `host_telegram` всё ещё пишется при каждом INSERT/UPDATE
+    events. Иначе meetings-фронт сломается на новых событиях.
+  - **При изменении схемы `events`** — поле `host_telegram` НЕ
+    переименовывать и НЕ удалять без согласования с meetings-
+    командой и одновременного фронт-релиза с обеих сторон.
+  - **При снятии required-TG валидации** в Garden-форме —
+    появятся профили без TG → их события сломают meetings-фронт.
+    Нельзя без обсуждения.
+- **Verify (на проде, под gen_user, read-only):**
+  ```sql
+  SELECT count(*) FROM public.events
+  WHERE event_starts_at > now()
+    AND (host_telegram IS NULL OR trim(host_telegram) = '');
+  -- Ожидание: 0
+  ```
+  Регулярно — например, в составе weekly health-check, или
+  как часть smoke после schema-changing миграций.
+- **Acceptance:**
+  - Verify-запрос всегда возвращает `0` для будущих событий.
+  - Любое отклонение (>0) — сигнал к диагностике (профиль без
+    TG / trigger не сработал / явный delete).
+- **Связано:** FEAT-002 этап 4 (закрыт; meetings-фронт полагается
+  на этот контракт), phase 22 миграция, BUG-MEETINGS-VK-BUTTON-OVERFLOW
+  (связано с теми же двумя кнопками).
 
 ## ⚪ P3 — Хотелось бы (потом)
 
@@ -2132,6 +2249,46 @@ related_docs:
   - [ ] Проверить, что Caddy, PostgREST, auth поднялись после
     перезагрузки
 
+### INFRA-004: cache-headers index.html — слишком агрессивный max-age
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (~10 минут работы)
+- **Создано:** 2026-05-07
+- **Контекст:** Nginx-конфиг фронта `liga.skrebeyko.ru` отдаёт
+  `index.html` с `Cache-Control: max-age=86400` (сутки). После
+  каждого FTP-deploy юзеры до 24 часов видят старый bundle, пока
+  не сделают hard reload (Cmd+Shift+R). Особенно болезненно при
+  smoke-тестировании сразу после deploy.
+- **Стандарт:** хешированные ассеты (`/assets/*-[hash].js|css`)
+  — `Cache-Control: public, immutable, max-age=31536000`;
+  `index.html` — `Cache-Control: no-cache, must-revalidate`
+  (или `max-age=0`).
+- **Где:** nginx-конфиг сайта `liga.skrebeyko.ru` на сервере
+  `185.215.4.44`. Нужны два разных `location`-блока:
+  ```nginx
+  location = /index.html {
+      add_header Cache-Control "no-cache, must-revalidate" always;
+  }
+  location ~* \.(?:js|css|woff2?|svg|png|jpg|webp)$ {
+      add_header Cache-Control "public, immutable, max-age=31536000" always;
+  }
+  ```
+- **Why:** Стратег не должен говорить «сделай Cmd+Shift+R»
+  на каждом smoke. Это вечный source ошибок «у меня старая
+  версия, а у тебя новая». Деплой должен быть «прокатилось →
+  сразу актуально для всех».
+- **Acceptance:**
+  - После deploy: открытие `liga.skrebeyko.ru` в новом
+    инкогнито показывает свежую версию **без** hard reload.
+  - У авторизованного юзера в активной сессии: следующая
+    навигация подтягивает новый `index.html`, который ссылается
+    на новые `[hash].js` ассеты.
+  - DevTools Network на повторном GET / показывает
+    `Cache-Control: no-cache, must-revalidate`.
+- **Связано:** BUG-004 (white screen — частично из-за cache),
+  CACHE_VERSION в frontend (если ещё актуально).
+- **Оценка:** 10-15 минут (отредактировать nginx-conf через
+  ssh, `nginx -t`, `systemctl reload nginx`, smoke).
+
 ### ARCH-008: Иерархия ролей администраторов
 - **Статус:** 🔴 TODO
 - **Приоритет:** P3
@@ -2151,6 +2308,105 @@ related_docs:
   стоит подумать, кто что должен мочь делать. Это продуктовое
   упражнение, не техническое — связано с ARCH-008.
 - **Когда:** в спокойное время после security-починки
+
+### ARCH-014: Контрактные FK на 3 таблицах + ON DELETE CASCADE на meetings.user_id
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-07 (открыто после BUG-ADMIN-DELETE-USER recon)
+- **Контекст:** При recon BUG-ADMIN-DELETE-USER 2026-05-07
+  обнаружено, что **3 таблицы логически ссылаются на
+  `profiles.id`, но FK не объявлены** → orphan-возможность:
+  - `users_auth.id` (PK совпадает с profiles.id, но FK не
+    объявлен)
+  - `pvl_students.id` (PK совпадает с profiles.id, FK не
+    объявлен)
+  - `pvl_garden_mentor_links.student_id` (FK не объявлен;
+    `mentor_id` тоже без FK)
+  - `pvl_direct_messages.author_user_id|mentor_id|student_id`
+    (нет FK ни на одной из трёх колонок)
+  
+  Также **`meetings.user_id` имеет FK без `ON DELETE CASCADE`**
+  (NOT NULL, References `profiles(id)`). Любой DELETE профиля
+  у которого есть встречи — упрётся в FK violation. Сейчас
+  это обходится явным `DELETE FROM meetings WHERE user_id=...`
+  внутри `admin_delete_user_full`, но контракт хрупкий.
+- **Что починить:**
+  1. Добавить FK `users_auth.id → profiles(id) ON DELETE CASCADE`.
+  2. Добавить FK `pvl_students.id → profiles(id) ON DELETE CASCADE`
+     (или **NOT** добавлять, если решено держать pvl_students
+     независимым агрегатом — задокументировать).
+  3. Добавить FK на колонки `pvl_garden_mentor_links` (student_id,
+     mentor_id) и `pvl_direct_messages` (author_user_id, mentor_id,
+     student_id) на `profiles(id) ON DELETE CASCADE`.
+  4. Изменить `meetings.user_id` FK на `ON DELETE CASCADE`
+     (или явно решить — NO ACTION; зависит от того, должен ли
+     hard-delete пользователя сносить его историю встреч —
+     связано с PROD-005).
+- **Why:** Сейчас контракт «pvl_students.id = profiles.id»
+  существует только в коде. Если кто-то сделает DELETE мимо
+  RPC, останутся orphan-ряды. FK — единственная гарантия
+  консистентности БД.
+- **Acceptance:**
+  - 5+ FK добавлено (или явно отвергнуто с обоснованием
+    в комментарии миграции).
+  - `admin_delete_user_full` упрощён: лишние явные DELETE
+    (meetings, pvl_direct_messages, pvl_garden_mentor_links)
+    можно убрать, если CASCADE покроет.
+  - Verify: тест-DELETE случайного профиля под gen_user в
+    транзакции с ROLLBACK подтверждает, что все связанные
+    ряды действительно cascade'нулись.
+- **Связано:** BUG-ADMIN-DELETE-USER (closed; recon выявил
+  проблему), PROD-005 (если перейдём на soft-delete — FK
+  становятся менее критичны), CLEAN-013 (текущее удаление
+  через RPC обходит проблему).
+
+### UX-QUICK-FIXES: Накопительная карточка мелких UX-правок
+- **Статус:** 🟡 IN PROGRESS (накопительная)
+- **Приоритет:** P3
+- **Создано:** 2026-05-07
+- **Контекст:** Накопительная карточка для мелких UX-фиксов —
+  опечатки, лишние подзаголовки, сломанные кнопки, мелкие
+  visual-glitch'и. Каждый отдельный пункт слишком мал для своего
+  тикета, но в куче они влияют на восприятие платформы. По мере
+  закрытия пунктов отмечать в этом списке.
+- **Готово (по сессиям):**
+  - 🟢 [2026-05-07, commit `9fddae4`] Удалён developer-style
+    подзаголовок «События календаря с типом …» под заголовком
+    «Записи проведённых практикумов» в PVL-учительской календаре
+    (`views/PvlCalendarBlock.jsx`). Заголовок остался, лишь
+    описательный `<p>` убран.
+  - 🟢 [2026-05-07, commit `f57d087`] Удалена кнопка «Смотреть
+    запись» в карточках практикумов (`views/PvlCalendarBlock.jsx`).
+    Кнопка ссылала на `ev.recordingUrl`, но это поле админ
+    заполняет сырым `<iframe>`-embed для плеера, а не URL —
+    `<a href={raw_html}>` отправлял запрос вида
+    `https://liga.skrebeyko.ru/<iframe...` → 400 от nginx.
+    Embed-плеер в карточке остаётся, кнопка избыточна.
+- **Открыто:**
+  - 🔴 Layout 3 колонок в «Записи проведённых практикумов» —
+    продуктовое решение Ольги по сетке (текущий — 1/2/4 колонки
+    через `sm:grid-cols-2 xl:grid-cols-4`). Возможно нужен
+    промежуточный 3-колоночный breakpoint или другой ratio.
+- **Acceptance (для каждого пункта):**
+  - Описана локация и diff
+  - Commit-hash зафиксирован в этой карточке после merge
+- **Связано:** UX-001 (общий UX-проход через скиллы), UX-002
+  (админка на всю ширину), `views/PvlCalendarBlock.jsx`.
+
+### BUG-MEETINGS-VK-BUTTON-OVERFLOW: подрезается кнопка ВКонтакте + опечатка «Телеграмма»
+- **Статус:** ⏸ HANDED OFF (передано meetings-стратегу 2026-05-07)
+- **Приоритет:** P3 (UX в meetings-репо)
+- **Создано:** 2026-05-07
+- **Контекст:** На карточке события в публичном Meetings
+  (`meetings.skrebeyko.ru`) две кнопки контакта (TG + ВК),
+  добавленные в FEAT-002 этап 4, не помещаются в одну строку
+  на узких экранах — кнопка «ВКонтакте» подрезается. Также
+  опечатка: текст «Телеграмма» вместо «Телеграм».
+- **Где:** репо `ligacreate/meetings`, страница события.
+- **Why:** Видимый UX-косяк сразу после релиза двух кнопок;
+  Ольга заметила и передала.
+- **Связано:** FEAT-002 этап 4 (cycle закрыт meetings-стратегом),
+  CONTRACT-GARDEN-MEETINGS-001.
 
 ### UX-003: Redesign страницы 404 в meetings
 - **Статус:** 🔴 TODO (ждёт brief'а от Ольги)
@@ -2483,3 +2739,71 @@ related_docs:
 - **Зелёный свет на CLEAN-014** — приоритет повышен P3 → P2; теперь покрывает удаление обеих legacy-колонок (`meetings.payment_link` + `events.registration_link`) + cleanup `Event` типа в meetings. Делать в одном PR через 1-2 спринта наблюдения (CACHE_VERSION v4 у всех клиентов отстоится).
 - **Заведена UX-003** (P3) — Redesign страницы 404 в meetings. В PR meetings#2 удалили только DEBUG INFO leak; полный redesign — отдельным мини-циклом после brief'а от Ольги.
 - **Зелёный свет на NB-RESTORE planning** (P1, переезд админки notebooks/questions/cities в Garden, Variant 3).
+
+#### 2026-05-07
+- **BUG-ADMIN-DELETE-USER ЗАКРЫТ.** Recon read-only под gen_user
+  выявил две корневые причины: (1) на `public.profiles` отсутствовала
+  RLS-policy `FOR DELETE` (silent no-op даже под admin'ом, GRANT
+  есть, policy нет), (2) `postgrestFetch` падал на HTTP 204 No
+  Content (попытка `response.json()` на пустом теле бросала
+  `SyntaxError`). **Phase 24 миграция:** RPC
+  `public.admin_delete_user_full(uuid)` SECURITY DEFINER, проверка
+  `is_admin()`, audit BEFORE delete, удаление в порядке «дети →
+  родители» с учётом FK-карты (meetings без CASCADE → DELETE first;
+  pvl_students каскадирует на 7 PVL-таблиц; pvl_audit_log/
+  homework_status_history остаются orphan-actor by design).
+  **204-guard в `postgrestFetch`** — generic-фикс, лечит и наш RPC,
+  и латентные DELETE без `returnRepresentation`. **UI refetch** —
+  AdminPanel.jsx после успеха дёргает `onRefreshUsers()`, тосты
+  для forbidden / null / прочих ошибок. **Smoke 1** (commit `9fddae4`)
+  — backend OK, refetch не сработал из-за 204-bug. **Smoke 2** (commit
+  `f57d087`, 204-guard) — 5/5 PASS, Лена Ф удалена через UI без F5.
+- **CLEAN-013 прогресс 1/5.** Лена Ф удалена через RPC. Verified
+  гипотеза «дубль LIlia MALONG = случайная регистрация без значимой
+  активности»: 8 строк `pvl_student_content_progress` уже покрыты
+  main; mentor_link дублирует main; pvl_students пустая; 1 audit с
+  пустым payload. Решение по дублю: прямой DELETE через RPC, MERGE
+  отменён. ⏸ Отложены: Настина фея + Настин фиксик (требуется
+  решение Ольги по тест-set), Рита (готова к удалению). ⚠ Перед
+  удалением Настин фиксик — переподвесить Екатерину Салама на
+  реального ментора (фейк-ментор сейчас).
+- **UX-QUICK-FIXES batch 1.** Удалён developer-style подзаголовок
+  «События календаря с типом …» в PVL-календаре (commit `9fddae4`).
+  Удалена сломанная кнопка «Смотреть запись» из карточек практикумов
+  (commit `f57d087`) — `ev.recordingUrl` содержал embed-iframe HTML,
+  href с raw HTML давал 400 от nginx, embed-плеер уже рендерит
+  видео в карточке.
+- **Открытия (для backlog):**
+  - **PROD-005** (P2) — soft-delete vs hard-delete для реальных
+    пользователей (RPC сейчас делает hard, для тестовых — ОК, для
+    реальных нужно продуктовое решение).
+  - **ARCH-014** (P3) — контрактные FK на 3 таблицах
+    (`users_auth.id`, `pvl_students.id`,
+    `pvl_garden_mentor_links.student_id`,
+    `pvl_direct_messages.*`) + ON DELETE CASCADE на
+    `meetings.user_id`. Сейчас контракт нарушен — orphans возможны.
+  - **INFRA-004** (P3) — cache-headers index.html (`max-age=86400`
+    слишком агрессивен; стандарт: hashed assets immutable, html
+    no-cache).
+  - **UX-QUICK-FIXES** (P3) — накопительная карточка для мелких
+    UX-правок (накопила batch 1 этой сессии).
+  - **BUG-MEETINGS-VK-BUTTON-OVERFLOW** (передан meetings-стратегу) —
+    кнопка «ВКонтакте» подрезается на узких экранах + опечатка
+    «Телеграмма» вместо «Телеграм».
+  - **CONTRACT-GARDEN-MEETINGS-001** (P2 documentation) —
+    `events.host_telegram NOT NULL и непуст`. Meetings-фронт
+    полагается на этот инвариант (рендерит TG-кнопку без
+    runtime-`if`). Поддерживается phase 22 trigger + required-TG
+    в Garden-форме.
+- **Закрыто:** BUG-ADMIN-DELETE-USER. **Прогрессирует:** CLEAN-013
+  (1/5 удалено). **Открыто:** PROD-005, ARCH-014, INFRA-004,
+  UX-QUICK-FIXES, CONTRACT-GARDEN-MEETINGS-001 (как живая
+  документация).
+- **Коммиты:** `9fddae4` (RPC + AdminPanel + UI refetch + миграция
+  phase 24 + удалён подзаголовок календаря), `f57d087` (204-guard
+  в postgrestFetch + удалена кнопка «Смотреть запись»).
+- **Артефакты:** `migrations/2026-05-07_phase24_admin_delete_user_rpc.sql`,
+  `services/dataService.js` (deleteUser → POST RPC + 204-guard),
+  `views/AdminPanel.jsx` (refetch + читаемые тосты),
+  `views/PvlCalendarBlock.jsx` (удалён `<p>` и `<a>` с импортом
+  `ExternalLink`), `docs/journal/HANDOVER_2026-05-07_session_admin_delete.md`.

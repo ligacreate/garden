@@ -113,7 +113,7 @@ function GroupProgressBar({ totals, cohortLabel }) {
     );
 }
 
-export default function AdminPvlProgress() {
+export default function AdminPvlProgress({ hiddenIds = [] }) {
     const [cohorts, setCohorts] = useState([]);
     const [cohortId, setCohortIdState] = useState(() => sessionStorage.getItem(SESSION_KEY_COHORT) || null);
     const [rows, setRows] = useState([]);
@@ -166,13 +166,21 @@ export default function AdminPvlProgress() {
 
     const visibleRows = useMemo(() => {
         let out = rows;
+        if (hiddenIds?.length) {
+            out = out.filter((r) => !hiddenIds.includes(String(r.student_id)));
+        }
         if (stateFilter !== 'all') out = out.filter((r) => r.state_line === stateFilter);
         const { key, dir } = sort;
         const factor = dir === 'asc' ? 1 : -1;
         return [...out].sort((a, b) => compareRows(a, b, key) * factor);
-    }, [rows, sort, stateFilter]);
+    }, [rows, sort, stateFilter, hiddenIds]);
 
-    const totals = useMemo(() => buildTotals(rows), [rows]);
+    const totals = useMemo(() => {
+        const visible = hiddenIds?.length
+            ? rows.filter((r) => !hiddenIds.includes(String(r.student_id)))
+            : rows;
+        return buildTotals(visible);
+    }, [rows, hiddenIds]);
 
     const handleSortClick = (key) => {
         setSort((prev) => prev.key === key

@@ -618,14 +618,29 @@ async function ensurePvlStudentInDb(userId) {
     pvlStudentSyncedToDb.add(sqlId);
     const user = (db.users || []).find((u) => String(u.id) === String(userId));
     const fullName = user?.fullName || user?.name || 'Участница';
+
+    /**
+     * Резолвим cohort_id / mentor_id из studentProfiles, но **передаём в
+     * payload только если получили валидное значение**. Если для этого
+     * userId профиль не найден / cohort не маппится в SQL UUID / mentor
+     * не UUID — поле опускается, и PostgREST с merge-duplicates оставит
+     * текущее значение в БД нетронутым. Это закрывает
+     * BUG-PVL-COHORT-NULL-OVERWRITE: backfill cohort_id больше не
+     * затирается при заходе админа в PVL.
+     */
+    const profile = (db.studentProfiles || []).find((p) => String(p.userId) === String(userId));
+    const resolvedCohortId = profile?.cohortId ? seedCohortIdToSqlUuid(profile.cohortId) : null;
+    const resolvedMentorId = profile?.mentorId ? uuidOrNull(profile.mentorId) : null;
+
     try {
-        await pvlPostgrestApi.upsertPvlStudent({
+        const payload = {
             id: sqlId,
             full_name: fullName,
             status: 'active',
-            cohort_id: null,
-            mentor_id: null,
-        });
+        };
+        if (resolvedCohortId) payload.cohort_id = resolvedCohortId;
+        if (resolvedMentorId) payload.mentor_id = resolvedMentorId;
+        await pvlPostgrestApi.upsertPvlStudent(payload);
     } catch (err) {
         pvlStudentSyncedToDb.delete(sqlId);
         // eslint-disable-next-line no-console

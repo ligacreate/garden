@@ -62,6 +62,57 @@ function formatActivity(value) {
     } catch { return '—'; }
 }
 
+function GroupProgressBar({ totals, cohortLabel }) {
+    const { total, counts } = totals;
+    if (total === 0) return null;
+    const segments = [
+        { key: 'в ритме',         color: 'bg-emerald-400', label: 'в ритме' },
+        { key: 'нужна проверка',  color: 'bg-blue-400',    label: 'нужна проверка' },
+        { key: 'есть долги',      color: 'bg-rose-400',    label: 'есть долги' },
+        { key: 'ДЗ не начаты',    color: 'bg-slate-300',   label: 'не начаты' },
+    ];
+    return (
+        <div className="space-y-2">
+            <div className="text-sm text-slate-600">
+                {cohortLabel && (
+                    <>
+                        <span className="font-medium text-slate-800">{cohortLabel}</span>
+                        {' · '}
+                    </>
+                )}
+                <span>{total} студенток</span>
+            </div>
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+                {segments.map((seg) => {
+                    const n = counts[seg.key] || 0;
+                    if (n === 0) return null;
+                    const pct = (n / total) * 100;
+                    return (
+                        <div
+                            key={seg.key}
+                            className={seg.color}
+                            style={{ width: `${pct}%` }}
+                            title={`${seg.label}: ${n}`}
+                        />
+                    );
+                })}
+            </div>
+            <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                {segments.map((seg) => {
+                    const n = counts[seg.key] || 0;
+                    if (n === 0) return null;
+                    return (
+                        <span key={seg.key} className="inline-flex items-center gap-1.5">
+                            <span className={`inline-block h-2 w-2 rounded-full ${seg.color}`} />
+                            {seg.label} ({n})
+                        </span>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export default function AdminPvlProgress() {
     const [cohorts, setCohorts] = useState([]);
     const [cohortId, setCohortIdState] = useState(() => sessionStorage.getItem(SESSION_KEY_COHORT) || null);
@@ -175,6 +226,13 @@ export default function AdminPvlProgress() {
                     </Button>
                 </div>
             </div>
+
+            {totals.total > 0 && (
+                <GroupProgressBar
+                    totals={totals}
+                    cohortLabel={cohorts.find((c) => c.id === cohortId)?.title || ''}
+                />
+            )}
 
             <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">

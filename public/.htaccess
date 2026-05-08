@@ -1,0 +1,34 @@
+# INFRA-004 — cache-headers fix (2026-05-08)
+#
+# Why: после каждого deploy юзеры с закэшированным index.html
+# обращались к старым bundle hash'ам (которых уже нет на сервере) и
+# падали с "Failed to fetch dynamically imported module"
+# (инцидент 2026-05-07). Решение — index.html всегда no-cache,
+# /assets/* всегда immutable (имена файлов и так с хэшами).
+#
+# Если этот .htaccess не подхватывается хостингом (чистый nginx без
+# Apache-проксирования), header `X-Htaccess-Active` ниже не появится в
+# ответах. Тогда переключаемся на путь C — nginx user-config через
+# панель Timeweb.
+
+<IfModule mod_headers.c>
+    Header set X-Htaccess-Active "yes"
+</IfModule>
+
+# index.html и любой другой .html — no-cache, чтобы юзер всегда получал
+# свежий entrypoint со ссылками на актуальные bundle hash'и.
+<FilesMatch "\.html$">
+    <IfModule mod_headers.c>
+        Header set Cache-Control "no-cache"
+    </IfModule>
+</FilesMatch>
+
+# Hashed assets от Vite: <name>-<hash 8+>.<ext>. Имя меняется при каждом
+# билде, поэтому безопасно кэшировать на год + immutable.
+# Hash может содержать [A-Za-z0-9_-]; Vite default — ровно 8 символов,
+# {8,} оставлен на случай roll-up'овской смены длины в будущем.
+<FilesMatch "-[A-Za-z0-9_-]{8,}\.(js|mjs|css|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|eot|map)$">
+    <IfModule mod_headers.c>
+        Header set Cache-Control "public, immutable, max-age=31536000"
+    </IfModule>
+</FilesMatch>

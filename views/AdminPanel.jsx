@@ -5,6 +5,7 @@ import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalShell from '../components/ModalShell';
+import AdminPvlProgress from './AdminPvlProgress';
 import { api } from '../services/dataService';
 import { getMeetingInstant } from '../utils/meetingTime';
 import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
@@ -724,7 +725,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
 
                 <div className="flex gap-2 items-center justify-between">
                     <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
-                        {['stats', 'users', 'content', 'news', 'events', 'shop'].map(t => (
+                        {['stats', 'users', 'content', 'pvl-progress', 'news', 'events', 'shop'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => { setTab(t); sessionStorage.setItem('adminTab', t); }}
@@ -732,7 +733,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
-                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'events' ? 'События' : t === 'shop' ? 'Магазин' : 'Новости'}
+                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'pvl-progress' ? 'Прогресс ПВЛ' : t === 'events' ? 'События' : t === 'shop' ? 'Магазин' : 'Новости'}
                             </button>
                         ))}
                     </div>
@@ -741,6 +742,10 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
 
                 {tab === 'stats' && (
                     <AdminStatsDashboard meetings={allMeetings} users={users} />
+                )}
+
+                {tab === 'pvl-progress' && (
+                    <AdminPvlProgress />
                 )}
 
                 {tab === 'news' && (

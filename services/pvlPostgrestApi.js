@@ -516,6 +516,18 @@ export const pvlPostgrestApi = {
         });
         return asArray(rows)[0] || null;
     },
+    async listCohorts() {
+        return request('pvl_cohorts', {
+            params: { select: 'id,title,year', order: 'year.desc,title.asc' },
+        });
+    },
+    async getAdminProgressSummary(cohortId) {
+        const result = await request('rpc/pvl_admin_progress_summary', {
+            method: 'POST',
+            body: { p_cohort_id: cohortId },
+        });
+        return Array.isArray(result) ? result : [];
+    },
 
     // Student content/library progress
     async listStudentContentProgress(studentId) {

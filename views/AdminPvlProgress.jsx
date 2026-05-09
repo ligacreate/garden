@@ -11,6 +11,8 @@ import {
     todayIso,
     groupBySubmissionId,
     defaultStudentFilename,
+    buildWeeksById,
+    effectiveModuleNumber,
 } from '../utils/pvlHomeworkReport';
 
 const STATE_LINE_TONE = {
@@ -149,13 +151,17 @@ function ReportDownloadButton({
     useOutsideClick(popRef, () => setOpen(false));
 
     const modules = useMemo(() => {
-        const set = new Set(
-            (homeworkItems || [])
-                .filter((hi) => hi?.item_type === 'homework' && !hi?.is_control_point && hi?.module_number != null)
-                .map((hi) => Number(hi.module_number)),
-        );
+        const weeksById = buildWeeksById(weeks);
+        const set = new Set();
+        for (const hi of homeworkItems || []) {
+            if (!hi) continue;
+            if (hi.item_type && hi.item_type !== 'homework') continue;
+            if (hi.is_control_point) continue;
+            const m = effectiveModuleNumber(hi, weeksById);
+            if (m != null) set.add(Number(m));
+        }
         return [...set].sort((a, b) => a - b);
-    }, [homeworkItems]);
+    }, [homeworkItems, weeks]);
 
     const handlePick = async (moduleFilter) => {
         if (loading) return;
@@ -246,13 +252,17 @@ function BulkExportButton({
     useOutsideClick(popRef, () => { if (!loading) setOpen(false); });
 
     const modules = useMemo(() => {
-        const set = new Set(
-            (homeworkItems || [])
-                .filter((hi) => hi?.item_type === 'homework' && !hi?.is_control_point && hi?.module_number != null)
-                .map((hi) => Number(hi.module_number)),
-        );
+        const weeksById = buildWeeksById(weeks);
+        const set = new Set();
+        for (const hi of homeworkItems || []) {
+            if (!hi) continue;
+            if (hi.item_type && hi.item_type !== 'homework') continue;
+            if (hi.is_control_point) continue;
+            const m = effectiveModuleNumber(hi, weeksById);
+            if (m != null) set.add(Number(m));
+        }
         return [...set].sort((a, b) => a - b);
-    }, [homeworkItems]);
+    }, [homeworkItems, weeks]);
 
     const total = visibleStudents?.length || 0;
 
@@ -429,9 +439,20 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
             if (firstErr) {
                 setReportError(`Не удалось подгрузить данные для отчёта: ${formatError(firstErr)}`);
             }
-            setHomeworkItems(Array.isArray(items) ? items : []);
-            setContentItems(Array.isArray(content) ? content : []);
-            setWeeks(Array.isArray(ws) ? ws : []);
+            const safeItems = Array.isArray(items) ? items : [];
+            const safeContent = Array.isArray(content) ? content : [];
+            const safeWeeks = Array.isArray(ws) ? ws : [];
+            if (safeItems[0]) {
+                // eslint-disable-next-line no-console
+                console.info(`${tag} sample homework_item`, safeItems[0]);
+            }
+            if (safeWeeks[0]) {
+                // eslint-disable-next-line no-console
+                console.info(`${tag} sample course_week`, safeWeeks[0]);
+            }
+            setHomeworkItems(safeItems);
+            setContentItems(safeContent);
+            setWeeks(safeWeeks);
         });
         api.getUsers?.()
             .then((users) => {

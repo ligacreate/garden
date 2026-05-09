@@ -76,6 +76,29 @@ function buildContentItemMap(contentItems) {
     return byId;
 }
 
+export function buildWeeksById(weeks) {
+    const byId = new Map();
+    for (const w of weeks || []) {
+        if (w?.id) byId.set(String(w.id), w);
+    }
+    return byId;
+}
+
+/**
+ * Модуль ДЗ. Прямое поле `homework_item.module_number` может быть NULL
+ * (backfill в phase 25 заполняет только записи с подходящим title-regex).
+ * Фолбэк — `pvl_course_weeks.module_number` по `week_id`.
+ */
+export function effectiveModuleNumber(homeworkItem, weeksById) {
+    if (homeworkItem?.module_number != null) return Number(homeworkItem.module_number);
+    const weekId = homeworkItem?.week_id;
+    if (weekId && weeksById) {
+        const w = weeksById.get(String(weekId));
+        if (w?.module_number != null) return Number(w.module_number);
+    }
+    return null;
+}
+
 /**
  * external_key у homework_item может быть:
  *   - `task-ci-<content_item.id>` (синхронизация из content_items)
@@ -306,6 +329,7 @@ export function buildStudentMarkdownReport({
     mentorsById,
 }) {
     const contentItemsById = buildContentItemMap(contentItems);
+    const weeksById = buildWeeksById(weeks);
     const submissionByItemId = new Map();
     for (const s of submissions || []) {
         const hwId = s?.homework_item_id;
@@ -322,10 +346,17 @@ export function buildStudentMarkdownReport({
     const fullName = String(studentName).trim();
 
     const sortedItems = [...(homeworkItems || [])]
-        .filter((hi) => hi?.item_type === 'homework' && !hi?.is_control_point)
+        .filter((hi) => {
+            if (!hi) return false;
+            const t = String(hi.item_type || 'homework');
+            if (t !== 'homework') return false;
+            if (hi.is_control_point) return false;
+            return true;
+        })
+        .map((hi) => ({ ...hi, __module: effectiveModuleNumber(hi, weeksById) }))
         .sort((a, b) => {
-            const ma = Number(a?.module_number ?? Infinity);
-            const mb = Number(b?.module_number ?? Infinity);
+            const ma = Number(a.__module ?? Infinity);
+            const mb = Number(b.__module ?? Infinity);
             if (ma !== mb) return ma - mb;
             const sa = Number(a?.sort_order ?? Infinity);
             const sb = Number(b?.sort_order ?? Infinity);
@@ -355,7 +386,7 @@ export function buildStudentMarkdownReport({
     if (isAll) {
         const byModule = new Map();
         for (const item of sortedItems) {
-            const m = item?.module_number ?? null;
+            const m = item.__module ?? null;
             if (!byModule.has(m)) byModule.set(m, []);
             byModule.get(m).push(item);
         }
@@ -393,7 +424,7 @@ export function buildStudentMarkdownReport({
         }
     } else {
         for (const item of sortedItems) {
-            if (Number(item?.module_number) !== Number(moduleNumber)) continue;
+            if (Number(item.__module) !== Number(moduleNumber)) continue;
             const submission = submissionByItemId.get(item.id) || null;
             const history = submission
                 ? (statusHistoryBySubmission?.get?.(submission.id) || [])

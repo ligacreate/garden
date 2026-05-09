@@ -93,15 +93,27 @@ export function buildLessonsById(lessons) {
 }
 
 /**
- * Модуль ДЗ. Цепочка фолбэков:
- *   1) homework_item.module_number (phase 25 backfill из title)
- *   2) pvl_course_weeks.module_number по week_id
- *   3) pvl_course_lessons.module_number по lesson_id
- *   4) pvl_course_weeks по lesson.week_id (если у lesson нет module_number)
+ * Модуль ДЗ. Цепочка фолбэков, в порядке достоверности источника:
+ *   1) pvl_content_items.module_number — основной источник на проде
+ *      (админка ПВЛ ставит модуль через UI «Управление контентом»),
+ *      связь через homework_item.external_key === `task-ci-${ci.id}`.
+ *   2) homework_item.module_number — backfill phase 25 из title по
+ *      regex «модул[ьюяе] N»; покрывает только записи с подходящим
+ *      title.
+ *   3) pvl_course_weeks.module_number по week_id.
+ *   4) pvl_course_lessons.module_number по lesson_id.
+ *   5) pvl_course_weeks по lesson.week_id (если у lesson нет
+ *      module_number).
  * Возвращает null если ни один путь не сработал.
  */
-export function effectiveModuleNumber(homeworkItem, weeksById, lessonsById) {
+export function effectiveModuleNumber(homeworkItem, weeksById, lessonsById, contentItemsById) {
     if (!homeworkItem) return null;
+
+    if (contentItemsById) {
+        const ci = resolveContentItemForHomework(homeworkItem, contentItemsById);
+        if (ci?.module_number != null) return Number(ci.module_number);
+    }
+
     if (homeworkItem.module_number != null) return Number(homeworkItem.module_number);
 
     const weekId = homeworkItem.week_id;
@@ -378,7 +390,7 @@ export function buildStudentMarkdownReport({
             if (hi.is_control_point) return false;
             return true;
         })
-        .map((hi) => ({ ...hi, __module: effectiveModuleNumber(hi, weeksById, lessonsById) }))
+        .map((hi) => ({ ...hi, __module: effectiveModuleNumber(hi, weeksById, lessonsById, contentItemsById) }))
         .sort((a, b) => {
             const ma = a.__module == null ? Infinity : Number(a.__module);
             const mb = b.__module == null ? Infinity : Number(b.__module);

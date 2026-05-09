@@ -155,16 +155,17 @@ function ReportDownloadButton({
     const modules = useMemo(() => {
         const weeksById = buildWeeksById(weeks);
         const lessonsById = buildLessonsById(lessons);
+        const contentItemsById = new Map((contentItems || []).map((ci) => [String(ci.id), ci]));
         const set = new Set();
         for (const hi of homeworkItems || []) {
             if (!hi) continue;
             if (hi.item_type && hi.item_type !== 'homework') continue;
             if (hi.is_control_point) continue;
-            const m = effectiveModuleNumber(hi, weeksById, lessonsById);
+            const m = effectiveModuleNumber(hi, weeksById, lessonsById, contentItemsById);
             if (m != null) set.add(Number(m));
         }
         return [...set].sort((a, b) => a - b);
-    }, [homeworkItems, weeks, lessons]);
+    }, [homeworkItems, weeks, lessons, contentItems]);
 
     const handlePick = async (moduleFilter) => {
         if (loading) return;
@@ -259,16 +260,17 @@ function BulkExportButton({
     const modules = useMemo(() => {
         const weeksById = buildWeeksById(weeks);
         const lessonsById = buildLessonsById(lessons);
+        const contentItemsById = new Map((contentItems || []).map((ci) => [String(ci.id), ci]));
         const set = new Set();
         for (const hi of homeworkItems || []) {
             if (!hi) continue;
             if (hi.item_type && hi.item_type !== 'homework') continue;
             if (hi.is_control_point) continue;
-            const m = effectiveModuleNumber(hi, weeksById, lessonsById);
+            const m = effectiveModuleNumber(hi, weeksById, lessonsById, contentItemsById);
             if (m != null) set.add(Number(m));
         }
         return [...set].sort((a, b) => a - b);
-    }, [homeworkItems, weeks, lessons]);
+    }, [homeworkItems, weeks, lessons, contentItems]);
 
     const total = visibleStudents?.length || 0;
 

@@ -1,7 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowUp, ArrowDown, AlertCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ArrowUp, ArrowDown, AlertCircle, RefreshCw, FileText, Download, Loader2, ChevronDown } from 'lucide-react';
 import Button from '../components/Button';
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
+import { api } from '../services/dataService';
+import {
+    buildStudentMarkdownReport,
+    downloadAsMarkdownFile,
+    downloadAsZipFile,
+    safeFileName,
+    todayIso,
+    groupBySubmissionId,
+    defaultStudentFilename,
+} from '../utils/pvlHomeworkReport';
 
 const STATE_LINE_TONE = {
     'в ритме':         'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -23,6 +33,7 @@ const COLUMNS = [
     { key: 'hw_overdue',     label: 'Просрочено',  align: 'right' },
     { key: 'last_activity',  label: 'Активность',  align: 'right' },
     { key: 'state_line',     label: 'Состояние',   align: 'left'  },
+    { key: '__actions',      label: '',            align: 'right', sortable: false },
 ];
 
 const SESSION_KEY_COHORT = 'adminPvlCohortId';
@@ -113,6 +124,227 @@ function GroupProgressBar({ totals, cohortLabel }) {
     );
 }
 
+function useOutsideClick(ref, onOutside) {
+    useEffect(() => {
+        function handle(e) {
+            if (ref.current && !ref.current.contains(e.target)) onOutside();
+        }
+        document.addEventListener('mousedown', handle);
+        return () => document.removeEventListener('mousedown', handle);
+    }, [ref, onOutside]);
+}
+
+function ReportDownloadButton({
+    student,
+    cohortTitle,
+    homeworkItems,
+    contentItems,
+    weeks,
+    mentorsById,
+    onError,
+}) {
+    const [open, setOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const popRef = useRef(null);
+    useOutsideClick(popRef, () => setOpen(false));
+
+    const modules = useMemo(() => {
+        const set = new Set(
+            (homeworkItems || [])
+                .filter((hi) => hi?.item_type === 'homework' && !hi?.is_control_point && hi?.module_number != null)
+                .map((hi) => Number(hi.module_number)),
+        );
+        return [...set].sort((a, b) => a - b);
+    }, [homeworkItems]);
+
+    const handlePick = async (moduleFilter) => {
+        if (loading) return;
+        setLoading(true);
+        try {
+            const submissions = await pvlPostgrestApi.listStudentHomeworkSubmissions(student.student_id);
+            const submissionIds = submissions.map((s) => s.id).filter(Boolean);
+            const history = await pvlPostgrestApi.listHomeworkStatusHistoryBulk(submissionIds);
+            const historyByS = groupBySubmissionId(history);
+            const md = buildStudentMarkdownReport({
+                student,
+                mentorName: student.mentor_name,
+                cohortTitle,
+                moduleNumber: moduleFilter,
+                homeworkItems,
+                submissions,
+                statusHistoryBySubmission: historyByS,
+                contentItems,
+                weeks,
+                mentorsById,
+            });
+            const moduleSlug = moduleFilter === 'all' ? 'все_модули' : `Модуль_${moduleFilter}`;
+            const filename = `${safeFileName(student.full_name)}_${moduleSlug}_${todayIso()}.md`;
+            downloadAsMarkdownFile(filename, md);
+        } catch (err) {
+            onError?.(err);
+        } finally {
+            setLoading(false);
+            setOpen(false);
+        }
+    };
+
+    if (modules.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="relative inline-block" ref={popRef}>
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                disabled={loading}
+                title="Скачать отчёт"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+                {loading
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <FileText size={16} />}
+            </button>
+            {open && (
+                <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[160px]">
+                    {modules.map((m) => (
+                        <button
+                            key={m}
+                            type="button"
+                            onClick={() => handlePick(m)}
+                            className="block w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700"
+                        >
+                            Модуль {m}
+                        </button>
+                    ))}
+                    <div className="border-t border-slate-100 my-1" />
+                    <button
+                        type="button"
+                        onClick={() => handlePick('all')}
+                        className="block w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700"
+                    >
+                        Все модули
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function BulkExportButton({
+    visibleStudents,
+    cohortTitle,
+    homeworkItems,
+    contentItems,
+    weeks,
+    mentorsById,
+    onError,
+}) {
+    const [open, setOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const popRef = useRef(null);
+    useOutsideClick(popRef, () => { if (!loading) setOpen(false); });
+
+    const modules = useMemo(() => {
+        const set = new Set(
+            (homeworkItems || [])
+                .filter((hi) => hi?.item_type === 'homework' && !hi?.is_control_point && hi?.module_number != null)
+                .map((hi) => Number(hi.module_number)),
+        );
+        return [...set].sort((a, b) => a - b);
+    }, [homeworkItems]);
+
+    const total = visibleStudents?.length || 0;
+
+    const handleBulk = async (moduleFilter) => {
+        if (loading || total === 0) return;
+        setOpen(false);
+        setLoading(true);
+        setProgress(0);
+        try {
+            const submissionsByStudent = [];
+            for (let i = 0; i < visibleStudents.length; i += 1) {
+                const s = visibleStudents[i];
+                // eslint-disable-next-line no-await-in-loop
+                const subs = await pvlPostgrestApi.listStudentHomeworkSubmissions(s.student_id);
+                submissionsByStudent.push(subs);
+                setProgress(i + 1);
+            }
+            const allSubmissionIds = submissionsByStudent.flat().map((s) => s.id).filter(Boolean);
+            const history = await pvlPostgrestApi.listHomeworkStatusHistoryBulk(allSubmissionIds);
+            const historyByS = groupBySubmissionId(history);
+
+            const files = new Map();
+            visibleStudents.forEach((student, idx) => {
+                const md = buildStudentMarkdownReport({
+                    student,
+                    mentorName: student.mentor_name,
+                    cohortTitle,
+                    moduleNumber: moduleFilter,
+                    homeworkItems,
+                    submissions: submissionsByStudent[idx] || [],
+                    statusHistoryBySubmission: historyByS,
+                    contentItems,
+                    weeks,
+                    mentorsById,
+                });
+                files.set(defaultStudentFilename({ student, moduleNumber: moduleFilter }), md);
+            });
+
+            const cohortSlug = safeFileName(cohortTitle || 'Когорта');
+            const moduleSlug = moduleFilter === 'all' ? 'все_модули' : `Модуль_${moduleFilter}`;
+            const zipName = `${cohortSlug}_${moduleSlug}_${todayIso()}.zip`;
+            await downloadAsZipFile(zipName, files);
+        } catch (err) {
+            onError?.(err);
+        } finally {
+            setLoading(false);
+            setProgress(0);
+        }
+    };
+
+    const disabled = total === 0 || modules.length === 0;
+
+    return (
+        <div className="relative inline-block" ref={popRef}>
+            <Button
+                variant="ghost"
+                onClick={() => setOpen((o) => !o)}
+                disabled={loading || disabled}
+                className="!py-2 !px-3 text-sm border border-slate-200 hover:border-blue-200 hover:text-blue-700"
+                title={total === 0 ? 'Нет видимых студенток' : 'Скачать ZIP-архив за модуль'}
+            >
+                {loading
+                    ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Готовлю архив… {progress}/{total}</span>
+                    : <span className="inline-flex items-center gap-2"><Download size={14} />Скачать архив за модуль…<ChevronDown size={14} /></span>}
+            </Button>
+            {open && !loading && (
+                <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[200px]">
+                    {modules.map((m) => (
+                        <button
+                            key={m}
+                            type="button"
+                            onClick={() => handleBulk(m)}
+                            className="block w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700"
+                        >
+                            Модуль {m}
+                        </button>
+                    ))}
+                    <div className="border-t border-slate-100 my-1" />
+                    <button
+                        type="button"
+                        onClick={() => handleBulk('all')}
+                        className="block w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700"
+                    >
+                        Все модули
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function AdminPvlProgress({ hiddenIds = [] }) {
     const [cohorts, setCohorts] = useState([]);
     const [cohortId, setCohortIdState] = useState(() => sessionStorage.getItem(SESSION_KEY_COHORT) || null);
@@ -123,6 +355,11 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
     const [sort, setSort] = useState({ key: 'full_name', dir: 'asc' });
     const [stateFilter, setStateFilter] = useState('all');
     const [refreshCounter, setRefreshCounter] = useState(0);
+    const [homeworkItems, setHomeworkItems] = useState([]);
+    const [contentItems, setContentItems] = useState([]);
+    const [weeks, setWeeks] = useState([]);
+    const [mentorsById, setMentorsById] = useState(null);
+    const [reportError, setReportError] = useState(null);
 
     const setCohortId = (id) => {
         setCohortIdState(id);
@@ -163,6 +400,33 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
     }, [cohortId, refreshCounter]);
+
+    /** Данные для MD-отчёта (загружаются один раз). */
+    useEffect(() => {
+        if (!pvlPostgrestApi.isEnabled?.()) return undefined;
+        let cancelled = false;
+        Promise.all([
+            pvlPostgrestApi.listHomeworkItems().catch(() => []),
+            pvlPostgrestApi.listContentItems().catch(() => []),
+            pvlPostgrestApi.listCourseWeeks().catch(() => []),
+        ]).then(([items, content, ws]) => {
+            if (cancelled) return;
+            setHomeworkItems(Array.isArray(items) ? items : []);
+            setContentItems(Array.isArray(content) ? content : []);
+            setWeeks(Array.isArray(ws) ? ws : []);
+        });
+        api.getUsers?.()
+            .then((users) => {
+                if (cancelled) return;
+                const map = new Map();
+                for (const u of users || []) {
+                    if (u?.id) map.set(String(u.id), u.name || '');
+                }
+                setMentorsById(map);
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, []);
 
     const visibleRows = useMemo(() => {
         let out = rows;
@@ -235,6 +499,31 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                 </div>
             </div>
 
+            {pvlPostgrestApi.isEnabled?.() && (
+                <div className="flex justify-end">
+                    <BulkExportButton
+                        visibleStudents={visibleRows}
+                        cohortTitle={cohorts.find((c) => c.id === cohortId)?.title || ''}
+                        homeworkItems={homeworkItems}
+                        contentItems={contentItems}
+                        weeks={weeks}
+                        mentorsById={mentorsById}
+                        onError={(err) => setReportError(formatError(err))}
+                    />
+                </div>
+            )}
+
+            {reportError && (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm">
+                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                        <div className="font-semibold">Не удалось сформировать отчёт</div>
+                        <div className="mt-0.5">{reportError}</div>
+                    </div>
+                    <button onClick={() => setReportError(null)} className="text-xs underline opacity-70 hover:opacity-100">скрыть</button>
+                </div>
+            )}
+
             {totals.total > 0 && (
                 <GroupProgressBar
                     totals={totals}
@@ -275,20 +564,24 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                                     key={col.key}
                                     className={`px-2 py-2 font-medium ${col.align === 'right' ? 'text-right' : 'text-left'}`}
                                 >
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSortClick(col.key)}
-                                        className={`inline-flex items-center gap-1 hover:text-slate-800 transition-colors ${
-                                            col.align === 'right' ? 'ml-auto' : ''
-                                        } ${sort.key === col.key ? 'text-slate-800' : ''}`}
-                                    >
-                                        <span>{col.label}</span>
-                                        {sort.key === col.key && (
-                                            sort.dir === 'asc'
-                                                ? <ArrowUp size={12} />
-                                                : <ArrowDown size={12} />
-                                        )}
-                                    </button>
+                                    {col.sortable === false ? (
+                                        <span className="opacity-0 select-none">{col.label || '·'}</span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSortClick(col.key)}
+                                            className={`inline-flex items-center gap-1 hover:text-slate-800 transition-colors ${
+                                                col.align === 'right' ? 'ml-auto' : ''
+                                            } ${sort.key === col.key ? 'text-slate-800' : ''}`}
+                                        >
+                                            <span>{col.label}</span>
+                                            {sort.key === col.key && (
+                                                sort.dir === 'asc'
+                                                    ? <ArrowUp size={12} />
+                                                    : <ArrowDown size={12} />
+                                            )}
+                                        </button>
+                                    )}
                                 </th>
                             ))}
                         </tr>
@@ -320,6 +613,19 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                                             {r.state_line}
                                         </span>
                                     ) : '—'}
+                                </td>
+                                <td className="px-2 py-2 text-right">
+                                    {pvlPostgrestApi.isEnabled?.() && (
+                                        <ReportDownloadButton
+                                            student={r}
+                                            cohortTitle={cohorts.find((c) => c.id === cohortId)?.title || ''}
+                                            homeworkItems={homeworkItems}
+                                            contentItems={contentItems}
+                                            weeks={weeks}
+                                            mentorsById={mentorsById}
+                                            onError={(err) => setReportError(formatError(err))}
+                                        />
+                                    )}
                                 </td>
                             </tr>
                         ))}

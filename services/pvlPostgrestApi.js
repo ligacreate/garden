@@ -479,6 +479,29 @@ export const pvlPostgrestApi = {
             to_status: normalizeHomeworkStatusFromDb(row.to_status),
         }));
     },
+    async listHomeworkStatusHistoryBulk(submissionIds, chunkSize = 100) {
+        const ids = Array.isArray(submissionIds) ? submissionIds.filter(Boolean) : [];
+        if (!ids.length) return [];
+        const out = [];
+        for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            const rows = await request('pvl_homework_status_history', {
+                params: {
+                    select: '*',
+                    submission_id: `in.(${chunk.join(',')})`,
+                    order: 'submission_id.asc,changed_at.asc',
+                },
+            });
+            for (const row of asArray(rows)) {
+                out.push({
+                    ...row,
+                    from_status: normalizeHomeworkStatusFromDb(row.from_status),
+                    to_status: normalizeHomeworkStatusFromDb(row.to_status),
+                });
+            }
+        }
+        return out;
+    },
     async upsertCourseWeek(payload) {
         const rows = await request('pvl_course_weeks', {
             method: 'POST',

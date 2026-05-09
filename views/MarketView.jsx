@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Package, MessageCircle, Phone, Download } from 'lucide-react';
+import { ShoppingBag, Package, MessageCircle, Download } from 'lucide-react';
 import { api } from '../services/dataService';
-import ModalShell from '../components/ModalShell';
-import Button from '../components/Button';
 
 const SkeletonCard = () => (
     <div className="surface-card p-6 animate-pulse">
@@ -56,21 +54,65 @@ function renderDescriptionWithLinks(text) {
     });
 }
 
-const ProductCard = ({ item, onContact }) => {
-    const [selected, setSelected] = useState(null);
-    const opts = item.options;
-    const hasOpts = opts?.label && Array.isArray(opts.values) && opts.values.length > 0;
-    /** Приоритет действия: download_url → link_url → contact. Промокод
-     *  по новому решению (2026-05-09) живёт в тексте описания, отдельно
-     *  не рендерится — поле `shop_items.promo_code` остаётся в схеме как
-     *  legacy, но UI его игнорирует. */
-    const hasDownload = Boolean(item.download_url);
-    const hasLink = Boolean(item.link_url);
+/**
+ * Приоритет primary-кнопки:
+ *   download_url → «Скачать»
+ *   link_url     → «Перейти»
+ *   contact_telegram → «Написать в Telegram» (прямая ссылка, без модалки)
+ *   ничего — кнопки нет.
+ *
+ * Промокоды живут в тексте описания (решение Ольги 2026-05-09);
+ * `shop_items.promo_code` — legacy, UI его игнорирует.
+ */
+function buildPrimaryAction(item) {
+    if (item.download_url) {
+        return {
+            href: item.download_url,
+            label: 'Скачать',
+            icon: Download,
+        };
+    }
+    if (item.link_url) {
+        return {
+            href: item.link_url,
+            label: 'Перейти',
+            icon: null,
+        };
+    }
+    if (item.contact_telegram) {
+        const handle = String(item.contact_telegram).replace(/^@/, '').trim();
+        return {
+            href: `https://t.me/${handle}`,
+            label: 'Написать в Telegram',
+            icon: MessageCircle,
+        };
+    }
+    return null;
+}
+
+const ActionLink = ({ action, fullWidth = false }) => {
+    if (!action) return null;
+    const Icon = action.icon;
+    return (
+        <a
+            href={action.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`btn-primary inline-flex items-center gap-2${fullWidth ? ' w-full justify-center' : ''}`}
+        >
+            {Icon && <Icon size={18} />}
+            {action.label}
+        </a>
+    );
+};
+
+const ProductCard = ({ item }) => {
+    const action = buildPrimaryAction(item);
     const hasPrice = item.price != null;
     const hasDesc = Boolean(item.description);
 
     return (
-        <div className="surface-card flex flex-col overflow-hidden">
+        <div className="surface-card flex flex-col overflow-hidden self-start">
             <div className="relative w-full h-52 bg-slate-100 flex-shrink-0">
                 {item.image_url ? (
                     <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
@@ -82,39 +124,18 @@ const ProductCard = ({ item, onContact }) => {
                 {item.old_price && <DiscountBadge price={item.price} oldPrice={item.old_price} />}
             </div>
 
-            <div className="px-6 pt-6 pb-10 flex flex-col">
-                <h3 className="text-lg font-display font-semibold text-slate-900 mb-1">{item.name}</h3>
-
-                {hasDesc && (
-                    <p className="text-sm text-slate-500 mb-5 whitespace-pre-line">
-                        {renderDescriptionWithLinks(item.description)}
-                    </p>
-                )}
-
-                {hasOpts && (
-                    <div className="mb-4">
-                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2">
-                            {opts.label}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {opts.values.map(v => (
-                                <button
-                                    key={v}
-                                    onClick={() => setSelected(v === selected ? null : v)}
-                                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-all
-                                        ${selected === v
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                                >
-                                    {v}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
+            <div className="px-6 pt-6 pb-6 flex flex-col gap-4">
+                <div>
+                    <h3 className="text-lg font-display font-semibold text-slate-900 mb-1">{item.name}</h3>
+                    {hasDesc && (
+                        <p className="text-sm text-slate-500 whitespace-pre-line">
+                            {renderDescriptionWithLinks(item.description)}
+                        </p>
+                    )}
+                </div>
 
                 {hasPrice ? (
-                    <div className="flex items-end justify-between gap-3 pt-3">
+                    <div className="flex items-end justify-between gap-3">
                         <div>
                             {item.old_price && (
                                 <div className="text-xs text-slate-400 line-through mb-0.5">
@@ -125,115 +146,19 @@ const ProductCard = ({ item, onContact }) => {
                                 {item.price.toLocaleString('ru-RU')} ₽
                             </div>
                         </div>
-                        {hasDownload ? (
-                            <a
-                                href={item.download_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn-primary inline-flex items-center gap-2"
-                            >
-                                <Download size={18} />
-                                Скачать
-                            </a>
-                        ) : hasLink ? (
-                            <a
-                                href={item.link_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn-primary"
-                            >
-                                Перейти
-                            </a>
-                        ) : (
-                            <Button variant="primary" onClick={() => onContact(item, selected)}>
-                                Связаться
-                            </Button>
-                        )}
+                        <ActionLink action={action} />
                     </div>
                 ) : (
-                    <div className="pt-3">
-                        {hasDownload ? (
-                            <a
-                                href={item.download_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn-primary w-full justify-center inline-flex items-center gap-2"
-                            >
-                                <Download size={18} />
-                                Скачать
-                            </a>
-                        ) : hasLink ? (
-                            <a
-                                href={item.link_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn-primary w-full justify-center"
-                            >
-                                Перейти
-                            </a>
-                        ) : (
-                            <Button
-                                variant="primary"
-                                className="w-full"
-                                onClick={() => onContact(item, selected)}
-                            >
-                                Связаться
-                            </Button>
-                        )}
-                    </div>
+                    action && <ActionLink action={action} fullWidth />
                 )}
             </div>
         </div>
     );
 };
 
-const ContactModal = ({ item, option, onClose }) => (
-    <ModalShell
-        isOpen={Boolean(item)}
-        onClose={onClose}
-        title={item?.name}
-        description={option ? `Выбрано: ${option}` : 'Свяжитесь напрямую с производителем'}
-        size="sm"
-    >
-        {item && (
-            <div className="space-y-3 pt-2">
-                {item.contact_telegram && (
-                    <a
-                        href={`https://t.me/${item.contact_telegram.replace('@', '')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-primary w-full"
-                    >
-                        <MessageCircle size={18} />
-                        Написать в Telegram
-                    </a>
-                )}
-                {item.contact_whatsapp && (
-                    <a
-                        href={`https://wa.me/${item.contact_whatsapp.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-secondary w-full"
-                    >
-                        <Phone size={18} />
-                        Написать в WhatsApp
-                    </a>
-                )}
-                {!item.contact_telegram && !item.contact_whatsapp && (
-                    <p className="text-sm text-slate-400 text-center py-2">
-                        Контакты скоро будут добавлены
-                    </p>
-                )}
-            </div>
-        )}
-    </ModalShell>
-);
-
 const MarketView = () => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [contactItem, setContactItem] = useState(null);
-    const [contactOption, setContactOption] = useState(null);
 
     useEffect(() => {
         api.getShopItems({ activeOnly: true })
@@ -241,19 +166,9 @@ const MarketView = () => {
             .finally(() => setLoading(false));
     }, []);
 
-    const handleContact = (item, option) => {
-        setContactItem(item);
-        setContactOption(option);
-    };
-
-    const handleCloseContact = () => {
-        setContactItem(null);
-        setContactOption(null);
-    };
-
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex justify-between items-end mb-8">
+            <div className="flex justify-between items-end">
                 <div>
                     <div className="section-kicker mb-2">для ведущих</div>
                     <h1 className="text-3xl font-light text-slate-900 mb-1">Магазин</h1>
@@ -267,7 +182,7 @@ const MarketView = () => {
             </div>
 
             {loading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
                     <SkeletonCard />
                     <SkeletonCard />
                 </div>
@@ -281,14 +196,12 @@ const MarketView = () => {
             )}
 
             {!loading && items.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
                     {items.map(item => (
-                        <ProductCard key={item.id} item={item} onContact={handleContact} />
+                        <ProductCard key={item.id} item={item} />
                     ))}
                 </div>
             )}
-
-            <ContactModal item={contactItem} option={contactOption} onClose={handleCloseContact} />
         </div>
     );
 };

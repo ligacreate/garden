@@ -451,15 +451,12 @@ const ShopAdmin = ({ onNotify }) => {
                     </div>
                     <Input label="Ссылка на фото" value={form.image_url} onChange={f('image_url')} placeholder="https://..." />
                     <Input label="Telegram" value={form.contact_telegram} onChange={f('contact_telegram')} placeholder="@username" />
+                    <Input label="Ссылка перехода" value={form.link_url} onChange={f('link_url')} placeholder="https://izdatelstvo.skrebeyko.ru/..." />
+                    <div className="text-xs text-slate-500 -mt-2">При заполнении на витрине появляется кнопка «Перейти». Если пусто — кнопки нет. Приоритет: «Скачать» → «Перейти» → «Написать в Telegram».</div>
                     <div className="bg-purple-50/60 rounded-2xl p-4 space-y-3">
                         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Для цифровых товаров (скачать по ссылке)</div>
                         <Input label="URL для скачивания" value={form.download_url} onChange={f('download_url')} placeholder="https://drive.google.com/..." />
-                        <div className="text-xs text-slate-500">При заполнении на витрине показывается «Скачать» — приоритет над «Перейти» и «Связаться».</div>
-                    </div>
-                    <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
-                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Варианты выбора (опционально)</div>
-                        <Input label="Метка" value={form.options_label} onChange={f('options_label')} placeholder="Материал кейса" />
-                        <Input label="Значения через запятую" value={form.options_values} onChange={f('options_values')} placeholder="Эко-кожа, Экозамша" />
+                        <div className="text-xs text-slate-500">Если заполнено — на витрине показывается «Скачать» (приоритет над «Перейти» и «Telegram»).</div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <Input label="Порядок сортировки" type="number" value={form.sort_order} onChange={f('sort_order')} />

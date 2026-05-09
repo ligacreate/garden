@@ -188,10 +188,6 @@ function ReportDownloadButton({
         }
     };
 
-    if (modules.length === 0) {
-        return null;
-    }
-
     return (
         <div className="relative inline-block" ref={popRef}>
             <button
@@ -207,6 +203,9 @@ function ReportDownloadButton({
             </button>
             {open && (
                 <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[160px]">
+                    {modules.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-slate-400">Модули не подгрузились</div>
+                    )}
                     {modules.map((m) => (
                         <button
                             key={m}
@@ -217,7 +216,7 @@ function ReportDownloadButton({
                             Модуль {m}
                         </button>
                     ))}
-                    <div className="border-t border-slate-100 my-1" />
+                    {modules.length > 0 && <div className="border-t border-slate-100 my-1" />}
                     <button
                         type="button"
                         onClick={() => handlePick('all')}
@@ -304,7 +303,7 @@ function BulkExportButton({
         }
     };
 
-    const disabled = total === 0 || modules.length === 0;
+    const disabled = total === 0;
 
     return (
         <div className="relative inline-block" ref={popRef}>
@@ -321,6 +320,9 @@ function BulkExportButton({
             </Button>
             {open && !loading && (
                 <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[200px]">
+                    {modules.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-slate-400">Модули не подгрузились (см. console)</div>
+                    )}
                     {modules.map((m) => (
                         <button
                             key={m}
@@ -331,7 +333,7 @@ function BulkExportButton({
                             Модуль {m}
                         </button>
                     ))}
-                    <div className="border-t border-slate-100 my-1" />
+                    {modules.length > 0 && <div className="border-t border-slate-100 my-1" />}
                     <button
                         type="button"
                         onClick={() => handleBulk('all')}
@@ -405,12 +407,28 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
     useEffect(() => {
         if (!pvlPostgrestApi.isEnabled?.()) return undefined;
         let cancelled = false;
+        const tag = '[FEAT-016 report]';
+        const wrap = (label, p) => p
+            .then((v) => {
+                // eslint-disable-next-line no-console
+                console.info(`${tag} ${label}`, Array.isArray(v) ? `${v.length} rows` : v);
+                return v;
+            })
+            .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn(`${tag} ${label} FAILED`, err);
+                return { __error: err };
+            });
         Promise.all([
-            pvlPostgrestApi.listHomeworkItems().catch(() => []),
-            pvlPostgrestApi.listContentItems().catch(() => []),
-            pvlPostgrestApi.listCourseWeeks().catch(() => []),
+            wrap('listHomeworkItems', pvlPostgrestApi.listHomeworkItems()),
+            wrap('listContentItems', pvlPostgrestApi.listContentItems()),
+            wrap('listCourseWeeks', pvlPostgrestApi.listCourseWeeks()),
         ]).then(([items, content, ws]) => {
             if (cancelled) return;
+            const firstErr = [items, content, ws].find((x) => x && x.__error)?.__error;
+            if (firstErr) {
+                setReportError(`Не удалось подгрузить данные для отчёта: ${formatError(firstErr)}`);
+            }
             setHomeworkItems(Array.isArray(items) ? items : []);
             setContentItems(Array.isArray(content) ? content : []);
             setWeeks(Array.isArray(ws) ? ws : []);
@@ -424,7 +442,10 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                 }
                 setMentorsById(map);
             })
-            .catch(() => {});
+            .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn('[FEAT-016 report] api.getUsers FAILED', err);
+            });
         return () => { cancelled = true; };
     }, []);
 

@@ -262,13 +262,26 @@ function BulkExportButton({
         const lessonsById = buildLessonsById(lessons);
         const contentItemsById = new Map((contentItems || []).map((ci) => [String(ci.id), ci]));
         const set = new Set();
+        let resolvedFromCi = 0;
         for (const hi of homeworkItems || []) {
             if (!hi) continue;
             if (hi.item_type && hi.item_type !== 'homework') continue;
             if (hi.is_control_point) continue;
             const m = effectiveModuleNumber(hi, weeksById, lessonsById, contentItemsById);
-            if (m != null) set.add(Number(m));
+            if (m != null) {
+                set.add(Number(m));
+                if (hi.module_number == null) resolvedFromCi += 1;
+            }
         }
+        // eslint-disable-next-line no-console
+        console.info('[FEAT-016 report v3] Bulk.modules recalc', {
+            homework_items: (homeworkItems || []).length,
+            content_items: (contentItems || []).length,
+            weeks: (weeks || []).length,
+            lessons: (lessons || []).length,
+            modules: [...set].sort((a, b) => a - b),
+            resolvedFromFallback: resolvedFromCi,
+        });
         return [...set].sort((a, b) => a - b);
     }, [homeworkItems, weeks, lessons, contentItems]);
 
@@ -454,18 +467,25 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
             const safeContent = Array.isArray(content) ? content : [];
             const safeWeeks = Array.isArray(ws) ? ws : [];
             const safeLessons = Array.isArray(lessonsResp) ? lessonsResp : [];
-            if (safeItems[0]) {
-                // eslint-disable-next-line no-console
-                console.info(`${tag} sample homework_item`, safeItems[0]);
-            }
-            if (safeWeeks[0]) {
-                // eslint-disable-next-line no-console
-                console.info(`${tag} sample course_week`, safeWeeks[0]);
-            }
-            if (safeLessons[0]) {
-                // eslint-disable-next-line no-console
-                console.info(`${tag} sample course_lesson`, safeLessons[0]);
-            }
+            // eslint-disable-next-line no-console
+            console.info(`${tag} state set`, {
+                homework_items: safeItems.length,
+                content_items: safeContent.length,
+                course_weeks: safeWeeks.length,
+                course_lessons: safeLessons.length,
+            });
+            if (safeItems[0]) console.info(`${tag} sample homework_item`, safeItems[0]);
+            if (safeContent[0]) console.info(`${tag} sample content_item`, safeContent[0]);
+            if (safeWeeks[0]) console.info(`${tag} sample course_week`, safeWeeks[0]);
+            if (safeLessons[0]) console.info(`${tag} sample course_lesson`, safeLessons[0]);
+            try {
+                window.__FEAT016_DEBUG__ = {
+                    homeworkItems: safeItems,
+                    contentItems: safeContent,
+                    weeks: safeWeeks,
+                    lessons: safeLessons,
+                };
+            } catch { /* noop */ }
             setHomeworkItems(safeItems);
             setContentItems(safeContent);
             setWeeks(safeWeeks);

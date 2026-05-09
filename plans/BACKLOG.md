@@ -1013,48 +1013,37 @@ related_docs:
 - **Связано:** ARCH-004 (транзакционность регистрации)
 
 ### CLEAN-013: Data hygiene profiles — тестовые аккаунты + дубль
-- **Статус:** 🟡 IN PROGRESS (1/5 удалён 2026-05-07)
+- **Статус:** 🟡 PARTIALLY DONE (4/5 закрыты 2026-05-08; Настина фея +
+  Настин фиксик оставлены как тест-окружение Насти, скрыты «глазиком»)
 - **Приоритет:** P2
 - **Контекст:** Побочный поток FEAT-002 этап 1
   (`docs/RECON_2026-05-04_feat002_telegram_match.md`). После apply
   гигиены `profiles.telegram` остались 5 строк, требующих отдельного
   решения: 4 тестовых аккаунта (засоряют публичные списки ведущих и
   орграсчёты) + 1 дубль профиля по email-корню `malaglilia@gmail.com`.
-- **Скоп — 5 кандидатов и текущее состояние:**
-  - 🟢 **Лена Ф** (`037603f7-f215-4a49-8d5c-e5e1c93632fa`) — **удалена 2026-05-07**
-    через RPC `admin_delete_user_full` (BUG-ADMIN-DELETE-USER smoke).
-  - 🔴 **Рита** (`3746da91-5c66-4e91-9966-15643136dae6`) — TODO. Чистая,
-    прямой DELETE через тот же RPC.
-  - ⏸ **LIlia MALONG dup** (`1431f70e-63bd-4709-803a-5643540fc759`) —
-    TODO, MERGE **НЕ нужен**. Гипотеза «случайная регистрация без
-    последующей значимой активности» **verified** read-only под
-    gen_user 2026-05-07: 8 строк `pvl_student_content_progress` —
-    все на материалах, которые main `d302b93d-…fa15` уже прошла на
-    100%; mentor_link дублирует main; pvl_students пустая (без
-    cohort/mentor); 1 audit-запись `library_complete` с пустым
-    payload. Решение — прямой DELETE через RPC.
-  - ⏸ **Настина фея** (`1085e06d-34ad-4e7e-b337-56a0c19cc43f`) — отложена,
-    требуется решение Ольги по «Настин тест-set». Активность реальная:
-    5 hw / 20 cont / 70 audit / 3 cprog → DELETE снесёт реальные данные.
-  - ⏸ **Настин фиксик** (`1b10d2ef-8504-4778-9b7b-5b04b24f8751`) —
-    отложен, тот же тест-set. ⚠ Числится фейк-ментором для 4 студентов,
-    включая **реального applicant Екатерину Салама**
-    (`49c267b1-7ef6-48f6-bb2f-0e6741491b90`, `yaroschuk@creativemarket.ru`).
-    Перед удалением — переподвесить Екатерину на реального ментора,
-    либо принять, что mentor_link исчезнет (других 3 — тест-set, удалятся
-    вместе).
-- **Шаги (актуализированные):**
-  - [x] Перепроверены user-id-колонки на 5 кандидатов через
-    `information_schema` (read-only под gen_user 2026-05-07).
-  - [x] Verified hypothesis по dup LIlia MALONG (см. выше).
-  - [x] Удалить Лену Ф через RPC `admin_delete_user_full` (smoke).
-  - [ ] Удалить Риту через RPC.
-  - [ ] Удалить LIlia MALONG dup через RPC.
-  - [ ] **Решение Ольги** по Настин тест-set (Настина фея + Настин
-    фиксик): удалять или сохранить как фикстуры?
-  - [ ] **Перед удалением Настин фиксик** — переподвесить Екатерину
-    Салама на реального ментора (либо явное OK от Ольги на потерю
-    mentor_link).
+- **Скоп — 5 кандидатов и финальное состояние:**
+  - 🟢 **Лена Ф** (`037603f7-f215-4a49-8d5c-e5e1c93632fa`) —
+    удалена 2026-05-07 через RPC `admin_delete_user_full`
+    (commit `9fddae4`).
+  - 🟢 **LIlia MALONG dup** (`1431f70e-63bd-4709-803a-5643540fc759`) —
+    удалена 2026-05-08 через data-миграцию
+    `cleanup_clean013_partial` (commit `296cfb3`).
+  - 🟢 **Рита** (`3746da91-5c66-4e91-9966-15643136dae6`) — удалена
+    2026-05-08 через ту же миграцию.
+  - 🟢 **Екатерина Салама** (`49c267b1-7ef6-48f6-bb2f-0e6741491b90`) —
+    удалена 2026-05-08 через ту же миграцию (продуктовое решение
+    Ольги — не applicant, не оставляем).
+  - 🟡 **Настина фея** (`1085e06d-34ad-4e7e-b337-56a0c19cc43f`) и
+    🟡 **Настин фиксик** (`1b10d2ef-8504-4778-9b7b-5b04b24f8751`) —
+    **оставлены как тест-окружение Насти** (продуктовое решение Ольги
+    2026-05-08). Скрыты через «глазик» в users-табе AdminPanel
+    (`hiddenGardenUserIds` в localStorage). НЕ удаляем.
+- **Артефакт миграции:** `migrations/data/2026-05-08_cleanup_clean013_partial.sql`
+  (audit-record в `pvl_audit_log` + DELETE из `pvl_garden_mentor_links`
+  + `pvl_students` (CASCADE → pvl_student_*) + `users_auth` + `profiles`).
+- **Сопутствующее изменение FEAT-017:** AdminPvlProgress (commit `296cfb3`)
+  принимает `hiddenIds` prop из `hiddenGardenUserIds` — скрытые
+  пользователи исчезают из дашборда + пересчитывают totals/GroupProgressBar.
 - **Acceptance:**
   - 4 тестовых profile не показываются в публичных списках ведущих
     и в админских интерфейсах.
@@ -1149,6 +1138,34 @@ related_docs:
 - **Статус:** 🔴 TODO
 - **Контекст:** GitHub предлагает создать SECURITY.md в каждом
   репо. Описать: как сообщать об уязвимостях, политику ответа.
+
+### TEST-INFRA-SETUP: настроить тестовую инфраструктуру
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-08
+- **Контекст:** В кодовой базе **нет тестов** — нет `vitest` / `jest`
+  конфигов, нет `tests/` или `__tests__/` каталогов, в `package.json`
+  отсутствует `test` скрипт. Любой smoke-тест на `ensurePvlStudentInDb`,
+  `pvlPostgrestApi.getAdminProgressSummary` и т.д. — невозможен.
+- **Скоп:**
+  1. Выбрать runner: vitest (наследует vite-конфиг — естественный выбор)
+     или jest. Vitest рекомендуется, у нас уже Vite 7.
+  2. Добавить `vitest`, `@testing-library/react` в devDependencies.
+  3. Конфиг `vitest.config.js` (или расширить `vite.config.js`).
+  4. Скрипт `npm test` в `package.json`.
+  5. Один пробный тест-файл (например, на `services/pvlMockApi.js`
+     unit-функцию вроде `seedCohortIdToSqlUuid`) — чтобы проверить, что
+     инфра работает.
+- **Why:** без тестов любые регрессии ловятся только через продакшен
+  smoke. Это технический долг с нулевыми платежами в моменте, но он
+  блокирует адекватные fix'ы регрессий (например, `BUG-PVL-ENSURE-RESPECTS-ROLE`
+  идеально подошёл бы под unit-тест).
+- **Acceptance:**
+  - `npm test` прогоняет хотя бы один тест и зелёный.
+  - В CI (GitHub Actions deploy.yml) добавлен step `npm test` перед
+    build'ом. Падение тестов блокирует deploy.
+- **Связано:** `BUG-PVL-ENSURE-RESPECTS-ROLE` (smoke-тест требует
+  инфры), все будущие unit-тесты на `services/*`.
 
 ### REVIEW-001: Запуск 4-агентного code review
 - **Статус:** ⚪ POSTPONED (не сейчас)
@@ -1625,9 +1642,61 @@ related_docs:
   - Логировать детали в console для диагностики.
 
 ### BUG-PVL-COHORT-NULL-OVERWRITE: ensurePvlStudentInDb перетирает cohort_id/mentor_id в null
-- **Статус:** 🔴 TODO
-- **Приоритет:** P2 (блокирует FEAT-017 frontend smoke; backfill регрессирует)
+- **Статус:** 🟢 DONE (2026-05-08, commit `7c28ed3`)
+- **Приоритет:** P2
 - **Создано:** 2026-05-07
+- **Закрыто:** 2026-05-08
+- **Решение:** гибрид (вариант A+B плана `_08`). `ensurePvlStudentInDb`
+  резолвит `cohort_id` через `seedCohortIdToSqlUuid(profile.cohortId)` и
+  `mentor_id` через `uuidOrNull(profile.mentorId)`; передаёт в payload
+  **только если резолвинг даёт валидное значение**. PostgREST с
+  merge-duplicates на не-переданные поля сохраняет существующее
+  значение в БД нетронутым. Backfill не регрессирует.
+- **Lesson:** [`docs/lessons/2026-05-08-pvl-cohort-null-overwrite.md`](../docs/lessons/2026-05-08-pvl-cohort-null-overwrite.md).
+- **Артефакты сессии:** `docs/_session/2026-05-08_07_..._08` (recon → план).
+- **Связано:** ARCH-012 (общая ARCH-задача убрать клиентский self-heal),
+  `BUG-PVL-ENSURE-RESPECTS-ROLE` (новый тикет — fix не покрывает попадание
+  admin/mentor/intern в pvl_students).
+
+### BUG-PVL-ENSURE-RESPECTS-ROLE: ensurePvlStudentInDb не проверяет роль
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2
+- **Создано:** 2026-05-08 (после cleanup'а 5 не-студенческих записей —
+  commit `e3a992f`)
+- **Контекст:** [`services/pvlMockApi.js:603-650`](../services/pvlMockApi.js#L603-L650) `ensurePvlStudentInDb`
+  при любом write-callsite (`persistContentProgressToDb`,
+  `markChecklistItem`, `persistTrackerProgressToDb`, `persistSubmissionToDb`,
+  и др. — 8 callsite'ов) делает upsert в `pvl_students` без проверки
+  роли пользователя. Гейт `pvlRole !== 'admin'` (ARCH-012 hotfix)
+  спасает от menter/student, но **сам admin** триггерит upsert при
+  каждом своём заходе в PVL-учительскую с любой write-операцией.
+  В результате admin/intern/mentor (если он admin совмещает) попадают
+  в `pvl_students` как фейк-студенты.
+- **Реальное проявление 2026-05-08:** в `pvl_students` обнаружено 5
+  не-студенческих записей: 1 admin (Зобнина), 1 intern (Ван), 2 mentor
+  (Лузина, Гулякова), 1 тест-фикстура (Участница). Cleanup-миграция
+  `cleanup_non_student_pvl_records` (commit `e3a992f`) почистила, но
+  **корневая причина не устранена** — лишние снова появятся при
+  заходах admin/mentor/intern.
+- **Лечение (рекомендуемо):**
+  - Добавить проверку `profile.role IN ('applicant', 'student', 'intern_with_pvl_track')`
+    или whitelisting перед upsert. Список «допустимых» ролей — продуктовое
+    решение.
+  - Альтернатива (server-side defender): DB-trigger BEFORE INSERT на
+    `pvl_students`, проверяющий `(SELECT role FROM profiles WHERE id =
+    NEW.id)` и блокирующий не-студентов. Дороже по реализации, но
+    защищает от любого клиента.
+- **Why:** без фикса cleanup-миграции придётся повторять. Это
+  системная проблема, не разовая.
+- **Acceptance:**
+  - admin/mentor (без `applicant`-роли) в PVL-учительской → upsert
+    в `pvl_students` НЕ происходит.
+  - applicant/student → запись создаётся с правильным `cohort_id`
+    и `mentor_id` (см. `BUG-PVL-COHORT-NULL-OVERWRITE` — уже закрыт).
+  - Smoke: Ольга / Настя / Ирина заходят в PVL → `pvl_students` count
+    стабильный, не растёт.
+- **Связано:** `BUG-PVL-COHORT-NULL-OVERWRITE` (closed 2026-05-08,
+  родственный fix), ARCH-012 (общая задача убрать ensure-loop с клиента).
 - **Smoking gun:** [`services/pvlMockApi.js:622-628`](../services/pvlMockApi.js#L622-L628) —
   `ensurePvlStudentInDb` self-heal upsert хардкодит `cohort_id: null`
   и `mentor_id: null` в payload `pvlPostgrestApi.upsertPvlStudent`.
@@ -1801,7 +1870,10 @@ related_docs:
   - DB-recon стратега: [`docs/_session/2026-05-07_03_strategist_db_recon.md`](../docs/_session/2026-05-07_03_strategist_db_recon.md)
   - Phase 25 миграция applied (commit `66c7c0e`) — добавлены поля `module_number` / `is_module_feedback` для структурного фильтра + `updated_at` для совместимости с триггером.
   - Backfill cohort_id (commit `7b832f1`) — 22 студента привязаны к когорте Поток 1.
-- **Блокер:** `BUG-PVL-COHORT-NULL-OVERWRITE` (P2) — backfill регрессирует при следующем визите админа в PVL до фикса хардкода в `pvlMockApi.js:622-628`. Делать после фикса.
+- **Блокеры:** ⛔ нет. `BUG-PVL-COHORT-NULL-OVERWRITE` закрыт 2026-05-08
+  (commit `7c28ed3`). Можно начинать следующей сессией. RPC
+  `pvl_admin_progress_summary` готов, SQL-логика для CSV — расширение
+  того же.
 - **Контекст:** Каждый модуль курса ПВЛ заканчивается домашкой
   «обратная связь по модулю / по работе менторов / по материалам».
   Этот feedback — ключевой сигнал для развития курса. Сейчас данные
@@ -1842,9 +1914,58 @@ related_docs:
 - **Оценка:** 1-2 сессии после продуктового решения формата.
 
 ### FEAT-017: Дашборд прогресса студентов ПВЛ — кто где запаздывает по ДЗ
-- **Статус:** 🟡 IN PROGRESS (фундамент готов 2026-05-07: phase 25 RPC + backfill)
-- **Приоритет:** P2 (оперативный мониторинг для Ольги и менторов; сейчас приходится мысленно считать)
+- **Статус:** 🟢 V1 DONE (2026-05-08). Дальнейшие визуализации — через `FEAT-017-V2-VISUALIZATIONS` (P3, накопительный).
+- **Приоритет:** P2
 - **Создано:** 2026-05-06
+- **Закрыто V1:** 2026-05-08
+- **Что сделано в V1:**
+  - Новый таб `pvl-progress` в Garden AdminPanel (commit `0867aa6`).
+    Sortable таблица студентов: ФИО / Ментор / hw_total / hw_accepted /
+    hw_in_review / hw_revision / hw_not_started / hw_overdue /
+    last_activity / state_line. Bage'ы по `state_line` (4 цвета),
+    cohort-select из `pvl_cohorts`, фильтр по `state_line`,
+    persisted cohortId в `sessionStorage`.
+  - `GroupProgressBar` — горизонтальная stacked-полоска по группе
+    (commit `377a148`).
+  - Hidden-filter через `hiddenGardenUserIds` (commit `296cfb3`):
+    скрытые «глазиком» в users-табе исчезают из дашборда +
+    пересчитывают `totals` / `GroupProgressBar`.
+  - Backend (закрыто 2026-05-07): RPC `pvl_admin_progress_summary`
+    (`66c7c0e`) + backfill `cohort_id` (`7b832f1`).
+- **Verified Ольгой 2026-05-08:** 13 строк после скрытия Настина фея.
+- **Артефакты сессии:** `docs/_session/2026-05-08_10_..._12_..._15_..._17_...` (recon → план → apply).
+- **Связано:** `BUG-PVL-COHORT-NULL-OVERWRITE` (закрыт 2026-05-08, был
+  блокером), `CLEAN-013` (cleanup non-student'ов и partial 2026-05-08),
+  `FEAT-017-V2-VISUALIZATIONS` (P3, будущие визуализации).
+
+### FEAT-017-V2-VISUALIZATIONS: Дальнейшие визуализации Прогресса ПВЛ
+- **Статус:** 🟡 IN PROGRESS (накопительный — Уровень 1 готов 2026-05-08)
+- **Приоритет:** P3
+- **Создано:** 2026-05-08
+- **Контекст:** Накопительный тикет для добавления визуализаций к таблице
+  «Прогресс ПВЛ» по мере того, как они становятся нужны. Не делать как
+  одну большую V2-фичу, а добавлять элементами.
+- **Готово:**
+  - 🟢 [2026-05-08, commit `377a148`] **Уровень 1: GroupProgressBar** —
+    горизонтальная stacked-полоска по группе (4 цвета: emerald/blue/
+    rose/slate, согласовано с STATE_LINE_TONE).
+- **Кандидаты на следующие уровни (когда возникнет нужда):**
+  - **Heat-map студенты × недели** — глобальный обзор «кто отстал по
+    каким неделям». Полезно перед демо-днями / контрольными точками.
+  - **Per-module прогресс-полоски в строках** — мини-полоска в каждой
+    строке таблицы вместо/в дополнение к числам. Использовать
+    `module_progress` jsonb из RPC (там уже {done, total} по модулям).
+  - **Sparklines** — 7-дневный/30-дневный график активности по студенту.
+    Нужен `pvl_audit_log` агрегат — RPC расширение.
+  - **Filter chips для drill-down** на ментора (когда менторов >= 2
+    активных на одной когорте — см. `FEAT-017` open-questions).
+- **Why:** Один взгляд → больше информации. Но риск визуального шума —
+  добавлять только когда конкретный кейс назрел.
+- **Acceptance (для каждого уровня):**
+  - Один commit на уровень.
+  - Визуализация не ломает sortable / hidden-filter / state-фильтр.
+  - Smoke на проде с реальными данными.
+- **Связано:** `FEAT-017` V1 (база), `pvl_admin_progress_summary` RPC.
 - **Прогресс 2026-05-07:**
   - Code-recon: [`docs/_session/2026-05-07_02_codeexec_recon_feat016_017_report.md`](../docs/_session/2026-05-07_02_codeexec_recon_feat016_017_report.md)
   - DB-recon: [`docs/_session/2026-05-07_03_strategist_db_recon.md`](../docs/_session/2026-05-07_03_strategist_db_recon.md)
@@ -2359,11 +2480,50 @@ related_docs:
     перезагрузки
 
 ### INFRA-004: cache-headers index.html — слишком агрессивный max-age
-- **Статус:** 🔴 TODO
-- **Приоритет:** **P1** — повышен 2026-05-07 после реального проявления
-  у Ольги (`Failed to fetch dynamically imported module` в PVL-учительской
-  после deploy)
+- **Статус:** 🟢 DONE (2026-05-08)
+- **Приоритет:** P1 (был, повышен 2026-05-07 после реального проявления)
 - **Создано:** 2026-05-07
+- **Закрыто:** 2026-05-08
+- **Решение:** через тикет в hightek.ru support (хостинг — чистый
+  nginx без Apache, `.htaccess` не парсится, Path B в Path C через
+  ISPmanager-панель тоже не сработал — нет полей для custom-директив).
+  Hightek.ru применили nginx-fix: `Cache-Control: no-cache` для
+  `index.html`, `Cache-Control: public, immutable, max-age=31536000`
+  для `/assets/*`. Verified curl: index.html → no-cache, /assets/*.js →
+  immutable.
+- **Plus** временный workaround commit `2228f70` —
+  `<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">`
+  + `<meta http-equiv="Pragma" content="no-cache">` в `index.html` как
+  defense-in-depth. Можно оставить.
+- **Артефакты сессии:** `docs/_session/2026-05-08_01..._06` (recon →
+  Path B `.htaccess` → Path C ISPmanager → meta-tags workaround → тикет).
+
+### PROD-DB-MIGRATE-ISPMANAGER: миграция БД с Timeweb Cloud на ISPmanager-shared
+- **Статус:** 💡 IDEA (не TODO — для запоминания)
+- **Приоритет:** P3 (стратегическая идея)
+- **Создано:** 2026-05-08
+- **Идея от Ольги:** рассмотреть миграцию БД с Timeweb Cloud managed
+  Postgres на ISPmanager-shared (где живёт frontend `liga.skrebeyko.ru`).
+  Цель — единая точка управления, возможно экономия на managed-БД.
+- **Барьеры:**
+  - ISPmanager обычно даёт MySQL/MariaDB, не Postgres → переписать
+    схему, RLS-policies, ~10+ RPC-функций (`ensure_garden_grants`,
+    `is_admin`, `is_mentor_for`, `pvl_admin_progress_summary`,
+    `admin_delete_user_full`, etc.). Огромный объём.
+  - PostgREST не работает с MySQL → переписывать backend на другом
+    стеке (Hasura для MySQL? самодельный API?).
+  - Потеря managed-бенефитов: бэкапы, мониторинг, SLA Timeweb.
+  - Производительность shared-хостинга под нагрузкой обычно слабее
+    managed cloud-DB.
+- **Бюджет:** 3-5 сессий recon + продуктовое решение, потом месяцы
+  реализации. Не на ближайший спринт.
+- **Альтернативы:** оставить как есть (Timeweb Cloud managed Postgres),
+  принять разделение «фронт shared, БД managed» — это нормальный pattern.
+  Любая экономия на managed-БД сожрётся стоимостью переписывания и
+  риском регрессий.
+- **Why в backlog:** заводится для запоминания, не для делания. Если
+  Ольга снова поднимет тему — есть точка отсчёта с барьерами и
+  бюджетом, а не «давайте подумаем заново».
 - **Контекст:** Nginx-конфиг фронта `liga.skrebeyko.ru` отдаёт
   `index.html` с `Cache-Control: max-age=86400` (сутки). После
   каждого FTP-deploy юзеры до 24 часов видят старый bundle, пока
@@ -2505,6 +2665,13 @@ related_docs:
     продуктовое решение Ольги по сетке (текущий — 1/2/4 колонки
     через `sm:grid-cols-2 xl:grid-cols-4`). Возможно нужен
     промежуточный 3-колоночный breakpoint или другой ratio.
+  - 🔴 [2026-05-08] **Колотилова Светлана Николаевна**
+    (`df6d3afc-1c5b-4d68-af6f-4eb646c1f5f9`, role=mentor,
+    status=suspended) — убрать отчество из `profile.name`. Должно
+    быть «Колотилова Светлана». Один UPDATE в `profiles`. Заодно
+    сверить связанные таблицы (`events.host_*` через
+    `sync_meeting_to_event` — имя ведущей дублируется?), fix везде
+    если нужно. Накопительный batch — ждём ещё пунктов.
 - **Acceptance (для каждого пункта):**
   - Описана локация и diff
   - Commit-hash зафиксирован в этой карточке после merge
@@ -2993,3 +3160,78 @@ related_docs:
   - 13 файлов переписки стратег↔executor в `docs/_session/`
     (`_01` через `_13`)
   - `docs/journal/HANDOVER_2026-05-07_session_admin_delete_phase25.md`
+
+#### 2026-05-08
+- **INFRA-004 закрыт через тикет в hightek.ru support.** Recon выявил,
+  что хостинг — чистый nginx без Apache (`.htaccess` Path B не сработал,
+  ISPmanager-панель Path C тоже — нет полей для custom-директив). Path D
+  (тикет) сработал: hightek.ru применили nginx-fix
+  `Cache-Control: no-cache` на `index.html` + `immutable, max-age=31536000`
+  на `/assets/*`. Plus временный workaround commit `2228f70` —
+  `<meta http-equiv="Cache-Control" no-cache>` в `index.html` как
+  defense-in-depth. Закрыта корневая причина «Failed to fetch dynamically
+  imported module» (инцидент 2026-05-07).
+- **BUG-PVL-COHORT-NULL-OVERWRITE закрыт** (commit `7c28ed3`). Гибрид
+  A+B по плану `_08`: `ensurePvlStudentInDb` резолвит cohort_id через
+  `seedCohortIdToSqlUuid` + mentor_id через `uuidOrNull`; передаёт в
+  payload только если результат валиден (иначе опускает ключ). PostgREST
+  с merge-duplicates на не-переданные поля сохраняет существующее в БД.
+  Backfill 2026-05-07 не регрессирует. Lesson:
+  `docs/lessons/2026-05-08-pvl-cohort-null-overwrite.md`.
+- **FEAT-017 V1 закрыт.** Admin таб «Прогресс ПВЛ» в Garden AdminPanel
+  с RPC `pvl_admin_progress_summary`, sortable таблица (10 колонок),
+  state-фильтр, GroupProgressBar (4-цветная stacked-полоска) и
+  hidden-filter через `hiddenGardenUserIds`. Verified Ольгой —
+  13 строк после скрытия Настина фея. Артефакты: `docs/_session/_10..._12_..._15..._17`.
+- **CLEAN-013 partial DONE 2026-05-08.** В дополнение к Лене Ф
+  (2026-05-07) — удалены LIlia MALONG (дубль), Рита, Екатерина Салама
+  через data-миграцию `cleanup_clean013_partial` (commit `296cfb3`).
+  Настина фея + Настин фиксик **оставлены как тест-окружение Насти**
+  (продуктовое решение Ольги), скрыты через «глазик» в users-табе.
+  Также параллельно удалены 5 не-студенческих записей из `pvl_students`
+  через миграцию `cleanup_non_student_pvl_records` (commit `e3a992f`):
+  1 admin (Зобнина), 1 intern (Ван), 2 mentor (Лузина, Гулякова),
+  1 тест-фикстура (Участница). `pvl_students` 22 → 17 → 14.
+- **Открытия (новые тикеты):**
+  - **BUG-PVL-ENSURE-RESPECTS-ROLE** (P2) — корневая причина попадания
+    admin/mentor/intern в `pvl_students`. Cleanup-миграция
+    `cleanup_non_student_pvl_records` устраняет симптом, но не
+    архитектуру.
+  - **FEAT-017-V2-VISUALIZATIONS** (P3, накопительный) — будущие
+    визуализации к таблице (heat-map, per-module bars, sparklines).
+    Уровень 1 (GroupProgressBar) уже сделан.
+  - **PROD-DB-MIGRATE-ISPMANAGER** (P3 idea) — стратегическая идея
+    миграции БД с Timeweb Cloud на ISPmanager-shared. Не TODO,
+    заводится для запоминания + барьеры.
+  - **TEST-INFRA-SETUP** (P3) — настроить vitest, без него любые smoke
+    регрессии ловятся только в продакшене.
+  - **UX-QUICK-FIXES** добавлен пункт «Колотилова Светлана — убрать
+    отчество из profile.name».
+- **Закрытия дополнительные:** —
+- **Прогрессирует:** **CLEAN-013** → 🟡 PARTIALLY DONE (4/5 user'ов
+  закрыты, Настина фея + Настин фиксик оставлены как тест-окружение).
+- **Все коммиты сессии 2026-05-08** (7 шт., все push'нуты):
+  - `2228f70` — infra: meta-tags Cache-Control в index.html (INFRA-004 workaround).
+  - `7c28ed3` — fix: BUG-PVL-COHORT-NULL-OVERWRITE — не затирать cohort_id/mentor_id.
+  - `0867aa6` — feat: FEAT-017 — admin таб «Прогресс ПВЛ» с RPC pvl_admin_progress_summary.
+  - `e3a992f` — data: cleanup pvl_students от 5 не-студенческих записей.
+  - `377a148` — ux: FEAT-017 — общий stacked progress bar группы.
+  - `296cfb3` — feat: hidden-filter в FEAT-017 + cleanup CLEAN-013 partial (3 user).
+  - (handover commit будет следующим — этот файл).
+- **Артефакты сессии:**
+  - `migrations/data/2026-05-08_cleanup_non_student_pvl_records.sql`
+  - `migrations/data/2026-05-08_cleanup_clean013_partial.sql`
+  - `services/pvlMockApi.js` (fix `ensurePvlStudentInDb`)
+  - `services/pvlPostgrestApi.js` (`+listCohorts`, `+getAdminProgressSummary`)
+  - `views/AdminPvlProgress.jsx` (новый файл, 250+ строк)
+  - `views/AdminPanel.jsx` (новый таб + hiddenIds prop)
+  - `index.html` (meta-tags Cache-Control)
+  - `public/.htaccess` (residual из Path B, безвреден)
+  - `docs/lessons/2026-05-08-pvl-cohort-null-overwrite.md`
+  - 19 файлов переписки стратег↔executor в `docs/_session/`
+    (`_01` через `_19`)
+  - `docs/journal/HANDOVER_2026-05-08_session_infra004_pvl_progress.md`
+- **Workflow:** второй день в формате `docs/_session/`-переписки между
+  стратегом (claude.ai) и executor'ом (Claude Code). Стратег пишет
+  файлы напрямую, executor читает с диска. Реально снизил трафик
+  копий между чатами в ~2 раза. Держится.

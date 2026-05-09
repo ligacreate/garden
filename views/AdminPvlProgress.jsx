@@ -145,6 +145,7 @@ function ReportDownloadButton({
     weeks,
     lessons,
     mentorsById,
+    dataReady,
     onError,
 }) {
     const [open, setOpen] = useState(false);
@@ -204,18 +205,18 @@ function ReportDownloadButton({
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
-                disabled={loading}
-                title="Скачать отчёт"
-                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                disabled={loading || !dataReady}
+                title={!dataReady ? 'Загружаю данные курса…' : 'Скачать отчёт'}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-30"
             >
-                {loading
-                    ? <Loader2 size={16} className="animate-spin" />
+                {loading || !dataReady
+                    ? <Loader2 size={16} className={!dataReady && !loading ? 'opacity-50' : 'animate-spin'} />
                     : <FileText size={16} />}
             </button>
-            {open && (
+            {open && dataReady && (
                 <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[160px]">
                     {modules.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-slate-400">Модули не подгрузились</div>
+                        <div className="px-3 py-2 text-xs text-slate-400">Модули не определены</div>
                     )}
                     {modules.map((m) => (
                         <button
@@ -249,6 +250,7 @@ function BulkExportButton({
     weeks,
     lessons,
     mentorsById,
+    dataReady,
     onError,
 }) {
     const [open, setOpen] = useState(false);
@@ -335,7 +337,12 @@ function BulkExportButton({
         }
     };
 
-    const disabled = total === 0;
+    const disabled = total === 0 || !dataReady;
+    const titleText = !dataReady
+        ? 'Загружаю данные курса…'
+        : total === 0
+            ? 'Нет видимых студенток'
+            : 'Скачать ZIP-архив за модуль';
 
     return (
         <div className="relative inline-block" ref={popRef}>
@@ -344,16 +351,18 @@ function BulkExportButton({
                 onClick={() => setOpen((o) => !o)}
                 disabled={loading || disabled}
                 className="!py-2 !px-3 text-sm border border-slate-200 hover:border-blue-200 hover:text-blue-700"
-                title={total === 0 ? 'Нет видимых студенток' : 'Скачать ZIP-архив за модуль'}
+                title={titleText}
             >
                 {loading
                     ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Готовлю архив… {progress}/{total}</span>
-                    : <span className="inline-flex items-center gap-2"><Download size={14} />Скачать архив за модуль…<ChevronDown size={14} /></span>}
+                    : !dataReady
+                        ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Загружаю данные курса…</span>
+                        : <span className="inline-flex items-center gap-2"><Download size={14} />Скачать архив за модуль…<ChevronDown size={14} /></span>}
             </Button>
-            {open && !loading && (
+            {open && !loading && dataReady && (
                 <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[200px]">
                     {modules.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-slate-400">Модули не подгрузились (см. console)</div>
+                        <div className="px-3 py-2 text-xs text-slate-400">Модули не определены</div>
                     )}
                     {modules.map((m) => (
                         <button
@@ -395,6 +404,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
     const [lessons, setLessons] = useState([]);
     const [mentorsById, setMentorsById] = useState(null);
     const [reportError, setReportError] = useState(null);
+    const [reportDataReady, setReportDataReady] = useState(false);
 
     const setCohortId = (id) => {
         setCohortIdState(id);
@@ -490,6 +500,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
             setContentItems(safeContent);
             setWeeks(safeWeeks);
             setLessons(safeLessons);
+            setReportDataReady(true);
         });
         api.getUsers?.()
             .then((users) => {
@@ -588,6 +599,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                         weeks={weeks}
                         lessons={lessons}
                         mentorsById={mentorsById}
+                        dataReady={reportDataReady}
                         onError={(err) => setReportError(formatError(err))}
                     />
                 </div>
@@ -704,6 +716,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                                             weeks={weeks}
                                             lessons={lessons}
                                             mentorsById={mentorsById}
+                                            dataReady={reportDataReady}
                                             onError={(err) => setReportError(formatError(err))}
                                         />
                                     )}

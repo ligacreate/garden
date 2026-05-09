@@ -251,7 +251,7 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
 const SHOP_EMPTY_FORM = {
     name: '', description: '', price: '', old_price: '',
     image_url: '', contact_telegram: '', contact_whatsapp: '',
-    promo_code: '', link_url: '',
+    promo_code: '', link_url: '', download_url: '',
     sort_order: '0', is_active: true,
     options_label: '', options_values: ''
 };
@@ -297,6 +297,7 @@ const ShopAdmin = ({ onNotify }) => {
             contact_whatsapp: item.contact_whatsapp || '',
             promo_code: item.promo_code || '',
             link_url: item.link_url || '',
+            download_url: item.download_url || '',
             sort_order: String(item.sort_order ?? 0),
             is_active: item.is_active !== false,
             options_label: item.options?.label || '',
@@ -323,6 +324,7 @@ const ShopAdmin = ({ onNotify }) => {
                 contact_whatsapp: form.contact_whatsapp.trim() || null,
                 promo_code: form.promo_code.trim() || null,
                 link_url: form.link_url.trim() || null,
+                download_url: form.download_url.trim() || null,
                 sort_order: parseInt(form.sort_order, 10) || 0,
                 is_active: form.is_active,
                 options: form.options_label.trim()
@@ -390,7 +392,14 @@ const ShopAdmin = ({ onNotify }) => {
                                     </div>
                                 )}
                                 <div className="min-w-0">
-                                    <div className="font-medium text-slate-800 truncate">{item.name}</div>
+                                    <div className="font-medium text-slate-800 truncate flex items-center gap-2">
+                                        <span className="truncate">{item.name}</span>
+                                        {item.download_url && (
+                                            <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full text-xs font-normal flex-shrink-0">
+                                                🔽 Цифровой товар
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
                                         {item.price != null && <span>{item.price.toLocaleString('ru-RU')} ₽</span>}
                                         {item.promo_code && <span className="text-blue-600 font-mono">{item.promo_code}</span>}
@@ -440,6 +449,11 @@ const ShopAdmin = ({ onNotify }) => {
                         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Для товаров со скидкой по промокоду</div>
                         <Input label="Промокод" value={form.promo_code} onChange={f('promo_code')} placeholder="GARDEN50" />
                         <Input label="Ссылка перехода" value={form.link_url} onChange={f('link_url')} placeholder="https://izdatelstvo.skrebeyko.ru/..." />
+                    </div>
+                    <div className="bg-purple-50/60 rounded-2xl p-4 space-y-3">
+                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Для цифровых товаров (скачать по ссылке)</div>
+                        <Input label="URL для скачивания" value={form.download_url} onChange={f('download_url')} placeholder="https://drive.google.com/..." />
+                        <div className="text-xs text-slate-500">При заполнении на витрине показывается «Скачать» — приоритет над «Перейти» и «Связаться».</div>
                     </div>
                     <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
                         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Варианты выбора (опционально)</div>

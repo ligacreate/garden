@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Package, MessageCircle, Phone } from 'lucide-react';
+import { ShoppingBag, Package, MessageCircle, Phone, Download } from 'lucide-react';
 import { api } from '../services/dataService';
 import ModalShell from '../components/ModalShell';
 import Button from '../components/Button';
@@ -50,7 +50,11 @@ const ProductCard = ({ item, onContact }) => {
     const [selected, setSelected] = useState(null);
     const opts = item.options;
     const hasOpts = opts?.label && Array.isArray(opts.values) && opts.values.length > 0;
-    const hasPromo = Boolean(item.promo_code && item.link_url);
+    /** Приоритет действия: download_url → link_url → contact. Промокод
+     *  показывается независимо как чип, если задан. */
+    const hasDownload = Boolean(item.download_url);
+    const hasLink = Boolean(item.link_url);
+    const hasPrice = item.price != null;
 
     return (
         <div className="surface-card flex flex-col overflow-hidden">
@@ -94,35 +98,77 @@ const ProductCard = ({ item, onContact }) => {
                     </div>
                 )}
 
-                {hasPromo ? (
-                    <div className="mt-auto pt-2 space-y-3">
-                        <PromoCode code={item.promo_code} />
-                        <a
-                            href={item.link_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn-primary w-full justify-center"
-                        >
-                            Перейти
-                        </a>
-                    </div>
-                ) : (
-                    <div className="flex items-end justify-between mt-auto pt-2">
-                        <div>
-                            {item.old_price && (
-                                <div className="text-xs text-slate-400 line-through mb-0.5">
-                                    {item.old_price.toLocaleString('ru-RU')} ₽
+                <div className="mt-auto pt-2 space-y-3">
+                    {item.promo_code && <PromoCode code={item.promo_code} />}
+
+                    {hasPrice ? (
+                        <div className="flex items-end justify-between gap-3">
+                            <div>
+                                {item.old_price && (
+                                    <div className="text-xs text-slate-400 line-through mb-0.5">
+                                        {item.old_price.toLocaleString('ru-RU')} ₽
+                                    </div>
+                                )}
+                                <div className="text-2xl font-display font-semibold text-slate-900">
+                                    {item.price.toLocaleString('ru-RU')} ₽
                                 </div>
-                            )}
-                            <div className="text-2xl font-display font-semibold text-slate-900">
-                                {item.price != null ? `${item.price.toLocaleString('ru-RU')} ₽` : '—'}
                             </div>
+                            {hasDownload ? (
+                                <a
+                                    href={item.download_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn-primary inline-flex items-center gap-2"
+                                >
+                                    <Download size={18} />
+                                    Скачать
+                                </a>
+                            ) : hasLink ? (
+                                <a
+                                    href={item.link_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn-primary"
+                                >
+                                    Перейти
+                                </a>
+                            ) : (
+                                <Button variant="primary" onClick={() => onContact(item, selected)}>
+                                    Связаться
+                                </Button>
+                            )}
                         </div>
-                        <Button variant="primary" onClick={() => onContact(item, selected)}>
-                            Связаться
-                        </Button>
-                    </div>
-                )}
+                    ) : (
+                        hasDownload ? (
+                            <a
+                                href={item.download_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-primary w-full justify-center inline-flex items-center gap-2"
+                            >
+                                <Download size={18} />
+                                Скачать
+                            </a>
+                        ) : hasLink ? (
+                            <a
+                                href={item.link_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-primary w-full justify-center"
+                            >
+                                Перейти
+                            </a>
+                        ) : (
+                            <Button
+                                variant="primary"
+                                className="w-full"
+                                onClick={() => onContact(item, selected)}
+                            >
+                                Связаться
+                            </Button>
+                        )
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -198,7 +244,6 @@ const MarketView = () => {
                 <div>
                     <div className="section-kicker mb-2">для ведущих</div>
                     <h1 className="text-3xl font-light text-slate-900 mb-1">Магазин</h1>
-                    <p className="text-slate-500">Товары напрямую от производителя</p>
                 </div>
                 {!loading && items.length > 0 && (
                     <div className="text-right hidden md:block">

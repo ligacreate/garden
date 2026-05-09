@@ -721,7 +721,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
     };
 
     return (
-        <div className="h-full pb-20 pt-6 px-4 lg:px-0">
+        <div className="h-full pb-20 pt-6 px-4 sm:px-6 lg:px-8 xl:px-12">
             <div className="space-y-6">
                 <div className="flex justify-between items-end mb-8 animate-in fade-in duration-700">
                     <div>

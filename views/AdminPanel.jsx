@@ -435,7 +435,16 @@ const ShopAdmin = ({ onNotify }) => {
             >
                 <div className="space-y-4">
                     <Input label="Название *" value={form.name} onChange={f('name')} placeholder="Название товара" />
-                    <Input label="Описание" value={form.description} onChange={f('description')} placeholder="Короткое описание" />
+                    <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-widest text-slate-400 ml-1">Описание</label>
+                        <textarea
+                            value={form.description}
+                            onChange={f('description')}
+                            rows={6}
+                            placeholder="Многострочный текст. URL вида https://… станут кликабельными, переносы строк сохранятся."
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-700 text-sm resize-y"
+                        />
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         <Input label="Цена (₽) *" type="number" value={form.price} onChange={f('price')} placeholder="3500" />
                         <Input label="Старая цена (₽)" type="number" value={form.old_price} onChange={f('old_price')} placeholder="4900" />

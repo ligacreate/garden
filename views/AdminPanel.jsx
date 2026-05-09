@@ -450,15 +450,7 @@ const ShopAdmin = ({ onNotify }) => {
                         <Input label="Старая цена (₽)" type="number" value={form.old_price} onChange={f('old_price')} placeholder="4900" />
                     </div>
                     <Input label="Ссылка на фото" value={form.image_url} onChange={f('image_url')} placeholder="https://..." />
-                    <div className="grid grid-cols-2 gap-4">
-                        <Input label="Telegram" value={form.contact_telegram} onChange={f('contact_telegram')} placeholder="@username" />
-                        <Input label="WhatsApp" value={form.contact_whatsapp} onChange={f('contact_whatsapp')} placeholder="79001234567" />
-                    </div>
-                    <div className="bg-blue-50/60 rounded-2xl p-4 space-y-3">
-                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Для товаров со скидкой по промокоду</div>
-                        <Input label="Промокод" value={form.promo_code} onChange={f('promo_code')} placeholder="GARDEN50" />
-                        <Input label="Ссылка перехода" value={form.link_url} onChange={f('link_url')} placeholder="https://izdatelstvo.skrebeyko.ru/..." />
-                    </div>
+                    <Input label="Telegram" value={form.contact_telegram} onChange={f('contact_telegram')} placeholder="@username" />
                     <div className="bg-purple-50/60 rounded-2xl p-4 space-y-3">
                         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Для цифровых товаров (скачать по ссылке)</div>
                         <Input label="URL для скачивания" value={form.download_url} onChange={f('download_url')} placeholder="https://drive.google.com/..." />

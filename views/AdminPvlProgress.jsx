@@ -12,6 +12,7 @@ import {
     groupBySubmissionId,
     defaultStudentFilename,
     buildWeeksById,
+    buildLessonsById,
     effectiveModuleNumber,
 } from '../utils/pvlHomeworkReport';
 
@@ -142,6 +143,7 @@ function ReportDownloadButton({
     homeworkItems,
     contentItems,
     weeks,
+    lessons,
     mentorsById,
     onError,
 }) {
@@ -152,16 +154,17 @@ function ReportDownloadButton({
 
     const modules = useMemo(() => {
         const weeksById = buildWeeksById(weeks);
+        const lessonsById = buildLessonsById(lessons);
         const set = new Set();
         for (const hi of homeworkItems || []) {
             if (!hi) continue;
             if (hi.item_type && hi.item_type !== 'homework') continue;
             if (hi.is_control_point) continue;
-            const m = effectiveModuleNumber(hi, weeksById);
+            const m = effectiveModuleNumber(hi, weeksById, lessonsById);
             if (m != null) set.add(Number(m));
         }
         return [...set].sort((a, b) => a - b);
-    }, [homeworkItems, weeks]);
+    }, [homeworkItems, weeks, lessons]);
 
     const handlePick = async (moduleFilter) => {
         if (loading) return;
@@ -181,6 +184,7 @@ function ReportDownloadButton({
                 statusHistoryBySubmission: historyByS,
                 contentItems,
                 weeks,
+                lessons,
                 mentorsById,
             });
             const moduleSlug = moduleFilter === 'all' ? 'все_модули' : `Модуль_${moduleFilter}`;
@@ -242,6 +246,7 @@ function BulkExportButton({
     homeworkItems,
     contentItems,
     weeks,
+    lessons,
     mentorsById,
     onError,
 }) {
@@ -253,16 +258,17 @@ function BulkExportButton({
 
     const modules = useMemo(() => {
         const weeksById = buildWeeksById(weeks);
+        const lessonsById = buildLessonsById(lessons);
         const set = new Set();
         for (const hi of homeworkItems || []) {
             if (!hi) continue;
             if (hi.item_type && hi.item_type !== 'homework') continue;
             if (hi.is_control_point) continue;
-            const m = effectiveModuleNumber(hi, weeksById);
+            const m = effectiveModuleNumber(hi, weeksById, lessonsById);
             if (m != null) set.add(Number(m));
         }
         return [...set].sort((a, b) => a - b);
-    }, [homeworkItems, weeks]);
+    }, [homeworkItems, weeks, lessons]);
 
     const total = visibleStudents?.length || 0;
 
@@ -296,6 +302,7 @@ function BulkExportButton({
                     statusHistoryBySubmission: historyByS,
                     contentItems,
                     weeks,
+                    lessons,
                     mentorsById,
                 });
                 files.set(defaultStudentFilename({ student, moduleNumber: moduleFilter }), md);
@@ -370,6 +377,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
     const [homeworkItems, setHomeworkItems] = useState([]);
     const [contentItems, setContentItems] = useState([]);
     const [weeks, setWeeks] = useState([]);
+    const [lessons, setLessons] = useState([]);
     const [mentorsById, setMentorsById] = useState(null);
     const [reportError, setReportError] = useState(null);
 
@@ -433,15 +441,17 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
             wrap('listHomeworkItems', pvlPostgrestApi.listHomeworkItems()),
             wrap('listContentItems', pvlPostgrestApi.listContentItems()),
             wrap('listCourseWeeks', pvlPostgrestApi.listCourseWeeks()),
-        ]).then(([items, content, ws]) => {
+            wrap('listCourseLessons', pvlPostgrestApi.listCourseLessons()),
+        ]).then(([items, content, ws, lessonsResp]) => {
             if (cancelled) return;
-            const firstErr = [items, content, ws].find((x) => x && x.__error)?.__error;
+            const firstErr = [items, content, ws, lessonsResp].find((x) => x && x.__error)?.__error;
             if (firstErr) {
                 setReportError(`Не удалось подгрузить данные для отчёта: ${formatError(firstErr)}`);
             }
             const safeItems = Array.isArray(items) ? items : [];
             const safeContent = Array.isArray(content) ? content : [];
             const safeWeeks = Array.isArray(ws) ? ws : [];
+            const safeLessons = Array.isArray(lessonsResp) ? lessonsResp : [];
             if (safeItems[0]) {
                 // eslint-disable-next-line no-console
                 console.info(`${tag} sample homework_item`, safeItems[0]);
@@ -450,9 +460,14 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                 // eslint-disable-next-line no-console
                 console.info(`${tag} sample course_week`, safeWeeks[0]);
             }
+            if (safeLessons[0]) {
+                // eslint-disable-next-line no-console
+                console.info(`${tag} sample course_lesson`, safeLessons[0]);
+            }
             setHomeworkItems(safeItems);
             setContentItems(safeContent);
             setWeeks(safeWeeks);
+            setLessons(safeLessons);
         });
         api.getUsers?.()
             .then((users) => {
@@ -549,6 +564,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                         homeworkItems={homeworkItems}
                         contentItems={contentItems}
                         weeks={weeks}
+                        lessons={lessons}
                         mentorsById={mentorsById}
                         onError={(err) => setReportError(formatError(err))}
                     />
@@ -664,6 +680,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                                             homeworkItems={homeworkItems}
                                             contentItems={contentItems}
                                             weeks={weeks}
+                                            lessons={lessons}
                                             mentorsById={mentorsById}
                                             onError={(err) => setReportError(formatError(err))}
                                         />

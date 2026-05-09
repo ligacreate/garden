@@ -84,17 +84,40 @@ export function buildWeeksById(weeks) {
     return byId;
 }
 
+export function buildLessonsById(lessons) {
+    const byId = new Map();
+    for (const l of lessons || []) {
+        if (l?.id) byId.set(String(l.id), l);
+    }
+    return byId;
+}
+
 /**
- * Модуль ДЗ. Прямое поле `homework_item.module_number` может быть NULL
- * (backfill в phase 25 заполняет только записи с подходящим title-regex).
- * Фолбэк — `pvl_course_weeks.module_number` по `week_id`.
+ * Модуль ДЗ. Цепочка фолбэков:
+ *   1) homework_item.module_number (phase 25 backfill из title)
+ *   2) pvl_course_weeks.module_number по week_id
+ *   3) pvl_course_lessons.module_number по lesson_id
+ *   4) pvl_course_weeks по lesson.week_id (если у lesson нет module_number)
+ * Возвращает null если ни один путь не сработал.
  */
-export function effectiveModuleNumber(homeworkItem, weeksById) {
-    if (homeworkItem?.module_number != null) return Number(homeworkItem.module_number);
-    const weekId = homeworkItem?.week_id;
+export function effectiveModuleNumber(homeworkItem, weeksById, lessonsById) {
+    if (!homeworkItem) return null;
+    if (homeworkItem.module_number != null) return Number(homeworkItem.module_number);
+
+    const weekId = homeworkItem.week_id;
     if (weekId && weeksById) {
         const w = weeksById.get(String(weekId));
         if (w?.module_number != null) return Number(w.module_number);
+    }
+
+    const lessonId = homeworkItem.lesson_id;
+    if (lessonId && lessonsById) {
+        const l = lessonsById.get(String(lessonId));
+        if (l?.module_number != null) return Number(l.module_number);
+        if (l?.week_id && weeksById) {
+            const lw = weeksById.get(String(l.week_id));
+            if (lw?.module_number != null) return Number(lw.module_number);
+        }
     }
     return null;
 }
@@ -326,10 +349,12 @@ export function buildStudentMarkdownReport({
     statusHistoryBySubmission,
     contentItems,
     weeks,
+    lessons,
     mentorsById,
 }) {
     const contentItemsById = buildContentItemMap(contentItems);
     const weeksById = buildWeeksById(weeks);
+    const lessonsById = buildLessonsById(lessons);
     const submissionByItemId = new Map();
     for (const s of submissions || []) {
         const hwId = s?.homework_item_id;
@@ -353,10 +378,10 @@ export function buildStudentMarkdownReport({
             if (hi.is_control_point) return false;
             return true;
         })
-        .map((hi) => ({ ...hi, __module: effectiveModuleNumber(hi, weeksById) }))
+        .map((hi) => ({ ...hi, __module: effectiveModuleNumber(hi, weeksById, lessonsById) }))
         .sort((a, b) => {
-            const ma = Number(a.__module ?? Infinity);
-            const mb = Number(b.__module ?? Infinity);
+            const ma = a.__module == null ? Infinity : Number(a.__module);
+            const mb = b.__module == null ? Infinity : Number(b.__module);
             if (ma !== mb) return ma - mb;
             const sa = Number(a?.sort_order ?? Infinity);
             const sb = Number(b?.sort_order ?? Infinity);

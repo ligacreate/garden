@@ -1605,9 +1605,9 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                         )}
                     </div>
                 )}
-            </div>
 
                 {tab === 'shop' && <ShopAdmin onNotify={onNotify} />}
+            </div>
 
             <ConfirmationModal
                 isOpen={confirmModal.isOpen}

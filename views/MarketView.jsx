@@ -26,35 +26,48 @@ const DiscountBadge = ({ price, oldPrice }) => {
     );
 };
 
-const PromoCode = ({ code }) => {
-    const [copied, setCopied] = useState(false);
-    const copy = () => {
-        navigator.clipboard.writeText(code).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        });
-    };
-    return (
-        <button
-            onClick={copy}
-            className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-left transition-colors hover:bg-blue-100"
-        >
-            <span className="text-xs text-slate-400 uppercase tracking-widest whitespace-nowrap">Промокод</span>
-            <span className="font-mono font-bold text-blue-700 tracking-wider">{code}</span>
-            {copied && <span className="ml-auto text-[10px] text-blue-400 whitespace-nowrap">скопировано</span>}
-        </button>
-    );
-};
+/**
+ * Описание товара может содержать переносы строк (\n) и URL'ы
+ * (https://... | http://...). Регексп режет текст на куски,
+ * URL-куски рендерятся как <a>, остальное — текст. Никакого
+ * markdown-парсера — простая замена. По продуктовому решению
+ * Ольги (2026-05-09): промокоды хранятся прямо в тексте описания.
+ */
+const URL_RE = /(https?:\/\/[^\s)]+)/g;
+function renderDescriptionWithLinks(text) {
+    if (!text) return null;
+    const parts = text.split(URL_RE);
+    return parts.map((p, i) => {
+        if (URL_RE.test(p)) {
+            URL_RE.lastIndex = 0;
+            return (
+                <a
+                    key={i}
+                    href={p}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-700 underline hover:text-emerald-800"
+                >
+                    {p}
+                </a>
+            );
+        }
+        return p;
+    });
+}
 
 const ProductCard = ({ item, onContact }) => {
     const [selected, setSelected] = useState(null);
     const opts = item.options;
     const hasOpts = opts?.label && Array.isArray(opts.values) && opts.values.length > 0;
     /** Приоритет действия: download_url → link_url → contact. Промокод
-     *  показывается независимо как чип, если задан. */
+     *  по новому решению (2026-05-09) живёт в тексте описания, отдельно
+     *  не рендерится — поле `shop_items.promo_code` остаётся в схеме как
+     *  legacy, но UI его игнорирует. */
     const hasDownload = Boolean(item.download_url);
     const hasLink = Boolean(item.link_url);
     const hasPrice = item.price != null;
+    const hasDesc = Boolean(item.description);
 
     return (
         <div className="surface-card flex flex-col overflow-hidden">
@@ -69,11 +82,13 @@ const ProductCard = ({ item, onContact }) => {
                 {item.old_price && <DiscountBadge price={item.price} oldPrice={item.old_price} />}
             </div>
 
-            <div className="p-6 flex flex-col flex-1">
+            <div className="px-6 pt-6 pb-10 flex flex-col">
                 <h3 className="text-lg font-display font-semibold text-slate-900 mb-1">{item.name}</h3>
 
-                {item.description && (
-                    <p className="text-sm text-slate-500 mb-4 flex-1">{item.description}</p>
+                {hasDesc && (
+                    <p className="text-sm text-slate-500 mb-5 whitespace-pre-line">
+                        {renderDescriptionWithLinks(item.description)}
+                    </p>
                 )}
 
                 {hasOpts && (
@@ -98,48 +113,46 @@ const ProductCard = ({ item, onContact }) => {
                     </div>
                 )}
 
-                <div className="mt-auto pt-2 space-y-3">
-                    {item.promo_code && <PromoCode code={item.promo_code} />}
-
-                    {hasPrice ? (
-                        <div className="flex items-end justify-between gap-3">
-                            <div>
-                                {item.old_price && (
-                                    <div className="text-xs text-slate-400 line-through mb-0.5">
-                                        {item.old_price.toLocaleString('ru-RU')} ₽
-                                    </div>
-                                )}
-                                <div className="text-2xl font-display font-semibold text-slate-900">
-                                    {item.price.toLocaleString('ru-RU')} ₽
+                {hasPrice ? (
+                    <div className="flex items-end justify-between gap-3 pt-3">
+                        <div>
+                            {item.old_price && (
+                                <div className="text-xs text-slate-400 line-through mb-0.5">
+                                    {item.old_price.toLocaleString('ru-RU')} ₽
                                 </div>
-                            </div>
-                            {hasDownload ? (
-                                <a
-                                    href={item.download_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="btn-primary inline-flex items-center gap-2"
-                                >
-                                    <Download size={18} />
-                                    Скачать
-                                </a>
-                            ) : hasLink ? (
-                                <a
-                                    href={item.link_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="btn-primary"
-                                >
-                                    Перейти
-                                </a>
-                            ) : (
-                                <Button variant="primary" onClick={() => onContact(item, selected)}>
-                                    Связаться
-                                </Button>
                             )}
+                            <div className="text-2xl font-display font-semibold text-slate-900">
+                                {item.price.toLocaleString('ru-RU')} ₽
+                            </div>
                         </div>
-                    ) : (
-                        hasDownload ? (
+                        {hasDownload ? (
+                            <a
+                                href={item.download_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-primary inline-flex items-center gap-2"
+                            >
+                                <Download size={18} />
+                                Скачать
+                            </a>
+                        ) : hasLink ? (
+                            <a
+                                href={item.link_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-primary"
+                            >
+                                Перейти
+                            </a>
+                        ) : (
+                            <Button variant="primary" onClick={() => onContact(item, selected)}>
+                                Связаться
+                            </Button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="pt-3">
+                        {hasDownload ? (
                             <a
                                 href={item.download_url}
                                 target="_blank"
@@ -166,9 +179,9 @@ const ProductCard = ({ item, onContact }) => {
                             >
                                 Связаться
                             </Button>
-                        )
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

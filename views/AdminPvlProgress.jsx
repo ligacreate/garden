@@ -417,7 +417,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
     useEffect(() => {
         if (!pvlPostgrestApi.isEnabled?.()) return undefined;
         let cancelled = false;
-        const tag = '[FEAT-016 report]';
+        const tag = '[FEAT-016 report v2]';
         const wrap = (label, p) => p
             .then((v) => {
                 // eslint-disable-next-line no-console

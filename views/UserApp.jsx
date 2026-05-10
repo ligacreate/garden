@@ -8,12 +8,14 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
+import ViewLoading from '../components/ViewLoading';
 import StatsDashboardView from './StatsDashboardView';
 import MeetingsView from './MeetingsView';
 import PracticesView from './PracticesView';
 /** Библиотека (включая AL Camp / ПВЛ) грузится отдельным чанком — сад не падает, если в ПВЛ ошибка */
 const CourseLibraryView = lazy(() => import('./CourseLibraryView'));
-import BuilderView from './BuilderView';
+/** Phase 2A — Builder открывается эпизодически, тянет jspdf+html2canvas. */
+const BuilderView = lazy(() => import('./BuilderView'));
 import CRMView from './CRMView';
 import MarketView from './MarketView';
 import MapView from './MapView';
@@ -962,7 +964,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             />
                         </Suspense>
                     )}
-                    {view === 'builder' && <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} onCompleteLeagueScenario={handleLeagueScenarioCompleted} initialTab={builderInitialTab} resetToken={builderResetToken} />}
+                    {view === 'builder' && (
+                        <Suspense fallback={<ViewLoading label="Открываем конструктор…" />}>
+                            <BuilderView user={user} practices={practices} timeline={timeline} setTimeline={setTimeline} onNotify={onNotify} onSave={handleScenarioAdded} onCompleteLeagueScenario={handleLeagueScenarioCompleted} initialTab={builderInitialTab} resetToken={builderResetToken} />
+                        </Suspense>
+                    )}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
                     {view === 'market' && <MarketView />}
                     {view === 'map' && (

@@ -8,6 +8,7 @@ import { getRoleLabel } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { normalizeSkills } from '../utils/skills';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { api } from '../services/dataService';
 
 const TagsInput = ({ label, value = [], onChange, placeholder = "Добавить...", options = [] }) => {
     const [input, setInput] = useState('');
@@ -238,7 +239,6 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
         if (!avatarPickPending?.file) return;
         try {
             setSavingPendingAvatar(true);
-            const { api } = await import('../services/dataService');
             const url = await api.uploadAvatar(avatarPickPending.file);
             onUpdateProfile({
                 ...user,
@@ -273,8 +273,7 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
 
         if (isEditing) {
             try {
-                const { api } = await import('../services/dataService');
-                const url = await api.uploadAvatar(file);
+                    const url = await api.uploadAvatar(file);
                 onUpdateProfile({ ...user, avatar: url, avatar_focus_x: 50, avatar_focus_y: 50 });
                 setForm((f) => ({ ...f, avatar_focus_x: 50, avatar_focus_y: 50 }));
             } catch (err) {
@@ -303,7 +302,6 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
         }
         try {
             setPasswordForm(prev => ({ ...prev, loading: true }));
-            const { api } = await import('../services/dataService');
             await api.updatePassword(passwordForm.next);
             setPasswordForm({ next: '', confirm: '', loading: false });
             onNotify("Пароль обновлен");

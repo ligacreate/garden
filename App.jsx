@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Toast from './components/Toast';
+import ViewLoading from './components/ViewLoading';
 import AuthScreen from './views/AuthScreen';
-import AdminPanel from './views/AdminPanel';
 import UserApp from './views/UserApp';
 import SubscriptionExpiredScreen from './views/SubscriptionExpiredScreen';
 import { INITIAL_KNOWLEDGE } from './data/data';
 import { api } from './services/dataService';
+
+// Phase 2A — lazy admin chunk: AdminPanel (с вложенным
+// AdminPvlProgress) грузится только при заходе админа.
+const AdminPanel = lazy(() => import('./views/AdminPanel'));
 
 const HIDDEN_GARDEN_USERS_KEY = 'garden_hidden_user_ids';
 
@@ -494,7 +498,7 @@ export default function App() {
                         <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
                     )
                 )
-                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
+                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <Suspense fallback={<ViewLoading label="Загружаем админку…" />}><AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);
                         showNotification("Список пользователей обновлен");
@@ -560,7 +564,7 @@ export default function App() {
                             console.error(e);
                             showNotification(e.message || "Ошибка публикации");
                         }
-                    }} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} />
+                    }} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
                         : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
             </div>
         </div>

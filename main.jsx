@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { installGlobalErrorHandlers } from './utils/clientErrorReporter.js'
+
+// MON-001 — ставим обработчики ДО createRoot.render, чтобы поймать
+// ошибки самого React init, а не только runtime'а после mount.
+installGlobalErrorHandlers();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

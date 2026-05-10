@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportClientError } from '../utils/clientErrorReporter.js';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -13,6 +14,12 @@ class ErrorBoundary extends React.Component {
     componentDidCatch(error, errorInfo) {
         this.setState({ error, errorInfo });
         console.error("Uncaught error:", error, errorInfo);
+        reportClientError({
+            source: 'ErrorBoundary',
+            message: error?.message || String(error),
+            stack: error?.stack || '',
+            extra: { componentStack: errorInfo?.componentStack || '' },
+        });
     }
 
     render() {

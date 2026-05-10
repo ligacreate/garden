@@ -46,7 +46,7 @@ related_docs:
 В порядке:
 1. TEST-001: базовые тесты на критичные потоки (login,
    регистрация, открытие курса) — БЛОКЕР ДЛЯ РЕФАКТОРИНГА
-2. MON-001: Sentry или аналог — видимость на прод-ошибки
+2. ~~MON-001: Sentry или аналог~~ → 🟢 DONE 2026-05-10 (свой reporter в TG @garden_grants_monitor_bot)
 3. CLEAN-001 до CLEAN-006: чистка legacy и mock-данных
 4. INFRA-002: создать docs/INFRASTRUCTURE.md
 5. DOC-001 до DOC-002: обновить документацию проекта
@@ -2422,11 +2422,58 @@ related_docs:
   AUDIT-001 (code review meetings).
   (pre-flight 14.0)
 
-### MON-001: Поставить Sentry
-- **Статус:** 🔴 TODO
-- **Контекст:** Сейчас нет видимости на прод-ошибки. 186
-  console.log в коде вместо нормального мониторинга.
-- **Связано:** PROJECT_PASSPORT.md, проблемная зона
+### MON-001: Client-side error reporter → @garden_grants_monitor_bot
+- **Статус:** 🟢 DONE (2026-05-10)
+- **Приоритет:** P1
+- **Решение:** свой reporter вместо Sentry — `window.error` /
+  `unhandledrejection` / `ErrorBoundary.componentDidCatch` шлют
+  payload на `auth.skrebeyko.ru/api/client-error` → Telegram-канал
+  `@garden_grants_monitor_bot` (тот же бот, что у SEC-014
+  `check_grants.sh`). Без внешних SaaS, креды и инфра
+  переиспользуются.
+- **Frontend:**
+  - `utils/clientErrorReporter.js` — POST с keepalive, локальный
+    rate-limit 60s/ключ через `sessionStorage` (макс 50 уник.
+    ключей в сессии), антирекурсия через `inFlight`-flag.
+  - `main.jsx` — `installGlobalErrorHandlers()` ДО
+    `createRoot.render` (ловит ошибки React init).
+  - `components/ErrorBoundary.jsx` — `reportClientError` в
+    `componentDidCatch`.
+  - `vite.config.js` — `define.__BUILD_ID__` =
+    `process.env.GITHUB_SHA || BUILD_ID || YYYYMMDDHHMMSS`. На
+    GitHub Actions подставляется full SHA коммита (подтверждено
+    smoke: payload.bundleId = `4ae645bda5dbd2a026871dbe9afb7f9538802a4d`).
+- **Backend (`/opt/garden-auth/server.js`):**
+  - `POST /api/client-error` — валидация + per-IP rate-limit
+    (60s окно дедупа + 50/час потолок) + лог-line в
+    `/var/log/garden-client-errors.log` (audit-trail) + отправка
+    в TG.
+  - `GET /api/health` — простой ok-response без DB-зависимости
+    (для post-deploy smoke).
+  - **Сетевая особенность:** TG-fetch через
+    `https.request({ family: 4 })` (см. INCIDENT-2026-05-10-tg-blackbox).
+  - logrotate weekly × 8.
+- **CI (`.github/workflows/deploy.yml`):**
+  - Post-FTP smoke: `<title>` + bundle URL доступны →
+    отлавливает FTP-truncate.
+- **Smoke (Ольга через Claude in Chrome, 2026-05-10):**
+  - 3 throw'a → 3 TG-сообщения с разными timestamp в message;
+  - frontend dedup проверен на одинаковом message;
+  - bundle на проде `index-4OpZcjJF.js` ≠ старый T_WhJoLY
+    (BUILD_ID = full SHA подтверждён).
+- **Backend deploy:** через ssh root@5.129.251.56 (без локального
+  репо `garden-auth` — он отстал от прода). Backup
+  `/opt/garden-auth/server.js.bak.2026-05-10-pre-mon001`.
+- **Артефакты сессии:** `docs/_session/2026-05-10_02..._06`
+  (стратег↔executor переписка по P1-связке).
+- **Коммиты:**
+  - `eb8dd70` — frontend reporter (MON-001).
+  - `5ef8488` — post-deploy smoke check.
+  - `aba8384` — _session переписка P1 backend deploy.
+  - `4ae645b` — backlog (daily wipe + TG blackbox + auth backups).
+- **Связано:** SEC-014 (тот же TG-канал и `check_grants.sh`-style
+  alerts); INFRA-005 (закрыт без hardening, ждём первого
+  MON-001-инцидента).
 
 ### TEST-001: Базовое тестирование
 - **Статус:** 🔴 TODO
@@ -2497,6 +2544,34 @@ related_docs:
   defense-in-depth. Можно оставить.
 - **Артефакты сессии:** `docs/_session/2026-05-08_01..._06` (recon →
   Path B `.htaccess` → Path C ISPmanager → meta-tags workaround → тикет).
+
+### INFRA-005-SW-CACHE: SW agressive caching как причина ChunkLoadError у Марины
+- **Статус:** 🟢 RESOLVED-as-no-action (2026-05-10)
+- **Приоритет:** P2 (был, при заведении выглядел реальной угрозой)
+- **Создано:** 2026-05-09 (после жалобы Марины на ChunkLoadError
+  без возможности достать stack-trace)
+- **Закрыто:** 2026-05-10 (recon показал — текущий sw.js не
+  кэширует bundles; гипотеза «зомби-SW» не подтвердилась)
+- **Recon (2026-05-10):**
+  - `git log -- public/sw.js` — две версии в истории, обе **без**
+    перехвата bundle-запросов:
+    - `8bb03bf` (2026-05-03): только install/activate/push/notificationclick.
+    - `bf57606` (2026-05-03): + `caches.delete` всех ключей на
+      activate + network-first для navigate.
+  - `fetch` listener никогда не делал `caches.put` для
+    `assets/index-*.js` → агрессивного кэша bundle'ов **не было**.
+- **Решение:** не делаем hardening (kill-switch / версионирование
+  sw.js) без живой жертвы. Реальную причину ChunkLoadError у
+  Марины достанем через MON-001, когда первый stack прилетит в
+  TG-канал. Тогда станет ясно — SW, FTP-truncate, hash-collision
+  или что-то третье.
+- **Why no-action:** «один раз сделать правильно, не три раза
+  переписывать SW по гипотезам». Текущий `sw.js` корректен.
+- **Связано:** MON-001 (даст stack для первого реального
+  ChunkLoadError); BUG-004 (тот же класс симптомов, закрыт в
+  2026-05-03 commit `bf57606`).
+- **Артефакты:** `docs/_session/2026-05-10_03_codeexec_p1_apply_report.md`
+  (раздел «Recon INFRA-005»).
 
 ### PROD-DB-MIGRATE-ISPMANAGER: миграция БД с Timeweb Cloud на ISPmanager-shared
 - **Статус:** 💡 IDEA (не TODO — для запоминания)
@@ -3235,3 +3310,72 @@ related_docs:
   стратегом (claude.ai) и executor'ом (Claude Code). Стратег пишет
   файлы напрямую, executor читает с диска. Реально снизил трафик
   копий между чатами в ~2 раза. Держится.
+
+#### 2026-05-10
+- **P1-связка MON-001 + INFRA-005 закрыта.** End-to-end путь от
+  `window.error` в браузере до сообщения в `@garden_grants_monitor_bot`
+  работает. Smoke (Ольга через Claude in Chrome): 3 throw'a → 3 TG
+  сообщения, frontend dedup на одинаковом message OK,
+  `bundleId = 4ae645bda5dbd2a026871dbe9afb7f9538802a4d` (full SHA из
+  GITHUB_SHA через vite define).
+- **MON-001:** свой reporter без Sentry — frontend
+  (`utils/clientErrorReporter.js`, rate-limit 60s через sessionStorage,
+  keepalive fetch, антирекурсия), backend
+  (`POST /api/client-error` на `auth.skrebeyko.ru` с per-IP rate-limit,
+  лог в `/var/log/garden-client-errors.log`, отправка в TG через
+  `https.request({ family: 4 })`), CI (post-deploy smoke check).
+  Backend задеплоен через ssh без локального репо
+  (`/Users/user/vibecoding/garden-auth/` отстал — TECH-DEBT-AUTH-REPO-SYNC).
+- **INFRA-005-SW-CACHE:** закрыт без hardening. Recon показал, что
+  текущий `public/sw.js` никогда не кэшировал bundle-запросы — гипотеза
+  «зомби-SW у Марины» не подтвердилась. Реальную причину
+  ChunkLoadError достанем через MON-001 при первом инциденте.
+- **Side-discovery (важное):** в процессе deploy backend нашли
+  серверную блокировку `api.telegram.org` — с msk-1-vm-423o доступен
+  только один IP (`149.154.167.220`), DNS отдаёт другие → timeout.
+  **TG-blackbox 2026-05-06 → 2026-05-10:** `check_grants.sh` 5 раз
+  не смог отправить grants-wipe alert. Починено
+  `/etc/hosts pin` + `https.request(family:4)` (обходит undici
+  happy-eyeballs, который ловит ENETUNREACH на IPv6).
+- **Side-discovery (критическое):** видимый из лога monitor'а
+  паттерн — **GRANT-wipe authenticated/web_anon ровно в 13:10:01
+  UTC каждый день** с 06.05 по 10.05 (5 событий). Recovery
+  отрабатывает за 10–20 секунд (SEC-014), но окно outage
+  ежедневное. Root cause неизвестна — нужен Timeweb support.
+  Заведено INCIDENT-DAILY-GRANTS-WIPE-13:10-UTC (P1).
+- **Открытия (новые тикеты):**
+  - **INCIDENT-DAILY-GRANTS-WIPE-13:10-UTC** (P1, OPEN) — нужен
+    тикет в Timeweb support. Журнал:
+    `docs/journal/INCIDENT_2026-05-10_daily_grants_wipe.md`.
+  - **INCIDENT-2026-05-10-tg-blackbox** (P1, RESOLVED самим
+    заходом) — журнал
+    `docs/journal/INCIDENT_2026-05-10_tg_blackbox.md`.
+  - **INFRA-007-TG-IP-MONITORING** (P3) — fallback-пул IP для
+    TG-API + ротация в /etc/hosts при потере основного.
+  - **TECH-DEBT-AUTH-REPO-SYNC** (P3) — синхронизировать
+    `/Users/user/vibecoding/garden-auth/` с прод-кодом, чтобы
+    править через git, а не scp.
+  - **TECH-DEBT-AUTH-BACKUPS-CLEAN** (P3) — журнал
+    `docs/journal/TECH_DEBT_2026-05-10_auth_backups_clean.md`.
+- **Закрытия:**
+  - **MON-001** → 🟢 DONE.
+  - **INFRA-005-SW-CACHE** → 🟢 RESOLVED-as-no-action.
+- **Все коммиты сессии 2026-05-10** (4 шт., все push'нуты):
+  - `eb8dd70` — feat(monitoring): client-side error reporter (MON-001).
+  - `5ef8488` — chore(ci): post-deploy smoke check.
+  - `aba8384` — chore(docs): _session переписка P1 backend deploy.
+  - `4ae645b` — docs(journal): backlog по P1 backend deploy
+    (daily wipe + TG blackbox + auth backups).
+- **Артефакты сессии:**
+  - `utils/clientErrorReporter.js` (новый)
+  - `main.jsx`, `components/ErrorBoundary.jsx`, `vite.config.js`
+    (изменены)
+  - `.github/workflows/deploy.yml` (smoke check)
+  - `/opt/garden-auth/server.js` (на сервере, backup
+    `.bak.2026-05-10-pre-mon001`)
+  - `/etc/hosts` на 5.129.251.56 (pin
+    `149.154.167.220 api.telegram.org`)
+  - `/etc/logrotate.d/garden-client-errors` (weekly × 8)
+  - 5 файлов `docs/_session/2026-05-10_02..._06`
+  - 3 журнала в `docs/journal/INCIDENT_2026-05-10_*` +
+    `TECH_DEBT_2026-05-10_*`

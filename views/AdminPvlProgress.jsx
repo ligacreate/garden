@@ -295,27 +295,33 @@ function BulkExportButton({
         setLoading(true);
         setProgress(0);
         try {
-            const submissionsByStudent = [];
-            for (let i = 0; i < visibleStudents.length; i += 1) {
-                const s = visibleStudents[i];
-                // eslint-disable-next-line no-await-in-loop
-                const subs = await pvlPostgrestApi.listStudentHomeworkSubmissions(s.student_id);
-                submissionsByStudent.push(subs);
-                setProgress(i + 1);
+            const studentIds = visibleStudents.map((s) => s.student_id).filter(Boolean);
+            // Один batch-запрос на все submissions вместо N последовательных.
+            // Старый сценарий: 14 студенток × ~3 минуты на запрос = 45 минут.
+            const allSubmissions = await pvlPostgrestApi.listStudentHomeworkSubmissionsBulk(studentIds);
+            const submissionsByStudentId = new Map();
+            for (const sub of allSubmissions) {
+                const sid = String(sub.student_id);
+                if (!submissionsByStudentId.has(sid)) submissionsByStudentId.set(sid, []);
+                submissionsByStudentId.get(sid).push(sub);
             }
-            const allSubmissionIds = submissionsByStudent.flat().map((s) => s.id).filter(Boolean);
+            setProgress(Math.floor(total / 2));
+
+            const allSubmissionIds = allSubmissions.map((s) => s.id).filter(Boolean);
             const history = await pvlPostgrestApi.listHomeworkStatusHistoryBulk(allSubmissionIds);
             const historyByS = groupBySubmissionId(history);
+            setProgress(total);
 
             const files = new Map();
-            visibleStudents.forEach((student, idx) => {
+            for (const student of visibleStudents) {
+                const subs = submissionsByStudentId.get(String(student.student_id)) || [];
                 const md = buildStudentMarkdownReport({
                     student,
                     mentorName: student.mentor_name,
                     cohortTitle,
                     moduleNumber: moduleFilter,
                     homeworkItems,
-                    submissions: submissionsByStudent[idx] || [],
+                    submissions: subs,
                     statusHistoryBySubmission: historyByS,
                     contentItems,
                     weeks,
@@ -323,7 +329,7 @@ function BulkExportButton({
                     mentorsById,
                 });
                 files.set(defaultStudentFilename({ student, moduleNumber: moduleFilter }), md);
-            });
+            }
 
             const cohortSlug = safeFileName(cohortTitle || 'Когорта');
             const moduleSlug = moduleFilter === 'all' ? 'все_модули' : `Модуль_${moduleFilter}`;

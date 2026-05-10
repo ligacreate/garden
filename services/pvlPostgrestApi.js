@@ -419,6 +419,25 @@ export const pvlPostgrestApi = {
         });
         return asArray(rows).map((row) => ({ ...row, status: normalizeHomeworkStatusFromDb(row.status) }));
     },
+    async listStudentHomeworkSubmissionsBulk(studentIds, chunkSize = 20) {
+        const ids = Array.isArray(studentIds) ? studentIds.filter(Boolean) : [];
+        if (!ids.length) return [];
+        const out = [];
+        for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            const rows = await request('pvl_student_homework_submissions', {
+                params: {
+                    select: '*',
+                    student_id: `in.(${chunk.join(',')})`,
+                    order: 'student_id.asc,updated_at.desc',
+                },
+            });
+            for (const row of asArray(rows)) {
+                out.push({ ...row, status: normalizeHomeworkStatusFromDb(row.status) });
+            }
+        }
+        return out;
+    },
     async getHomeworkSubmission(submissionId) {
         const rows = await request('pvl_student_homework_submissions', {
             params: { select: '*', id: `eq.${submissionId}`, limit: 1 },

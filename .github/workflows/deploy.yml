@@ -53,3 +53,17 @@ jobs:
           local-dir: deploy/
           server-dir: /   # FTP user home is already /www/liga.skrebeyko.ru
           dangerous-clean-slate: true
+
+      - name: Smoke check after deploy
+        run: |
+          set -euo pipefail
+          sleep 5
+          curl -fsS https://liga.skrebeyko.ru/ -o /tmp/index.html
+          grep -q "<title>" /tmp/index.html
+          BUNDLE=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' /tmp/index.html | head -1)
+          if [ -z "$BUNDLE" ]; then
+            echo "ERROR: bundle <script> tag not found in deployed index.html"
+            exit 1
+          fi
+          curl -fsS "https://liga.skrebeyko.ru/$BUNDLE" -o /dev/null
+          echo "Deploy smoke OK: $BUNDLE"

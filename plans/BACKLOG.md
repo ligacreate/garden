@@ -1658,6 +1658,162 @@ related_docs:
   `BUG-PVL-ENSURE-RESPECTS-ROLE` (новый тикет — fix не покрывает попадание
   admin/mentor/intern в pvl_students).
 
+### BUG-PDF-EXPORT-OKLAB-FAIL: экспорт PDF в Builder падает «unsupported color function oklab»
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2
+- **Создано:** 2026-05-11 (фиксация по скриншоту Ольги 10 мая;
+  bug проявляется в BuilderView → «Экспортировать PDF»)
+- **Симптом:** при клике «Экспортировать PDF» в Конструкторе
+  пользователь видит alert «Ошибка при создании PDF».
+  В DevTools console — `Attempting to parse an unsupported color
+  function "oklab"`. PDF не скачивается.
+- **Корневая причина:** Tailwind v4 в production использует CSS
+  `color()` function с `oklab(...)` для расчёта цветов
+  (`text-slate-800`, `bg-emerald-50` и пр.). Текущая версия
+  `html2canvas` (см. `package.json`) не поддерживает `oklab()` в
+  CSS values — бросает при попытке парсинга.
+- **Почему MON-001 не ловит:** ошибка caught внутри
+  `handleExportPdf` в [`views/BuilderView.jsx`](../views/BuilderView.jsx)
+  (try/catch вокруг `await html2canvas(...)`), пользователь
+  видит alert, но это **не uncaught exception** → reporter молчит.
+- **Решения (выбрать в recon-сессии):**
+  - **A. Обновить html2canvas.** Проверить, есть ли версия с
+    поддержкой `oklab()` (или patch'и в issue tracker'е). Может
+    оказаться v2.x в beta.
+  - **B. Конвертация цветов перед export.** Перед `html2canvas`
+    клонировать DOM-узел, рекурсивно пройти computed styles, для
+    каждой `oklab(...)`-цены — пересчитать в RGB через
+    `getComputedStyle(...).color` уже отрендеренного браузером
+    (браузер сам обрабатывает oklab). Подменить inline style на
+    rgb-результат. Сложнее, но без зависимостей.
+  - **C. Print-friendly CSS.** Завести параллельную стилизацию
+    `print:bg-*` и т.п. для export-блока, использующую только
+    RGB-цвета. Дешевле, но требует поддержки в каждом UI-блоке,
+    который попадает в PDF.
+- **Влияние:** функция «Экспорт PDF» в Builder неработоспособна
+  для всех ведущих, которые её пробовали (ноль PDF за весь май).
+  Не блокирует основной flow — пользователи могут делать скриншот
+  или копировать текст.
+- **Связано:**
+  - `views/BuilderView.jsx` `handleExportPdf` (line ~247).
+  - `package.json` html2canvas ^1.4.1 (старая, oklab не поддерживает).
+  - `tailwind.config` / Tailwind v4 (генерирует oklab при build).
+  - MON-001 (object lesson: caught error не алертит, нужен явный
+    `reportClientError` в catch'е, если хочется наблюдать через
+    мониторинг).
+- **Делается отдельным заходом**, не в Phase 2B.
+
+### BUG-PVL-ADMIN-AS-MENTOR-EMPTY: учительская показывает «Список менти пуст» у admin'а
+- **Статус:** 🟢 DONE (2026-05-11, Variant C + B applied)
+- **Приоритет:** P2
+- **Создано:** 2026-05-11 утром (жалоба Ирины Одинцовой, куратор Лиги).
+- **Симптом:** Admin Ирина и потенциально другие admin/mentor
+  при первом заходе в учительскую ПВЛ видели «Список менти пуст»
+  вместо своих 3-4 студенток. У Ирины через ~2 часа без её
+  действий список появился сам.
+- **Root cause:** Race condition между **async**
+  `syncPvlActorsFromGarden` и **синхронным** первым render'ом
+  `MentorMenteesPanel` / `MentorDashboard`. useMemo для
+  `menteeRows` зависел только от `[mentorId, refreshKey]` —
+  когда sync завершался и `db.mentorProfiles[*].menteeIds`
+  заполнялся, deps не менялись → пересчёта не происходило.
+  Background re-render от Supabase Realtime websocket в Сообщениях
+  случайно триггерил пересчёт через 1-2 часа.
+- **Fix:**
+  - **Variant C** — добавить deps на флаги завершения sync:
+    `db._pvlGardenApplicantsSynced`, `db.mentorProfiles.length`,
+    `db.studentProfiles.length` в useMemo обоих компонентов.
+  - **Variant B (бонус)** — `reportClientError` (MON-001) в три
+    критичных catch'а в `services/pvlMockApi.js`:
+    `hydrateGardenMentorAssignmentsFromDb` catch,
+    `syncTrackerAndHomeworkFromDb` catch, top-level
+    `syncPvlActorsFromGarden` catch. Caught errors теперь
+    видны в TG как `🚨 Garden client error / hydrate_mentor_links
+    failed (caught)` и т.п. — больше silent fails.
+- **Параллельный cleanup:** orphan запись в `pvl_garden_mentor_links`
+  (`student_id=579a3392-...`) удалена (ничего не существует в
+  `profiles` / `users_auth` / `pvl_students`) — связано с
+  TECH-DEBT-FK-CONTRACTS (нет FK на student_id → orphan возможен).
+- **Lesson:** [`docs/lessons/2026-05-11-pvl-admin-mentor-race-condition.md`](../docs/lessons/2026-05-11-pvl-admin-mentor-race-condition.md).
+- **Артефакты сессии:** `docs/_session/2026-05-11_01..._04`.
+- **Связано:**
+  - `CLEAN-015-SUPABASE-REMOVAL` — был блокер на CLEAN-015
+    (Supabase Realtime случайно прятал race). Теперь снят.
+  - `TECH-DEBT-PVLMOCK-MIGRATE` — долгосрочно перевести
+    `pvlDomainApi.db` на observable pattern (zustand /
+    useSyncExternalStore) и убрать race структурно.
+  - `MON-002-CROSSORIGIN-VISIBILITY` — попутно завели после
+    наблюдения «Script error.» без stack в TG.
+  - `PERF-002-LAZY-JSPDF` — попутно завели (jspdf 385 KB
+    можно lazy-import в `handleExportPdf`).
+
+### MON-002-CROSSORIGIN-VISIBILITY: «Script error.» без stack в TG
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2
+- **Создано:** 2026-05-11 (после жалобы Ирины — попутное наблюдение
+  в TG-канале `@garden_grants_monitor_bot`)
+- **Симптом:** В TG приходят алерты `🚨 Garden client error /
+  Script error.` без stack/source/url-деталей. Несколько таких
+  за утро 11.05 от анонимных пользователей.
+- **Root cause:** Браузер скрывает детали JS-ошибок от cross-origin
+  скриптов (без `crossorigin="anonymous"` атрибута + CORS
+  заголовка `Access-Control-Allow-Origin` на стороне сервера).
+  Наш bundle живёт на `liga.skrebeyko.ru/assets/*`, но `<script>`
+  тэг в `index.html` не имеет `crossorigin` → `window.onerror`
+  получает обобщённое «Script error.» без полезной информации.
+- **Fix:**
+  1. В `vite.config.js` (или `index.html` шаблоне) добавить
+     `crossorigin="anonymous"` для `<script type="module">`.
+     В Vite это включается через `build.rollupOptions.output.crossOrigin: 'anonymous'`
+     либо через post-processing `index.html`.
+  2. На статике hightek.ru (nginx) — добавить header
+     `Access-Control-Allow-Origin: *` для `/assets/`. Возможно
+     через тикет, как INFRA-004.
+  3. Verify: после деплоя реальная ошибка от bundle должна
+     приходить в TG с **полным stack'ом** и читаемым source.
+- **Влияние:** без этого fix'а MON-001 видит ~30% детально и ~70%
+  как «Script error.» — мониторинг частично слепой.
+- **Когда:** после Phase 2B, не блокер.
+- **Связано:** MON-001 (DONE), INFRA-004 (CORS-настройка hightek.ru).
+
+### PERF-002-LAZY-JSPDF: jspdf грузить только при клике «Экспорт PDF»
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-11 (после Phase 2A baseline-аудита — `_08`).
+- **Что:** В Phase 2A html2canvas (201 KB) вынесли из main через
+  `await import('html2canvas')` в `handleExportPdf`. Но **jspdf
+  (385 KB raw)** всё ещё статически импортируется в начале
+  `views/BuilderView.jsx` (`import { jsPDF } from 'jspdf'`) →
+  попадает в BuilderView lazy-chunk целиком.
+- **Fix:** заменить статический `import { jsPDF } from 'jspdf'`
+  на `const { jsPDF } = await import('jspdf')` внутри
+  `handleExportPdf` (или общую `loadPdfDeps()` helper, которая
+  параллельно тянет html2canvas + jspdf через `Promise.all`).
+- **Эффект:** BuilderView-chunk уменьшится на ~385 KB raw / ~126
+  KB gzip → быстрое первое открытие Конструктора (без PDF-flow).
+  PDF-flow прибавит ~600мс на первой загрузке html2canvas + jspdf,
+  потом — мгновенно (кэш).
+- **Связано:** Phase 2A (html2canvas сделан аналогично), Phase 2B
+  (можно сделать заодно в одном PR).
+
+### BUG-ROLLUP-DCE-SYNC-TRACKER
+
+- **Статус:** 🔴 TODO (recon)
+- **Приоритет:** P2
+- **Симптом:** `syncTrackerAndHomeworkFromDb` (services/pvlMockApi.js:1261)
+  удалена rollup'ом из prod-bundle. Reporter в её catch'е не доходит до dist.
+- **Что проверить:**
+  - Запустить `vite build --mode development` (unminified) — есть ли там вызов.
+  - Если есть в dev → minify/DCE-bug.
+  - Если нет даже в dev → проверить статическое условие
+    (`pvlPostgrestApi.isEnabled() && pvlTrackMembers.length > 0`?).
+- **Влияние:** студенты могут не получать актуальный tracker/submissions
+  при первой загрузке. Работает ли через `syncPvlRuntimeFromDb` (line 8046)
+  как fallback — не выяснено.
+- **Не блокер сегодня** — race fix Ирины применён независимо. Recon
+  отдельным заходом, ~30 мин.
+- **Открыто:** 2026-05-11 при apply Variant B для race-fix.
+
 ### BUG-PVL-ENSURE-RESPECTS-ROLE: ensurePvlStudentInDb не проверяет роль
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2
@@ -2447,6 +2603,14 @@ related_docs:
   bundle-проблема Supabase на main изначально не существует, и
   CLEAN-015 ускоряется (нужно только заменить Realtime на polling
   внутри CommunicationsView, без ребалансировки main).
+- **Бывший блокер (СНЯТ 2026-05-11):** `BUG-PVL-ADMIN-AS-MENTOR-EMPTY`
+  (DONE) — Supabase Realtime в `realtimeMessages.js` случайно
+  триггерил re-render и тем самым скрывал race condition в
+  учительской ПВЛ (`MentorMenteesPanel` useMemo без deps на
+  state-флаги sync). После CLEAN-015 (выпиливания Realtime → polling)
+  race стал бы стабильным → admin'ы постоянно видели бы «Список
+  пуст». Race-fix применён до CLEAN-015 — теперь блокер снят, можно
+  безопасно выпиливать Supabase.
 - **Связано:** `INFRA-005-SW-CACHE` (RESOLVED), `Phase 2A` (DONE,
   bundle baseline снят), `Phase 2B` (TODO).
 - **Дата завода:** 2026-05-10.
@@ -3478,3 +3642,40 @@ related_docs:
   - 5 файлов `docs/_session/2026-05-10_02..._06`
   - 3 журнала в `docs/journal/INCIDENT_2026-05-10_*` +
     `TECH_DEBT_2026-05-10_*`
+
+#### 2026-05-11
+- **BUG-PVL-ADMIN-AS-MENTOR-EMPTY (P2) → 🟢 DONE.** Куратор Лиги
+  Ирина Одинцова (admin) утром не видела свой список менти в
+  учительской ПВЛ. Recon (`_02`) показал: H1-H4 из брифа стратега
+  из чтения кода не подтверждались. Сама Ирина в 11:20 написала,
+  что список появился через ~2 часа без её действий — это
+  подтвердило 1.7a (race condition useMemo + async sync, скрытый
+  случайным re-render от Supabase Realtime). Fix:
+  **Variant C** (deps на флаги завершения sync:
+  `db._pvlGardenApplicantsSynced` + `mentorProfiles.length` +
+  `studentProfiles.length` в useMemo
+  `MentorMenteesPanel`/`MentorDashboard`) + **Variant B бонус**
+  (reportClientError в трёх критичных catch'ах
+  `pvlMockApi.js`: hydrate, syncTracker, top-level sync).
+- **Orphan DELETE в `pvl_garden_mentor_links`** —
+  `student_id=579a3392-...` удалена (UUID не существует в profiles /
+  users_auth / pvl_students). 1 DELETE через ssh+psql. Связано с
+  TECH-DEBT-FK-CONTRACTS (на student_id нет FK к profiles).
+- 📋 **BUG-PDF-EXPORT-OKLAB-FAIL** (P2) — заведено: Tailwind v4
+  `oklab()` не парсится html2canvas 1.4.1 → alert в Builder
+  PDF-export. MON-001 не ловит (caught).
+- 📋 **MON-002-CROSSORIGIN-VISIBILITY** (P2) — заведено:
+  «Script error.» без stack в TG. Нужен `crossorigin="anonymous"`
+  + CORS-header на /assets/.
+- 📋 **PERF-002-LAZY-JSPDF** (P3) — заведено: jspdf (385 KB)
+  можно вынести через `await import` в `handleExportPdf`
+  (аналогично html2canvas в Phase 2A).
+- **CLEAN-015-SUPABASE-REMOVAL — блокер от BUG-PVL-ADMIN-AS-MENTOR-EMPTY
+  СНЯТ.** После race-fix Supabase Realtime больше не нужен как
+  «случайный спасатель» — можно безопасно мигрировать на polling.
+- **Lesson:** `docs/lessons/2026-05-11-pvl-admin-mentor-race-condition.md`.
+- **Артефакты сессии:**
+  - `views/PvlPrototypeApp.jsx` (Variant C в 2 useMemo)
+  - `services/pvlMockApi.js` (Variant B в 3 catch'ах)
+  - `docs/lessons/2026-05-11-pvl-admin-mentor-race-condition.md` (new)
+  - 4 файла `docs/_session/2026-05-11_01..._04`

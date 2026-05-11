@@ -3679,3 +3679,25 @@ related_docs:
   - `services/pvlMockApi.js` (Variant B в 3 catch'ах)
   - `docs/lessons/2026-05-11-pvl-admin-mentor-race-condition.md` (new)
   - 4 файла `docs/_session/2026-05-11_01..._04`
+- **DEPLOY push-server (заход `_05` strategist):** код задеплоен на
+  `5.129.251.56:/opt/push-server/`, systemd unit `push-server.service`
+  enabled, порт 8787 живой. Local curl `/api/v1/upcoming.json?days=8`
+  → HTTP 200, 7 events. Caddy блок `push.skrebeyko.ru →
+  localhost:8787` добавлен, validate OK, reload OK.
+  Cert ещё не выпущен — ждём DNS от Ольги (NXDOMAIN ожидаемо).
+  Push notifications и Prodamus webhook **выключены** (env-ключи не
+  заданы, `PRODAMUS_WEBHOOK_ENABLED=false`). Backup Caddyfile:
+  `/etc/caddy/Caddyfile.bak.2026-05-11-pre-push-server`.
+- **Открытия (новые тикеты):**
+  - **TECH-DEBT-PUSH-SERVER-REPO-SYNC** (P3) — push-server'а под
+    git на проде нет, изменения деплоим rsync'ом из репо.
+    Аналогично TECH-DEBT-AUTH-REPO-SYNC. В перспективе —
+    git-hooks или CI deploy.
+  - **TECH-DEBT-PUSH-SERVER-RECONCILE-LOGSPAM** (P3) —
+    `runNightlyExpiryReconcile()` в `push-server/server.mjs:407`
+    запускается на старте и каждые 24ч независимо от
+    `PRODAMUS_WEBHOOK_ENABLED`. Бьёт по `profiles.access_status`
+    которой в нашей схеме нет — каждый запуск роняет stack-trace
+    в journal. Try/catch ловит, процесс жив, endpoint работает.
+    Чинить либо обернуть запуск в `if (webhookEnabled)`, либо
+    добавить миграцию с колонкой. Сейчас — log noise.

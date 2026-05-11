@@ -1747,6 +1747,29 @@ related_docs:
   - `PERF-002-LAZY-JSPDF` — попутно завели (jspdf 385 KB
     можно lazy-import в `handleExportPdf`).
 
+### BUG-PVL-MENTOR-DASHBOARD-WIDGET-VS-SIDEBAR-MISMATCH
+
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Симптом:** Виджет «Мои менти» на дашборде ментора показывает
+  «Список пуст» у того же ментора, у которого в sidebar-разделе
+  «Мои менти» данные есть. Зафиксировано в smoke 2026-05-11 на
+  тестовом аккаунте zobyshka@gmail.com (МЕНТОР): дашборд = пусто,
+  sidebar = Настина фея.
+- **Гипотеза:** виджет дашборда читает только из
+  `mentorProfile.menteeIds`, sidebar-раздел — через
+  `studentProfiles[].mentorId === resolved`. Источники должны
+  быть согласованы в `applyGardenMentorLinkRow` (pvlMockApi.js:984),
+  но один из них не наполняется в каких-то edge cases.
+- **Не блокер** — это neuance в дашборде, основной flow ментора
+  (sidebar → менти) работает после race-fix.
+- **Когда:** при следующей session по pvl-учительской или вместе
+  с TECH-DEBT-PVLMOCK-MIGRATE.
+- **Связано:** BUG-PVL-ADMIN-AS-MENTOR-EMPTY (DONE),
+  TECH-DEBT-PVLMOCK-MIGRATE.
+
+Заведено: 2026-05-11.
+
 ### MON-002-CROSSORIGIN-VISIBILITY: «Script error.» без stack в TG
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2

@@ -6,6 +6,7 @@ import pkg from 'pg';
 import crypto from 'crypto';
 import { verifyProdamusSignature } from './prodamusVerify.mjs';
 import { classifyProdamusEvent, deriveAccessMutation } from './billingLogic.mjs';
+import { createUpcomingHandler } from './upcomingApi.mjs';
 
 const { Pool } = pkg;
 
@@ -55,6 +56,19 @@ const requireAdminToken = (req, res, next) => {
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// Public read-only API: GET /api/v1/upcoming.json
+// Используется внешним пайплайном (Telegram-карточки расписания).
+// План: plans/2026-05-04-public-upcoming-api.md
+// ────────────────────────────────────────────────────────────────────
+
+const upcomingCors = cors({ origin: '*', methods: ['GET'] });
+const upcomingCache = new Map(); // key=`${from}|${days}` → { expiresAt, body }
+const upcomingHandler = createUpcomingHandler({ pool, cache: upcomingCache });
+
+app.options('/api/v1/upcoming.json', upcomingCors);
+app.get('/api/v1/upcoming.json', upcomingCors, upcomingHandler);
 
 app.get('/push/public-key', (_req, res) => {
   if (!pushEnabled) return res.status(503).json({ error: 'Web Push is not configured' });

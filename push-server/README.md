@@ -52,6 +52,7 @@ Endpoints:
 - `POST /push/news`
 - `POST /api/billing/prodamus/webhook`
 - `POST /webhooks/prodamus` (alias)
+- `GET  /api/v1/upcoming.json` — публичный read-only фид расписания встреч (без auth, CORS `*`, in-memory кеш 5 мин). См. `plans/2026-05-04-public-upcoming-api.md`.
 
 Webhook only trusts valid Prodamus signatures. Success URL callbacks from browser are ignored.
 

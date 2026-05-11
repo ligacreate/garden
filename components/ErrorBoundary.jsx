@@ -12,14 +12,33 @@ class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, errorInfo) {
+        const msg = String(error?.message || '');
+        const isChunkLoadError = /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg);
+
+        if (isChunkLoadError) {
+            reportClientError({
+                message: 'ChunkLoadError → auto-reload',
+                stack: error?.stack || msg,
+                source: 'ErrorBoundary.chunkLoad',
+            });
+            // Защита от reload-loop
+            if (!sessionStorage.getItem('garden_chunk_reloaded')) {
+                sessionStorage.setItem('garden_chunk_reloaded', String(Date.now()));
+                window.location.reload();
+                return;
+            }
+        } else {
+            // Generic ErrorBoundary reporting (baseline из eb8dd70 MON-001)
+            reportClientError({
+                message: error?.message || 'ErrorBoundary caught',
+                stack: error?.stack || '',
+                source: 'ErrorBoundary',
+                extra: { componentStack: errorInfo?.componentStack },
+            });
+        }
+
         this.setState({ error, errorInfo });
         console.error("Uncaught error:", error, errorInfo);
-        reportClientError({
-            source: 'ErrorBoundary',
-            message: error?.message || String(error),
-            stack: error?.stack || '',
-            extra: { componentStack: errorInfo?.componentStack || '' },
-        });
     }
 
     render() {

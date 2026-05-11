@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { jsPDF } from "jspdf";
-// Phase 2A — html2canvas грузим lazy при экспорте PDF (см. handleExportPdf).
-// Static-импорт ниже Vite warning'ом сообщал, что dynamic-импорт в LeaderPageView не работает.
+// Phase 2A — html2canvas, Phase 2B — jspdf: оба грузим lazy при экспорте PDF (см. handleExportPdf).
 import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, GripVertical, PenLine, Upload } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
@@ -261,6 +259,7 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
             const imgProps = { width: canvas.width, height: canvas.height };
             const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
+            const { jsPDF } = await import('jspdf');
             const doc = new jsPDF('p', 'mm', 'a4');
             let heightLeft = pdfHeight;
             let position = 10;

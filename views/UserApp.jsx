@@ -10,18 +10,19 @@ import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
 import ViewLoading from '../components/ViewLoading';
 import StatsDashboardView from './StatsDashboardView';
-import MeetingsView from './MeetingsView';
 import PracticesView from './PracticesView';
 /** Библиотека (включая AL Camp / ПВЛ) грузится отдельным чанком — сад не падает, если в ПВЛ ошибка */
 const CourseLibraryView = lazy(() => import('./CourseLibraryView'));
 /** Phase 2A — Builder открывается эпизодически, тянет jspdf+html2canvas. */
 const BuilderView = lazy(() => import('./BuilderView'));
+/** Phase 2B — большие view'ы по клику в сайдбаре. */
+const MeetingsView = lazy(() => import('./MeetingsView'));
+const MarketView = lazy(() => import('./MarketView'));
+const LeaderPageView = lazy(() => import('./LeaderPageView'));
+const CommunicationsView = lazy(() => import('./CommunicationsView'));
 import CRMView from './CRMView';
-import MarketView from './MarketView';
 import MapView from './MapView';
-import LeaderPageView from './LeaderPageView';
 import ProfileView from './ProfileView';
-import CommunicationsView from './CommunicationsView';
 import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
@@ -940,7 +941,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             newsItems={dashboardNews}
                         />
                     )}
-                    {view === 'meetings' && <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />}
+                    {view === 'meetings' && (
+                        <Suspense fallback={<ViewLoading label="Открываем встречи…" />}>
+                            <MeetingsView user={user} users={users} meetings={meetings} goals={goals} onAddMeeting={handleAddMeeting} onUpdateMeeting={handleUpdateMeeting} onDeleteMeeting={handleDeleteMeeting} onAddGoal={handleAddGoal} onUpdateGoal={handleUpdateGoal} onDeleteGoal={handleDeleteGoal} onNotify={onNotify} initialTab={initialTab} />
+                        </Suspense>
+                    )}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
                     {view === 'library' && (
                         <Suspense fallback={(
@@ -970,7 +975,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         </Suspense>
                     )}
                     {view === 'crm' && <CRMView clients={clients} onAddClient={handleAddClient} onUpdateClient={handleUpdateClient} onDeleteClient={handleDeleteClient} onNotify={onNotify} />}
-                    {view === 'market' && <MarketView />}
+                    {view === 'market' && (
+                        <Suspense fallback={<ViewLoading label="Открываем магазин…" />}>
+                            <MarketView />
+                        </Suspense>
+                    )}
                     {view === 'map' && (
                         <MapView
                             users={mergedUsers}
@@ -979,21 +988,25 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         />
                     )}
                     {view === 'leader' && (
-                        <LeaderPageView
-                            leader={leaderUser}
-                            currentUser={user}
-                            onBack={() => setView('map')}
-                            onUpdateProfile={handleUpdateProfile}
-                        />
+                        <Suspense fallback={<ViewLoading label="Открываем страницу ведущей…" />}>
+                            <LeaderPageView
+                                leader={leaderUser}
+                                currentUser={user}
+                                onBack={() => setView('map')}
+                                onUpdateProfile={handleUpdateProfile}
+                            />
+                        </Suspense>
                     )}
                     {view === 'communications' && isAdmin && (
-                        <CommunicationsView
-                            user={user}
-                            users={mergedUsers}
-                            channelItems={news}
-                            onNotify={onNotify}
-                            onOpenProfile={handleOpenLeader}
-                        />
+                        <Suspense fallback={<ViewLoading label="Открываем сообщения…" />}>
+                            <CommunicationsView
+                                user={user}
+                                users={mergedUsers}
+                                channelItems={news}
+                                onNotify={onNotify}
+                                onOpenProfile={handleOpenLeader}
+                            />
+                        </Suspense>
                     )}
                     {view === 'profile' && (
                         <ProfileView

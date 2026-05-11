@@ -1800,7 +1800,7 @@ related_docs:
 - **Связано:** MON-001 (DONE), INFRA-004 (CORS-настройка hightek.ru).
 
 ### PERF-002-LAZY-JSPDF: jspdf грузить только при клике «Экспорт PDF»
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE (2026-05-11, Phase 2B заход)
 - **Приоритет:** P3
 - **Создано:** 2026-05-11 (после Phase 2A baseline-аудита — `_08`).
 - **Что:** В Phase 2A html2canvas (201 KB) вынесли из main через
@@ -1808,16 +1808,16 @@ related_docs:
   (385 KB raw)** всё ещё статически импортируется в начале
   `views/BuilderView.jsx` (`import { jsPDF } from 'jspdf'`) →
   попадает в BuilderView lazy-chunk целиком.
-- **Fix:** заменить статический `import { jsPDF } from 'jspdf'`
-  на `const { jsPDF } = await import('jspdf')` внутри
-  `handleExportPdf` (или общую `loadPdfDeps()` helper, которая
-  параллельно тянет html2canvas + jspdf через `Promise.all`).
-- **Эффект:** BuilderView-chunk уменьшится на ~385 KB raw / ~126
-  KB gzip → быстрое первое открытие Конструктора (без PDF-flow).
-  PDF-flow прибавит ~600мс на первой загрузке html2canvas + jspdf,
-  потом — мгновенно (кэш).
+- **Fix applied:** в `views/BuilderView.jsx` static import удалён,
+  внутри `handleExportPdf` добавлен `const { jsPDF } = await import('jspdf')`
+  непосредственно перед `new jsPDF(...)`. Аналогично паттерну
+  html2canvas из Phase 2A.
+- **Эффект:** BuilderView-chunk теперь **37 KB raw / 11.7 KB gzip**
+  (был ~422 KB после Phase 2A). jspdf — отдельный lazy chunk
+  `jspdf.es.min-*.js` (385 KB / 125.76 KB gzip), грузится только
+  при клике «Экспорт PDF».
 - **Связано:** Phase 2A (html2canvas сделан аналогично), Phase 2B
-  (можно сделать заодно в одном PR).
+  (закрыто вместе одним коммитом).
 
 ### BUG-ROLLUP-DCE-SYNC-TRACKER
 
@@ -2789,32 +2789,35 @@ related_docs:
   Path B `.htaccess` → Path C ISPmanager → meta-tags workaround → тикет).
 
 ### INFRA-005-SW-CACHE: SW agressive caching как причина ChunkLoadError у Марины
-- **Статус:** 🟢 RESOLVED-as-no-action (2026-05-10)
+- **Статус:** 🟢 DONE (2026-05-11, ErrorBoundary auto-reload)
 - **Приоритет:** P2 (был, при заведении выглядел реальной угрозой)
 - **Создано:** 2026-05-09 (после жалобы Марины на ChunkLoadError
   без возможности достать stack-trace)
-- **Закрыто:** 2026-05-10 (recon показал — текущий sw.js не
-  кэширует bundles; гипотеза «зомби-SW» не подтвердилась)
-- **Recon (2026-05-10):**
-  - `git log -- public/sw.js` — две версии в истории, обе **без**
-    перехвата bundle-запросов:
-    - `8bb03bf` (2026-05-03): только install/activate/push/notificationclick.
-    - `bf57606` (2026-05-03): + `caches.delete` всех ключей на
-      activate + network-first для navigate.
-  - `fetch` listener никогда не делал `caches.put` для
-    `assets/index-*.js` → агрессивного кэша bundle'ов **не было**.
-- **Решение:** не делаем hardening (kill-switch / версионирование
-  sw.js) без живой жертвы. Реальную причину ChunkLoadError у
-  Марины достанем через MON-001, когда первый stack прилетит в
-  TG-канал. Тогда станет ясно — SW, FTP-truncate, hash-collision
-  или что-то третье.
-- **Why no-action:** «один раз сделать правильно, не три раза
-  переписывать SW по гипотезам». Текущий `sw.js` корректен.
-- **Связано:** MON-001 (даст stack для первого реального
+- **Re-opened:** 2026-05-11 13:12 — первый реальный инцидент через
+  MON-001. Пользователь со stale bundle `index-4OpZcjJF.js`
+  (pre-Phase2A) поймал `Failed to fetch dynamically imported module:
+  CourseLibraryView-CKtQtCAr.js`, ErrorBoundary поймал и прислал в
+  TG-канал с `source: ErrorBoundary`. Гипотеза «зомби-SW» не
+  подтвердилась — реальная причина: **stale index.html у клиента
+  ссылается на старые hashes**, которые после deploy удалены с FTP.
+- **Закрыто 2026-05-11 одним днём:** `components/ErrorBoundary.jsx`
+  получил ветку `componentDidCatch` для ChunkLoadError-сигнатур
+  (`Failed to fetch dynamically imported module|Importing a module
+  script failed`) → `window.location.reload()` с
+  sessionStorage-guard'ом против reload-loop. MON-001 алертит
+  отдельно как `source: ErrorBoundary.chunkLoad` для трекинга
+  частоты. Commit **a20828b**.
+- **Recon (2026-05-10):** текущий `sw.js` корректен, не кэширует
+  bundle-запросы. Закрыто без правок SW.
+- **Lesson:** «один раз сделать правильно, не три раза переписывать
+  SW по гипотезам» сработало — фикс пришёл от живого инцидента,
+  не от гипотезы. End-to-end путь MON-001 → TG → recon → 24min →
+  fix → deploy.
+- **Связано:** MON-001 (DONE, дал stack для первого реального
   ChunkLoadError); BUG-004 (тот же класс симптомов, закрыт в
   2026-05-03 commit `bf57606`).
 - **Артефакты:** `docs/_session/2026-05-10_03_codeexec_p1_apply_report.md`
-  (раздел «Recon INFRA-005»).
+  (Recon INFRA-005); commit `a20828b` (ChunkLoadError fix).
 
 ### PROD-DB-MIGRATE-ISPMANAGER: миграция БД с Timeweb Cloud на ISPmanager-shared
 - **Статус:** 💡 IDEA (не TODO — для запоминания)
@@ -3724,3 +3727,40 @@ related_docs:
     в journal. Try/catch ловит, процесс жив, endpoint работает.
     Чинить либо обернуть запуск в `if (webhookEnabled)`, либо
     добавить миграцию с колонкой. Сейчас — log noise.
+- **push-server LIVE (после DNS):** Ольга завела
+  `push.skrebeyko.ru → 5.129.251.56`. Caddy получил cert от
+  Let's Encrypt (issuer E8, до 09.08.2026 GMT). Production smoke:
+  `https://push.skrebeyko.ru/api/v1/upcoming.json` → HTTP 200,
+  2603 B, 7 events; `?days=14&from=2026-05-13` → 200, 1922 B,
+  5 events; OPTIONS preflight 204. HTTP/2 + HTTP/3 + кеш 5min
+  работают. Готово для подключения TG/Instagram пайплайна.
+  Артефакт: `docs/_session/2026-05-11_06_codeexec_push_server_deployed.md`.
+- **BUG-PVL-MENTOR-DASHBOARD-WIDGET-VS-SIDEBAR-MISMATCH** (P3,
+  TODO) — попутно завели на smoke у `zobyshka@gmail.com`:
+  виджет «Мои менти» на дашборде ментора пуст, sidebar-раздел
+  у того же пользователя показывает Настину фею. Не блокер.
+- **INFRA-005-SW-CACHE → 🟢 DONE same-day.** В 13:12 первый
+  реальный ChunkLoadError (stale `index-4OpZcjJF.js`) прилетел в TG
+  через MON-001. Fix через `ErrorBoundary.componentDidCatch`:
+  ловим сигнатуры `Failed to fetch dynamically imported module|
+  Importing a module script failed` → `window.location.reload()`
+  с sessionStorage-guard. Алертим как `source: ErrorBoundary.chunkLoad`.
+  Commit **a20828b**. End-to-end от инцидента до fix-deploy — 24 мин.
+- **Phase 2B + PERF-002-LAZY-JSPDF → 🟢 DONE.** 4 view'ы переведены
+  на `React.lazy` (MeetingsView, MarketView, CommunicationsView,
+  LeaderPageView) + `jspdf` через `await import()` в
+  `handleExportPdf`. Build:
+  - main `index-*.js`: **475 KB raw / 148.86 KB gzip** (было после
+    Phase 2A — 572 KB / 172 gzip). **Цель плана ≤500 / ≤150 gzip
+    достигнута.**
+  - Новые lazy chunks: MeetingsView 57.55 KB / 14.6 gzip;
+    CommunicationsView 17.47 KB / 5.9 gzip (включая
+    `@supabase/supabase-js` через `services/realtimeMessages.js`);
+    LeaderPageView 17.63 KB / 5.5 gzip; MarketView 4.53 KB / 1.8 gzip.
+  - `jspdf.es.min-*.js` 385 KB — отдельный chunk, грузится только
+    при клике «Экспорт PDF». BuilderView теперь 37 KB / 11.7 gzip
+    (был ~422 KB после Phase 2A).
+  - Бонус: `@supabase/supabase-js` ушёл из main в
+    CommunicationsView-chunk → готовит почву для CLEAN-015.
+  Артефакт: `docs/_session/2026-05-11_07_strategist_phase2b_plan.md` +
+  `_08_codeexec_phase2b_apply_report.md`.

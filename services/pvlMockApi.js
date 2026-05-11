@@ -1236,6 +1236,20 @@ export async function syncPvlActorsFromGarden() {
                 id: null,
                 error: String(e?.message || e || 'hydrate mentor links failed'),
             });
+            // BUG-PVL-ADMIN-AS-MENTOR-EMPTY (Variant B): caught error
+            // = silent fail у пользователя (учительская показывает «пусто»).
+            // Шлём в MON-001, чтобы такие сценарии алертили в TG. Dynamic
+            // import — чтобы не создавать static dep между pvlMockApi и
+            // reporter.
+            try {
+                const mod = await import('../utils/clientErrorReporter');
+                mod.reportClientError({
+                    source: 'pvlMockApi.hydrate',
+                    message: 'hydrate_mentor_links failed (caught)',
+                    stack: e?.stack || String(e),
+                    extra: { stage: 'hydrate_mentor_links' },
+                });
+            } catch { /* silent — reporter упасть не должен, но на всякий */ }
         }
 
         /** Загружаем сабмишны и прогресс для только что добавленных реальных участников.
@@ -1252,6 +1266,18 @@ export async function syncPvlActorsFromGarden() {
                     id: null,
                     error: String(e?.message || e || 'syncTrackerAndHomeworkFromDb failed'),
                 });
+                // BUG-PVL-ADMIN-AS-MENTOR-EMPTY (Variant B): аналогично
+                // hydrate-catch'у — silent fail прячет, что у студентов
+                // не загрузились submissions/tracker.
+                try {
+                    const mod = await import('../utils/clientErrorReporter');
+                    mod.reportClientError({
+                        source: 'pvlMockApi.syncTracker',
+                        message: 'syncTrackerAndHomeworkFromDb failed (caught)',
+                        stack: e?.stack || String(e),
+                        extra: { stage: 'syncTrackerAndHomeworkFromDb' },
+                    });
+                } catch { /* silent */ }
             }
         }
 
@@ -1270,6 +1296,18 @@ export async function syncPvlActorsFromGarden() {
             id: null,
             error: String(error?.message || error || 'garden sync failed'),
         });
+        // BUG-PVL-ADMIN-AS-MENTOR-EMPTY (Variant B): top-level catch sync'а —
+        // самый болезненный silent fail (db.studentProfiles/mentorProfiles
+        // не заполнятся → у всех ролей пустой UI). Шлём в MON-001.
+        try {
+            const mod = await import('../utils/clientErrorReporter');
+            mod.reportClientError({
+                source: 'pvlMockApi.syncPvlActorsFromGarden',
+                message: 'syncPvlActorsFromGarden failed (caught at top level)',
+                stack: error?.stack || String(error),
+                extra: { stage: 'syncPvlActorsFromGarden_top' },
+            });
+        } catch { /* silent */ }
         return { synced: false, reason: 'error' };
     }
 }

@@ -3932,7 +3932,22 @@ function MentorApplicantsPanel({ mentorId, refreshKey = 0 }) {
 }
 
 function MentorMenteesPanel({ navigate, mentorId, refreshKey = 0 }) {
-    const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
+    // BUG-PVL-ADMIN-AS-MENTOR-EMPTY (race condition):
+    // useMemo раньше зависел только от [mentorId, refreshKey] — после
+    // первого render'а до завершения syncPvlActorsFromGarden список
+    // оставался пустым, пока случайный re-render (Realtime websocket
+    // и т.п.) не триггерил пересчёт. Дальше Variant C: добавляем флаги
+    // завершения sync, чтобы пересчёт случился на ближайшем render'е.
+    const menteeRows = useMemo(
+        () => buildMentorMenteeRows(mentorId),
+        [
+            mentorId,
+            refreshKey,
+            pvlDomainApi.db._pvlGardenApplicantsSynced,
+            pvlDomainApi.db.mentorProfiles.length,
+            pvlDomainApi.db.studentProfiles.length,
+        ],
+    );
     return (
         <div className="space-y-6">
             <h2 className="font-display text-2xl text-slate-800">Мои менти</h2>
@@ -3951,7 +3966,17 @@ function MentorReviewQueuePanel({ navigate, mentorId, refresh, refreshKey = 0 })
 }
 
 function MentorDashboard({ navigate, mentorId, refresh, refreshKey = 0 }) {
-    const menteeRows = useMemo(() => buildMentorMenteeRows(mentorId), [mentorId, refreshKey]);
+    // BUG-PVL-ADMIN-AS-MENTOR-EMPTY (см. комментарий в MentorMenteesPanel).
+    const menteeRows = useMemo(
+        () => buildMentorMenteeRows(mentorId),
+        [
+            mentorId,
+            refreshKey,
+            pvlDomainApi.db._pvlGardenApplicantsSynced,
+            pvlDomainApi.db.mentorProfiles.length,
+            pvlDomainApi.db.studentProfiles.length,
+        ],
+    );
     const mentorCohortId = pvlDomainApi.db.mentorProfiles.find((m) => m.userId === mentorId)?.cohortIds?.[0] || 'cohort-2026-1';
     const mentorUser = resolveActorUser(mentorId);
     return (

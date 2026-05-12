@@ -179,7 +179,7 @@ const buildReviewCardNode = (review) => {
     return card;
 };
 
-const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile }) => {
+const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify = () => {} }) => {
     const [loadingStats, setLoadingStats] = useState(false);
     const [practices, setPractices] = useState([]);
     const [scenarios, setScenarios] = useState([]);

@@ -994,6 +994,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 currentUser={user}
                                 onBack={() => setView('map')}
                                 onUpdateProfile={handleUpdateProfile}
+                                onNotify={onNotify}
                             />
                         </Suspense>
                     )}

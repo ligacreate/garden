@@ -351,12 +351,12 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 w-full gap-3">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h1 className="text-4xl font-light text-slate-800 tracking-tight">База практик</h1>
+                        <h1 className="text-4xl font-light text-slate-800 tracking-tight">Мои практики</h1>
                         <span className="md:hidden inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-white/80 border border-slate-200 text-xs font-mono text-blue-600">
                             {practices.length}
                         </span>
                     </div>
-                    <p className="text-slate-400 mt-1 font-light">Ваша коллекция практик</p>
+                    <p className="text-slate-400 mt-1 font-light">Ваша рабочая колода — то, что вы используете на встречах</p>
                 </div>
                 <div className="text-right hidden md:block">
                     <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">В базе</div>

@@ -800,7 +800,7 @@ class LocalStorageService {
     async addPractice(practice) {
         const practices = await this.getPractices();
         const sanitized = this._sanitizeFields(practice, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
         });
         const newPractice = { ...sanitized, id: Date.now() };
         practices.unshift(newPractice);
@@ -813,12 +813,59 @@ class LocalStorageService {
         const index = practices.findIndex(p => p.id === practice.id);
         if (index !== -1) {
             const sanitized = this._sanitizeFields(practice, {
-                plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+                plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
             });
             practices[index] = { ...practices[index], ...sanitized };
             localStorage.setItem('garden_practices', JSON.stringify(practices));
         }
         return practice;
+    }
+
+    // Treasury (FEAT-019 MVP)
+    async getTreasuryPractices() {
+        const practices = await this.getPractices();
+        return practices.filter(p => p.is_published === true);
+    }
+
+    async getAdminPractices() {
+        return this.getPractices();
+    }
+
+    async forkPractice(originalId, currentUserId) {
+        const practices = await this.getPractices();
+        const original = practices.find(p => String(p.id) === String(originalId));
+        if (!original) throw new Error('Оригинал практики не найден');
+        const copy = {
+            title: original.title,
+            description: original.description,
+            short_goal: original.short_goal,
+            instruction_short: original.instruction_short,
+            instruction_full: original.instruction_full,
+            reflection_questions: original.reflection_questions,
+            type: original.type,
+            time: original.time,
+            duration_minutes: original.duration_minutes,
+            icon: original.icon,
+            user_id: currentUserId,
+            forked_from: original.id,
+            forked_from_author_name: original.author?.name || original.forked_from_author_name || null,
+            is_published: false,
+            published_at: null
+        };
+        return this.addPractice(copy);
+    }
+
+    async setPracticePublished(practiceId, isPublished) {
+        const practices = await this.getPractices();
+        const index = practices.findIndex(p => String(p.id) === String(practiceId));
+        if (index === -1) return null;
+        practices[index] = {
+            ...practices[index],
+            is_published: !!isPublished,
+            published_at: isPublished ? new Date().toISOString() : null
+        };
+        localStorage.setItem('garden_practices', JSON.stringify(practices));
+        return practices[index];
     }
 
     // News
@@ -2027,7 +2074,7 @@ class RemoteApiService {
         // OR we can keep using BIGINT if we want. Let's let DB handle it.
         const { id, ...rest } = practice;
         const sanitized = this._sanitizeFields(rest, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
         });
         const { data } = await postgrestFetch('practices', {}, {
             method: 'POST',
@@ -2040,7 +2087,7 @@ class RemoteApiService {
     async updatePractice(practice) {
         const { id, ...rest } = practice;
         const sanitized = this._sanitizeFields(rest, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
         });
         await postgrestFetch('practices', { id: `eq.${id}` }, {
             method: 'PATCH',
@@ -2056,6 +2103,78 @@ class RemoteApiService {
             returnRepresentation: true
         });
         return true;
+    }
+
+    // Treasury (FEAT-019 MVP)
+    async getTreasuryPractices() {
+        const { data } = await postgrestFetch('practices', {
+            select: '*,author:profiles!practices_user_id_fkey(id,name)',
+            is_published: 'eq.true',
+            order: 'published_at.desc.nullslast,created_at.desc'
+        });
+        return data || [];
+    }
+
+    async getAdminPractices() {
+        const { data } = await postgrestFetch('practices', {
+            select: '*,author:profiles!practices_user_id_fkey(id,name)',
+            order: 'created_at.desc'
+        });
+        return data || [];
+    }
+
+    async forkPractice(originalId, currentUserId) {
+        const { data: originals } = await postgrestFetch('practices', {
+            select: '*,author:profiles!practices_user_id_fkey(id,name)',
+            id: `eq.${originalId}`,
+            is_published: 'eq.true'
+        });
+        const original = Array.isArray(originals) ? originals[0] : originals;
+        if (!original) throw new Error('Практика недоступна или снята с публикации');
+
+        const sanitized = this._sanitizeFields({
+            title: original.title,
+            description: original.description,
+            short_goal: original.short_goal,
+            instruction_short: original.instruction_short,
+            instruction_full: original.instruction_full,
+            reflection_questions: original.reflection_questions,
+            type: original.type,
+            time: original.time,
+            icon: original.icon
+        }, {
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
+        });
+
+        const payload = {
+            ...sanitized,
+            duration_minutes: original.duration_minutes ?? null,
+            user_id: currentUserId,
+            forked_from: original.id,
+            forked_from_author_name: original.author?.name || null,
+            is_published: false,
+            published_at: null
+        };
+
+        const { data } = await postgrestFetch('practices', {}, {
+            method: 'POST',
+            body: [payload],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
+    }
+
+    async setPracticePublished(practiceId, isPublished) {
+        const body = {
+            is_published: !!isPublished,
+            published_at: isPublished ? new Date().toISOString() : null
+        };
+        const { data } = await postgrestFetch('practices', { id: `eq.${practiceId}` }, {
+            method: 'PATCH',
+            body,
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     // CRM Clients

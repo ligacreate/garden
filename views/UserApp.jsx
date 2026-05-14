@@ -4,13 +4,14 @@ import {
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap, MessagesSquare, Bell, Info, Languages, Library,
     Route, CalendarCheck2, BarChart3, BadgeCheck, MessageCircleQuestion,
-    CornerUpLeft, MessageCircle, ShoppingBag
+    CornerUpLeft, MessageCircle, ShoppingBag, Gem
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
 import ViewLoading from '../components/ViewLoading';
 import StatsDashboardView from './StatsDashboardView';
 import PracticesView from './PracticesView';
+import TreasuryView from './TreasuryView';
 /** Библиотека (включая AL Camp / ПВЛ) грузится отдельным чанком — сад не падает, если в ПВЛ ошибка */
 const CourseLibraryView = lazy(() => import('./CourseLibraryView'));
 /** Phase 2A — Builder открывается эпизодически, тянет jspdf+html2canvas. */
@@ -439,6 +440,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         }
     };
 
+    const handleForkedPractice = (savedCopy) => {
+        if (!savedCopy) return;
+        setPractices((prev) => [savedCopy, ...prev]);
+    };
+
     const handleDeletePractice = async (practiceId) => {
         try {
             await api.deletePractice(practiceId);
@@ -716,9 +722,15 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                     />
                                     <SidebarItem
                                         icon={BookOpen}
-                                        label="Практики"
+                                        label="Мои практики"
                                         active={view === 'practices'}
                                         onClick={() => handleViewChange('practices')}
+                                    />
+                                    <SidebarItem
+                                        icon={Gem}
+                                        label="Сокровищница"
+                                        active={view === 'treasury'}
+                                        onClick={() => handleViewChange('treasury')}
                                     />
                                     <SidebarItem
                                         icon={Sparkles}
@@ -889,7 +901,8 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem icon={CalendarRange} label="Встречи" active={view === 'meetings'} onClick={() => handleViewChange('meetings')} />
                                 <SidebarItem icon={MapIcon} label="Сад ведущих" active={view === 'map'} onClick={() => handleViewChange('map')} />
                                 <div className="h-px bg-slate-100 my-4"></div>
-                                <SidebarItem icon={BookOpen} label="Практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
+                                <SidebarItem icon={BookOpen} label="Мои практики" active={view === 'practices'} onClick={() => handleViewChange('practices')} />
+                                <SidebarItem icon={Gem} label="Сокровищница" active={view === 'treasury'} onClick={() => handleViewChange('treasury')} />
                                 <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                                 <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
                                 {!isApplicant && <SidebarItem icon={ShoppingBag} label="Магазин" active={view === 'market'} onClick={() => handleViewChange('market')} />}
@@ -947,6 +960,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         </Suspense>
                     )}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
+                    {view === 'treasury' && <TreasuryView user={user} practices={practices} onForked={handleForkedPractice} onNotify={onNotify} />}
                     {view === 'library' && (
                         <Suspense fallback={(
                             <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3 text-slate-500">
@@ -1113,7 +1127,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
                             >
                                 <BookOpen size={20} strokeWidth={view === 'practices' ? 2 : 1.5} className="shrink-0" />
-                                <span className="text-[9px] font-medium leading-none">Практики</span>
+                                <span className="text-[9px] font-medium leading-none">Мои практики</span>
                             </button>
                         )}
 
@@ -1123,7 +1137,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-0.5 transition-colors duration-200 ${view === 'practices' ? 'text-emerald-700' : 'text-slate-400'}`}
                             >
                                 <BookOpen size={20} strokeWidth={view === 'practices' ? 2 : 1.5} className="shrink-0" />
-                                <span className="text-[9px] font-medium leading-none">Практики</span>
+                                <span className="text-[9px] font-medium leading-none">Мои практики</span>
                             </button>
                         )}
 

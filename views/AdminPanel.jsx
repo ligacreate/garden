@@ -6,6 +6,7 @@ import RichEditor from '../components/RichEditor';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalShell from '../components/ModalShell';
 import AdminPvlProgress from './AdminPvlProgress';
+import AdminPracticesView from './AdminPracticesView';
 import { api } from '../services/dataService';
 import { getMeetingInstant } from '../utils/meetingTime';
 import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
@@ -1308,6 +1309,14 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                             >
                                 Сценарии
                             </button>
+                            <button
+                                onClick={() => { setContentTab('practices'); sessionStorage.setItem('adminContentTab', 'practices'); }}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${contentTab === 'practices'
+                                    ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
+                            >
+                                Практики
+                            </button>
                         </div>
 
                         {contentTab === 'library' && (
@@ -1600,6 +1609,10 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                 </div>
 
                             </div>
+                        )}
+
+                        {contentTab === 'practices' && (
+                            <AdminPracticesView onNotify={onNotify} />
                         )}
                     </div>
                 )}

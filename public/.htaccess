@@ -33,15 +33,12 @@
     </IfModule>
 </FilesMatch>
 
-# BUG-CORS-SCRIPT-ERROR — CORS для JS/CSS, чтобы window.onerror получал
-# реальный текст ошибки и стек, а не маскированное "Script error" без
-# деталей. Vite ставит crossorigin="anonymous" на <script> и <link>,
-# и без Access-Control-Allow-Origin браузер прячет содержимое ошибок
-# из cross-origin ресурсов. Bundle hosted на том же домене, что и
-# страница, но crossorigin-атрибут включает CORS-проверку даже для
-# same-origin — поэтому заголовок нужен.
-<FilesMatch "\.(js|mjs|css)$">
-    <IfModule mod_headers.c>
-        Header set Access-Control-Allow-Origin "*"
-    </IfModule>
-</FilesMatch>
+# BUG-CORS-SCRIPT-ERROR — окончательно решено через Vite-плагин
+# `removeCrossoriginSameOrigin` (см. vite.config.js). Плагин снимает
+# crossorigin="anonymous" с same-origin asset-тегов на build-стадии.
+# CORS-режим больше не включается, ACAO-заголовок на JS/CSS не нужен —
+# поэтому Apache-блок здесь удалён. Cache-блоки выше остаются как
+# meta-fallback / документация желаемого поведения, хотя на проде
+# .htaccess не применяется (nginx Timeweb, нет X-Htaccess-Active в
+# response — кэширование настраивается через nginx user-config либо
+# через meta-теги в index.html).

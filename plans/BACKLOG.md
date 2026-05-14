@@ -1817,8 +1817,12 @@ related_docs:
   `services/dataService.js` (Postgrest forkPractice).
 
 ### BUG-CORS-SCRIPT-ERROR: Script error от анонимов после деплоя 2026-05-11
-- **Статус:** 🔴 TODO
-- **Приоритет:** P2
+- **Статус:** 🟢 DONE (2026-05-15, Vite-плагин `removeCrossoriginSameOrigin`
+  снимает crossorigin с same-origin asset-тегов на build-стадии).
+  Попытка через .htaccess (CORS header) не сработала — nginx Timeweb
+  игнорирует .htaccess. После деплоя — `curl https://liga.skrebeyko.ru/
+  | grep crossorigin` возвращает только preconnect fonts.gstatic.com.
+- **Приоритет:** ~~P2~~
 - **Создано:** 2026-05-11 (после деплоя `d871ee7` ≈17:26 MSK)
 - **Симптом:** Два `Garden client error` от анонимных пользователей
   в 19:26 и 19:35 MSK. Bundle `index-XYw_gAp2.js`, `user: anon`,
@@ -1869,8 +1873,11 @@ related_docs:
 Заведено: 2026-05-11.
 
 ### MON-002-CROSSORIGIN-VISIBILITY: «Script error.» без stack в TG
-- **Статус:** 🔴 TODO
-- **Приоритет:** P2
+- **Статус:** 🟢 DONE (2026-05-15, та же мера что закрыла
+  BUG-CORS-SCRIPT-ERROR — Vite-плагин снимает crossorigin с
+  same-origin asset-тегов, CORS-режим больше не включается, и
+  window.onerror получает реальный stack/source/url).
+- **Приоритет:** ~~P2~~
 - **Создано:** 2026-05-11 (после жалобы Ирины — попутное наблюдение
   в TG-канале `@garden_grants_monitor_bot`)
 - **Симптом:** В TG приходят алерты `🚨 Garden client error /
@@ -1898,6 +1905,46 @@ related_docs:
 - **Связано:** MON-001 (DONE), INFRA-004 (CORS-настройка hightek.ru),
   BUG-CORS-SCRIPT-ERROR (конкретный инцидент 19:26/19:35 после
   деплоя `d871ee7`, та же маска).
+
+### INFRA-005-PRESERVE-ROUTE: ErrorBoundary auto-reload теряет URL
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-15 (попутно с BUG-CORS-SCRIPT-ERROR fix)
+- **Симптом:** При ChunkLoadError (`Failed to fetch dynamically
+  imported module` / `Importing a module script failed`) ErrorBoundary
+  делает `window.location.reload()` ([components/ErrorBoundary.jsx:27](../components/ErrorBoundary.jsx#L27)).
+  Reload идёт на текущий URL — но текущий URL у нас всегда `/`
+  (SPA без real-routing, навигация в `view`-state). Если юзер был
+  глубоко (форма редактирования, открытая модалка, выбранная вкладка
+  AdminPanel) — после reload приложение возвращается в дефолтный
+  view (dashboard / library в зависимости от роли), теряя контекст.
+- **Что делать:** перед reload сохранить минимальный snapshot
+  state в `sessionStorage` (current view + relevant ids) и в init
+  приложения восстановить, если snapshot есть и не старше N секунд.
+- **Не блокер**, но раздражает после деплоев с лазерами.
+- **Связано:** INFRA-005-SW-CACHE (исходная гипотеза, исключена),
+  ARCH-PROD-004 (SPA-роутинг с реальными URL — long-term решение).
+
+### INFRA-HTACCESS-PUBLIC: dist/.htaccess доступен по HTTP
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-14 (обнаружено при диагностике 403 после
+  phase28b deploy)
+- **Симптом:** `curl https://liga.skrebeyko.ru/.htaccess` → HTTP 200,
+  отдаёт содержимое файла. Apache по умолчанию запрещает раздачу
+  dotfiles, но nginx Timeweb об этом не знает и сервит как обычный
+  static.
+- **Влияние:** низкое. Файл .htaccess не применяется (nginx ≠ Apache),
+  секретов в нём нет — только cache-правила и комментарии. Но
+  раскрытие конфига нежелательно для гигиены.
+- **Что делать:** через панель Timeweb или тикет добавить в
+  nginx-конфиг `liga.skrebeyko.ru`:
+  ```
+  location ~ /\.ht { deny all; return 404; }
+  ```
+- **Связано:** INFRA-004 (cache-headers через nginx user-config —
+  тот же путь к панели Timeweb), BUG-CORS-SCRIPT-ERROR (родственная
+  тема «.htaccess не работает на nginx»).
 
 ### PERF-002-LAZY-JSPDF: jspdf грузить только при клике «Экспорт PDF»
 - **Статус:** 🟢 DONE (2026-05-11, Phase 2B заход)

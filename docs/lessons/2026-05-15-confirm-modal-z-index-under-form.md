@@ -2,78 +2,80 @@
 
 **Дата:** 2026-05-15
 **Где всплыло:** smoke phase28b. Удаление практики из `PracticeFormModal`.
-**Тип:** дырявый контракт дизайн-системы.
+**Тип:** stacking context isolation, не z-index.
 
 ## Симптом
 
 В форме редактирования практики (`PracticeFormModal`, открыт через `ModalShell`)
 есть красная кнопка X — открывает `<ConfirmationModal>` «Удалить практику?».
 Клик по X **видимого эффекта не даёт**. Если закрыть форму руками («Отмена»)
-— на месте уже стоит непринятый диалог подтверждения. Пользователь
-интерпретирует это как «кнопка не работает».
+— на месте уже стоит непринятый диалог. Пользователь читает это как «X не работает».
+
+## Postmortem: первый фикс не сработал
+
+**Первая гипотеза (неверная):** default `zIndex` ConfirmationModal (`z-50`)
+ниже ModalShell (`z-[80]`) → подняли до `z-[100]`. Build зелёный, deploy
+прошёл — баг **остался**.
+
+**Почему мимо:** z-index сравнивается **только внутри одного stacking
+context**. ConfirmationModal жил внутри `<App>`, который внутри `#root` —
+а `#root` имеет `position: relative; z-index: 1; overflow: auto`, что
+создаёт изолированный stacking context. Любой z-index дочернего элемента
+нормализуется в пределах этого контекста — `z-[100]` внутри `#root`
+никогда не победит элемент с `z-[80]` в `body`.
+
+ModalShell этого избегает через `createPortal(..., document.body)`:
+порталится в `body`, минуя `#root` и его stacking context. Confirm — не
+порталился, поэтому проигрывал даже с z-[100].
+
+Диагноз поставлен через DOM-инспекцию (Chrome DevTools): сравнили
+`getComputedStyle` у фактических узлов формы и диалога — у формы
+parent === `body`, у диалога parent === `#root`.
 
 ## Корневая причина
 
-Чисто CSS-конфликт стека модалок:
-
-| Компонент | default `zIndex` |
-|---|---|
-| `ModalShell` ([components/ModalShell.jsx:16](../../components/ModalShell.jsx#L16)) | `z-[80]` |
-| `ConfirmationModal` ([components/ConfirmationModal.jsx:5](../../components/ConfirmationModal.jsx#L5)) | `z-50` ← было |
-
-`50 < 80` → confirm рендерится **под** формой. Видеть его можно только
-после `onClose` формы (которая снимает z-[80] оверлей).
-
-Корневая причина — **дырявая абстракция дизайн-системы**: design-system
-неявно подразумевала, что `ConfirmationModal` никогда не открывается
-поверх `ModalShell`-формы. На самом деле это типовой паттерн (форма с
-кнопкой удаления) — и контракт проваливается. Default z-index
-ConfirmationModal был ниже ModalShell, что **противоположно** UX-конвенции
-(confirm всегда top-most).
-
-## Почему пропустили
-
-- `PracticeFormModal` — extracted shared компонент, появился в phase28b.
-  Раньше форма редактирования практики жила inline в `PracticesView`,
-  а `<ConfirmationModal>` был сиблингом в том же `PracticesView` — и
-  визуально работал по случайности (на каких именно z-index браузер
-  решал отрисовать — зависело от порядка JSX и stacking context).
-- При extract'е PracticeFormModal в shared компонент `ModalShell`-обёртка
-  стала единственным родителем формы → stacking context определился
-  жёстко через z-index, и баг проявился стабильно.
-- В `ConfirmationModal` уже был `zIndex` prop с default'ом — но default
-  был выбран без учёта верхушки стека модалок проекта.
+Дырявая абстракция дизайн-системы: `ConfirmationModal` не использовал
+`createPortal`, в отличие от `ModalShell`. Это «работало» пока confirm
+не открывался поверх ModalShell-формы — потому что без формы-конкурента
+z-index диалога сравнивался с обычным контентом приложения и побеждал
+по визуальному порядку.
 
 ## Как починили
 
-`components/ConfirmationModal.jsx`: default `zIndex = "z-50"` → `zIndex = "z-[100]"`.
+`components/ConfirmationModal.jsx`:
+1. `import { createPortal } from 'react-dom'`.
+2. SSR-guard: `if (typeof document === 'undefined') return null;` — паттерн
+   ModalShell.
+3. Обернули JSX в `createPortal(..., document.body)`.
+4. `zIndex` default оставлен `z-[100]` (выше ModalShell `z-[80]`) — теперь
+   он **реально** работает, потому что оба компонента сиблинги в `body`
+   и сравниваются в одном stacking context.
 
-- Все 9 callsites (`AdminPanel ×2`, `PracticesView`, `BuilderView`,
-  `CRMView`, `MeetingsView ×2`, `ProfileView`, формы внутри
-  `PracticeFormModal`) полагались на default — никто не передавал prop.
-  Регрессий нет, наоборот — лечит и **похожие потенциальные баги** в
-  Builder/CRM/Meetings/Profile/Admin (везде, где confirm может открываться
-  из ModalShell-формы).
-- Связанных слоёв не задели: контракт props сохранён (override через
-  `zIndex` prop работает как раньше).
-
-## Альтернатива «закрыть форму перед confirm»
-
-Рассмотрена и отвергнута. Минусы:
-- При Cancel в confirm пользователь возвращается в список, а не в форму
-  — теряет свою несохранённую правку.
-- Требует менять каждое место использования (9+ файлов) — высокий риск.
-- Не решает корневую причину (дырявый контракт остался бы).
+Связанных слоёв не задели: 9 callsites (`AdminPanel ×2`, `PracticesView`,
+`BuilderView`, `CRMView`, `MeetingsView ×2`, `ProfileView`, формы внутри
+`PracticeFormModal`) — никто не передавал `zIndex` prop, изменение
+default безопасно. Контракт props сохранён.
 
 ## Что проверить в будущем
 
-- При появлении нового overlay-компонента (toast, popover, drawer,
-  command palette) сверять его default z-index с уже существующими.
-  Сейчас в проекте две точки правды: `ModalShell` (z-[80]) и
-  `ConfirmationModal` (z-[100]). Если введём drawer/command palette
-  — задокументировать в design-system.
-- Паттерн «кнопка действия внутри формы → confirm» — типовой;
-  при extract'е любых форм в shared компоненты проверить, что confirm
-  поверх работает.
-- Сигнал: «кнопка X в форме делает невидимый клик» / «диалог появляется
-  после закрытия формы» → это z-index конфликт, не логический баг.
+- **Любой fixed/absolute overlay-компонент должен порталиться в `body`.**
+  Это правило design-system'а. Сейчас в проекте: `ModalShell` ✅ портал,
+  `ConfirmationModal` ✅ портал (после фикса). Если введём `Toast`,
+  `Drawer`, `Popover`, `Tooltip`, `CommandPalette` — каждый должен
+  использовать `createPortal(..., document.body)` или жить внутри
+  ModalShell.
+- **Сигнал stacking context bug:** «z-index явно больше, но элемент
+  всё равно под». Не повышай z-index дальше — проверь parent chain
+  через DevTools (`Computed → position/z-index/overflow`).
+- **Stacking context создают:** `position: relative/absolute/fixed/sticky`
+  + `z-index ≠ auto`; `opacity < 1`; `transform/filter/perspective ≠ none`;
+  `will-change: transform/opacity`; `isolation: isolate`. Любое из этих
+  на родителе изолирует всех потомков.
+- **Не доверяй однократному фиксу симптома** — проверяй на проде
+  визуально (или хотя бы через DOM-инспекцию), что симптом ушёл, не
+  только что build/типчек зелёный.
+
+## История фиксов
+
+- `9c85612` (2026-05-15) — попытка #1: подняли default z-index. **Не сработала.**
+- (текущий коммит) — попытка #2: createPortal в body. Работает.

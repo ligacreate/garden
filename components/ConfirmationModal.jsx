@@ -1,14 +1,18 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, AlertTriangle } from 'lucide-react';
 import Button from './Button';
 
-// BUG-PRACTICE-DELETE-ZINDEX (2026-05-15): default z-[100] выше ModalShell (z-[80]),
-// чтобы confirm всегда был поверх форм. Без этого «Удалить?» из PracticeFormModal
-// рендерится под формой — невидим до закрытия формы.
+// BUG-PRACTICE-DELETE-ZINDEX (2026-05-15): рендерим через Portal в document.body.
+// Без портала диалог попадал внутрь #root (position:relative; z-index:1; overflow:auto)
+// — это изолированный stacking context, и z-[100] внутри него меньше чем z-[80] у
+// ModalShell в body. Z-index сравнивается только в одном stacking context.
+// ModalShell использует тот же паттерн (createPortal в body) — теперь оба сиблинги.
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", confirmVariant = "primary", icon: Icon = AlertTriangle, zIndex = "z-[100]" }) => {
     if (!isOpen) return null;
+    if (typeof document === 'undefined') return null;
 
-    return (
+    return createPortal(
         <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-200`}>
             <div className="surface-card w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative">
                 <button
@@ -54,7 +58,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

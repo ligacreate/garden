@@ -1,5 +1,29 @@
 -- goals_fk_diagnostics_and_repair.sql
--- Purpose:
+--
+-- ⚠️ DEPRECATED (2026-05-13). Файл оставлен как исторический артефакт.
+--
+-- Этот скрипт писался под гипотезу «goals.user_id ссылается на public.users».
+-- Реальная схема была другой: до phase27 FK goals_user_id_fkey ссылался на
+-- auth.users (Supabase-наследие). Раздел A1 ниже использует
+-- information_schema.constraint_column_usage, который НЕ пробивает
+-- cross-schema FK и поэтому в проде показывал бы пустоту/ложный
+-- референс. Корректная диагностика cross-schema FK — через pg_constraint
+-- (см. урок).
+--
+-- Текущая схема (после phase27, 2026-05-13):
+--   public.goals.user_id -> public.profiles(id) ON DELETE CASCADE
+-- Аналогично переведены practices, notifications (CASCADE) и news.author_id,
+-- scenarios.user_id (SET NULL).
+--
+-- Связано:
+--   migrations/2026-05-13_phase27_public_fk_to_profiles.sql — финальный фикс
+--   docs/lessons/2026-05-13-public-fk-to-auth-users-supabase-legacy.md — урок
+--
+-- Не запускать на текущей схеме. Содержимое ниже не модифицируется,
+-- сохранено для истории.
+--
+-- ─────────────────────────────────────────────────────────────────────
+-- Purpose (исторически):
 -- 1) Diagnose why inserts into public.goals fail with goals_user_id_fkey
 -- 2) Repair missing rows in public.users for ids that exist in public.profiles
 --

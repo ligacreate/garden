@@ -2456,79 +2456,39 @@ class RemoteApiService {
 
     // Goals
     async getGoals(userId) {
-        const currentUser = await this.getCurrentUser().catch(() => null);
-        const resolvedUserId = await this._resolveGoalsUserId(userId, currentUser);
-        const candidateIds = Array.from(new Set([userId, resolvedUserId].filter(Boolean)));
-        const results = await Promise.all(
-            candidateIds.map((candidateId) =>
-                postgrestFetch('goals', {
-                    select: '*',
-                    user_id: `eq.${candidateId}`,
-                    order: 'created_at.desc'
-                }).catch((e) => {
-                    console.warn('getGoals candidate lookup failed:', candidateId, e);
-                    return { data: [] };
-                })
-            )
-        );
-        const rows = results.flatMap(({ data }) => (Array.isArray(data) ? data : []));
-
-        const byId = new Map();
-        rows.forEach((row) => {
-            if (row && row.id !== undefined && row.id !== null) byId.set(row.id, row);
+        if (!userId) return [];
+        const { data } = await postgrestFetch('goals', {
+            select: '*',
+            user_id: `eq.${userId}`,
+            order: 'created_at.desc'
         });
-        return Array.from(byId.values()).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+        return data || [];
     }
 
     async addGoal(goal) {
         const currentUser = await this.getCurrentUser().catch(() => null);
-        if (currentUser?.id) {
-            try {
-                await this._ensurePostgrestUser(currentUser);
-            } catch (e) {
-                console.warn('goal profile ensure failed:', e);
-            }
+        if (!currentUser?.id) {
+            throw new Error('Не удалось определить пользователя. Войдите снова.');
         }
 
-        const resolvedUserId = await this._resolveGoalsUserId(goal?.user_id, currentUser);
-        const candidateUserIds = Array.from(new Set([
-            resolvedUserId,
-            currentUser?.id,
-            goal?.user_id
-        ].filter(Boolean)));
+        try {
+            await this._ensurePostgrestUser(currentUser);
+        } catch (e) {
+            console.warn('goal profile ensure failed:', e);
+        }
 
-        const baseSanitized = this._sanitizeFields(
+        const sanitized = this._sanitizeFields(
             { ...goal, related_tags: goal.related_tags || [] },
             { plain: ['title', 'description'] }
         );
-        const { id, user_id, ...restGoal } = baseSanitized; // Ensure no ID is sent for insert
+        const { id, user_id, ...restGoal } = sanitized;
 
-        let lastError = null;
-        for (const candidateUserId of candidateUserIds) {
-            try {
-                const { data } = await postgrestFetch('goals', {}, {
-                    method: 'POST',
-                    body: [{ ...restGoal, user_id: candidateUserId }],
-                    returnRepresentation: true
-                });
-                return Array.isArray(data) ? data[0] : data;
-            } catch (e) {
-                const msg = String(e?.message || '');
-                lastError = e;
-                if (msg.includes('goals_user_id_fkey') || msg.includes('"code":"23503"')) {
-                    continue;
-                }
-                throw e;
-            }
-        }
-
-        if (lastError) {
-            const msg = String(lastError?.message || '');
-            if (msg.includes('goals_user_id_fkey') || msg.includes('"code":"23503"')) {
-                throw new Error('Не удалось привязать цель к вашему профилю. Обновите страницу и попробуйте снова.');
-            }
-        }
-        throw new Error('Не удалось сохранить цель. Попробуйте снова.');
+        const { data } = await postgrestFetch('goals', {}, {
+            method: 'POST',
+            body: [{ ...restGoal, user_id: currentUser.id }],
+            returnRepresentation: true
+        });
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async updateGoal(goal) {
@@ -2545,92 +2505,6 @@ class RemoteApiService {
     async deleteGoal(goalId) {
         await postgrestFetch('goals', { id: `eq.${goalId}` }, { method: 'DELETE', returnRepresentation: true });
         return true;
-    }
-
-    async _resolveGoalsUserId(requestedUserId, currentUser = null) {
-        const candidateId = requestedUserId || currentUser?.id || null;
-        if (!candidateId) return requestedUserId;
-
-        // Primary path for current schema: goals.user_id -> auth.users.id
-        try {
-            const authMe = await authFetch('/auth/me');
-            const authId = authMe?.user?.id;
-            if (authId) return authId;
-        } catch (e) {
-            console.warn('goals auth user lookup failed:', e);
-        }
-
-        // Fallback for deployments where goals.user_id points to profiles.id
-        try {
-            const { data: profileById } = await postgrestFetch('profiles', {
-                select: 'id',
-                id: `eq.${candidateId}`,
-                limit: '1'
-            });
-            if (Array.isArray(profileById) && profileById.length > 0) return profileById[0].id;
-        } catch (e) {
-            console.warn('goals profile lookup by id failed:', e);
-        }
-
-        const email = normalizeEmail(currentUser?.email || '');
-        if (email) {
-            try {
-                const { data: profileByEmail } = await postgrestFetch('profiles', {
-                    select: 'id',
-                    email: `eq.${email}`,
-                    limit: '1'
-                });
-                if (Array.isArray(profileByEmail) && profileByEmail.length > 0) return profileByEmail[0].id;
-            } catch (e) {
-                console.warn('goals profile lookup by email failed:', e);
-            }
-        }
-
-        // Legacy fallback: deployments where goals.user_id points to public.users.id
-        try {
-            const { data: byId } = await postgrestFetch('users', {
-                select: 'id',
-                id: `eq.${candidateId}`,
-                limit: '1'
-            });
-            if (Array.isArray(byId) && byId.length > 0) return byId[0].id;
-        } catch (e) {
-            console.warn('goals user lookup by id failed:', e);
-        }
-
-        if (email) {
-            try {
-                const { data: byEmail } = await postgrestFetch('users', {
-                    select: 'id',
-                    email: `eq.${email}`,
-                    limit: '1'
-                });
-                if (Array.isArray(byEmail) && byEmail.length > 0) return byEmail[0].id;
-            } catch (e) {
-                console.warn('goals user lookup by email failed:', e);
-            }
-        }
-
-        try {
-            const payload = {
-                id: candidateId,
-                email: email || null,
-                name: this._sanitizeIfString(currentUser?.name) || null,
-                city: this._sanitizeIfString(currentUser?.city) || null
-            };
-            const { data: inserted } = await postgrestFetch('users', {}, {
-                method: 'POST',
-                body: [payload],
-                returnRepresentation: true
-            });
-            if (Array.isArray(inserted) && inserted.length > 0 && inserted[0]?.id !== undefined) {
-                return inserted[0].id;
-            }
-        } catch (e) {
-            console.warn('goals user auto-create failed:', e);
-        }
-
-        return requestedUserId;
     }
 
     _normalizeProfile(profile) {

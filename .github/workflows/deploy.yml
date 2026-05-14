@@ -36,7 +36,10 @@ jobs:
         run: |
           rm -rf deploy
           mkdir deploy
-          cp -R dist/* deploy/
+          # dist/. (а не dist/*) копирует и dotfiles — иначе .htaccess
+          # с CORS/cache-заголовками не уезжает на FTP, а
+          # dangerous-clean-slate сносит ранее залитый руками файл.
+          cp -R dist/. deploy/
           cp -R goroscop deploy/ || true
           cp -R trees deploy/ || true
           cp -R assets deploy/ || true

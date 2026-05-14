@@ -370,9 +370,11 @@ related_docs:
   client-side TZ-detection и edge-cases.
 
 ### FEAT-019: Сокровищница + маркетплейс практик
-- **Статус:** 🔴 TODO (ждёт планирования + brief'а от Ольги)
+- **Статус:** ⚙️ MVP DONE 2026-05-14 (phase28 + frontend Сокровищница + AdminPracticesView + rename); полный объём (UGC-публикация, модерация, семена, маркетплейс, FTS) остаётся P2-P3.
 - **Приоритет:** P2-P3 (большая фича, ~8-11 сессий, после INFRA-N + UX-002 + NB-RESTORE)
 - **Создано:** 2026-05-07
+- **MVP план:** [`plans/2026-05-14-сокровищница-mvp.md`](2026-05-14-сокровищница-mvp.md)
+- **Связанные NB после MVP:** FEAT-019-FORK-ATOMIC (P2), TECH-DEBT-SANITIZE-FIELDS-DUPLICATE (P3).
 - **Полное ТЗ:** [`docs/_session/2026-05-07_10_idea_treasury_marketplace.md`](../docs/_session/2026-05-07_10_idea_treasury_marketplace.md)
   (не дублируется здесь — единственный источник правды).
 - **Краткое summary:**
@@ -1770,6 +1772,102 @@ related_docs:
 
 Заведено: 2026-05-11.
 
+### TECH-DEBT-SANITIZE-FIELDS-DUPLICATE: дубль `_sanitizeFields` в LocalDataService
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-14 (обнаружено при FEAT-019 MVP)
+- **Симптом:** В Local-классе `services/dataService.js` метод
+  `_sanitizeFields` определён дважды — на [строках 517 и 532](../services/dataService.js#L517).
+  Второе определение тихо перекрывает первое (поведение идентично,
+  copy-paste дубль). В Postgrest-классе он определён один раз
+  ([:1161](../services/dataService.js#L1161)) — там всё чисто.
+- **Корневая причина:** copy-paste при добавлении метода. Линтер
+  не ловит, потому что технически это переопределение свойства
+  класса, что валидно в JS.
+- **Влияние:** нулевое функциональное; читаемость и риск рассинхрона
+  при будущей правке (чинят одну копию — забывают вторую).
+- **Как чинить:** удалить второе определение (строки 532-545).
+- **Связано:** FEAT-019 MVP (всплыло при добавлении `icon` в plain
+  allowlist Phase 0).
+
+### FEAT-019-FORK-ATOMIC: `forkPractice` не атомарен (GET+POST)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (закрыть в Фазе 2 FEAT-019)
+- **Создано:** 2026-05-14 (FEAT-019 MVP NB-2)
+- **Контекст:** В MVP `api.forkPractice(originalId, currentUserId)`
+  делает 2 HTTP round-trip:
+  1. `GET practices?id=eq.<originalId>&is_published=eq.true` (с
+     embed автора через `practices_user_id_fkey`).
+  2. `POST practices` с копией полей + `forked_from`,
+     `forked_from_author_name`, `user_id=current`.
+- **Race window:** между GET и POST автор может снять с публикации
+  или удалить оригинал. POST всё равно создаст копию (поля уже
+  на руках); если оригинал удалён — `forked_from` после `ON DELETE
+  SET NULL` обнулится, атрибуция останется в `forked_from_author_name`
+  (text-кэш). Для MVP приемлемо.
+- **Что не покрыто:** покупатель не знает, что копия создана с
+  «секунду назад снятой» практики; статистика форков (когда
+  заведём) может расходиться.
+- **Решение для Фазы 2:** RPC `public.fork_practice(p_id bigint)`
+  с `SECURITY DEFINER` и `SET search_path`. Внутри одной
+  транзакции: SELECT ... FOR SHARE (защита от удаления),
+  INSERT с копией полей, RETURN saved row. Фронт вызывает один
+  endpoint без race-окна.
+- **Связано:** FEAT-019, [`plans/2026-05-14-сокровищница-mvp.md`](2026-05-14-сокровищница-mvp.md) (NB-2 в Фазе 3),
+  `services/dataService.js` (Postgrest forkPractice).
+
+### BUG-CORS-SCRIPT-ERROR: Script error от анонимов после деплоя 2026-05-11
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2
+- **Создано:** 2026-05-11 (после деплоя `d871ee7` ≈17:26 MSK)
+- **Симптом:** Два `Garden client error` от анонимных пользователей
+  в 19:26 и 19:35 MSK. Bundle `index-XYw_gAp2.js`, `user: anon`,
+  `url: liga.skrebeyko.ru`, message `Script error`, source
+  `window.error`, без stack.
+- **Root cause (маска, не сама ошибка):** nginx Timeweb не возвращает
+  `Access-Control-Allow-Origin` на `/assets/*.js|*.css`, при этом
+  Vite ставит `crossorigin="anonymous"` на `<script type="module">`
+  и на динамические `import()` (новые lazy-чанки Phase 2B —
+  `MeetingsView`, `MarketView`, `CommunicationsView`, `LeaderPageView`,
+  `CourseLibraryView` от коммита `5e85de7`). Браузер переводит
+  загрузку в CORS mode даже на same-origin → модуль становится
+  opaque → `window.onerror` получает «Script error» без
+  message/stack/filename. Реальная ошибка где-то в коде, но мы её
+  не видим.
+- **Что подтверждено диагностикой:**
+  - Все 6 новых lazy-чанков **раздаются** (HTTP 200) — гипотеза
+    «чанка нет на проде» опровергнута.
+  - `sw.js` на проде — runtime SW, **без precache-манифеста**, на
+    `activate` чистит все `caches.keys()` без разбора, bundles
+    вообще не перехватывает (fetch handler только для `mode==='navigate'`).
+    Гипотеза `INFRA-005-SW-CACHE` (SW держит старые чанки) —
+    исключена.
+  - `Access-Control-Allow-Origin` отсутствует на index-бандле и
+    на трёх проверенных чанках (`MeetingsView`, `Communications`,
+    `Market`).
+- **Снятие маски (два пути, без ребилда vs с ребилдом):**
+  1. **nginx Timeweb (без ребилда, эффект мгновенный):** через
+     саппорт Timeweb или панель — добавить
+     `add_header Access-Control-Allow-Origin "*";` для
+     `location ~* \.(?:js|css|mjs)$` в конфиге liga.skrebeyko.ru.
+     Зависимости: нужен доступ к панели Timeweb или тикет.
+  2. **vite.config.js (свой контроль, требует ребилд+деплой):**
+     убрать `crossorigin` атрибут с динамических импортов через
+     `build.modulePreload: { polyfill: false }` или
+     post-processing `index.html`/`modulepreload` ссылок. Эффект
+     после следующего деплоя.
+- **Что делать дальше:** до снятия маски root cause неизвестен.
+  После снятия маски следующий же повтор ошибки вернёт нормальный
+  stack — тогда чинить конкретную view.
+- **Не блокер прода**, но мониторинг частично слепой (~70% ошибок
+  приходят как «Script error» — оценка из MON-002).
+- **Связано:** MON-002-CROSSORIGIN-VISIBILITY (тот же root cause,
+  но из утренних наблюдений), INFRA-004 (CORS-настройка
+  hightek.ru / Timeweb), INFRA-005-SW-CACHE (исходная гипотеза,
+  не подтвердилась — sw.js не precache'ит).
+
+Заведено: 2026-05-11.
+
 ### MON-002-CROSSORIGIN-VISIBILITY: «Script error.» без stack в TG
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2
@@ -1797,7 +1895,9 @@ related_docs:
 - **Влияние:** без этого fix'а MON-001 видит ~30% детально и ~70%
   как «Script error.» — мониторинг частично слепой.
 - **Когда:** после Phase 2B, не блокер.
-- **Связано:** MON-001 (DONE), INFRA-004 (CORS-настройка hightek.ru).
+- **Связано:** MON-001 (DONE), INFRA-004 (CORS-настройка hightek.ru),
+  BUG-CORS-SCRIPT-ERROR (конкретный инцидент 19:26/19:35 после
+  деплоя `d871ee7`, та же маска).
 
 ### PERF-002-LAZY-JSPDF: jspdf грузить только при клике «Экспорт PDF»
 - **Статус:** 🟢 DONE (2026-05-11, Phase 2B заход)

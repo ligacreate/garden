@@ -411,13 +411,24 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             const saved = await api.addPractice(newPractice);
             setPractices((prev) => [saved, ...prev]);
 
-            if (grantSeeds) {
-                // Seed Bonus: +80
-                const seedsEarned = 80;
-                onUpdateUser({ ...user, seeds: (user.seeds || 0) + seedsEarned });
-                if (!silent) onNotify(`Практика добавлена! +${seedsEarned} семян`);
-            } else if (!silent) {
-                onNotify("Практика добавлена");
+            // Опубликована сразу + триггер начислил +40 → seeds_awarded=true в response.
+            const publishBonus = saved?.seeds_awarded === true ? 40 : 0;
+            const baseBonus = grantSeeds ? 80 : 0;
+            const totalBonus = baseBonus + publishBonus;
+
+            if (totalBonus > 0) {
+                onUpdateUser({ ...user, seeds: (user.seeds || 0) + totalBonus });
+            }
+            if (!silent) {
+                if (baseBonus && publishBonus) {
+                    onNotify(`Практика добавлена и опубликована в Сокровищнице! +${baseBonus} + ${publishBonus} = +${totalBonus} семян`);
+                } else if (baseBonus) {
+                    onNotify(`Практика добавлена! +${baseBonus} семян`);
+                } else if (publishBonus) {
+                    onNotify(`Опубликовано в Сокровищнице! +${publishBonus} семян`);
+                } else {
+                    onNotify('Практика добавлена');
+                }
             }
 
             return saved;
@@ -431,18 +442,54 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
 
     const handleUpdatePractice = async (updatedPractice) => {
         try {
-            await api.updatePractice(updatedPractice);
-            setPractices((prev) => prev.map(p => p.id === updatedPractice.id ? updatedPractice : p));
-            onNotify("Практика обновлена");
+            const previous = practices.find((p) => String(p.id) === String(updatedPractice.id));
+            const saved = await api.updatePractice(updatedPractice);
+            // Postgrest возвращает обновлённую строку; Local — тоже row.
+            // Если updatePractice возвращает true (старый контракт) — fallback на input.
+            const merged = (saved && typeof saved === 'object') ? { ...updatedPractice, ...saved } : updatedPractice;
+            setPractices((prev) => prev.map((p) => (String(p.id) === String(merged.id) ? merged : p)));
+
+            // Если триггер начислил +40 за первую публикацию (seeds_awarded стал true,
+            // а раньше был false / undefined) — синхронизируем UI.
+            const wasAwarded = !!previous?.seeds_awarded;
+            const nowAwarded = merged?.seeds_awarded === true;
+            if (!wasAwarded && nowAwarded) {
+                onUpdateUser({ ...user, seeds: (user.seeds || 0) + 40 });
+                onNotify('Опубликовано в Сокровищнице! +40 семян');
+            } else {
+                onNotify('Практика обновлена');
+            }
+            return merged;
         } catch (e) {
             console.error(e);
             onNotify("Ошибка обновления: " + e.message);
+            return null;
         }
     };
 
     const handleForkedPractice = (savedCopy) => {
         if (!savedCopy) return;
         setPractices((prev) => [savedCopy, ...prev]);
+    };
+
+    // Используется TreasuryView когда админ создаёт практику сразу опубликованной.
+    // Запись принадлежит админу (user_id=admin.id), поэтому попадает и в его «Мои практики».
+    const handleTreasuryPracticeCreated = (saved) => {
+        if (!saved) return;
+        setPractices((prev) => {
+            const exists = prev.some((p) => String(p.id) === String(saved.id));
+            return exists ? prev.map((p) => (String(p.id) === String(saved.id) ? saved : p)) : [saved, ...prev];
+        });
+        // Триггер БД мог начислить +40 (seeds_awarded=true в response).
+        if (saved?.seeds_awarded === true) {
+            onUpdateUser({ ...user, seeds: (user.seeds || 0) + 40 });
+        }
+    };
+
+    // Используется TreasuryView при «Снять с публикации» собственной практики админом.
+    const handleTreasuryPracticeUpdated = (updated) => {
+        if (!updated) return;
+        setPractices((prev) => prev.map((p) => (String(p.id) === String(updated.id) ? { ...p, ...updated } : p)));
     };
 
     const handleDeletePractice = async (practiceId) => {
@@ -960,7 +1007,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         </Suspense>
                     )}
                     {view === 'practices' && <PracticesView user={user} knowledgeBase={knowledgeBase} practices={practices} onAddPractice={handleAddPractice} onUpdatePractice={handleUpdatePractice} onDeletePractice={handleDeletePractice} onNotify={onNotify} />}
-                    {view === 'treasury' && <TreasuryView user={user} practices={practices} onForked={handleForkedPractice} onNotify={onNotify} />}
+                    {view === 'treasury' && <TreasuryView user={user} practices={practices} onForked={handleForkedPractice} onPracticeCreated={handleTreasuryPracticeCreated} onPracticeUpdated={handleTreasuryPracticeUpdated} onNotify={onNotify} />}
                     {view === 'library' && (
                         <Suspense fallback={(
                             <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3 text-slate-500">

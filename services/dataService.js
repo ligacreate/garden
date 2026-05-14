@@ -2089,12 +2089,12 @@ class RemoteApiService {
         const sanitized = this._sanitizeFields(rest, {
             plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
         });
-        await postgrestFetch('practices', { id: `eq.${id}` }, {
+        const { data } = await postgrestFetch('practices', { id: `eq.${id}` }, {
             method: 'PATCH',
             body: sanitized,
             returnRepresentation: true
         });
-        return true;
+        return Array.isArray(data) ? data[0] : data;
     }
 
     async deletePractice(practiceId) {

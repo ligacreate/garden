@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Gem, Plus, Check, RotateCw } from 'lucide-react';
+import { Search, Gem, Plus, Check, RotateCw, EyeOff } from 'lucide-react';
 import Button from '../components/Button';
 import ModalShell from '../components/ModalShell';
+import PracticeFormModal from '../components/PracticeFormModal';
 import { api } from '../services/dataService';
 
 const normalizeType = (str) => {
@@ -53,7 +54,8 @@ const renderDescriptionWithLinks = (text) => {
     });
 };
 
-const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
+const TreasuryView = ({ user, practices = [], onForked, onPracticeCreated, onPracticeUpdated, onNotify }) => {
+    const isAdmin = (user?.role || '').toLowerCase() === 'admin';
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -62,6 +64,8 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
     const [timeFilter, setTimeFilter] = useState('all');
     const [viewItem, setViewItem] = useState(null);
     const [forkingId, setForkingId] = useState(null);
+    const [unpublishingId, setUnpublishingId] = useState(null);
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
 
     const loadTreasury = async () => {
         setLoading(true);
@@ -121,6 +125,42 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
 
         return matchesCategory && matchesSearch && matchesTime;
     }), [items, selectedCategory, search, timeFilter]);
+
+    const handleAdminCreate = async (payload) => {
+        if (!isAdmin || !user?.id) return;
+        try {
+            const saved = await api.addPractice({ ...payload, user_id: user.id });
+            if (saved) {
+                onPracticeCreated?.(saved);
+                setItems((prev) => [saved, ...prev.filter((p) => String(p.id) !== String(saved.id))]);
+                onNotify?.(`«${saved.title}» опубликована в Сокровищнице`);
+            }
+            setIsCreateOpen(false);
+        } catch (err) {
+            console.error('Admin create failed:', err);
+            onNotify?.(err?.message || 'Не удалось создать практику');
+        }
+    };
+
+    const handleUnpublish = async (practice, e) => {
+        if (e) e.stopPropagation();
+        if (!isAdmin) return;
+        setUnpublishingId(practice.id);
+        try {
+            const updated = await api.setPracticePublished(practice.id, false);
+            setItems((prev) => prev.filter((p) => String(p.id) !== String(practice.id)));
+            // Если это наша собственная практика — синхронизируем state «Моих».
+            if (updated && String(practice.user_id) === String(user?.id)) {
+                onPracticeUpdated?.({ ...practice, ...updated, is_published: false, published_at: null });
+            }
+            onNotify?.(`«${practice.title}» снята с публикации`);
+        } catch (err) {
+            console.error('Unpublish failed:', err);
+            onNotify?.(err?.message || 'Не удалось снять с публикации');
+        } finally {
+            setUnpublishingId(null);
+        }
+    };
 
     const handleFork = async (original, e) => {
         if (e) e.stopPropagation();
@@ -246,7 +286,8 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filtered.map((practice) => {
-                            const alreadyForked = forkedOriginalIds.has(String(practice.id));
+                            const isMine = user?.id && String(practice.user_id) === String(user.id);
+                            const alreadyForked = !isMine && forkedOriginalIds.has(String(practice.id));
                             return (
                                 <div
                                     key={practice.id}
@@ -271,6 +312,11 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
                                                             {getDurationLabel(practice)}
                                                         </span>
                                                     )}
+                                                    {isMine && (
+                                                        <span className="px-3 py-1 inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full text-blue-700 text-xs font-semibold">
+                                                            Моя практика
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -293,15 +339,31 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
                                                 ? <>Автор: <span className="font-semibold text-slate-700">{practice.author.name}</span></>
                                                 : <span className="text-slate-400 italic">Автор скрыт</span>}
                                         </div>
-                                        <Button
-                                            variant={alreadyForked ? 'secondary' : 'primary'}
-                                            className="!py-1.5 !px-3 !text-xs whitespace-nowrap"
-                                            onClick={(e) => handleFork(practice, e)}
-                                            disabled={alreadyForked || forkingId === practice.id}
-                                            icon={alreadyForked ? Check : Plus}
-                                        >
-                                            {alreadyForked ? 'В коллекции' : forkingId === practice.id ? 'Копирую…' : 'В мою коллекцию'}
-                                        </Button>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {isAdmin && (
+                                                <Button
+                                                    variant="ghost"
+                                                    className="!py-1.5 !px-2 !text-xs whitespace-nowrap text-slate-500 hover:text-rose-600"
+                                                    onClick={(e) => handleUnpublish(practice, e)}
+                                                    disabled={unpublishingId === practice.id}
+                                                    icon={EyeOff}
+                                                    title="Снять с публикации"
+                                                >
+                                                    {unpublishingId === practice.id ? '…' : 'Снять'}
+                                                </Button>
+                                            )}
+                                            {!isMine && (
+                                                <Button
+                                                    variant={alreadyForked ? 'secondary' : 'primary'}
+                                                    className="!py-1.5 !px-3 !text-xs whitespace-nowrap"
+                                                    onClick={(e) => handleFork(practice, e)}
+                                                    disabled={alreadyForked || forkingId === practice.id}
+                                                    icon={alreadyForked ? Check : Plus}
+                                                >
+                                                    {alreadyForked ? 'В коллекции' : forkingId === practice.id ? 'Копирую…' : 'В мою коллекцию'}
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             );
@@ -337,48 +399,53 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
                         </div>
 
                         <div className="prose prose-slate max-w-none">
-                            {viewItem.short_goal && (
-                                <div className="mb-4 p-4 rounded-2xl border border-blue-100 bg-blue-50/40">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-blue-700 mb-1">Краткая цель</div>
-                                    <div className="text-slate-800 font-medium">{viewItem.short_goal}</div>
-                                </div>
-                            )}
+                            <div className="mb-4 p-4 rounded-2xl border border-blue-100 bg-blue-50/40">
+                                <div className="text-xs font-bold uppercase tracking-wider text-blue-700 mb-1">Краткая цель</div>
+                                {viewItem.short_goal
+                                    ? <div className="text-slate-800 font-medium">{viewItem.short_goal}</div>
+                                    : <div className="text-slate-400 italic">не указана</div>}
+                            </div>
 
-                            {(viewItem.instruction_short || viewItem.instruction_full) && (
-                                <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Инструкция</div>
-                                    {viewItem.instruction_short && (
-                                        <p className="text-slate-700 mb-3 whitespace-pre-wrap">
-                                            {renderDescriptionWithLinks(viewItem.instruction_short)}
-                                        </p>
-                                    )}
-                                    {viewItem.instruction_full && (
+                            <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Инструкция (короткая)</div>
+                                {viewItem.instruction_short
+                                    ? <p className="text-slate-700 whitespace-pre-wrap">{renderDescriptionWithLinks(viewItem.instruction_short)}</p>
+                                    : <p className="text-slate-400 italic">не указана</p>}
+                            </div>
+
+                            <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Инструкция (полная)</div>
+                                {viewItem.instruction_full
+                                    ? (
                                         <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                                             <summary className="cursor-pointer text-sm font-semibold text-slate-700">Показать полную инструкцию</summary>
                                             <div className="mt-3 text-slate-700 whitespace-pre-wrap">
                                                 {renderDescriptionWithLinks(viewItem.instruction_full)}
                                             </div>
                                         </details>
-                                    )}
-                                </div>
-                            )}
+                                    )
+                                    : <p className="text-slate-400 italic">не указана</p>}
+                            </div>
 
-                            {splitReflectionQuestions(viewItem.reflection_questions).length > 0 && (
-                                <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Вопросы для рефлексивного отклика</div>
-                                    <ul className="list-disc pl-6 text-slate-700 space-y-1">
-                                        {splitReflectionQuestions(viewItem.reflection_questions).map((q, idx) => (
-                                            <li key={`${q}-${idx}`}>{q}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                            <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Вопросы для рефлексивного отклика</div>
+                                {splitReflectionQuestions(viewItem.reflection_questions).length > 0
+                                    ? (
+                                        <ul className="list-disc pl-6 text-slate-700 space-y-1">
+                                            {splitReflectionQuestions(viewItem.reflection_questions).map((q, idx) => (
+                                                <li key={`${q}-${idx}`}>{q}</li>
+                                            ))}
+                                        </ul>
+                                    )
+                                    : <p className="text-slate-400 italic">не указаны</p>}
+                            </div>
 
-                            {viewItem.description && (
-                                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-lg text-slate-700 leading-relaxed whitespace-pre-wrap font-medium italic mb-6">
-                                    {renderDescriptionWithLinks(viewItem.description)}
-                                </div>
-                            )}
+                            <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
+                                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Описание</div>
+                                {viewItem.description
+                                    ? <div className="text-slate-700 leading-relaxed whitespace-pre-wrap">{renderDescriptionWithLinks(viewItem.description)}</div>
+                                    : <p className="text-slate-400 italic">не указано</p>}
+                            </div>
                         </div>
 
                         <div className="mt-10 pt-6 border-t border-slate-100 flex flex-wrap justify-end gap-3">
@@ -399,6 +466,30 @@ const TreasuryView = ({ user, practices = [], onForked, onNotify }) => {
                     </>
                 )}
             </ModalShell>
+
+            {/* Admin: создать практику сразу опубликованной в Сокровищнице */}
+            {isAdmin && (
+                <div className="fixed bottom-8 right-8 z-30">
+                    <button
+                        onClick={() => setIsCreateOpen(true)}
+                        className="p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 hover:scale-105 transition-all shadow-xl shadow-blue-600/30"
+                        title="Опубликовать новую практику в Сокровищнице"
+                    >
+                        <Plus size={24} />
+                    </button>
+                </div>
+            )}
+
+            {isAdmin && (
+                <PracticeFormModal
+                    isOpen={isCreateOpen}
+                    onClose={() => setIsCreateOpen(false)}
+                    initial={null}
+                    defaultIsPublished={true}
+                    onSubmit={handleAdminCreate}
+                    titleOverride="Новая практика в Сокровищнице"
+                />
+            )}
         </div>
     );
 };

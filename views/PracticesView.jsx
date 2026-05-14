@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Search, Plus, Pencil, X, Upload, Download } from 'lucide-react';
+import { Search, Plus, Pencil, Upload, Download, Gem } from 'lucide-react';
 import Button from '../components/Button';
-import Input from '../components/Input';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalShell from '../components/ModalShell';
+import PracticeFormModal from '../components/PracticeFormModal';
 
 const CSV_TEMPLATE = `title,time,duration_minutes,type,short_goal,instruction_short,instruction_full,reflection_questions,description,icon
 Дыхание 4-7-8,10 мин,10,Дыхание,Снизить уровень стресса,Сделайте 3 цикла дыхания 4-7-8,Сядьте удобно. 1) Вдох 4 счета. 2) Задержка 7. 3) Выдох 8. Повторите 3-5 циклов.,Что изменилось в теле? | Что поменялось в состоянии?,Успокаивающая практика для быстрого снижения стресса,🫁
@@ -113,24 +113,11 @@ const parsePracticesCsv = (rawText) => {
 };
 
 const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDeletePractice, onNotify }) => {
-    const emptyPracticeForm = {
-        id: null,
-        title: '',
-        time: '',
-        duration_minutes: '',
-        type: '',
-        short_goal: '',
-        instruction_short: '',
-        instruction_full: '',
-        reflection_questions: '',
-        description: '',
-        icon: '📄'
-    };
     const [search, setSearch] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingPractice, setEditingPractice] = useState(null);
     const [viewPractice, setViewPractice] = useState(null); // The practice currently being viewed
     const [deletePracticeId, setDeletePracticeId] = useState(null);
-    const [formData, setFormData] = useState(emptyPracticeForm);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [csvText, setCsvText] = useState('');
     const [csvErrors, setCsvErrors] = useState([]);
@@ -216,43 +203,29 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
         return matchesCategory && matchesSearch && matchesTime;
     });
 
-    const handleSave = () => {
-        if (!formData.title) return;
-        const duration = parseInt(formData.duration_minutes, 10);
-        const normalizedDuration = Number.isNaN(duration) ? null : duration;
-        const payload = {
-            ...formData,
-            duration_minutes: normalizedDuration,
-            time: formData.time || (normalizedDuration ? `${normalizedDuration} мин` : '')
-        };
-
-        if (formData.id) {
-            // Update existing
-            onUpdatePractice(payload);
-            onNotify("Практика обновлена");
+    const handleFormSubmit = async (payload) => {
+        if (payload.id) {
+            await onUpdatePractice(payload);
         } else {
-            // Create new
-            onAddPractice({ ...payload, id: Date.now() });
-            onNotify("Практика добавлена");
+            await onAddPractice({ ...payload, id: Date.now() });
         }
-
         setIsEditModalOpen(false);
-        setFormData(emptyPracticeForm);
+        setEditingPractice(null);
     };
 
     const openAddModal = () => {
-        setFormData(emptyPracticeForm);
+        setEditingPractice(null);
         setIsEditModalOpen(true);
     };
 
     const openEditModal = (practice, e) => {
-        e.stopPropagation(); // Prevent opening the view modal
-        setFormData({
-            ...emptyPracticeForm,
-            ...practice,
-            duration_minutes: practice?.duration_minutes ?? ''
-        });
+        if (e?.stopPropagation) e.stopPropagation();
+        setEditingPractice(practice);
         setIsEditModalOpen(true);
+    };
+
+    const handleFormDelete = (id) => {
+        setDeletePracticeId(id);
     };
 
     const openImportModal = () => {
@@ -356,7 +329,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                             {practices.length}
                         </span>
                     </div>
-                    <p className="text-slate-400 mt-1 font-light">Ваша рабочая колода — то, что вы используете на встречах</p>
+                    <p className="text-slate-400 mt-1 font-light">Ваши практики</p>
                 </div>
                 <div className="text-right hidden md:block">
                     <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">В базе</div>
@@ -442,6 +415,11 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                                     {getDurationLabel(practice)}
                                                 </span>
                                             )}
+                                            {practice.is_published && (
+                                                <span className="px-3 py-1 mt-2 ml-2 inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-700 text-xs font-semibold">
+                                                    <Gem size={11} strokeWidth={2} /> В Сокровищнице
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
 
@@ -493,114 +471,13 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                 </div>
             )}
 
-            {/* Edit/Create Modal */}
-            <ModalShell
+            <PracticeFormModal
                 isOpen={isEditModalOpen}
-                onClose={() => setIsEditModalOpen(false)}
-                title={formData.id ? 'Редактировать практику' : 'Новая практика'}
-                size="full"
-                align="start"
-            >
-                <div className="space-y-4">
-                    <Input
-                        label="Название"
-                        value={formData.title}
-                        onChange={e => setFormData({ ...formData, title: e.target.value })}
-                        placeholder="Например: Утренняя настройка"
-                    />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Input
-                            label="Время"
-                            value={formData.time}
-                            onChange={e => setFormData({ ...formData, time: e.target.value })}
-                            placeholder="15 мин"
-                        />
-                        <Input
-                            label="Длительность (мин)"
-                            type="number"
-                            value={formData.duration_minutes}
-                            onChange={e => setFormData({ ...formData, duration_minutes: e.target.value })}
-                            placeholder="15"
-                        />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Input
-                            label="Тема"
-                            value={formData.type}
-                            onChange={e => setFormData({ ...formData, type: e.target.value })}
-                            placeholder="Отношения, рост"
-                        />
-                        <Input
-                            label="Краткая цель"
-                            value={formData.short_goal}
-                            onChange={e => setFormData({ ...formData, short_goal: e.target.value })}
-                            placeholder="Что должна дать практика?"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Иконка</label>
-                        <div className="grid grid-cols-5 gap-2">
-                            {['📄', '🎥', '🧘‍♀️', '✨', '🎧', '⚡️', '🌱', '🔮', '🧠', '❤️'].map(ico => (
-                                <button
-                                    key={ico}
-                                    onClick={() => setFormData({ ...formData, icon: ico })}
-                                    className={`h-10 rounded-xl border flex items-center justify-center text-lg transition-all ${formData.icon === ico ? 'border-blue-500 bg-blue-50 scale-105' : 'border-slate-200 hover:border-slate-300'}`}
-                                >
-                                    {ico}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Инструкция (короткая)</label>
-                        <textarea
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-24 resize-none text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                            placeholder="Короткий формат для карточки"
-                            value={formData.instruction_short}
-                            onChange={e => setFormData({ ...formData, instruction_short: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Инструкция (полная)</label>
-                        <textarea
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-32 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                            placeholder="Полный пошаговый вариант (раскрывающийся блок)"
-                            value={formData.instruction_full}
-                            onChange={e => setFormData({ ...formData, instruction_full: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Вопросы для рефлексивного отклика</label>
-                        <textarea
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-28 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                            placeholder="По одному вопросу на строку"
-                            value={formData.reflection_questions}
-                            onChange={e => setFormData({ ...formData, reflection_questions: e.target.value })}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-slate-700 mb-2 block">Описание</label>
-                        <textarea
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-32 resize-none text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                            placeholder="Описание практики и контекст применения"
-                            value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })}
-                        />
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                        {formData.id && (
-                            <Button
-                                variant="danger"
-                                className="!w-auto"
-                                icon={X}
-                                onClick={() => setDeletePracticeId(formData.id)}
-                            />
-                        )}
-                        <Button variant="secondary" onClick={() => setIsEditModalOpen(false)} className="flex-1">Отмена</Button>
-                        <Button onClick={handleSave} className="flex-1">Сохранить</Button>
-                    </div>
-                </div>
-            </ModalShell>
+                onClose={() => { setIsEditModalOpen(false); setEditingPractice(null); }}
+                initial={editingPractice}
+                onSubmit={handleFormSubmit}
+                onDelete={handleFormDelete}
+            />
 
             <ModalShell
                 isOpen={isImportModalOpen}

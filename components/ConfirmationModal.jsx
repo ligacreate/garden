@@ -2,7 +2,10 @@ import React from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 import Button from './Button';
 
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", confirmVariant = "primary", icon: Icon = AlertTriangle, zIndex = "z-50" }) => {
+// BUG-PRACTICE-DELETE-ZINDEX (2026-05-15): default z-[100] выше ModalShell (z-[80]),
+// чтобы confirm всегда был поверх форм. Без этого «Удалить?» из PracticeFormModal
+// рендерится под формой — невидим до закрытия формы.
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", confirmVariant = "primary", icon: Icon = AlertTriangle, zIndex = "z-[100]" }) => {
     if (!isOpen) return null;
 
     return (

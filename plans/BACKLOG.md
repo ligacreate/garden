@@ -247,54 +247,51 @@ related_docs:
   - ANOM-004 (verified anon write → 42501; админка в Garden подразумевает admin JWT, дополнительной защиты на write пока хватает текущей)
 
 ### FEAT-015: Авто-пауза ведущей при неоплате подписки на Prodamus
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE 2026-05-16 (Path C — гибрид)
 - **Приоритет:** P1 (защита от неоплаченного использования платформы; снимает с Ольги ручной труд)
 - **Создано:** 2026-05-06
-- **Контекст:** Сейчас постановка ведущей на паузу — ручная (Ольга
-  через админку → `profiles.status = 'suspended'`). Когда ведущая
-  перестаёт платить ежемесячный взнос на Prodamus — её аккаунт
-  остаётся `active`, она продолжает использовать платформу
-  бесплатно. Нужна автоматическая интеграция: webhook от Prodamus
-  → suspend status профиля → phase 21 trigger
-  (`on_profile_status_change_resync_events`) автоматически скроет
-  её события из публичного Meetings.
-- **Скоп:**
-  1. **Recon Prodamus webhook API:** формат событий, signature
-     verification, какие события (`payment.success`,
-     `payment.failed`, `subscription.expired`, etc.).
-  2. **Webhook endpoint в `garden-auth`** (Express): приём +
-     проверка подписи + UPDATE `profiles.status='suspended'` или
-     обратно `active` по email/идентификатору ведущей.
-  3. **Setup webhook URL в Prodamus dashboard.**
-  4. **End-to-end smoke:** тестовый платёж в Prodamus → webhook
-     → пауза; тестовое восстановление → webhook → активация.
-  5. **Логирование webhook'ов** для аудита (отдельная таблица
-     `billing_webhook_logs` — может потребовать применения
-     отложенной миграции 21 биллинга, см. архитектурный вопрос).
-- **Архитектурный вопрос (на recon):** в проекте есть
-  спроектированная, но НЕ применённая миграция 21 (биллинг +
-  `profiles.access_status` + таблицы `subscriptions` /
-  `billing_webhook_logs` + RESTRICTIVE-гарды). Решить на
-  старте recon — apply'ить ли её сразу (полный путь, ~4-6
-  сессий, полная биллинг-модель с историей подписок) или начать
-  с упрощённой версии на текущем `profiles.status` (минимальный
-  путь, ~2-3 сессии, без истории платежей).
-- **Why:** защита бизнеса от неоплаченного использования +
-  устранение ручного труда Ольги по сверке Prodamus с админкой.
-- **Acceptance:**
-  - В Prodamus настроен webhook на endpoint в `garden-auth`.
-  - При неоплате (`payment.failed` / `subscription.expired`):
-    `profiles.status='suspended'`, события исчезают из
-    публичного Meetings (через phase 21 trigger).
-  - При возобновлении оплаты: `status='active'`, события
-    восстанавливаются.
-  - Webhook signature verifies корректно (защита от подделки).
-  - Все webhook'и логируются для аудита.
+- **Закрыто:** 2026-05-16 — Phase C5 sandbox-event 200 OK + idempotency
+  работает (дубль детектится). Webhook прод-endpoint `https://push.skrebeyko.ru/api/billing/prodamus/webhook`
+  принимает events Prodamus, верифицирует подпись (HMAC-SHA256
+  по recursive ksort + json_encode canonical), пишет в
+  `billing_webhook_logs`, синхронизирует `profiles.access_status`
+  (через bridge-trigger phase29 → `profiles.status` для совместимости
+  с phase 21 resync-trigger).
+- **Решение по архитектурному вопросу:** **Path C — гибрид.**
+  Вместо отложенной миграции 21 в полном объёме (RESTRICTIVE policies +
+  `subscription_status` enum + полный биллинг) применили `phase29` —
+  9 колонок из mig21 без RESTRICTIVE policies + 3 NEW (`auto_pause_exempt`)
+  + bridge trigger `access_status → status`. Сохранили текущую модель
+  `profiles.status` как owner of state, на неё повешен phase 21
+  resync-trigger. `access_status` — derived layer от webhook.
+- **Что в проде:**
+  - Миграция `migrations/2026-05-15_phase29_prodamus_path_c.sql`
+    (b87ee2a, apply 2026-05-16) — 9 колонок mig21 + bridge-trigger +
+    backfill (31 профиль `auto_pause_exempt=true` для admin/applicant/intern).
+  - `push-server/server.mjs` (8ddc198) — `applyAccessState` уважает
+    `auto_pause_exempt` и `paused_manual` (приоритет: exempt → manual → expired).
+  - `push-server/billingLogic.mjs` (8ddc198) — pure-функция
+    `deriveAccessMutation({eventName, currentAccessStatus, autoPauseExempt})` + 9 unit-тестов.
+  - `push-server/prodamusVerify.mjs`:
+    - `pickSignatureSource(body, headers)` (7dcab90) — bridge HTTP-header `Sign` → `body.signature`.
+    - `buildProdamusCanonical(body)` (eb2d67a) — recursive ksort + JSON.stringify (PHP `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES` совпадает с JS-дефолтом).
+  - `push-server/server.mjs` (e0d60cf) — 4 ON CONFLICT-сайта получили `WHERE … IS NOT NULL` для partial unique индексов.
+  - Frontend (85a93f2) — `views/AdminPanel.jsx` админ-вкладка «Без автопаузы»: чекбокс per user + модал «Иммунитет к автопаузе» (Always / Until + дата + причина), вкладка списка двух категорий (Всегда + До даты).
+  - `services/dataService.js` (85a93f2) — `setProfileAutoPauseExempt(userId, {enabled, until, note})` + `toggleUserStatus` теперь PATCH'ит обе колонки (status + access_status).
+  - `.env` на проде (Ольга): `PRODAMUS_WEBHOOK_ENABLED=true` + `PRODAMUS_SECRET_KEY=...`.
+- **Уроки:**
+  - [`docs/lessons/2026-05-16-prodamus-signature-algorithm.md`](../docs/lessons/2026-05-16-prodamus-signature-algorithm.md) — header `Sign` + recursive ksort + JSON HMAC.
+  - [`docs/lessons/2026-05-16-partial-unique-index-on-conflict.md`](../docs/lessons/2026-05-16-partial-unique-index-on-conflict.md) — partial unique index требует `WHERE`-clause в `ON CONFLICT`.
+  - [`docs/lessons/2026-05-16-push-server-silent-crash-observability.md`](../docs/lessons/2026-05-16-push-server-silent-crash-observability.md) — silent crash в reconcile 5 дней, observability gap для background-сервисов.
+- **Открытые followup'ы:**
+  - **TECH-DEBT-PUSH-SERVER-STDERR-ALERTING** (P3, заведён в эту сессию) — алёртинг на stderr push-server'а в TG.
+  - **Полный E2E с реальным платежом** (~100₽ с Ольгиного аккаунта) — отложенный smoke task. Не блокер закрытия FEAT-015 (sandbox 200 OK + idempotency уже подтверждены).
+  - **Smoke Phase C6 UI на проде** — Ольга проверит что в админке вкладка «Без автопаузы» видит два списка (Всегда + До даты).
 - **Связано:**
-  - `garden-auth` (Express, добавление endpoint)
-  - FEAT-013 (phase 21 trigger — переиспользуем для авто-suspend)
-  - Отложенная миграция 21 (биллинг)
-  - ARCH-011 (подписочная модель Garden — пересекается)
+  - `push-server` (новый webhook handler + biz-logic + verify)
+  - FEAT-013 (phase 21 trigger переиспользован для auto-suspend через bridge phase29)
+  - Миграция 21 (НЕ применена, заменена `phase29` Path C)
+  - `views/AdminPanel.jsx`, `services/dataService.js` (admin UI)
 
 ### FEAT-018: Часовые пояса встреч — корректный TZ для офлайн + фильтр городов + локальное время для пользователя
 - **Статус:** 🔴 TODO (recon → продуктовое решение → план)
@@ -2373,6 +2370,103 @@ related_docs:
 - **Связано:** push-уведомления (если будем делать одновременно через
   push-server) — может быть единая система notifications.
 
+### FEAT-021: Свой TG-бот для управления каналом и чатом (замена TargetHunter)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (минус зависимость от стороннего сервиса +
+  единая точка правды; не блокер, текущий TargetHunter работает)
+- **Создано:** 2026-05-16
+- **Контекст:** Сегодня выяснилось (в ходе FEAT-015 закрытия), что
+  доступ к TG-каналу и чату Лиги управляется не Garden'ом, а
+  сторонним ботом **TargetHunter**, который слушает webhook от
+  Prodamus и сам добавляет/удаляет людей. Garden в этот flow не
+  вмешивается — мы только обновляем `profiles.access_status` и
+  скрываем события из публичного meetings.
+- **Идея:** поднять собственный TG-бот через `@BotFather`, выдать
+  ему админ-права в канале/чате Лиги, повесить на тот же
+  webhook от Prodamus (мы его уже принимаем в push-server). Бот
+  делает то же что TargetHunter — добавляет при `payment_success`,
+  выкидывает при `deactivation`/`finish` (с учётом role-based
+  exempt из phase30: admin/applicant/leader-с-льготой не выкидываем).
+- **Скоп:**
+  1. **Расследовать TargetHunter** — что именно он делает, какие
+     event'ы Prodamus слушает, какие действия в TG. Возможно
+     стоит посмотреть его dashboard / логи.
+  2. **Создать бота через @BotFather**, получить bot_token (в
+     credentials.env, не в репо). Дать админ-права в канале + чате.
+  3. **Bootstrap-синхронизация** — пройти по существующему
+     активному списку подписчиков Prodamus (через
+     `PRODAMUS_API_KEY` — лежит в `credentials.env`, есть API
+     `/rest/payments/search` или похожий) → сверить с фактическим
+     составом канала/чата → добавить пропущенных, выкинуть
+     лишних. Это однократно при запуске бота.
+  4. **Webhook handler в push-server** (или отдельный сервис) —
+     при `payment_success` → bot.invite(user); при `deactivation`/
+     `finish` (если не exempt) → bot.kick(user). Соединять
+     юзера ↔ telegram_id через `profiles.telegram` (уже есть
+     поле, нужно нормализовать у всех — у части юзеров пусто).
+  5. **Параллельный режим** на N недель — TargetHunter и наш бот
+     работают одновременно, мы наблюдаем что они делают одно и
+     то же. После уверенности — отключаем TargetHunter.
+  6. **Сложная логика** (фаза 2): роли, бартеры (auto_pause_exempt
+     не выкидываем), льготы до даты, ручные исключения через
+     админку Garden.
+- **Why:** единая точка правды, минус зависимость от стороннего
+  сервиса (платный, ограничения, no API contract), возможность
+  сложной бизнес-логики (бартеры, роли). Мы уже принимаем
+  webhook'и от Prodamus и обрабатываем биллинг — добавить
+  TG-управление логично.
+- **Объём:** ~4-5 сессий (recon TargetHunter + bot setup + bootstrap
+  sync + webhook integration + параллельный run + cleanup).
+- **Acceptance:**
+  - Свой бот добавляет/выкидывает людей по webhook'ам Prodamus.
+  - Bootstrap-sync актуализировал состав канала/чата по факту
+    активных подписок.
+  - TargetHunter отключён, состав канала/чата стабильный.
+  - Бартеры (`auto_pause_exempt=true`) не выкидываются при
+    `deactivation`/`finish`.
+- **Зависимости:**
+  - `PRODAMUS_API_KEY` (есть в `credentials.env`).
+  - `profiles.telegram` нормализован для всех активных подписчиков
+    (часть профилей с пустым телеграмом — побочный clean-up по пути).
+- **Связано:**
+  - FEAT-015 (DONE — webhook от Prodamus уже принимается).
+  - phase30 (DONE — role-based exempt → определяет «кого не выкидывать»).
+  - RECON-001 (бот «Сильный вопрос» — может быть ту же инфру
+    переиспользуем для рассылок).
+
+### RECON-001: TG-бот «Сильный вопрос» — где живёт + есть ли API
+- **Статус:** 🔴 RECON (информация для решения)
+- **Приоритет:** P3
+- **Создано:** 2026-05-16
+- **Контекст:** У Ольги существует и работает отдельный TG-бот
+  «Сильный вопрос», который собирает контакты людей для
+  последующих рассылок. Платформа/движок — неизвестен. Ольга
+  помнит, что бот работает, но детали (где развёрнут, кто
+  настраивал, есть ли админка/API) забыла.
+- **Что разведать:**
+  1. Найти бота в TG (поиск по имени), посмотреть @username.
+  2. Через `@BotFather` (если бот зарегистрирован у Ольги) —
+     посмотреть owner и settings. Если не у Ольги — расспросить
+     кто настраивал.
+  3. Определить хостинг: SaaS-конструктор (BotFather + chatfuel /
+     manychat / sendpulse), self-hosted на каком-то сервере, или
+     custom-код (Node.js / Python / etc.).
+  4. Есть ли API/экспорт базы контактов? Если SaaS — обычно
+     есть webhook + REST. Если self-hosted — зависит от кода.
+  5. Сколько контактов уже собрано — для оценки value базы.
+  6. Возможно ли: (a) интегрировать с Garden — например, если
+     контакт уже есть в `profiles`, mark'ить его как
+     «подписан на рассылки»; (b) хотя бы выгружать контакты
+     для ручной рассылки через mail/TG.
+- **Why:** контактная база — value для маркетинга. Если она
+  «застряла» в SaaS без экспорта — value заблокирован. Если
+  можно интегрировать с Garden — даёт unified view по аудитории.
+- **Acceptance recon'а:** ясность по хостингу, API, объёму базы,
+  и решение «оставить как есть / выгрузить разово / интегрировать».
+- **Связано:**
+  - FEAT-021 (если своего TG-бота поднимем для канала/чата —
+    может ту же инфру использовать для рассылок).
+
 ### CONTRACT-GARDEN-MEETINGS-001: events.host_telegram NOT NULL и непуст
 - **Статус:** 🔵 ACTIVE CONTRACT (документация, не TODO)
 - **Приоритет:** P2 (видимость важна — нарушение ломает meetings-фронт)
@@ -3980,3 +4074,40 @@ related_docs:
     CommunicationsView-chunk → готовит почву для CLEAN-015.
   Артефакт: `docs/_session/2026-05-11_07_strategist_phase2b_plan.md` +
   `_08_codeexec_phase2b_apply_report.md`.
+
+#### 2026-05-15 / 2026-05-16
+- 🎉 **FEAT-015 → 🟢 DONE (Path C — гибрид).** Авто-пауза ведущей при
+  неоплате Prodamus полностью в проде. Sandbox-event 200 OK + idempotency
+  (повтор детектится `duplicate:true`). Webhook endpoint
+  `https://push.skrebeyko.ru/api/billing/prodamus/webhook` принимает события,
+  верифицирует подпись (HMAC-SHA256 по recursive ksort + `JSON.stringify`
+  canonical), пишет в `billing_webhook_logs`, синхронизирует
+  `profiles.access_status` с триггером phase29 → `profiles.status` (для
+  совместимости с phase 21 resync events).
+- **Решение по архитектурному вопросу:** вместо отложенной миграции 21 в
+  полном объёме (RESTRICTIVE-policies + полный биллинг) применили **Path C**
+  — миграция `phase29` (9 колонок mig21 без RESTRICTIVE + 3 NEW
+  `auto_pause_exempt` + bridge trigger `access_status → status`). Сохранили
+  текущую модель `profiles.status` как owner of state.
+- **Коммиты в проде:**
+  - `phase29_prodamus_path_c.sql` (b87ee2a, apply 2026-05-15) — миграция.
+  - `8ddc198` — push-server: `applyAccessState` уважает `auto_pause_exempt`/`paused_manual`,
+    pure-функция `deriveAccessMutation` + 9 unit-тестов.
+  - `7dcab90` — `BUG-PRODAMUS-SIGNATURE-HEADER` — `pickSignatureSource` мостит HTTP-header `Sign` → body.
+  - `e0d60cf` — `BUG-WEBHOOK-LOG-PARTIAL-INDEX` — `WHERE … IS NOT NULL` в 4 ON CONFLICT-сайтах.
+  - `eb2d67a` — `BUG-PRODAMUS-SIGNATURE-ALGO` — `buildProdamusCanonical` (recursive ksort + JSON HMAC).
+  - `464779d` — revert temporary debug-лога после успешного sandbox.
+  - `85a93f2` — frontend: админ-вкладка «Без автопаузы» + `setProfileAutoPauseExempt` +
+    `toggleUserStatus` PATCH'ит обе колонки (status + access_status).
+- **3 урока:**
+  - [`docs/lessons/2026-05-16-prodamus-signature-algorithm.md`](../docs/lessons/2026-05-16-prodamus-signature-algorithm.md) — header `Sign` (не в теле) + recursive ksort + JSON HMAC-SHA256, наш изначальный verify имел 5 кандидат-хэшей но ни один не совпадал с реальным алгоритмом Prodamus.
+  - [`docs/lessons/2026-05-16-partial-unique-index-on-conflict.md`](../docs/lessons/2026-05-16-partial-unique-index-on-conflict.md) — partial unique index требует тот же `WHERE`-clause в `ON CONFLICT`, иначе 42P10.
+  - [`docs/lessons/2026-05-16-push-server-silent-crash-observability.md`](../docs/lessons/2026-05-16-push-server-silent-crash-observability.md) — 5 дней silent crash в reconcile никто не заметил, observability gap для background-сервисов.
+- **Заведён новый тикет:** `TECH-DEBT-PUSH-SERVER-STDERR-ALERTING` (P3) — алёртинг на stderr push-server'а в TG.
+- **Закрыто same-day:** `TECH-DEBT-PUSH-SERVER-RECONCILE-LOGSPAM` (закрыт apply phase29 — колонка `access_status` появилась).
+- **Открытые followup'ы:**
+  - **Полный E2E с реальным платежом** (~100₽ с Ольгиного аккаунта) — отложенный smoke task. Не блокер.
+  - **Smoke Phase C6 UI на проде** — Ольга проверит что в админке вкладка «Без автопаузы» видит два списка (Всегда + До даты).
+- **Артефакты сессии:** `migrations/2026-05-15_phase29_prodamus_path_c.sql`,
+  `plans/2026-05-15-feat015-prodamus-c.md`, `docs/journal/RECON_2026-05-15_feat015_prodamus.md`,
+  `docs/_session/2026-05-16_01..15_*.md`.

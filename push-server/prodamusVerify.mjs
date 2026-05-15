@@ -36,16 +36,44 @@ export const pickSignatureSource = (body, headers = {}) => {
   return { ...body, signature: headerSig };
 };
 
+// BUG-PRODAMUS-SIGNATURE-ALGO (2026-05-16): Prodamus подписывает
+// тело по PHP-конвенции: ksort_recursive(body) → json_encode с
+// JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES → HMAC-SHA256(secret).
+// signature/sign/hash в каноническую форму НЕ входят — подпись приходит
+// отдельным HTTP-заголовком `Sign`.
+// Источник: github.com/Prodamus/payform-api-php (Hmac::create / ksortRecursive).
+const sortKeysRecursive = (value) => {
+  if (Array.isArray(value)) return value.map(sortKeysRecursive);
+  if (value && typeof value === 'object') {
+    const sorted = {};
+    Object.keys(value).sort().forEach((k) => {
+      sorted[k] = sortKeysRecursive(value[k]);
+    });
+    return sorted;
+  }
+  return value;
+};
+
+export const buildProdamusCanonical = (body) => {
+  if (!body || typeof body !== 'object') return '';
+  const { signature: _s, sign: _sn, hash: _h, ...clean } = body;
+  // JS JSON.stringify по умолчанию НЕ экранирует unicode и НЕ экранирует /
+  // — совпадает с PHP JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES.
+  return JSON.stringify(sortKeysRecursive(clean));
+};
+
 export const verifyProdamusSignature = (flatBody, secret) => {
   const signature = String(flatBody?.signature || flatBody?.sign || flatBody?.hash || '').trim();
   if (!signature || !secret) return false;
 
+  const prodamusCanonical = buildProdamusCanonical(flatBody);
   const rawJson = JSON.stringify(flatBody || {});
   const sortedBase = buildSortedBase(flatBody || {});
   const normalizedSecret = String(secret || '').trim();
   const sigLower = signature.toLowerCase();
 
   const candidates = [
+    hmacHex('sha256', prodamusCanonical, normalizedSecret),
     hmacHex('sha256', rawJson, normalizedSecret),
     hmacHex('sha256', sortedBase, normalizedSecret),
     hashHex('sha256', `${sortedBase}${normalizedSecret}`),

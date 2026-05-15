@@ -2339,6 +2339,40 @@ related_docs:
   + smoke). Может быть больше, если потребуется новый SQL view
   или RPC функции.
 
+### FEAT-020: Email-уведомления по событиям ПВЛ
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (полезно для менторов, но обходится через ручной
+  заход на платформу)
+- **Создано:** 2026-05-16
+- **Контекст:** SMTP-инфраструктура уже есть в `garden-auth/server.js`
+  (nodemailer + `mail.skrebeyko.ru`), используется только в
+  `/auth/request-reset`. Уведомления по событиям ПВЛ не реализованы.
+  Менторы вынуждены вручную заходить на платформу, чтобы увидеть
+  новые ДЗ.
+- **Скоп:**
+  1. **Триггерные события:**
+     - Студентка отправила ДЗ → письмо ментору.
+     - Ментор проверил/принял/попросил доработать → письмо студентке.
+     - Студентка дополнила ДЗ → письмо ментору.
+     - Возможно: студентка задала вопрос на платформе → письмо ментору.
+  2. **Шаблоны писем** — простая HTML-вёрстка в стиле бренда,
+     лаконичные. Имя получателя, тип события, ссылка прямо в нужный
+     экран платформы.
+  3. **Настройки подписки** — в профиле пользователя секция
+     «Уведомления»: чекбоксы по типам событий (можно отключить
+     ненужные).
+  4. **Unsubscribe-ссылка** в каждом письме — обязательно (гигиена,
+     даже для закрытой платформы).
+  5. **Дайджест-режим** (опционально, фаза 2): вместо каждого события
+     — одно письмо в день со списком.
+  6. **Логирование отправок** для дебага — таблица `email_send_log`
+     или похожая.
+- **Архитектура:** триггер в БД или код на стороне `garden-auth` /
+  `push-server` при определённых событиях вызывает SMTP send. Решение
+  по месту — на recon.
+- **Связано:** push-уведомления (если будем делать одновременно через
+  push-server) — может быть единая система notifications.
+
 ### CONTRACT-GARDEN-MEETINGS-001: events.host_telegram NOT NULL и непуст
 - **Статус:** 🔵 ACTIVE CONTRACT (документация, не TODO)
 - **Приоритет:** P2 (видимость важна — нарушение ломает meetings-фронт)
@@ -3149,6 +3183,43 @@ related_docs:
   становятся менее критичны), CLEAN-013 (текущее удаление
   через RPC обходит проблему).
 
+### TECH-DEBT-PUSH-SERVER-STDERR-ALERTING: нет алёртинга на stderr push-server
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3
+- **Создано:** 2026-05-16 (recon FEAT-015 Phase C3)
+- **Контекст:** С 2026-05-11 (deploy push-server) по 2026-05-16
+  (apply phase29) — **5 дней** — `runNightlyExpiryReconcile()`
+  каждые 24 часа падал в stderr c `42703 errorMissingColumn`
+  (UPDATE по несуществующей `access_status`). Try/catch в
+  reconcile ловил ошибку, процесс жил, HTTP API (`/health`,
+  `/api/v1/upcoming.json`, webhook endpoint) работал — снаружи
+  ничего не было видно. MON-001 (TG-бот клиентских ошибок) ловит
+  `window.onerror` фронта; **серверные background-задачи в
+  observability не входят**. Узнали случайно при apply phase29 —
+  посмотрели `journalctl -u push-server.service -n 25` и увидели
+  историю крашей.
+- **Влияние:** observability gap. Любая будущая ошибка в
+  фоновых задачах push-server (reconcile, web-push send-loop,
+  Prodamus webhook handler если он упадёт после signature-check)
+  пройдёт мимо радара. Reconcile теперь работает корректно, но
+  это конкретный кейс — общая защита отсутствует.
+- **Что предлагается:**
+  1. **Стрим `journalctl -u push-server.service -f` в TG** (или
+     отдельный канал monitoring-бота). Фильтр на `ERROR` /
+     `Error:` / `unhandled` / exit non-zero / restart events.
+  2. **Аналогично для `garden-auth.service` и `garden-monitor.service`** —
+     все background-сервисы должны попадать в alerting.
+  3. **Daily health-check sum** в TG: «вчера в push-server было
+     N stderr-сообщений, top-3 уникальных по началу строки». Это
+     даже без real-time алёртов даст обзор тренда.
+- **Why P3:** один раз уже обожглись, починили сразу (apply
+  phase29). Но рано или поздно повторится — лучше иметь сетку.
+  Не блокер прямо сейчас, поэтому не P2.
+- **Связано:**
+  - TECH-DEBT-PUSH-SERVER-RECONCILE-LOGSPAM (DONE 2026-05-16) — частный кейс этой проблемы.
+  - MON-001 (клиентский error-monitoring DONE) — параллельный канал.
+  - MON-002-CROSSORIGIN-VISIBILITY — связанная observability дыра на фронте.
+
 ### UX-QUICK-FIXES: Накопительная карточка мелких UX-правок
 - **Статус:** 🟡 IN PROGRESS (накопительная)
 - **Приоритет:** P3
@@ -3866,14 +3937,12 @@ related_docs:
     git на проде нет, изменения деплоим rsync'ом из репо.
     Аналогично TECH-DEBT-AUTH-REPO-SYNC. В перспективе —
     git-hooks или CI deploy.
-  - **TECH-DEBT-PUSH-SERVER-RECONCILE-LOGSPAM** (P3) —
-    `runNightlyExpiryReconcile()` в `push-server/server.mjs:407`
-    запускается на старте и каждые 24ч независимо от
-    `PRODAMUS_WEBHOOK_ENABLED`. Бьёт по `profiles.access_status`
-    которой в нашей схеме нет — каждый запуск роняет stack-trace
-    в journal. Try/catch ловит, процесс жив, endpoint работает.
-    Чинить либо обернуть запуск в `if (webhookEnabled)`, либо
-    добавить миграцию с колонкой. Сейчас — log noise.
+  - **TECH-DEBT-PUSH-SERVER-RECONCILE-LOGSPAM** (P3) — 🟢 **DONE 2026-05-16**.
+    Закрыто apply миграции `phase29_prodamus_path_c.sql` (FEAT-015 Path C):
+    колонка `access_status` появилась, reconcile перестал падать на
+    `errorMissingColumn`. Логи push-server чистые после restart 15 мая.
+    Сопутствующий новый тикет: TECH-DEBT-PUSH-SERVER-STDERR-ALERTING
+    (отсутствие алёртинга на stderr, эта же проблема не была видна 5 дней).
 - **push-server LIVE (после DNS):** Ольга завела
   `push.skrebeyko.ru → 5.129.251.56`. Caddy получил cert от
   Let's Encrypt (issuer E8, до 09.08.2026 GMT). Production smoke:

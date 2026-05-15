@@ -502,6 +502,13 @@ export default function App() {
                         const allUsers = await api.getUsers();
                         setUsers(allUsers || []);
                         showNotification("Список пользователей обновлен");
+                    }} onUserPatched={(updated) => {
+                        // FEAT-015 Path C — оптимистичный merge после toggle/exempt save.
+                        // updated может быть либо partial (status toggle), либо полным
+                        // профилем из api.setProfileAutoPauseExempt; в обоих случаях
+                        // мерджим через id, не теряя остальные поля.
+                        if (!updated?.id) return;
+                        setUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
                     }} onAddContent={async (c, options = {}) => {
                         try {
                             const id = c?.id;

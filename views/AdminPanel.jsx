@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff } from 'lucide-react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff, Shield, ShieldOff } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
@@ -493,7 +493,7 @@ const ShopAdmin = ({ onNotify }) => {
     );
 };
 
-const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent }) => {
+const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent, onUserPatched }) => {
     const [tab, setTab] = useState(() => sessionStorage.getItem('adminTab') || 'stats');
     const [contentTab, setContentTab] = useState(() => sessionStorage.getItem('adminContentTab') || 'library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '', embed_code: '' });
@@ -509,6 +509,11 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
     const [sendPushOnNews, setSendPushOnNews] = useState(true);
     const [editingMaterialId, setEditingMaterialId] = useState(null);
     const [isNormalizingKnowledge, setIsNormalizingKnowledge] = useState(false);
+    // FEAT-015 Path C — модалка «Не паузить автоматически».
+    // editingExemptUser = объект user из props.users; null = модалка закрыта.
+    const [editingExemptUser, setEditingExemptUser] = useState(null);
+    const [exemptForm, setExemptForm] = useState({ enabled: false, mode: 'always', until: '', note: '' });
+    const [savingExempt, setSavingExempt] = useState(false);
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -738,7 +743,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
 
                 <div className="flex gap-2 items-center justify-between">
                     <div className="bg-white/70 p-1 rounded-2xl flex gap-1 w-fit border border-white/60">
-                        {['stats', 'users', 'content', 'pvl-progress', 'news', 'events', 'shop'].map(t => (
+                        {['stats', 'users', 'access', 'content', 'pvl-progress', 'news', 'events', 'shop'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => { setTab(t); sessionStorage.setItem('adminTab', t); }}
@@ -746,7 +751,14 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                     ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200'
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
-                                {t === 'stats' ? 'Статистика' : t === 'users' ? 'Пользователи' : t === 'content' ? 'Контент' : t === 'pvl-progress' ? 'Прогресс ПВЛ' : t === 'events' ? 'События' : t === 'shop' ? 'Магазин' : 'Новости'}
+                                {t === 'stats' ? 'Статистика'
+                                    : t === 'users' ? 'Пользователи'
+                                    : t === 'access' ? 'Без автопаузы'
+                                    : t === 'content' ? 'Контент'
+                                    : t === 'pvl-progress' ? 'Прогресс ПВЛ'
+                                    : t === 'events' ? 'События'
+                                    : t === 'shop' ? 'Магазин'
+                                    : 'Новости'}
                             </button>
                         ))}
                     </div>
@@ -1240,7 +1252,15 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                                         async () => {
                                                                             try {
                                                                                 await api.toggleUserStatus(u.id, isSuspended ? 'active' : 'suspended');
-                                                                                onNotify("Статус обновлен (обновите страницу)");
+                                                                                // Оптимистичный апдейт state, чтоб UI обновился без ручного refresh.
+                                                                                if (onUserPatched) {
+                                                                                    onUserPatched({
+                                                                                        ...u,
+                                                                                        status: isSuspended ? 'active' : 'suspended',
+                                                                                        access_status: isSuspended ? 'active' : 'paused_manual'
+                                                                                    });
+                                                                                }
+                                                                                onNotify(isSuspended ? "Доступ возвращён" : "Доступ приостановлен");
                                                                             } catch (e) { alert(e.message); }
                                                                         },
                                                                         'primary'
@@ -1250,6 +1270,23 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                                 title={u.status === 'suspended' ? "Вернуть доступ" : "Приостановить доступ"}
                                                             >
                                                                 {u.status === 'suspended' ? "⛔️" : "⏸"}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingExemptUser(u);
+                                                                    setExemptForm({
+                                                                        enabled: !!u.auto_pause_exempt,
+                                                                        mode: u.auto_pause_exempt_until ? 'until' : 'always',
+                                                                        until: u.auto_pause_exempt_until || '',
+                                                                        note: u.auto_pause_exempt_note || ''
+                                                                    });
+                                                                }}
+                                                                className={`p-2 rounded-lg transition-colors ${u.auto_pause_exempt ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                                                                title={u.auto_pause_exempt
+                                                                    ? `Не паузить автоматически${u.auto_pause_exempt_until ? ` (до ${u.auto_pause_exempt_until})` : ' (всегда)'}`
+                                                                    : 'Настроить иммунитет к автопаузе'}
+                                                            >
+                                                                {u.auto_pause_exempt ? <Shield size={14} /> : <ShieldOff size={14} />}
                                                             </button>
                                                             <button
                                                                 onClick={async () => {
@@ -1618,7 +1655,201 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                 )}
 
                 {tab === 'shop' && <ShopAdmin onNotify={onNotify} />}
+
+                {/* FEAT-015 Path C — секция «Без автопаузы» */}
+                {tab === 'access' && (() => {
+                    const exempt = (users || []).filter(u => u.auto_pause_exempt);
+                    const forever = exempt.filter(u => !u.auto_pause_exempt_until);
+                    const untilDate = exempt
+                        .filter(u => u.auto_pause_exempt_until)
+                        .sort((a, b) => String(a.auto_pause_exempt_until).localeCompare(String(b.auto_pause_exempt_until)));
+                    const renderRow = (u) => (
+                        <li key={u.id} className="flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-b-0">
+                            <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium text-slate-800 truncate">{u.name || '(без имени)'}</div>
+                                <div className="text-xs text-slate-500 truncate">{u.email} · {u.role}</div>
+                                {u.auto_pause_exempt_note && (
+                                    <div className="text-xs text-slate-500 mt-1 italic line-clamp-2">{u.auto_pause_exempt_note}</div>
+                                )}
+                            </div>
+                            {u.auto_pause_exempt_until && (
+                                <div className="text-xs font-mono text-slate-600 whitespace-nowrap">
+                                    до {u.auto_pause_exempt_until}
+                                </div>
+                            )}
+                            <button
+                                onClick={() => {
+                                    setEditingExemptUser(u);
+                                    setExemptForm({
+                                        enabled: true,
+                                        mode: u.auto_pause_exempt_until ? 'until' : 'always',
+                                        until: u.auto_pause_exempt_until || '',
+                                        note: u.auto_pause_exempt_note || ''
+                                    });
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                title="Изменить настройки"
+                            >
+                                <Edit2 size={14} />
+                            </button>
+                        </li>
+                    );
+                    return (
+                        <div className="space-y-6">
+                            <div className="surface-card p-6 md:p-8">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Shield size={22} className="text-emerald-600" strokeWidth={1.6} />
+                                    <h3 className="font-display font-semibold text-slate-900">
+                                        Всегда бесплатно ({forever.length})
+                                    </h3>
+                                </div>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Профили, защищённые от автопаузы по неоплате бессрочно (бартер,
+                                    служебные аккаунты, постоянные льготы). Не требуют регулярной ревизии.
+                                </p>
+                                {forever.length === 0 ? (
+                                    <div className="text-sm text-slate-400 italic py-4 text-center">Пока никого</div>
+                                ) : (
+                                    <ul className="divide-y divide-slate-100">{forever.map(renderRow)}</ul>
+                                )}
+                            </div>
+
+                            <div className="surface-card p-6 md:p-8">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Calendar size={22} className="text-amber-600" strokeWidth={1.6} />
+                                    <h3 className="font-display font-semibold text-slate-900">
+                                        Бесплатно до даты ({untilDate.length})
+                                    </h3>
+                                </div>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Временные льготы. Сортировка — ближайшие даты сверху. Это
+                                    ревью-лист: проверяй, чьи флаги истекают и нужно ли продлевать.
+                                    Cron в push-server автоматически снимает флаг после даты.
+                                </p>
+                                {untilDate.length === 0 ? (
+                                    <div className="text-sm text-slate-400 italic py-4 text-center">Пока никого</div>
+                                ) : (
+                                    <ul className="divide-y divide-slate-100">{untilDate.map(renderRow)}</ul>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
+
+            {/* FEAT-015 Path C — модалка «Не паузить автоматически» */}
+            <ModalShell
+                isOpen={!!editingExemptUser}
+                onClose={() => setEditingExemptUser(null)}
+                title={editingExemptUser ? `Иммунитет к автопаузе — ${editingExemptUser.name || editingExemptUser.email}` : ''}
+                size="md"
+            >
+                {editingExemptUser && (
+                    <div className="space-y-5">
+                        <label className="flex items-start gap-3 p-4 rounded-2xl border border-slate-200 bg-slate-50/60 cursor-pointer hover:border-emerald-300 transition-all">
+                            <input
+                                type="checkbox"
+                                className="mt-1 h-5 w-5 accent-emerald-600 cursor-pointer"
+                                checked={exemptForm.enabled}
+                                onChange={(e) => setExemptForm({ ...exemptForm, enabled: e.target.checked })}
+                            />
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                                    <Shield size={16} className="text-emerald-600" strokeWidth={1.8} />
+                                    Не паузить автоматически
+                                </div>
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                    Profile НЕ будет переведён в paused_expired при deactivation
+                                    или finish от Prodamus. Платёж по-прежнему регистрируется.
+                                </div>
+                            </div>
+                        </label>
+
+                        {exemptForm.enabled && (
+                            <>
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium text-slate-700">Срок действия</div>
+                                    <div className="flex flex-col gap-2">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="exempt-mode"
+                                                checked={exemptForm.mode === 'always'}
+                                                onChange={() => setExemptForm({ ...exemptForm, mode: 'always', until: '' })}
+                                                className="accent-emerald-600"
+                                            />
+                                            <span className="text-sm text-slate-700">Всегда (бессрочно)</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="exempt-mode"
+                                                checked={exemptForm.mode === 'until'}
+                                                onChange={() => setExemptForm({ ...exemptForm, mode: 'until' })}
+                                                className="accent-emerald-600"
+                                            />
+                                            <span className="text-sm text-slate-700">До даты (cron автоснимет)</span>
+                                        </label>
+                                    </div>
+                                    {exemptForm.mode === 'until' && (
+                                        <input
+                                            type="date"
+                                            value={exemptForm.until}
+                                            onChange={(e) => setExemptForm({ ...exemptForm, until: e.target.value })}
+                                            min={new Date().toISOString().slice(0, 10)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-slate-700 text-sm"
+                                        />
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700 mb-2 block">Почему</label>
+                                    <textarea
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none h-24 resize-none text-sm focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                                        placeholder="Бартер, постоянная льгота, служебный аккаунт..."
+                                        value={exemptForm.note}
+                                        onChange={(e) => setExemptForm({ ...exemptForm, note: e.target.value })}
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        <div className="flex gap-3 pt-2">
+                            <Button variant="secondary" onClick={() => setEditingExemptUser(null)} className="flex-1" disabled={savingExempt}>
+                                Отмена
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    if (savingExempt) return;
+                                    if (exemptForm.enabled && exemptForm.mode === 'until' && !exemptForm.until) {
+                                        onNotify('Укажите дату или выберите «Всегда»');
+                                        return;
+                                    }
+                                    setSavingExempt(true);
+                                    try {
+                                        const updated = await api.setProfileAutoPauseExempt(editingExemptUser.id, {
+                                            enabled: exemptForm.enabled,
+                                            until: exemptForm.enabled && exemptForm.mode === 'until' ? exemptForm.until : null,
+                                            note: exemptForm.enabled ? exemptForm.note : null
+                                        });
+                                        if (updated && onUserPatched) onUserPatched(updated);
+                                        onNotify(exemptForm.enabled ? 'Иммунитет к автопаузе включён' : 'Иммунитет снят');
+                                        setEditingExemptUser(null);
+                                    } catch (e) {
+                                        onNotify('Ошибка: ' + (e?.message || 'неизвестная'));
+                                    } finally {
+                                        setSavingExempt(false);
+                                    }
+                                }}
+                                className="flex-1"
+                                disabled={savingExempt}
+                            >
+                                {savingExempt ? 'Сохраняем…' : 'Сохранить'}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </ModalShell>
 
             <ConfirmationModal
                 isOpen={confirmModal.isOpen}

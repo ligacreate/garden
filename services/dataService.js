@@ -1636,14 +1636,53 @@ class RemoteApiService {
     }
 
     async toggleUserStatus(userId, newStatus) {
-        // access_status удалён: колонки нет в схеме (BUG-TOGGLE-USER-STATUS-GHOST-COLUMN).
-        // PostgREST раньше игнорировал поле молча; чистим body для ясности.
+        // FEAT-015 Path C: пишем оба поля сразу. После phase29 колонка
+        // access_status существует. Bridge-trigger одностороннний
+        // (access_status → status), но toggleUserStatus идёт «снизу»
+        // (status, без access_status), что давало бы рассинхрон. Пишем
+        // оба явно — admin-pause = 'paused_manual' (не путать с
+        // 'paused_expired' от webhook).
+        const body = newStatus === 'suspended'
+            ? { status: 'suspended', access_status: 'paused_manual' }
+            : { status: 'active',    access_status: 'active' };
         await postgrestFetch('profiles', { id: `eq.${userId}` }, {
             method: 'PATCH',
-            body: { status: newStatus },
+            body,
             returnRepresentation: true
         });
         return true;
+    }
+
+    /**
+     * FEAT-015 Path C: установка/снятие auto_pause_exempt — иммунитет
+     * профиля к webhook-автопаузе по неоплате. Не путать с paused_manual
+     * (admin-pause).
+     *
+     * @param {string} userId
+     * @param {object} fields
+     * @param {boolean} fields.enabled — true: освободить от автопаузы
+     * @param {string|null} [fields.until] — date 'YYYY-MM-DD' или null (бессрочно)
+     * @param {string|null} [fields.note] — причина (бартер, льгота)
+     */
+    async setProfileAutoPauseExempt(userId, { enabled, until = null, note = null } = {}) {
+        const body = enabled
+            ? {
+                auto_pause_exempt: true,
+                auto_pause_exempt_until: until || null,
+                auto_pause_exempt_note: this._sanitizeIfString(note) || null
+            }
+            : {
+                auto_pause_exempt: false,
+                auto_pause_exempt_until: null,
+                auto_pause_exempt_note: null
+            };
+        const { data } = await postgrestFetch('profiles', { id: `eq.${userId}` }, {
+            method: 'PATCH',
+            body,
+            returnRepresentation: true
+        });
+        const row = Array.isArray(data) ? data[0] : data;
+        return row ? this._normalizeProfile(row) : null;
     }
 
 
@@ -2658,7 +2697,13 @@ class RemoteApiService {
             last_prodamus_event: data.last_prodamus_event || null,
             last_prodamus_payload: data.last_prodamus_payload || null,
             bot_renew_url: data.bot_renew_url || null,
-            session_version: Number.isFinite(Number(data.session_version)) ? Number(data.session_version) : 1
+            session_version: Number.isFinite(Number(data.session_version)) ? Number(data.session_version) : 1,
+            // FEAT-015 Path C — auto_pause_exempt поля. После phase29 колонки
+            // существуют, но кэш-инвалидация и legacy-объекты могут отдать
+            // undefined → нормализуем к false/null.
+            auto_pause_exempt: data.auto_pause_exempt === true,
+            auto_pause_exempt_until: data.auto_pause_exempt_until || null,
+            auto_pause_exempt_note: data.auto_pause_exempt_note || null
         };
     }
 }

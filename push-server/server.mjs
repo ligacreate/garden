@@ -4,7 +4,7 @@ import cors from 'cors';
 import webpush from 'web-push';
 import pkg from 'pg';
 import crypto from 'crypto';
-import { verifyProdamusSignature } from './prodamusVerify.mjs';
+import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
 import { classifyProdamusEvent, deriveAccessMutation } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
 
@@ -351,7 +351,10 @@ const handleProdamusWebhook = async (req, res) => {
   }
 
   const payload = req.body || {};
-  const signatureValid = verifyProdamusSignature(payload, PRODAMUS_SECRET_KEY);
+  // BUG-PRODAMUS-SIGNATURE-HEADER: подпись приходит в HTTP-заголовке `Sign`,
+  // а не в теле. Мостим через pickSignatureSource перед verify.
+  const payloadForVerify = pickSignatureSource(payload, req.headers);
+  const signatureValid = verifyProdamusSignature(payloadForVerify, PRODAMUS_SECRET_KEY);
   const eventName = classifyProdamusEvent(payload);
   const externalId = resolveExternalId(payload, eventName);
   const lockKey = `billing:${PRODAMUS_PROVIDER_NAME}:${externalId}`;

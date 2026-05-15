@@ -15,6 +15,27 @@ const buildSortedBase = (flat) => Object.entries(flat || {})
 const hashHex = (algo, value) => crypto.createHash(algo).update(value, 'utf8').digest('hex');
 const hmacHex = (algo, value, secret) => crypto.createHmac(algo, secret).update(value, 'utf8').digest('hex');
 
+/**
+ * BUG-PRODAMUS-SIGNATURE-HEADER (2026-05-16): Prodamus присылает подпись
+ * в HTTP-заголовке `Sign` (HMAC-SHA256, 64 hex chars), а не в теле.
+ * verifyProdamusSignature ищет signature/sign/hash в теле — эта функция
+ * мостит заголовок в `signature` поле payload, если его там ещё нет.
+ *
+ * Приоритет тела: если в payload уже есть signature/sign/hash — берём
+ * оттуда (на случай альтернативной формы у других провайдеров).
+ *
+ * @param {object} body
+ * @param {object} headers — Express req.headers (lower-case keys)
+ * @returns {object} payload, готовый для verifyProdamusSignature
+ */
+export const pickSignatureSource = (body, headers = {}) => {
+  if (!body || typeof body !== 'object') return body || {};
+  if (body.signature || body.sign || body.hash) return body;
+  const headerSig = String(headers?.sign || headers?.signature || '').trim();
+  if (!headerSig) return body;
+  return { ...body, signature: headerSig };
+};
+
 export const verifyProdamusSignature = (flatBody, secret) => {
   const signature = String(flatBody?.signature || flatBody?.sign || flatBody?.hash || '').trim();
   if (!signature || !secret) return false;

@@ -4,7 +4,7 @@ import cors from 'cors';
 import webpush from 'web-push';
 import pkg from 'pg';
 import crypto from 'crypto';
-import { verifyProdamusSignature, pickSignatureSource, buildProdamusCanonical } from './prodamusVerify.mjs';
+import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
 import { classifyProdamusEvent, deriveAccessMutation } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
 
@@ -359,20 +359,6 @@ const handleProdamusWebhook = async (req, res) => {
   // а не в теле. Мостим через pickSignatureSource перед verify.
   const payloadForVerify = pickSignatureSource(payload, req.headers);
   const signatureValid = verifyProdamusSignature(payloadForVerify, PRODAMUS_SECRET_KEY);
-  if (!signatureValid) {
-    // BUG-PRODAMUS-SIGNATURE-ALGO debug — TEMPORARY, удалить после первого
-    // успешного sandbox. Помогает увидеть какой header Prodamus прислал и
-    // как выглядит canonical-форма, чтобы сравнить с их подписью.
-    const sigHeader = String(req.headers?.sign || req.headers?.signature || '');
-    const canonical = buildProdamusCanonical(payloadForVerify);
-    console.error('[prodamus-debug] Invalid signature trace');
-    console.error('  header names:', Object.keys(req.headers || {}).join(','));
-    console.error('  Sign header (first 16):', sigHeader.slice(0, 16), 'len:', sigHeader.length);
-    console.error('  payload keys:', Object.keys(payload).join(','));
-    console.error('  payloadForVerify has signature:', Boolean(payloadForVerify?.signature));
-    console.error('  canonical (first 500):', canonical.slice(0, 500));
-    console.error('  canonical len:', canonical.length);
-  }
   const eventName = classifyProdamusEvent(payload);
   const externalId = resolveExternalId(payload, eventName);
   const lockKey = `billing:${PRODAMUS_PROVIDER_NAME}:${externalId}`;

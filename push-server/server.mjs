@@ -231,10 +231,14 @@ const findProfileByCustomer = async (db, { email, phone, extId }) => {
 };
 
 const persistWebhookLog = async (client, { eventName, externalId, payload, signatureValid }) => {
+  // BUG-WEBHOOK-LOG-PARTIAL-INDEX: ON CONFLICT с partial unique index требует
+  // явного WHERE-clause, совпадающего с индексом, иначе Postgres выкидывает
+  // 42P10 «no unique or exclusion constraint matching».
+  // Индекс: billing_webhook_logs_provider_external_uidx … WHERE external_id IS NOT NULL.
   const q = await client.query(
     `insert into public.billing_webhook_logs(provider, event_name, external_id, payload_json, signature_valid, is_processed)
      values ($1, $2, $3, $4::jsonb, $5, false)
-     on conflict (provider, external_id) do nothing
+     on conflict (provider, external_id) where external_id is not null do nothing
      returning id, is_processed`,
     [PRODAMUS_PROVIDER_NAME, eventName, externalId, JSON.stringify(payload || {}), Boolean(signatureValid)]
   );
@@ -291,7 +295,7 @@ const applyAccessState = async (db, profile, { eventName, paidUntil, payload, cu
     await db.query(
       `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
        values ($1, $2, $3, $4, $5, now(), null, now())
-       on conflict (provider, provider_subscription_id) do update
+       on conflict (provider, provider_subscription_id) where provider_subscription_id is not null do update
          set status = excluded.status,
              paid_until = excluded.paid_until,
              last_payment_at = now(),
@@ -321,7 +325,7 @@ const applyAccessState = async (db, profile, { eventName, paidUntil, payload, cu
     await db.query(
       `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, ended_at, updated_at)
        values ($1, $2, $3, $4, $5, now(), now())
-       on conflict (provider, provider_subscription_id) do update
+       on conflict (provider, provider_subscription_id) where provider_subscription_id is not null do update
          set status = excluded.status,
              paid_until = excluded.paid_until,
              ended_at = now(),
@@ -443,7 +447,7 @@ const runNightlyExpiryReconcile = async () => {
            provider, event_name, external_id, payload_json, signature_valid, is_processed
          )
          values ($1, 'auto_pause_exempt_expired', $2, $3::jsonb, true, true)
-         on conflict (provider, external_id) do nothing`,
+         on conflict (provider, external_id) where external_id is not null do nothing`,
         [
           PRODAMUS_PROVIDER_NAME,
           `exempt_expired:${row.id}:${new Date().toISOString().slice(0, 10)}`,

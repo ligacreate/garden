@@ -5,7 +5,7 @@ import webpush from 'web-push';
 import pkg from 'pg';
 import crypto from 'crypto';
 import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
-import { classifyProdamusEvent, deriveAccessMutation } from './billingLogic.mjs';
+import { classifyProdamusEvent, deriveAccessMutation, isExemptRole } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
 
 const { Pool } = pkg;
@@ -265,7 +265,9 @@ const markWebhookLogState = async (client, logId, { processed, errorText }) => {
 
 const applyAccessState = async (db, profile, { eventName, paidUntil, payload, customerIds }) => {
   const isManualPaused = String(profile?.access_status || '').toLowerCase() === 'paused_manual';
-  const autoPauseExempt = Boolean(profile?.auto_pause_exempt);
+  // phase30: автопауза не применяется к admin/applicant независимо от флага.
+  // Флаг auto_pause_exempt — для индивидуальных исключений (бартеры) среди платящих ролей.
+  const autoPauseExempt = Boolean(profile?.auto_pause_exempt) || isExemptRole(profile?.role);
   const mutation = deriveAccessMutation({
     eventName,
     currentAccessStatus: profile?.access_status || null,
@@ -404,11 +406,16 @@ const handleProdamusWebhook = async (req, res) => {
 
     // FEAT-015 Path C: пометить лог если профиль освобождён от автопаузы.
     // is_processed=true (событие учтено в подписке), error_text — для аудита.
-    const skippedByExempt = Boolean(profile.auto_pause_exempt)
-      && (eventName === 'deactivation' || eventName === 'finish');
+    // phase30: различаем skip по индивидуальному флагу vs по структурной роли.
+    const isPauseEvent = eventName === 'deactivation' || eventName === 'finish';
+    let skipReason = null;
+    if (isPauseEvent) {
+      if (isExemptRole(profile.role)) skipReason = 'SKIPPED_BY_ROLE';
+      else if (Boolean(profile.auto_pause_exempt)) skipReason = 'SKIPPED_BY_AUTO_PAUSE_EXEMPT';
+    }
     await markWebhookLogState(client, log.id, {
       processed: true,
-      errorText: skippedByExempt ? 'SKIPPED_BY_AUTO_PAUSE_EXEMPT' : null
+      errorText: skipReason
     });
     await client.query('commit');
     return res.json({ ok: true, processed: true, event: eventName, externalId });
@@ -467,7 +474,7 @@ const runNightlyExpiryReconcile = async () => {
               access_status = case when access_status = 'active' then 'paused_expired' else access_status end,
               last_prodamus_event = coalesce(last_prodamus_event, 'nightly_reconcile_overdue'),
               session_version = case when access_status = 'active' then session_version + 1 else session_version end
-        where role <> 'admin'
+        where role not in ('admin', 'applicant')
           and coalesce(auto_pause_exempt, false) = false
           and coalesce(access_status, 'active') = 'active'
           and paid_until is not null

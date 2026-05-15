@@ -509,7 +509,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
     const [sendPushOnNews, setSendPushOnNews] = useState(true);
     const [editingMaterialId, setEditingMaterialId] = useState(null);
     const [isNormalizingKnowledge, setIsNormalizingKnowledge] = useState(false);
-    // FEAT-015 Path C — модалка «Не паузить автоматически».
+    // FEAT-015 Path C / phase30 — модалка «Льгота» (auto_pause_exempt).
     // editingExemptUser = объект user из props.users; null = модалка закрыта.
     const [editingExemptUser, setEditingExemptUser] = useState(null);
     const [exemptForm, setExemptForm] = useState({ enabled: false, mode: 'always', until: '', note: '' });
@@ -753,7 +753,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                             >
                                 {t === 'stats' ? 'Статистика'
                                     : t === 'users' ? 'Пользователи'
-                                    : t === 'access' ? 'Без автопаузы'
+                                    : t === 'access' ? 'Льготы'
                                     : t === 'content' ? 'Контент'
                                     : t === 'pvl-progress' ? 'Прогресс ПВЛ'
                                     : t === 'events' ? 'События'
@@ -1283,8 +1283,8 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                                 }}
                                                                 className={`p-2 rounded-lg transition-colors ${u.auto_pause_exempt ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
                                                                 title={u.auto_pause_exempt
-                                                                    ? `Не паузить автоматически${u.auto_pause_exempt_until ? ` (до ${u.auto_pause_exempt_until})` : ' (всегда)'}`
-                                                                    : 'Настроить иммунитет к автопаузе'}
+                                                                    ? `Льгота${u.auto_pause_exempt_until ? `: до ${u.auto_pause_exempt_until}` : ': всегда'}`
+                                                                    : 'Льготы нет'}
                                                             >
                                                                 {u.auto_pause_exempt ? <Shield size={14} /> : <ShieldOff size={14} />}
                                                             </button>
@@ -1656,7 +1656,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
 
                 {tab === 'shop' && <ShopAdmin onNotify={onNotify} />}
 
-                {/* FEAT-015 Path C — секция «Без автопаузы» */}
+                {/* FEAT-015 Path C / phase30 — секция «Льготы» (auto_pause_exempt). */}
                 {tab === 'access' && (() => {
                     const exempt = (users || []).filter(u => u.auto_pause_exempt);
                     const forever = exempt.filter(u => !u.auto_pause_exempt_until);
@@ -1696,16 +1696,25 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                     );
                     return (
                         <div className="space-y-6">
+                            <div>
+                                <h2 className="font-display text-2xl font-semibold text-slate-900 mb-2">Льготы</h2>
+                                <p className="text-sm text-slate-600 leading-relaxed">
+                                    Индивидуальные исключения: бартеры, постоянные льготы для конкретных
+                                    людей. Админы и абитуриенты защищены автоматически по роли — их в
+                                    этом списке быть не должно.
+                                </p>
+                            </div>
+
                             <div className="surface-card p-6 md:p-8">
                                 <div className="flex items-center gap-3 mb-4">
                                     <Shield size={22} className="text-emerald-600" strokeWidth={1.6} />
                                     <h3 className="font-display font-semibold text-slate-900">
-                                        Всегда бесплатно ({forever.length})
+                                        Постоянная льгота ({forever.length})
                                     </h3>
                                 </div>
                                 <p className="text-sm text-slate-500 mb-4">
-                                    Профили, защищённые от автопаузы по неоплате бессрочно (бартер,
-                                    служебные аккаунты, постоянные льготы). Не требуют регулярной ревизии.
+                                    Бессрочная льгота: бартер, служебный аккаунт, постоянная скидка.
+                                    Не требует регулярной ревизии — flag живёт пока админ не снимет.
                                 </p>
                                 {forever.length === 0 ? (
                                     <div className="text-sm text-slate-400 italic py-4 text-center">Пока никого</div>
@@ -1718,13 +1727,13 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                 <div className="flex items-center gap-3 mb-4">
                                     <Calendar size={22} className="text-amber-600" strokeWidth={1.6} />
                                     <h3 className="font-display font-semibold text-slate-900">
-                                        Бесплатно до даты ({untilDate.length})
+                                        Льгота до даты ({untilDate.length})
                                     </h3>
                                 </div>
                                 <p className="text-sm text-slate-500 mb-4">
                                     Временные льготы. Сортировка — ближайшие даты сверху. Это
-                                    ревью-лист: проверяй, чьи флаги истекают и нужно ли продлевать.
-                                    Cron в push-server автоматически снимает флаг после даты.
+                                    ревью-лист: проверяй, чьи льготы истекают и нужно ли продлевать.
+                                    Cron в push-server автоматически снимает льготу после даты.
                                 </p>
                                 {untilDate.length === 0 ? (
                                     <div className="text-sm text-slate-400 italic py-4 text-center">Пока никого</div>
@@ -1737,14 +1746,45 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                 })()}
             </div>
 
-            {/* FEAT-015 Path C — модалка «Не паузить автоматически» */}
+            {/* FEAT-015 Path C / phase30 — модалка «Льгота» (auto_pause_exempt). */}
             <ModalShell
                 isOpen={!!editingExemptUser}
                 onClose={() => setEditingExemptUser(null)}
-                title={editingExemptUser ? `Иммунитет к автопаузе — ${editingExemptUser.name || editingExemptUser.email}` : ''}
+                title={editingExemptUser ? `Льгота — ${editingExemptUser.name || editingExemptUser.email}` : ''}
                 size="md"
             >
-                {editingExemptUser && (
+                {editingExemptUser && (() => {
+                    // phase30: admin и applicant защищены структурно по роли в push-server.
+                    // Флаг auto_pause_exempt для них не имеет эффекта — показываем инфо вместо формы.
+                    const exemptByRole = ['admin', 'applicant'].includes(String(editingExemptUser.role || '').toLowerCase());
+                    if (exemptByRole) {
+                        return (
+                            <div className="space-y-5">
+                                <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/60">
+                                    <div className="flex items-start gap-3">
+                                        <Shield size={20} className="text-emerald-600 mt-0.5 flex-shrink-0" strokeWidth={1.8} />
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-semibold text-slate-800">
+                                                Льгота не требуется — защищён по роли ({editingExemptUser.role})
+                                            </div>
+                                            <div className="text-xs text-slate-600 mt-1 leading-relaxed">
+                                                Webhook от Prodamus не паузит этого пользователя независимо
+                                                от флага льготы. Индивидуальная льгота для него не имеет
+                                                эффекта. Если роль сменится на платящую (intern / leader /
+                                                mentor) — льгота автоматически сбросится.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <Button variant="secondary" onClick={() => setEditingExemptUser(null)} className="flex-1">
+                                        Закрыть
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    }
+                    return (
                     <div className="space-y-5">
                         <label className="flex items-start gap-3 p-4 rounded-2xl border border-slate-200 bg-slate-50/60 cursor-pointer hover:border-emerald-300 transition-all">
                             <input
@@ -1756,7 +1796,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
                                     <Shield size={16} className="text-emerald-600" strokeWidth={1.8} />
-                                    Не паузить автоматически
+                                    Дать льготу (не паузить автоматически)
                                 </div>
                                 <div className="text-xs text-slate-500 mt-0.5">
                                     Profile НЕ будет переведён в paused_expired при deactivation
@@ -1833,7 +1873,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                             note: exemptForm.enabled ? exemptForm.note : null
                                         });
                                         if (updated && onUserPatched) onUserPatched(updated);
-                                        onNotify(exemptForm.enabled ? 'Иммунитет к автопаузе включён' : 'Иммунитет снят');
+                                        onNotify(exemptForm.enabled ? 'Льгота включена' : 'Льгота снята');
                                         setEditingExemptUser(null);
                                     } catch (e) {
                                         onNotify('Ошибка: ' + (e?.message || 'неизвестная'));
@@ -1848,7 +1888,8 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                             </Button>
                         </div>
                     </div>
-                )}
+                    );
+                })()}
             </ModalShell>
 
             <ConfirmationModal

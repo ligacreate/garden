@@ -1,3 +1,11 @@
+// FEAT-015 Path C step 2 (phase30): admin и applicant защищены от автопаузы
+// СТРУКТУРНО — они не платят (admin = служебные, applicant = студенты ПВЛ).
+// Эта защита работает независимо от флага auto_pause_exempt: даже если флаг
+// false, webhook не должен паузить access_status для этих ролей.
+// Платящие роли: intern, leader, mentor.
+export const isExemptRole = (role) =>
+  ['admin', 'applicant'].includes(String(role || '').toLowerCase());
+
 export const classifyProdamusEvent = (flat = {}) => {
   const blob = `${flat.event || ''} ${flat.type || ''} ${flat.status || ''} ${flat.payment_status || ''} ${flat.notification_type || ''}`.toLowerCase();
   if (blob.includes('deactivation') || blob.includes('deactivate')) return 'deactivation';

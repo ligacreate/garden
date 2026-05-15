@@ -261,7 +261,12 @@ const markWebhookLogState = async (client, logId, { processed, errorText }) => {
 
 const applyAccessState = async (db, profile, { eventName, paidUntil, payload, customerIds }) => {
   const isManualPaused = String(profile?.access_status || '').toLowerCase() === 'paused_manual';
-  const mutation = deriveAccessMutation({ eventName, currentAccessStatus: profile?.access_status || null });
+  const autoPauseExempt = Boolean(profile?.auto_pause_exempt);
+  const mutation = deriveAccessMutation({
+    eventName,
+    currentAccessStatus: profile?.access_status || null,
+    autoPauseExempt
+  });
   const payloadJson = JSON.stringify(payload || {});
   const subscriptionId = String(customerIds.subscriptionId || '').trim() || null;
   const customerId = String(customerIds.customerId || '').trim() || null;
@@ -390,7 +395,14 @@ const handleProdamusWebhook = async (req, res) => {
       }
     });
 
-    await markWebhookLogState(client, log.id, { processed: true, errorText: null });
+    // FEAT-015 Path C: пометить лог если профиль освобождён от автопаузы.
+    // is_processed=true (событие учтено в подписке), error_text — для аудита.
+    const skippedByExempt = Boolean(profile.auto_pause_exempt)
+      && (eventName === 'deactivation' || eventName === 'finish');
+    await markWebhookLogState(client, log.id, {
+      processed: true,
+      errorText: skippedByExempt ? 'SKIPPED_BY_AUTO_PAUSE_EXEMPT' : null
+    });
     await client.query('commit');
     return res.json({ ok: true, processed: true, event: eventName, externalId });
   } catch (e) {
@@ -406,6 +418,42 @@ app.post('/webhooks/prodamus', handleProdamusWebhook);
 
 const runNightlyExpiryReconcile = async () => {
   try {
+    // FEAT-015 Path C step 1: auto-expire auto_pause_exempt_until.
+    // Перевод истёкших exempt-флагов в false. Кейс: Ольга поставила
+    // ведущей бартер до 2026-12-31, дата прошла → флаг снят, обычная
+    // подписочная логика возвращается.
+    const expired = await pool.query(
+      `update public.profiles
+          set auto_pause_exempt = false,
+              auto_pause_exempt_until = null,
+              auto_pause_exempt_note = coalesce(auto_pause_exempt_note, '')
+                || ' [expired ' || current_date::text || ']'
+        where auto_pause_exempt = true
+          and auto_pause_exempt_until is not null
+          and auto_pause_exempt_until < current_date
+       returning id`
+    );
+    for (const row of expired.rows || []) {
+      // Аудит-запись в billing_webhook_logs.
+      await pool.query(
+        `insert into public.billing_webhook_logs(
+           provider, event_name, external_id, payload_json, signature_valid, is_processed
+         )
+         values ($1, 'auto_pause_exempt_expired', $2, $3::jsonb, true, true)
+         on conflict (provider, external_id) do nothing`,
+        [
+          PRODAMUS_PROVIDER_NAME,
+          `exempt_expired:${row.id}:${new Date().toISOString().slice(0, 10)}`,
+          JSON.stringify({ profile_id: row.id, source: 'nightly_reconcile' })
+        ]
+      );
+    }
+    if ((expired.rows || []).length > 0) {
+      console.info(`[reconcile ${BILLING_TIMEZONE}] auto_pause_exempt expired: ${expired.rows.length} profiles`);
+    }
+
+    // FEAT-015 Path C step 2: existing overdue → paused_expired,
+    // НО игнорировать exempt-профили (они защищены от автопаузы по дизайну).
     const { rows } = await pool.query(
       `update public.profiles
           set subscription_status = case when subscription_status = 'active' then 'overdue' else subscription_status end,
@@ -413,6 +461,7 @@ const runNightlyExpiryReconcile = async () => {
               last_prodamus_event = coalesce(last_prodamus_event, 'nightly_reconcile_overdue'),
               session_version = case when access_status = 'active' then session_version + 1 else session_version end
         where role <> 'admin'
+          and coalesce(auto_pause_exempt, false) = false
           and coalesce(access_status, 'active') = 'active'
           and paid_until is not null
           and paid_until < now()

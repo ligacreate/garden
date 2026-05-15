@@ -7,8 +7,15 @@ export const classifyProdamusEvent = (flat = {}) => {
   return 'unknown';
 };
 
-export const deriveAccessMutation = ({ eventName, currentAccessStatus }) => {
+export const deriveAccessMutation = ({ eventName, currentAccessStatus, autoPauseExempt = false }) => {
   const isManualPaused = String(currentAccessStatus || '').toLowerCase() === 'paused_manual';
+
+  // FEAT-015 Path C: auto_pause_exempt — иммунитет к webhook-автопаузе.
+  // Платёж (success/auto_payment) проходит как обычно, exempt не мешает.
+  // Деактивация (deactivation/finish) логируется в subscription_status,
+  // но access_status остаётся 'active'. Стандартный приоритет:
+  // exempt > paused_manual > paused_expired.
+
   if (eventName === 'payment_success' || eventName === 'auto_payment') {
     return {
       subscription_status: 'active',
@@ -19,15 +26,19 @@ export const deriveAccessMutation = ({ eventName, currentAccessStatus }) => {
   if (eventName === 'deactivation') {
     return {
       subscription_status: 'deactivated',
-      access_status: isManualPaused ? 'paused_manual' : 'paused_expired',
-      bumpSessionVersion: !isManualPaused
+      access_status: autoPauseExempt
+        ? 'active'
+        : (isManualPaused ? 'paused_manual' : 'paused_expired'),
+      bumpSessionVersion: !autoPauseExempt && !isManualPaused
     };
   }
   if (eventName === 'finish') {
     return {
       subscription_status: 'finished',
-      access_status: isManualPaused ? 'paused_manual' : 'paused_expired',
-      bumpSessionVersion: !isManualPaused
+      access_status: autoPauseExempt
+        ? 'active'
+        : (isManualPaused ? 'paused_manual' : 'paused_expired'),
+      bumpSessionVersion: !autoPauseExempt && !isManualPaused
     };
   }
   return null;

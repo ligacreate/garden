@@ -226,6 +226,14 @@ export default function App() {
                 return true;
             } else if (authData.isNew) {
                 user = await api.register(authData);
+                // FEAT-023 Phase 2.5: pending — backend создал профиль, ждём одобрения.
+                // До Phase 3 (полный PendingApprovalScreen + polling) — alert + logout,
+                // чтобы JWT pending'а не висел в localStorage и не делал лишних fetch'ей.
+                if (user?.access_status === 'pending_approval') {
+                    alert('Регистрация отправлена. Администратор скоро предоставит вам доступ к платформе.');
+                    await api.logout();
+                    return false;
+                }
                 showNotification("Добро пожаловать!");
             } else {
                 user = await api.login(authData.email, authData.password);

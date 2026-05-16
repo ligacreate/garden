@@ -63,6 +63,14 @@ const AuthScreen = ({ onLogin, onNotify, onResetPassword }) => {
 
             if (success) {
                 onNotify("Добро пожаловать в Сад!");
+            } else {
+                // FEAT-023 Phase 2.5: onLogin вернул false (pending или ошибка авторизации).
+                // App.jsx уже показал alert. Сбрасываем форму и возвращаем на welcome,
+                // чтобы юзер не остался на step 2 с экраном «дерева» без объяснений.
+                setAuthMode('welcome');
+                setStep(1);
+                setRegData({ name: '', email: '', password: '', dob: '' });
+                setTreeResult(null);
             }
         } catch (e) {
             console.error("Registration error details:", e); // Detailed log

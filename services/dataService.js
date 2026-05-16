@@ -1274,11 +1274,30 @@ class RemoteApiService {
             email: normalizedEmail,
             password,
             name: this._sanitizeIfString(rest.name),
-            city: this._sanitizeIfString(rest.city)
+            city: this._sanitizeIfString(rest.city),
+            // FEAT-023 Phase 2.5: передаём всё backend'у атомарно — после phase31
+            // restrictive write guard режет PATCH/POST /profiles под JWT pending'а;
+            // backend (Phase 2) поддерживает эти поля в /auth/register.
+            dob: rest.dob || null,
+            tree: this._sanitizeIfString(rest.tree),
+            tree_desc: this._sanitizeIfString(rest.treeDesc || rest.tree_desc),
+            x: rest.x ?? null,
+            y: rest.y ?? null
         };
         const data = await authFetch('/auth/register', { method: 'POST', body: payload });
         if (data?.token) setAuthToken(data.token);
         const created = this._normalizeProfile(data.user);
+
+        // FEAT-023 Phase 2.5: pending — это новая регистрация ждущая одобрения.
+        // PostgREST для неё закрыт restrictive guard'ом (phase31), любые
+        // _ensurePostgrestUser / PATCH / _fetchProfile вернут пусто или упадут.
+        // Backend уже создал полный профиль атомарно — возвращаем нормализованный
+        // объект. App.jsx#handleLogin поймёт по access_status и переведёт юзера
+        // на pending-flow (alert + logout до Phase 3).
+        if (created?.access_status === 'pending_approval') {
+            return created;
+        }
+
         if (created?.id) {
             await this._ensurePostgrestUser({
                 ...data.user,

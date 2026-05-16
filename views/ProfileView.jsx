@@ -669,7 +669,7 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                 ) : (
                                     <>
                                         <p className="text-slate-600 text-sm leading-relaxed">
-                                            Получайте уведомления в Telegram, когда студентка сдаст ДЗ или ментор проверит вашу работу. Тихие часы: 23:00–08:00 МСК.
+                                            Привяжите телеграм, чтобы получать уведомления по курсу Пиши, веди, люби. Тихие часы: 23:00–08:00 МСК.
                                         </p>
                                         <Button
                                             variant="primary"

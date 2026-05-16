@@ -1181,6 +1181,13 @@ async function persistGardenMentorLink(studentUserId, mentorUserId) {
 const USERS_SWR_KEY = 'pvl_users_swr_v1';
 
 export async function syncPvlActorsFromGarden() {
+    // BUG-001-edge instrumentation (TEMP). Маркеры с тегом [BUG-001-edge]
+    // помогают локализовать зависание из smoke (Promise.reject override).
+    const PHASE_TAG = '[BUG-001-edge] syncPvlActorsFromGarden';
+    // eslint-disable-next-line no-console
+    console.time(PHASE_TAG);
+    // eslint-disable-next-line no-console
+    const phase = (name) => { try { console.timeLog(PHASE_TAG, name); } catch { /* ignore */ } };
     try {
         // SWR: берём кэш пользователей из localStorage (актуален 1 час)
         let cachedUsers = null;
@@ -1192,6 +1199,7 @@ export async function syncPvlActorsFromGarden() {
             }
         } catch { /* ignore */ }
 
+        phase('phase:start cachedUsers=' + (cachedUsers ? cachedUsers.length : 'null'));
         let users = [];
         if (cachedUsers) {
             // Кэш есть — используем сразу, обновляем в фоне
@@ -1217,7 +1225,12 @@ export async function syncPvlActorsFromGarden() {
                 try { localStorage.setItem(USERS_SWR_KEY, JSON.stringify({ ts: Date.now(), d: users })); } catch { /* ignore */ }
             }
         }
-        if (!Array.isArray(users) || users.length === 0) return { synced: false, reason: 'no_users' };
+        phase('phase:after-getUsers users=' + (Array.isArray(users) ? users.length : 'invalid'));
+        if (!Array.isArray(users) || users.length === 0) {
+            // eslint-disable-next-line no-console
+            console.timeEnd(PHASE_TAG);
+            return { synced: false, reason: 'no_users' };
+        }
 
         const roleOnly = (u) => String(u?.role ?? '').trim().toLowerCase();
         const canActAsCourseMentor = (u) => {
@@ -1324,12 +1337,15 @@ export async function syncPvlActorsFromGarden() {
             }
         });
 
+        phase('phase:after-actors-iter mentors=' + mentors.length + ' trackMembers=' + pvlTrackMembers.length);
+
         /** Только абитуриенты: ранняя строка в pvl_students (FK). Ученицы/стажёры — через ensure при сдаче ДЗ и т.п. */
         for (const { profile: u, admission } of pvlTrackMembers) {
             if (!u?.id || admission?.gardenRole !== 'applicant') continue;
             // eslint-disable-next-line no-await-in-loop
             await ensurePvlStudentInDb(String(u.id));
         }
+        phase('phase:after-ensurePvlStudentInDb');
 
         /** Есть синхронизированные из Сада участники трека — админка и ментор не показывают демо u-st-* */
         db._pvlGardenApplicantsSynced = pvlTrackMembers.length > 0;
@@ -1339,7 +1355,9 @@ export async function syncPvlActorsFromGarden() {
 
         try {
             await hydrateGardenMentorAssignmentsFromDb();
+            phase('phase:after-hydrate OK');
         } catch (e) {
+            phase('phase:after-hydrate THREW');
             logDbFallback({
                 endpoint: '/pvl_garden_mentor_links',
                 status: 'error',
@@ -1369,7 +1387,9 @@ export async function syncPvlActorsFromGarden() {
         if (pvlPostgrestApi.isEnabled() && pvlTrackMembers.length > 0) {
             try {
                 await syncTrackerAndHomeworkFromDb();
+                phase('phase:after-syncTracker OK');
             } catch (e) {
+                phase('phase:after-syncTracker THREW');
                 logDbFallback({
                     endpoint: '/pvl_student_homework_submissions',
                     status: 'error',
@@ -1392,6 +1412,9 @@ export async function syncPvlActorsFromGarden() {
             }
         }
 
+        phase('phase:before-return synced=true');
+        // eslint-disable-next-line no-console
+        console.timeEnd(PHASE_TAG);
         return {
             synced: true,
             mentors: mentors.length,
@@ -1400,6 +1423,9 @@ export async function syncPvlActorsFromGarden() {
             trackMembers: pvlTrackMembers.length,
         };
     } catch (error) {
+        phase('phase:TOP-LEVEL-CATCH ' + String(error?.message || error));
+        // eslint-disable-next-line no-console
+        console.timeEnd(PHASE_TAG);
         logDbFallback({
             endpoint: '/profiles',
             status: 'error',

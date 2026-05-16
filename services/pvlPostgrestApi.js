@@ -62,6 +62,26 @@ function buildHeaders(prefer) {
     return headers;
 }
 
+// BUG-PVL-SYNC-FAILED-TO-FETCH: одноразовый retry при TypeError из fetch()
+// (Chrome «Failed to fetch» / Safari «Load failed»). Только для GET и
+// только на TypeError — HTTP-ошибки приходят как !response.ok, retry им
+// не поможет; на POST/PATCH/DELETE retry опасен (двойная запись).
+const NETWORK_RETRY_DELAY_MS = 1500;
+
+async function fetchWithNetworkRetry(urlString, fetchInit, { allowRetry }) {
+    try {
+        return await fetch(urlString, fetchInit);
+    } catch (err) {
+        if (!allowRetry || !(err instanceof TypeError)) throw err;
+        logDb('[PVL DB RETRY]', {
+            endpoint: urlString,
+            error: String(err?.message || err),
+        });
+        await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAY_MS));
+        return fetch(urlString, fetchInit);
+    }
+}
+
 async function request(table, { method = 'GET', params = {}, body, prefer } = {}) {
     if (!isEnabled()) {
         warnMockMode(!POSTGREST_URL ? 'VITE_POSTGREST_URL is not set.' : 'VITE_USE_LOCAL_DB=true.');
@@ -79,11 +99,11 @@ async function request(table, { method = 'GET', params = {}, body, prefer } = {}
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     });
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithNetworkRetry(url.toString(), {
         method,
         headers: buildHeaders(prefer),
         body: body ? JSON.stringify(body) : undefined,
-    });
+    }, { allowRetry: method === 'GET' });
 
     if (!response.ok) {
         const text = await response.text().catch(() => '');

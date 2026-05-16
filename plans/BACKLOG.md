@@ -698,39 +698,29 @@ related_docs:
   строк, навигация запутана).
 
 ### BUG-001: PvlPrototypeApp фрагильный batch-init — один 500-endpoint валит весь компонент
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE 2026-05-16
 - **Приоритет:** P1 (всплыло в проде после открытия Caddy 2026-05-03;
-  блокирует mentor-UI при любой PVL-таблице, возвращающей 500)
-- **Контекст:**
-  - При логине ментора `PvlPrototypeApp.jsx` делает batch-fetch
-    нескольких PVL-таблиц для инициализации `pvlMockApi`-кэша.
-  - Если хоть один endpoint возвращает 500/400 (например,
-    `pvl_student_questions` падает с RLS-cast-error на битых
-    legacy TEXT-id) — `Promise.all` reject'ится, цепочка
-    sync обрывается, локальный кэш остаётся пустым, mentor
-    видит пустой UI.
-  - В `App.jsx` мы уже применили паттерн `Promise.allSettled`
-    в фазе 4 SEC-001 (через helper `loadAndApplyInitialData`) —
-    это ровно то, что нужно повторить в PVL.
-- **Что сделать:**
-  - [ ] Найти в `views/PvlPrototypeApp.jsx` (или, скорее,
-    в `services/pvlMockApi.js` — `syncPvlRuntimeFromDb`,
-    `syncPvlActorsFromGarden`) места с `Promise.all`-инициализацией
-    нескольких PVL-таблиц.
-  - [ ] Заменить на `Promise.allSettled` + per-result-handling:
-    - При `fulfilled` — записать в кэш
-    - При `rejected` — `console.error`, не валить остальное
-  - [ ] (Опционально) показать toast/баннер пользователю
-    «Часть данных PVL временно недоступна» при partial degradation.
-  - [ ] Smoke: симулировать 500 на одной из PVL-таблиц (например,
-    отозвать grant временно) — убедиться, что остальные
-    компоненты PVL продолжают работать.
+  блокировало mentor-UI при любой PVL-таблице, возвращающей 500)
+- **Закрыто:** 2026-05-16 — три критических сайта переведены
+  на `Promise.allSettled` + per-result handling, добавлен contract
+  `_partial.failed` + MON-001 alert при partial degradation, плюс
+  defense-in-depth safety-catch в AdminStudents (try/finally без catch
+  при throw оставлял бы UI вечно на «Загрузка учениц…»).
+- **Артефакты:**
+  - Урок: [docs/lessons/2026-05-16-promise-all-vs-allsettled-init-batch.md](../docs/lessons/2026-05-16-promise-all-vs-allsettled-init-batch.md)
+  - Коммиты:
+    - `92cb502` — base fix (Promise.allSettled в loadRuntimeSnapshot, ensureDbTrackerHomeworkStructure, per-student batch).
+    - `0f8158b` — defense-in-depth safety-catch в AdminStudents + temp instrumentation для root-cause investigation.
+    - (этот closure-коммит) — чистка инструментации + закрытие в backlog.
+  - Recon-документы: `docs/_session/2026-05-16_20..24_*.md` (полная история — recon → diff → smoke → edge case → reproduce).
+- **Что выяснилось при reproduce:**
+  - Базовый фикс `Promise.allSettled` работает корректно при Promise.reject.
+  - Предыдущий smoke (показавший 15-сек зависание) был замутнён `logout+login` циклом во время fetch override — артефакт smoke-методики, не реальный баг.
+  - Smoke-методика урок: при partial degradation тесте — **не делать logout/login во время активного override**, использовать Chrome DevTools Network Request blocking UI с reload.
 - **Связано:**
-  - REFACTOR-001 (большая декомпозиция PvlPrototypeApp/pvlMockApi)
-  - CLEAN-007 (миграция TEXT → UUID для pvl_student_questions —
-    устраняет одну из причин 500)
-  - docs/EXEC_2026-05-02_etap5_post_smoke_fix1_pvl_student_questions.md
-    (где этот баг впервые проявился)
+  - REFACTOR-001 (большая декомпозиция PvlPrototypeApp/pvlMockApi).
+  - CLEAN-007 (миграция TEXT → UUID для pvl_student_questions — устраняет одну из причин 500).
+  - docs/journal/EXEC_2026-05-02_etap5_post_smoke_fix1_pvl_student_questions.md (где этот баг впервые проявился).
 
 ### REFACTOR-001: Разбиение монолитных файлов на модули
 - **Статус:** 🔴 TODO

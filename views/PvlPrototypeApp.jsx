@@ -6942,24 +6942,16 @@ function AdminStudents({ navigate, route, refreshKey = 0, cmsItems = [], cmsPlac
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            // BUG-001-edge instrumentation (TEMP — удалить после root-cause fix).
-            // eslint-disable-next-line no-console
-            console.time('[BUG-001-edge] AdminStudents.syncPvlActorsFromGarden');
             try {
                 const result = await syncPvlActorsFromGarden();
-                // eslint-disable-next-line no-console
-                console.timeEnd('[BUG-001-edge] AdminStudents.syncPvlActorsFromGarden');
-                // eslint-disable-next-line no-console
-                console.log('[BUG-001-edge] syncResult:', result);
                 if (!cancelled) setSyncResult(result);
             } catch (e) {
-                // BUG-001-edge safety-fix: даже если syncPvlActorsFromGarden throw'ит
-                // наверх (не должен по контракту, но edge case был замечен на проде) —
-                // UI не должен висеть на «Загрузка учениц…». Показываем error message.
+                // BUG-001 defense-in-depth: syncPvlActorsFromGarden имеет top-level
+                // try/catch и НЕ должна throw'ить наверх — но catch здесь гарантирует
+                // что UI ментора не зависнет на «Загрузка учениц…» при любом будущем
+                // регрессе. См. docs/lessons/2026-05-16-promise-all-vs-allsettled-init-batch.md.
                 // eslint-disable-next-line no-console
-                console.timeEnd('[BUG-001-edge] AdminStudents.syncPvlActorsFromGarden');
-                // eslint-disable-next-line no-console
-                console.error('[BUG-001-edge] THREW:', e);
+                console.error('[AdminStudents] syncPvlActorsFromGarden threw:', e);
                 if (!cancelled) setSyncResult({ synced: false, reason: 'error', error: String(e?.message || e) });
             } finally {
                 if (!cancelled) setListTick((t) => t + 1);

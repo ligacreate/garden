@@ -1441,6 +1441,23 @@ class RemoteApiService {
         return sign.publicUrl;
     }
 
+    // FEAT-024 — TG linking flow (garden-auth backend, не PostgREST).
+    async generateTelegramLinkCode() {
+        const data = await authFetch('/api/profile/generate-tg-link-code', {
+            method: 'POST',
+            body: {}
+        });
+        return data; // { code, deep_link, expires_in_seconds }
+    }
+
+    async unlinkTelegram() {
+        const data = await authFetch('/api/profile/unlink-telegram', {
+            method: 'POST',
+            body: {}
+        });
+        return data; // { ok: true }
+    }
+
     async logout() {
         setAuthToken(null);
     }

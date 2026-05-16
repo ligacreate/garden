@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, LogOut, Trash2, X, Plus, MapPin, Briefcase } from 'lucide-react';
+import { Camera, LogOut, Trash2, X, Plus, MapPin, Briefcase, Send, Copy, CheckCircle2 } from 'lucide-react';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import Input from '../components/Input';
 import UserAvatar from '../components/UserAvatar';
+import ModalShell from '../components/ModalShell';
 import { getRoleLabel } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { normalizeSkills } from '../utils/skills';
@@ -130,7 +131,7 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
     );
 };
 
-const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage }) => {
+const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ next: '', confirm: '', loading: false });
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -311,6 +312,81 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
             setPasswordForm(prev => ({ ...prev, loading: false }));
         }
     };
+
+    // FEAT-024 — TG linking state.
+    const [tgLinkModal, setTgLinkModal] = useState(null); // { code, deep_link } | null
+    const [tgLinkLoading, setTgLinkLoading] = useState(false);
+    const [tgUnlinkConfirm, setTgUnlinkConfirm] = useState(false);
+    const [tgUnlinkLoading, setTgUnlinkLoading] = useState(false);
+    const [tgCodeCopied, setTgCodeCopied] = useState(false);
+
+    const handleGenerateTgLinkCode = async () => {
+        try {
+            setTgLinkLoading(true);
+            const data = await api.generateTelegramLinkCode();
+            setTgLinkModal({ code: data.code, deep_link: data.deep_link });
+            setTgCodeCopied(false);
+        } catch (e) {
+            console.error(e);
+            onNotify(e?.message || 'Не удалось сгенерировать код привязки');
+        } finally {
+            setTgLinkLoading(false);
+        }
+    };
+
+    const handleUnlinkTelegram = async () => {
+        setTgUnlinkConfirm(false);
+        try {
+            setTgUnlinkLoading(true);
+            await api.unlinkTelegram();
+            onNotify('Telegram отвязан');
+            try {
+                const fresh = await api.getCurrentUser();
+                if (fresh && onProfileRefresh) onProfileRefresh(fresh);
+            } catch (refreshErr) {
+                console.warn('refresh после unlink не удался', refreshErr);
+            }
+        } catch (e) {
+            console.error(e);
+            onNotify(e?.message || 'Не удалось отвязать Telegram');
+        } finally {
+            setTgUnlinkLoading(false);
+        }
+    };
+
+    const handleCopyTgCode = async () => {
+        if (!tgLinkModal?.code) return;
+        try {
+            await navigator.clipboard.writeText(tgLinkModal.code);
+            setTgCodeCopied(true);
+            setTimeout(() => setTgCodeCopied(false), 2000);
+        } catch (e) {
+            // clipboard может быть закрыт (insecure context) — fallback на manual copy
+            console.warn('clipboard write failed', e);
+        }
+    };
+
+    // Polling каждые 5с пока открыт modal линка — проверяем привязался ли TG.
+    useEffect(() => {
+        if (!tgLinkModal) return;
+        let cancelled = false;
+        const tick = async () => {
+            if (cancelled) return;
+            try {
+                const fresh = await api.getCurrentUser();
+                if (cancelled) return;
+                if (fresh?.telegram_user_id) {
+                    setTgLinkModal(null);
+                    onNotify('Привязано! Теперь будем слать уведомления в TG');
+                    if (onProfileRefresh) onProfileRefresh(fresh);
+                }
+            } catch (e) {
+                // тихо игнорим — на следующем тике попробуем ещё раз
+            }
+        };
+        const id = setInterval(tick, 5000);
+        return () => { cancelled = true; clearInterval(id); };
+    }, [tgLinkModal, onNotify, onProfileRefresh]);
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12 w-full">
@@ -563,6 +639,52 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                             </div>
                         </Card>
 
+                        <Card title="Telegram-уведомления" className="!rounded-[2rem]">
+                            <div className="space-y-4">
+                                {user.telegram_user_id ? (
+                                    <>
+                                        <div className="flex items-center gap-3 bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                                            <CheckCircle2 className="text-emerald-600 flex-shrink-0" size={22} />
+                                            <div className="flex-1">
+                                                <p className="text-emerald-900 text-sm font-medium">Привязан к Telegram</p>
+                                                {user.telegram_linked_at && (
+                                                    <p className="text-emerald-700 text-xs mt-0.5">
+                                                        с {new Date(user.telegram_linked_at).toLocaleDateString('ru-RU')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <p className="text-slate-500 text-sm">
+                                            Будем писать в TG, когда студентка сдаст ДЗ или ментор проверит вашу работу. Тихие часы: 23:00–08:00 МСК.
+                                        </p>
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setTgUnlinkConfirm(true)}
+                                            disabled={tgUnlinkLoading}
+                                            className="!rounded-xl"
+                                        >
+                                            {tgUnlinkLoading ? 'Отвязываем…' : 'Отвязать Telegram'}
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-slate-600 text-sm leading-relaxed">
+                                            Получайте уведомления в Telegram, когда студентка сдаст ДЗ или ментор проверит вашу работу. Тихие часы: 23:00–08:00 МСК.
+                                        </p>
+                                        <Button
+                                            variant="primary"
+                                            icon={Send}
+                                            onClick={handleGenerateTgLinkCode}
+                                            disabled={tgLinkLoading}
+                                            className="!rounded-xl"
+                                        >
+                                            {tgLinkLoading ? 'Готовим код…' : 'Привязать Telegram'}
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
+                        </Card>
+
                         <Card title="Страница ведущей" className="!rounded-[2rem]">
                             <div className="space-y-6">
                                 {isEditing ? (
@@ -700,6 +822,60 @@ const ProfileView = ({ user, onUpdateProfile, onLogout, onDeleteAccount, onNotif
                 message="Это действие невозможно отменить."
                 confirmText="Удалить"
                 confirmVariant="danger"
+            />
+
+            <ModalShell
+                isOpen={Boolean(tgLinkModal)}
+                onClose={() => setTgLinkModal(null)}
+                title="Привязка Telegram"
+                description="Откройте бота — он привяжет ваш профиль автоматически."
+                size="md"
+            >
+                <div className="space-y-6">
+                    <div>
+                        <p className="text-sm text-slate-600 mb-3">Шаг 1. Откройте бота:</p>
+                        <a
+                            href={tgLinkModal?.deep_link || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 w-full justify-center bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-xl transition-colors"
+                        >
+                            <Send size={18} />
+                            Открыть @garden_pvl_bot
+                        </a>
+                    </div>
+                    <div>
+                        <p className="text-sm text-slate-600 mb-3">
+                            Шаг 2. Если бот не открылся автоматически — скопируйте код и отправьте боту командой <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">/start &lt;код&gt;</code>:
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-mono text-lg text-slate-800 tracking-wider text-center">
+                                {tgLinkModal?.code || ''}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleCopyTgCode}
+                                aria-label="Скопировать код"
+                                className="p-3 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+                            >
+                                {tgCodeCopied ? <CheckCircle2 size={18} className="text-emerald-600" /> : <Copy size={18} />}
+                            </button>
+                        </div>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                        Код активен 15 минут. Когда бот привяжет ваш профиль — здесь появится подтверждение, а у бота — приветственное сообщение.
+                    </p>
+                </div>
+            </ModalShell>
+
+            <ConfirmationModal
+                isOpen={tgUnlinkConfirm}
+                onClose={() => setTgUnlinkConfirm(false)}
+                onConfirm={handleUnlinkTelegram}
+                title="Отвязать Telegram?"
+                message="Уведомления о ДЗ перестанут приходить в Telegram. Привязать обратно можно в любой момент."
+                confirmText="Отвязать"
+                confirmVariant="secondary"
             />
         </div>
     );

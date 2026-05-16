@@ -333,6 +333,18 @@ export default function App() {
         }
     };
 
+    // FEAT-024 Phase 2b — refresh профиля БЕЗ БД-PATCH'а.
+    // Используется после polling-detect привязки TG и после unlink:
+    // данные уже корректны в БД (webhook handler garden-auth их выставил),
+    // фронт просто читает свежее и обновляет state.
+    const handleProfileRefresh = (freshProfile) => {
+        if (!freshProfile?.id) return;
+        setUsers(prev => prev.map(u => u.id === freshProfile.id ? freshProfile : u));
+        if (currentUser && currentUser.id === freshProfile.id) {
+            setCurrentUser(freshProfile);
+        }
+    };
+
     const handleSendRay = (targetUserId) => {
         try {
             api.checkActionTimer(); // Check cooldown
@@ -580,7 +592,7 @@ export default function App() {
                             showNotification(e.message || "Ошибка публикации");
                         }
                     }} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
-                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
+                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onProfileRefresh={handleProfileRefresh} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
             </div>
         </div>
     );

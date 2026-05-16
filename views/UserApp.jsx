@@ -51,7 +51,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
     </button>
 );
 
-const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onSendRay, onMarkAsRead }) => {
+const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onProfileRefresh, onSendRay, onMarkAsRead }) => {
     const [view, setView] = useState(() => (user?.role || '').toLowerCase() === ROLES.APPLICANT ? 'library' : 'dashboard');
     const [practices, setPractices] = useState([]);
     const [meetings, setMeetings] = useState([]);
@@ -1074,6 +1074,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         <ProfileView
                             user={user}
                             onUpdateProfile={handleUpdateProfile}
+                            onProfileRefresh={onProfileRefresh}
                             onLogout={onLogout}
                             onDeleteAccount={onLogout}
                             onNotify={onNotify}

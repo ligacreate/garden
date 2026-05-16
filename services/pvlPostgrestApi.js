@@ -675,13 +675,33 @@ export const pvlPostgrestApi = {
 
     // Backward compatibility with current integration points
     async loadRuntimeSnapshot() {
-        const [items, placements, events, faq] = await Promise.all([
+        // BUG-001 (2026-05-16): один битый endpoint не должен валить остальные 3.
+        // Если, например, pvl_faq_items вернёт 500 — items/placements/events
+        // всё равно загрузятся. Caller (syncPvlRuntimeFromDb) видит partial
+        // через snapshot._partial и шлёт alert в MON-001.
+        const labels = ['pvl_content_items', 'pvl_content_placements', 'pvl_calendar_events', 'pvl_faq_items'];
+        const results = await Promise.allSettled([
             this.listContentItems(),
             request('pvl_content_placements', { params: { select: '*' } }),
             this.listCalendarEvents({}),
             request('pvl_faq_items', { params: { select: '*' } }),
         ]);
-        return { items: asArray(items), placements: asArray(placements), events: asArray(events), faq: asArray(faq) };
+        const failed = [];
+        const pick = (r, i) => {
+            if (r.status === 'fulfilled') return asArray(r.value);
+            failed.push(labels[i]);
+            // eslint-disable-next-line no-console
+            console.error(`[PVL loadRuntimeSnapshot] ${labels[i]} failed:`, r.reason);
+            return [];
+        };
+        const snapshot = {
+            items: pick(results[0], 0),
+            placements: pick(results[1], 1),
+            events: pick(results[2], 2),
+            faq: pick(results[3], 3),
+        };
+        if (failed.length > 0) snapshot._partial = { failed };
+        return snapshot;
     },
     async upsertContentItem(row) {
         return this.createContentItem(row);

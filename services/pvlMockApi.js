@@ -649,38 +649,65 @@ async function ensurePvlStudentInDb(userId) {
 }
 
 async function ensureDbTrackerHomeworkStructure() {
-    const [weekRows, lessonRows, hwRows] = await Promise.all([
+    // BUG-001: базовый read трёх таблиц через allSettled — один битый endpoint
+    // не валит остальную инициализацию. На rejected возвращаем null (=
+    // «неизвестно, не пиши»), на fulfilled — массив.
+    const baseResults = await Promise.allSettled([
         pvlPostgrestApi.listCourseWeeks(),
         pvlPostgrestApi.listCourseLessons(),
         pvlPostgrestApi.listHomeworkItems(),
     ]);
-    const byWeekExternal = new Map(
-        (weekRows || [])
-            .filter((r) => r.external_key)
-            .map((r) => [String(r.external_key), r]),
-    );
-    const weeksMissingExternalKey = (db.courseWeeks || []).filter((w) => !byWeekExternal.has(w.id));
-    if (weeksMissingExternalKey.length > 0) {
-        for (const w of weeksMissingExternalKey) {
-            // eslint-disable-next-line no-await-in-loop
-            await pvlPostgrestApi.upsertCourseWeek({
-                week_number: Number(w.weekNumber ?? 0),
-                title: w.title || `Неделя ${w.weekNumber ?? 0}`,
-                module_number: Number(w.moduleNumber ?? 0),
-                is_active: true,
-                starts_at: w.startDate || null,
-                ends_at: w.endDate || null,
-                external_key: w.id,
-            });
+    const baseLabels = ['pvl_course_weeks', 'pvl_course_lessons', 'pvl_homework_items'];
+    const baseRows = baseResults.map((r, i) => {
+        if (r.status === 'fulfilled') return r.value || [];
+        // eslint-disable-next-line no-console
+        console.error(`[PVL ensureDbTrackerHomeworkStructure] ${baseLabels[i]} failed:`, r.reason);
+        return null;
+    });
+    const [weekRows, lessonRows, hwRows] = baseRows;
+
+    // Guard A: weeks. Если read упал — НЕ пишем upsert'ы (можем дублировать) и
+    // НЕ перезаписываем sqlWeekIdByMockWeekId (оставляем последний валидный).
+    if (weekRows !== null) {
+        const byWeekExternal = new Map(
+            weekRows
+                .filter((r) => r.external_key)
+                .map((r) => [String(r.external_key), r]),
+        );
+        const weeksMissingExternalKey = (db.courseWeeks || []).filter((w) => !byWeekExternal.has(w.id));
+        if (weeksMissingExternalKey.length > 0) {
+            for (const w of weeksMissingExternalKey) {
+                // eslint-disable-next-line no-await-in-loop
+                await pvlPostgrestApi.upsertCourseWeek({
+                    week_number: Number(w.weekNumber ?? 0),
+                    title: w.title || `Неделя ${w.weekNumber ?? 0}`,
+                    module_number: Number(w.moduleNumber ?? 0),
+                    is_active: true,
+                    starts_at: w.startDate || null,
+                    ends_at: w.endDate || null,
+                    external_key: w.id,
+                }).catch((e) => {
+                    // eslint-disable-next-line no-console
+                    console.error('[PVL upsertCourseWeek]', w.id, 'failed:', e);
+                });
+            }
+        }
+        try {
+            const weeks = await pvlPostgrestApi.listCourseWeeks();
+            if (Array.isArray(weeks)) {
+                sqlWeekIdByMockWeekId = new Map(weeks
+                    .filter((w) => w.external_key)
+                    .map((w) => [String(w.external_key), w.id]));
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[PVL ensureDbTrackerHomeworkStructure] re-read weeks failed:', e);
         }
     }
-    const weeks = await pvlPostgrestApi.listCourseWeeks();
-    sqlWeekIdByMockWeekId = new Map((weeks || [])
-        .filter((w) => w.external_key)
-        .map((w) => [String(w.external_key), w.id]));
 
+    // Guard B: lessons. Если базовый read упал — пропускаем upsert lessons.
     const byLessonExternal = new Map((lessonRows || []).map((r) => [String(r.external_key || ''), r]));
-    if (byLessonExternal.size === 0) {
+    if (lessonRows !== null && byLessonExternal.size === 0) {
         const lessons = db.lessons || [];
         for (const l of lessons) {
             const sqlWeekId = sqlWeekIdByMockWeekId.get(String(l.weekId));
@@ -693,58 +720,78 @@ async function ensureDbTrackerHomeworkStructure() {
                 lesson_type: l.contentType || 'lesson',
                 sort_order: Number(l.orderIndex ?? 0),
                 external_key: l.id,
+            }).catch((e) => {
+                // eslint-disable-next-line no-console
+                console.error('[PVL upsertCourseLesson]', l.id, 'failed:', e);
             });
         }
     }
     const byHomeworkExternal = new Map((hwRows || []).map((r) => [String(r.external_key || ''), r]));
 
-    // Сканируем db.homeworkTasks (in-memory, заполняется лениво)
-    for (const t of db.homeworkTasks || []) {
-        if (!byHomeworkExternal.has(String(t.id))) {
-            const sqlWeekId = sqlWeekIdByMockWeekId.get(String(t.weekId));
-            // eslint-disable-next-line no-await-in-loop
-            await pvlPostgrestApi.upsertHomeworkItem({
-                week_id: sqlWeekId || null,
-                title: t.title || 'Домашка',
-                item_type: t.isControlPoint ? 'control_point' : 'homework',
-                max_score: Number(t.scoreMax ?? 20),
-                is_control_point: !!t.isControlPoint,
-                sort_order: Number(t.orderIndex ?? 0),
-                external_key: t.id,
-            });
-        }
-    }
-
-    // Сканируем pvl_content_items напрямую — ловим новые уроки, которые ещё не попали в db.homeworkTasks
-    try {
-        const publishedCiRows = await pvlPostgrestApi.listPublishedHomeworkContentItems();
-        for (const ci of publishedCiRows || []) {
-            const externalKey = `task-ci-${ci.id}`;
-            if (!byHomeworkExternal.has(externalKey)) {
+    // Guard C: homework. Если базовый read упал — пропускаем upsert (write-spam без знания
+    // что в БД уже есть) и не перезаписываем sqlHomeworkIdByMockTaskId.
+    if (hwRows !== null) {
+        // Сканируем db.homeworkTasks (in-memory, заполняется лениво)
+        for (const t of db.homeworkTasks || []) {
+            if (!byHomeworkExternal.has(String(t.id))) {
+                const sqlWeekId = sqlWeekIdByMockWeekId.get(String(t.weekId));
                 // eslint-disable-next-line no-await-in-loop
                 await pvlPostgrestApi.upsertHomeworkItem({
-                    week_id: null,
-                    title: ci.title || 'Задание',
-                    item_type: 'homework',
-                    max_score: 20,
-                    is_control_point: false,
-                    sort_order: 0,
-                    external_key: externalKey,
+                    week_id: sqlWeekId || null,
+                    title: t.title || 'Домашка',
+                    item_type: t.isControlPoint ? 'control_point' : 'homework',
+                    max_score: Number(t.scoreMax ?? 20),
+                    is_control_point: !!t.isControlPoint,
+                    sort_order: Number(t.orderIndex ?? 0),
+                    external_key: t.id,
+                }).catch((e) => {
+                    // eslint-disable-next-line no-console
+                    console.error('[PVL upsertHomeworkItem]', t.id, 'failed:', e);
                 });
-                byHomeworkExternal.set(externalKey, { external_key: externalKey });
             }
         }
-    } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[PVL DB] ensureDbTrackerHomeworkStructure: failed to sync content items', String(e?.message || e));
+
+        // Сканируем pvl_content_items напрямую — ловим новые уроки, которые ещё не попали в db.homeworkTasks
+        try {
+            const publishedCiRows = await pvlPostgrestApi.listPublishedHomeworkContentItems();
+            for (const ci of publishedCiRows || []) {
+                const externalKey = `task-ci-${ci.id}`;
+                if (!byHomeworkExternal.has(externalKey)) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await pvlPostgrestApi.upsertHomeworkItem({
+                        week_id: null,
+                        title: ci.title || 'Задание',
+                        item_type: 'homework',
+                        max_score: 20,
+                        is_control_point: false,
+                        sort_order: 0,
+                        external_key: externalKey,
+                    }).catch((e) => {
+                        // eslint-disable-next-line no-console
+                        console.error('[PVL upsertHomeworkItem CI]', externalKey, 'failed:', e);
+                    });
+                    byHomeworkExternal.set(externalKey, { external_key: externalKey });
+                }
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('[PVL DB] ensureDbTrackerHomeworkStructure: failed to sync content items', String(e?.message || e));
+        }
+        try {
+            const homeworkRows = await pvlPostgrestApi.listHomeworkItems();
+            if (Array.isArray(homeworkRows)) {
+                sqlHomeworkIdByMockTaskId = new Map(homeworkRows
+                    .filter((r) => r.external_key)
+                    .map((r) => [String(r.external_key), r.id]));
+                mockTaskIdBySqlHomeworkId = new Map(homeworkRows
+                    .filter((r) => r.external_key)
+                    .map((r) => [String(r.id), String(r.external_key)]));
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[PVL ensureDbTrackerHomeworkStructure] re-read homework failed:', e);
+        }
     }
-    const homeworkRows = await pvlPostgrestApi.listHomeworkItems();
-    sqlHomeworkIdByMockTaskId = new Map((homeworkRows || [])
-        .filter((r) => r.external_key)
-        .map((r) => [String(r.external_key), r.id]));
-    mockTaskIdBySqlHomeworkId = new Map((homeworkRows || [])
-        .filter((r) => r.external_key)
-        .map((r) => [String(r.id), String(r.external_key)]));
 }
 
 async function syncTrackerAndHomeworkFromDb() {
@@ -758,18 +805,69 @@ async function syncTrackerAndHomeworkFromDb() {
             .map((s) => ensurePvlStudentInDb(s.userId).catch(() => {}))
     );
 
-    // Все студенты параллельно: getProgress + listSubmissions + contentProgress за один батч
-    await Promise.all(students.map(async (student) => {
-        const userId = student.userId;
-        const sqlStudentId = studentSqlIdByUserId(userId);
-        if (!sqlStudentId) return;
+    // BUG-001: внешний allSettled — один битый студент НЕ валит обработку
+    // остальных (раньше Promise.all падал на первом 500 → у ВСЕХ студентов
+    // submissions/tracker пусты → учительская показывала пустой UI).
+    const perStudentResults = await Promise.all(students.map(async (student) => {
+        try {
+            await processStudentTrackerAndHomework(student);
+            return { ok: true, userId: student.userId };
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error(`[PVL per-student] processing failed for ${student.userId}:`, e);
+            return { ok: false, userId: student.userId, error: String(e?.message || e) };
+        }
+    }));
+    const failedStudents = perStudentResults.filter((r) => !r.ok);
+    if (failedStudents.length > 0) {
+        // eslint-disable-next-line no-console
+        console.error(
+            `[PVL syncTrackerAndHomework] ${failedStudents.length}/${students.length} students failed processing:`,
+            failedStudents.map((f) => f.userId),
+        );
+        try {
+            const mod = await import('../utils/clientErrorReporter');
+            mod.reportClientError({
+                source: 'pvlMockApi.syncTrackerAndHomeworkFromDb',
+                message: `per-student partial degradation: ${failedStudents.length}/${students.length} failed`,
+                extra: { failedStudentIds: failedStudents.map((f) => f.userId), stage: 'per_student_loop' },
+            });
+        } catch { /* silent */ }
+    }
+}
 
-        const [checklistItems, progressRows, subs, contentProgressRows] = await Promise.all([
-            pvlPostgrestApi.listStudentChecklistItems(sqlStudentId).catch(() => []),
-            pvlPostgrestApi.getStudentCourseProgress(sqlStudentId),
-            pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId),
-            pvlPostgrestApi.listStudentContentProgress(sqlStudentId).catch(() => []),
-        ]);
+async function processStudentTrackerAndHomework(student) {
+    const userId = student.userId;
+    const sqlStudentId = studentSqlIdByUserId(userId);
+    if (!sqlStudentId) return;
+
+    // BUG-001: внутренний allSettled — у `getStudentCourseProgress` и
+    // `listStudentHomeworkSubmissions` не было .catch (в отличие от checklist
+    // и contentProgress). Если 500 на одном из них для одного студента —
+    // вся обработка студента reject (вырубала и checklist/contentProgress).
+    const inner = await Promise.allSettled([
+        pvlPostgrestApi.listStudentChecklistItems(sqlStudentId),
+        pvlPostgrestApi.getStudentCourseProgress(sqlStudentId),
+        pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId),
+        pvlPostgrestApi.listStudentContentProgress(sqlStudentId),
+    ]);
+    const innerLabels = [
+        'pvl_checklist_items',
+        'pvl_student_course_progress',
+        'pvl_student_homework_submissions',
+        'pvl_student_content_progress',
+    ];
+    const pickInner = (r, i) => {
+        if (r.status === 'fulfilled') return r.value || [];
+        // eslint-disable-next-line no-console
+        console.error(`[PVL per-student ${userId}] ${innerLabels[i]} failed:`, r.reason);
+        return [];
+    };
+    const checklistItems = pickInner(inner[0], 0);
+    const progressRows = pickInner(inner[1], 1);
+    const subs = pickInner(inner[2], 2);
+    const contentProgressRows = pickInner(inner[3], 3);
+    {
 
         const checked = {};
         // Основной источник: pvl_checklist_items (одна строка на айтем, конфликт невозможен)
@@ -794,8 +892,9 @@ async function syncTrackerAndHomeworkFromDb() {
         db.studentTrackerChecks[userId] = checked;
         syncPublishedHomeworkTasksForStudent(userId);
 
-        // Submissions + их история — тоже параллельно между собой
-        await Promise.all((subs || []).map(async (row) => {
+        // Submissions + их история — параллельно. allSettled чтобы один битый
+        // listHomeworkStatusHistory не валил обработку остальных submissions.
+        await Promise.allSettled((subs || []).map(async (row) => {
             const taskId = mockTaskIdBySqlHomeworkId.get(String(row.homework_item_id));
             if (!taskId) return;
             const mapped = homeworkDbStatusToTaskStatus(row.status);
@@ -877,7 +976,7 @@ async function syncTrackerAndHomeworkFromDb() {
             pr.lastOpenedAt = row.last_opened_at || pr.lastOpenedAt;
             pr.completedAt = row.completed_at || pr.completedAt;
         }
-    }));
+    }
 }
 
 /** Демо-id учениц из seed — убираем из db, когда из Сада подгружены реальные абитуриенты. */
@@ -977,6 +1076,18 @@ export async function syncPvlRuntimeFromDb() {
     const snapshot = await pvlPostgrestApi.loadRuntimeSnapshot();
     applyRuntimeSnapshot(snapshot);
     try { localStorage.setItem(RUNTIME_SWR_KEY, JSON.stringify({ ts: Date.now(), d: snapshot })); } catch { /* ignore quota */ }
+    // BUG-001: алертим в MON-001 если loadRuntimeSnapshot отдал partial.
+    if (snapshot._partial?.failed?.length > 0) {
+        try {
+            const mod = await import('../utils/clientErrorReporter');
+            mod.reportClientError({
+                source: 'pvlMockApi.syncPvlRuntimeFromDb',
+                message: `loadRuntimeSnapshot partial degradation: ${snapshot._partial.failed.join(', ')}`,
+                extra: { failedEndpoints: snapshot._partial.failed, stage: 'loadRuntimeSnapshot' },
+            });
+        } catch { /* silent */ }
+        return { synced: true, partial: true, failed: snapshot._partial.failed };
+    }
     // syncTrackerAndHomeworkFromDb вызывается в syncPvlActorsFromGarden — после загрузки реальных студентов
     return { synced: true };
 }

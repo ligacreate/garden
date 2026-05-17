@@ -654,6 +654,7 @@ const MeetingsView = ({
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
     const [isDeleteGoalModalOpen, setIsDeleteGoalModalOpen] = useState(false);
     const [isGoalCompletionModalOpen, setIsGoalCompletionModalOpen] = useState(false);
+    const [incomeError, setIncomeError] = useState('');
 
     const [selectedMeeting, setSelectedMeeting] = useState(null);
     const [meetingToDelete, setMeetingToDelete] = useState(null);
@@ -913,9 +914,10 @@ const MeetingsView = ({
     // 2. Submit Result
     const handleOpenResult = (meeting) => {
         setSelectedMeeting(meeting);
+        setIncomeError('');
         setFormData({
             ...meeting,
-            income: meeting.income || '',
+            income: meeting.income ?? '',
             new_guests: meeting.new_guests || '',
             keep_notes: meeting.keep_notes || '',
             change_notes: meeting.change_notes || ''
@@ -928,9 +930,10 @@ const MeetingsView = ({
         const incomeRaw = formData.income;
         const incomeMissing = incomeRaw === null || incomeRaw === undefined || String(incomeRaw).trim() === '';
         if (incomeMissing) {
-            onNotify('Укажите доход (0 если встреча была бесплатной)');
+            setIncomeError('Укажите доход (0 если встреча была бесплатной)');
             return;
         }
+        setIncomeError('');
         setIsSaving(true);
         try {
             await onUpdateMeeting({
@@ -1575,13 +1578,21 @@ const MeetingsView = ({
                         <Input type="number" label="Всего гостей" value={formData.guests} onChange={e => setFormData({ ...formData, guests: e.target.value })} />
                         <Input type="number" label="Из них новых" value={formData.new_guests} onChange={e => setFormData({ ...formData, new_guests: e.target.value })} />
                     </div>
-                    <Input
-                        type="number"
-                        label="Доход (₽) *"
-                        placeholder="0 если бесплатная"
-                        value={formData.income}
-                        onChange={e => setFormData({ ...formData, income: e.target.value })}
-                    />
+                    <div>
+                        <Input
+                            type="number"
+                            label="Доход (₽) *"
+                            placeholder="0 если бесплатная"
+                            value={formData.income}
+                            onChange={e => {
+                                setFormData({ ...formData, income: e.target.value });
+                                if (incomeError) setIncomeError('');
+                            }}
+                        />
+                        {incomeError && (
+                            <p className="text-xs text-rose-600 mt-1 ml-1">{incomeError}</p>
+                        )}
+                    </div>
 
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2 ml-1 flex items-center gap-2"><span className="text-green-500">✨</span> Что получилось классно?</label>

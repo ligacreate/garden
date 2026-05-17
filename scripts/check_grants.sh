@@ -2,7 +2,7 @@
 # scripts/check_grants.sh
 #
 # SEC-014 — мониторинг кастомных GRANT'ов на authenticated/web_anon.
-# Запускается раз в 5 минут через cron, авто-восстанавливает при wipe'е.
+# Запускается раз в минуту через cron, авто-восстанавливает при wipe'е.
 #
 # Логика:
 #   1. SELECT count grant-rows для authenticated и web_anon.
@@ -21,7 +21,7 @@
 #   psql, curl
 #
 # Cron entry:
-#   */5 * * * * root /opt/garden-monitor/check_grants.sh
+#   * * * * * root /opt/garden-monitor/check_grants.sh
 #
 # Threshold выбран так:
 #   - authenticated baseline 158, threshold <100 ловит и полный wipe (0),

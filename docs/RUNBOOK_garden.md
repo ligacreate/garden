@@ -129,7 +129,7 @@ PART 1 → counts должны выйти на 158/4. Это первый защ
 из трёх.
 
 **Дополнительные слои (живут отдельно, не отменяют правило):**
-- `/opt/garden-monitor/check_grants.sh` — cron каждые 5 минут,
+- `/opt/garden-monitor/check_grants.sh` — cron каждую минуту,
   ловит wipe (порог authenticated < 100 ИЛИ web_anon < 4),
   шлёт Telegram-алерт, авто-вызывает recovery.
 - `/opt/garden-monitor/recover_grants.sh` — idempotent

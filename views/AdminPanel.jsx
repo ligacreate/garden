@@ -71,6 +71,10 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
         const val = parseInt((m.income || '0').toString().replace(/\D/g, '')) || 0;
         return acc + val;
     }, 0);
+    const meetingsWithIncome = filteredMeetings.filter(m => {
+        const raw = m.income;
+        return raw !== null && raw !== undefined && raw !== '';
+    }).length;
 
     // Cities Stats
     const cities = {};
@@ -165,6 +169,9 @@ const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
                     <div className="relative z-10">
                         <div className="text-slate-400 text-sm font-medium mb-1">Общий доход (rub)</div>
                         <div className="text-4xl font-bold text-slate-800 tracking-tight">{totalIncome.toLocaleString()}</div>
+                        {totalMeetings > 0 && (
+                            <div className="text-xs text-slate-400 mt-1">по {meetingsWithIncome} из {totalMeetings} встреч</div>
+                        )}
                     </div>
                 </div>
             </div>

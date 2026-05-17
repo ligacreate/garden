@@ -736,6 +736,13 @@ class LocalStorageService {
             const sanitized = this._sanitizeFields(meeting, {
                 plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'payment_link']
             });
+            if (sanitized.status === 'completed') {
+                const incomeRaw = sanitized.income;
+                const incomeMissing = incomeRaw === null || incomeRaw === undefined || incomeRaw === '';
+                if (incomeMissing) {
+                    throw new Error('Укажите доход (0 если встреча была бесплатной)');
+                }
+            }
             allMeetings[index] = {
                 ...allMeetings[index],
                 ...sanitized,
@@ -1977,6 +1984,17 @@ class RemoteApiService {
         const cleaned = this._sanitizeFields(rest, {
             plain: ['title', 'description', 'keep_notes', 'change_notes', 'fail_reason', 'cost', 'address', 'city', 'city_key', 'payment_link', 'meeting_format', 'online_visibility']
         });
+
+        // Core invariant: при закрытии встречи доход обязателен (0 = бесплатно).
+        // Парная UX-проверка в MeetingsView.handleSaveResult.
+        if (cleaned.status === 'completed') {
+            const incomeRaw = cleaned.income;
+            const incomeMissing = incomeRaw === null || incomeRaw === undefined || incomeRaw === '';
+            if (incomeMissing) {
+                throw new Error('Укажите доход (0 если встреча была бесплатной)');
+            }
+        }
+
         // Sanitize fields
         const durationValue = toIntOrNull(cleaned.duration);
         const sanitized = {

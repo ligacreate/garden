@@ -347,7 +347,7 @@ const MasteryTab = ({ meetings, goals, onAddGoal, onEditGoal, onToggleGoal, onDe
         .sort(([, a], [, b]) => b - a);
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
+        <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
             {/* Header: Controls */}
             <div className="mb-8 rounded-2xl border border-slate-200/70 bg-white/70 backdrop-blur-sm p-3 md:p-4">
                 <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_220px] gap-3 items-center">
@@ -925,6 +925,12 @@ const MeetingsView = ({
 
     const handleSaveResult = async () => {
         if (isSaving) return;
+        const incomeRaw = formData.income;
+        const incomeMissing = incomeRaw === null || incomeRaw === undefined || String(incomeRaw).trim() === '';
+        if (incomeMissing) {
+            onNotify('Укажите доход (0 если встреча была бесплатной)');
+            return;
+        }
         setIsSaving(true);
         try {
             await onUpdateMeeting({
@@ -1569,7 +1575,13 @@ const MeetingsView = ({
                         <Input type="number" label="Всего гостей" value={formData.guests} onChange={e => setFormData({ ...formData, guests: e.target.value })} />
                         <Input type="number" label="Из них новых" value={formData.new_guests} onChange={e => setFormData({ ...formData, new_guests: e.target.value })} />
                     </div>
-                    <Input type="number" label="Доход (₽)" value={formData.income} onChange={e => setFormData({ ...formData, income: e.target.value })} />
+                    <Input
+                        type="number"
+                        label="Доход (₽) *"
+                        placeholder="0 если бесплатная"
+                        value={formData.income}
+                        onChange={e => setFormData({ ...formData, income: e.target.value })}
+                    />
 
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2 ml-1 flex items-center gap-2"><span className="text-green-500">✨</span> Что получилось классно?</label>

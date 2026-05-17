@@ -3565,9 +3565,25 @@ function buildMentorMenteeRows(mentorId) {
             return u.includes('не начат');
         }).length;
         let stateLine = 'в ритме';
-        if (overdueN > 0) stateLine = 'есть долги';
-        else if (pendingReview > 0 || inRevision > 0) stateLine = 'нужна проверка';
-        else if (notStartedHw > 0) stateLine = 'ДЗ не начаты';
+        const stateLabels = [];
+        if (overdueN > 0) {
+            stateLine = 'есть долги';
+            stateLabels.push({ key: 'overdue', text: 'есть долги', tone: 'есть долги' });
+        } else if (pendingReview > 0 || inRevision > 0) {
+            // split: ментор должен видеть, что именно от него ждут vs что ждём от студентки
+            stateLine = pendingReview > 0 ? 'нужна проверка' : 'ждём доработку';
+            if (pendingReview > 0) {
+                stateLabels.push({ key: 'review', text: `нужна проверка (${pendingReview})`, tone: 'нужна проверка' });
+            }
+            if (inRevision > 0) {
+                stateLabels.push({ key: 'revision', text: `ждём доработку (${inRevision})`, tone: 'есть доработки' });
+            }
+        } else if (notStartedHw > 0) {
+            stateLine = 'ДЗ не начаты';
+            stateLabels.push({ key: 'notstarted', text: 'ДЗ не начаты', tone: 'ДЗ не начаты' });
+        } else {
+            stateLabels.push({ key: 'rhythm', text: 'в ритме', tone: 'в ритме' });
+        }
         const cohortLine = `ПВЛ 2026 · ${cohortTitle}`;
         const moduleWeekLine = `Модуль ${clampPvlModule(profile?.currentModule ?? profile?.currentWeek ?? 0)}`;
         const city = profile?.city || '';
@@ -3587,6 +3603,7 @@ function buildMentorMenteeRows(mentorId) {
             overdueN,
             revisionCyclesTotal,
             notStartedHw,
+            stateLabels,
             coursePoints: pts.coursePointsTotal ?? 0,
             coursePointsMax: SCORING_RULES.COURSE_POINTS_MAX,
             riskCount: risks.length,
@@ -3688,11 +3705,14 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                             ) : null}
                         </div>
                         <div className="text-[10px] text-slate-500 pt-1.5 mt-auto flex flex-wrap items-center gap-1.5">
-                            <span
-                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${menteeStatusSurface(row.stateLine)}`}
-                            >
-                                {row.stateLine}
-                            </span>
+                            {(row.stateLabels && row.stateLabels.length > 0 ? row.stateLabels : [{ key: 'fallback', text: row.stateLine, tone: row.stateLine }]).map((lbl) => (
+                                <span
+                                    key={lbl.key}
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${menteeStatusSurface(lbl.tone)}`}
+                                >
+                                    {lbl.text}
+                                </span>
+                            ))}
                         </div>
                         {row.riskCount > 0 ? <p className="text-[10px] text-amber-800">Рисков в карточке: {row.riskCount}</p> : null}
                     </div>

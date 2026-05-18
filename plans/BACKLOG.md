@@ -2581,7 +2581,43 @@ related_docs:
      config для контента + persistent cache в CI.
 - **Оценка:** recon + 1 решение — ~1-2 часа работы.
 
+### TG-WEBHOOK-INBOUND-BLOCKED: TG не может достучаться до нашего IP — fix через polling
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (бот живёт на polling-эмуляции через push-server cron;
+  не блокер пока, но webhook-режим даст мгновенные сообщения вместо
+  цикла ~15 сек)
+- **Создано:** 2026-05-18
+- **Контекст:** При попытке настроить inbound webhook от Telegram Bot API
+  на наш IP `5.129.251.56` Telegram'овский запрос приходит с
+  `Connection timed out`. Outbound TG-API работает (мы шлём push'и через
+  worker), но **inbound** заблокирован — вероятно Timeweb firewall режет
+  входящие на нестандартные порты или сам IP закрыт для входящих по
+  политике провайдера.
+- **Скоп:**
+  1. Проверить firewall/iptables правила на 5.129.251.56 (порт 443
+     открыт для outbound, но что с inbound от TG IP-блоков?).
+  2. Уточнить у Timeweb support — есть ли inbound-filtering для VPS.
+  3. **Fallback:** реализовать polling-режим (`getUpdates` long-polling
+     через push-server worker, цикл ~15 сек). Это решает inbound
+     блокировку без необходимости открывать порт.
+- **Связано:** push-server, FEAT-024 Phase 4 (TG-чат двусторонний),
+  RUNBOOK_garden.md (раздел про TG ограничения).
+
 ## ⚪ P3 — Хотелось бы (потом)
+
+### BOT-DISPLAY-NAME-RENAME: переименовать бота в BotFather (косметика)
+- **Статус:** 🔴 TODO (Ольгино ручное действие)
+- **Приоритет:** P3
+- **Создано:** 2026-05-18
+- **Контекст:** TG-бот сейчас имеет техническое название, которое
+  отображается пользователям при первом контакте. Косметическое
+  улучшение — переименовать в более узнаваемое название через
+  BotFather (`/setname`).
+- **Скоп:** Ольга открывает чат с @BotFather → `/setname` → выбирает
+  нашего бота → даёт новое имя. ~2 минуты, без кода.
+- **Связано:** FEAT-024 (TG push'и менторам), общее восприятие
+  платформы.
+
 
 ### ARCH-005: Решить про monorepo vs multi-repo
 - **Статус:** 🔴 TODO (обсуждение)
@@ -4308,5 +4344,49 @@ related_docs:
   природной причине: до 17.05 ни одна студентка не привязала
   TG (Ирина Петруня — первая). Lesson **не пишем** — не
   системный класс, точечный сорт-баг.
-- ✅ **Backlog update** (commit TBD) — этот файл за 2026-05-17/18:
+- ✅ **BUG-AUTH-PAUSED-USER-LOGIN — P0 hotfix** (commit `528b0a4`,
+  phase35). 3 юзера (Мария Бардина `mb1@bk.ru` + 1 paused_manual + 1
+  pending_approval) не могли войти: «Не удалось создать пользователя
+  в новой базе». Корень: phase31 (FEAT-023) RESTRICTIVE-guard
+  `has_platform_access(auth.uid())` на `profiles` блокирует SELECT
+  собственной строки для всех `access_status != 'active'` → _fetchProfile=null
+  → frontend пытается _ensurePostgrestUser → POST падает (email conflict
+  / RLS WITH CHECK) → generic error. Фикс: миграция
+  `2026-05-18_phase35_profiles_self_read_rls.sql` — расширение
+  SELECT-policy на `id = auth.uid() OR has_platform_access(auth.uid())`.
+  WRITE остался жёстким (paused не должен PATCH'ить). Размятие
+  Марии до `active` сделано отдельно через psql под `gen_user`
+  (commit `be61966` Step 2 в `_session/_69`) — `toggleUserStatus` в UI
+  PATCH'ит ghost-колонку (BUG-TOGGLE-USER-STATUS-GHOST-COLUMN). Lesson:
+  [`docs/lessons/2026-05-18-phase31-paused-rls-self-row-block.md`](../docs/lessons/2026-05-18-phase31-paused-rls-self-row-block.md).
+- ✅ **BUG-HW-SUBMIT-NO-HISTORY — P0 hotfix** (commit `82b0a6c`,
+  phase36). После phase34 (apply утром 18.05) студентки начали
+  сдавать ДЗ, но `pvl_homework_status_history` оставалась пуста для
+  студенческих событий (5 жалоб менторов за день) → trigger не
+  выстреливал → push'и менторам не приходили. Корень: trigger-функции
+  `tg_enqueue_homework_event` и `tg_enqueue_direct_message_event`
+  объявлены без `SECURITY DEFINER` → выполняются под `authenticated`
+  → у `authenticated` нет `GRANT INSERT` на `tg_notifications_queue`
+  (только у `gen_user`, owner) → `permission denied` в trigger →
+  откат всей внешней транзакции `INSERT INTO pvl_homework_status_history`.
+  До phase34 это маскировалось: функция искала `to_status='submitted'`,
+  а реальный submit давал `in_review` → trigger делал ранний
+  `RETURN NEW` ДО INSERT в queue. Phase34 убрал маскирующий слой —
+  обнажил отсутствие SECURITY DEFINER. Фикс: миграция
+  `2026-05-18_phase36_tg_trigger_security_definer.sql` —
+  `ALTER FUNCTION ... SECURITY DEFINER SET search_path = public, pg_temp`
+  на обе функции, тело не трогаем. Альтернатива (GRANT INSERT
+  authenticated) отвергнута: открыла бы прямой INSERT в queue для
+  всех (потенциал спама/подделки push'ей). Recon через JWT
+  simulation в psql (`set_config('request.jwt.claims', ...)` +
+  `SET LOCAL ROLE authenticated`) — этот инструмент №1 для
+  RLS/triggers debugging. Lesson: TBD после live smoke.
+- ✅ **Manual UPDATE Марии Бардиной** — commit `be61966` Step 2 в
+  `_session/_69`. После phase35 RLS-фикса разморозили mb1@bk.ru
+  `paused_manual → active` через psql под `gen_user` (UI не помог
+  из-за ghost-column bug). Сразу после этого Мария вошла.
+- ✅ **Курс «Социальная психология» recovery** — был случайно скрыт
+  через `app_settings.library_settings.hiddenCourses` (запись
+  продублирована в 2026-05-17 — фактический recovery был тогда, не 18.05).
+- ✅ **Backlog update** (single коммит) — этот файл за 2026-05-17/18:
   closed → в «История», новые тикеты → в P2/P3/roadmap.

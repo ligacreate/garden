@@ -38,15 +38,17 @@ NOTICE:  phase35 post: OK — paused юзеры теперь могут чита
 - **WRITE** policy не тронута — paused юзер не может PATCH'ить даже свой профиль.
 - Active юзеры — всё работает как раньше (`has_platform_access(auth.uid()) = true` → policy всегда truthy).
 
-## SHA (заполнится после push, см. ниже)
+## SHA
 
-См. `git log` после следующего коммита: `fix(rls): paused users can read own profile row (BUG-AUTH-PAUSED-USER-LOGIN)`.
+`528b0a4` (`fix(rls): paused users can read own profile row (BUG-AUTH-PAUSED-USER-LOGIN)`).
+Push: `c3175e2..528b0a4` → main.
 
 ## GH Actions
 
-После push коммита — concurrency block страхует от race (см. WORKFLOW-CONCURRENCY 2026-05-17, `ca37309`).
+Concurrency block страхует от race с параллельными сессиями (см. WORKFLOW-CONCURRENCY 2026-05-17, `ca37309`).
+
 - Все runs main: <https://github.com/ligacreate/garden/actions?query=branch%3Amain>
-- Конкретный коммит: появится в commit-log после push.
+- Конкретный коммит: <https://github.com/ligacreate/garden/commit/528b0a4>
 
 Фронт не задет (миграция чисто БД), но `_session/` коммитим — деплой пойдёт по правилу.
 

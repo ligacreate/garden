@@ -2504,6 +2504,83 @@ related_docs:
   на этот контракт), phase 22 миграция, BUG-MEETINGS-VK-BUTTON-OVERFLOW
   (связано с теми же двумя кнопками).
 
+### FEAT-023-PHASE-3 + DEEP-LINK-ROUTING: PendingApprovalScreen + URL query-routing в AdminPanel
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (без них admin вынужден искать pending-юзера руками
+  по email; не блокер регистрации — approve работает через общий список)
+- **Создано:** 2026-05-18
+- **Контекст:** В FEAT-023 (регистрация по одобрению админа) Phase 3
+  была намеренно пропущена для текущего масштаба. Сейчас:
+  - garden-auth формирует deep-link
+    `${PUBLIC_URL}/#/admin?tab=pending&user=${id}` в TG-сообщении о
+    новой регистрации, но фронт его игнорирует (query-параметры
+    `tab`/`user` не парсятся в `AdminPanel`).
+  - Pending-юзера админ ищет руками по email в общем списке профилей.
+- **Скоп:**
+  1. **`PendingApprovalScreen`** — экран для applicant'а в статусе
+     `access_status='pending_approval'`: polling статуса (раз в N сек),
+     понятное «ваша заявка ждёт одобрения» с кнопкой logout.
+  2. **AdminPanel «Ожидают» вкладка** — отдельный таб с фильтром
+     `access_status='pending_approval'`, approve/reject кнопками.
+  3. **URL query-routing**:
+     `/#/admin?tab=pending&user=<id>` → AdminPanel открывает таб
+     «Ожидают» и подсвечивает/скроллит к юзеру.
+- **Альтернатива минимальная (10 минут вместо Phase 3):** убрать
+  кнопку «Открыть в админке» из TG-шаблона garden-auth и оставить
+  только email/имя/город как достаточный контекст. Не закрывает
+  pending-вкладку, но снимает обещание deep-link'а из TG.
+- **Связано:** FEAT-023 Phase 1+2.5, phase31 миграция
+  (`pending_approval` access_status), `_session/_64`.
+
+### TECH-DEBT-AUDIT-LOG: универсальный audit-log на критичные таблицы
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (без него любые «кто это сделал» вопросы
+  заканчиваются «спросить трёх админов»)
+- **Создано:** 2026-05-18
+- **Контекст:** Курс «Социальная психология» был случайно скрыт через
+  `app_settings.library_settings.hiddenCourses` (обнаружили 18.05 в
+  ~12:19 МСК, fix через UI). Узнать кто именно скрыл — невозможно:
+  в `app_settings` нет `updated_by`, Caddy access-log не настроен,
+  Postgres-уровневое логирование на managed Timeweb недоступно.
+- **Скоп:**
+  1. **Audit-log таблица:**
+     `id, changed_at, changed_by_user_id, table_name, row_id, action,
+     old_value_jsonb, new_value_jsonb` (+ опц. `request_id`/`session`).
+  2. **Universal trigger function** `log_audit_event()` на критичные:
+     - `app_settings` (все операции)
+     - `profiles.role`, `profiles.access_status`, `profiles.email` (UPDATE)
+     - `knowledge_base` (DELETE)
+     - Ключевые `pvl_*` (DELETE: `pvl_garden_mentor_links`,
+       `pvl_student_homework_submissions`).
+  3. **Caddy access-log с JWT в headers** → отдельный pipeline для
+     decode + persist `user_id` в access-log (нужно для случаев,
+     когда `changed_by_user_id` не известно из контекста PostgREST).
+  4. **Retention policy** (90 дней?) — отдельный cron на TRUNCATE
+     старых записей, чтобы таблица не разрасталась без меры.
+- **Связано:** Caddy конфиг, SEC-014 (общая дисциплина наблюдаемости),
+  `app_settings` schema.
+
+### VITE-CHUNK-HASH-FLAPPING: стабилизировать chunk-hashes между builds
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (не блокер, страничный класс багов; auto-reload
+  вытаскивает пользователей, но они видят моргание при каждом деплое)
+- **Создано:** 2026-05-18
+- **Контекст:** Vite на каждом `npm run build` выдаёт новые chunk
+  hashes даже на docs-only commit. Вероятная причина — `npm ci`
+  тянет patch-версии deps, на которые завязан хеш bundling'а.
+  Каждый деплой ломает старых юзеров со старого bundle: 404 на
+  chunk → `ChunkLoadError` → auto-reload вытаскивает, но это
+  моргание UI.
+- **Скоп (один из вариантов, не нужны все):**
+  1. **Зафиксировать deps**: `npm ci --prefer-offline` + строгие
+     version pins в `package-lock.json`. Возможно с `npm-shrinkwrap`.
+  2. **Deterministic chunk naming**:
+     `build.rollupOptions.output.chunkFileNames` с правилом на
+     основе module-id, а не контент-хеша.
+  3. **Content-hash только для изменённых файлов**: нужен Vite
+     config для контента + persistent cache в CI.
+- **Оценка:** recon + 1 решение — ~1-2 часа работы.
+
 ## ⚪ P3 — Хотелось бы (потом)
 
 ### ARCH-005: Решить про monorepo vs multi-repo
@@ -3566,6 +3643,59 @@ related_docs:
     архитектурный мисматч с RLS).
   - Smoke на затронутых flow'ах.
 
+### WORKFLOW-FTP-PARTIAL-DEPLOY-SILENT: smoke на все chunks, не только main bundle
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (понижен после WORKFLOW-CONCURRENCY 2026-05-17;
+  основной риск покрыт concurrency-block'ом, это defense-in-depth)
+- **Создано:** 2026-05-18
+- **Контекст:** Workflow self-smoke в `.github/workflows/deploy.yml`
+  проверяет только `index.html` + main bundle, не chunks. После
+  WORKFLOW-CONCURRENCY (commit `ca37309`) race между параллельными
+  FTP-deploys устранён, но FTP transient fail в одиночном run всё ещё
+  может silent-fail на chunk-uploads — пользователь увидит
+  `ChunkLoadError` на одном из lazy-loaded экранов.
+- **Скоп:**
+  1. После `Deploy via FTP` step — extract список chunk-файлов из
+     `dist/index.html` (regex `assets/.+?\.js`).
+  2. `curl -fsS https://liga.skrebeyko.ru/<chunk>` для каждого → если
+     хоть один не 200, `exit 1` → workflow fail → Ольга получает
+     алерт раньше чем юзеры.
+- **Связано:** WORKFLOW-CONCURRENCY (closed, 17.05), VITE-CHUNK-HASH-FLAPPING.
+
+### PG-MIGRATE-TO-VPS-BITTERN: переезд на self-managed Postgres (long-term roadmap)
+- **Статус:** 🔴 TODO (long-term roadmap, ~4-8 часов)
+- **Приоритет:** P3 (не срочно — текущий cron-recovery держит окно
+  недоступности ≤1 сек; это roadmap-level, не fix)
+- **Создано:** 2026-05-17
+- **Контекст:** Daily ACL wipe на managed Timeweb Postgres — их
+  штатное reconciliation в 13:08 UTC, отключить нельзя (Timeweb
+  support подтвердил, см. `_session/_54`). Mitigation сегодня:
+  `check_grants.sh` cron каждую минуту авто-вызывает
+  `ensure_garden_grants()`. Это **обходное решение**, не корневое.
+- **Цель переезда:** полный контроль ACL (никакого reconciliation),
+  latency localhost между API/auth/push-server и БД (нынешние
+  мобильные blips уйдут), произвольные extensions.
+- **Скоп:**
+  1. Setup PostgreSQL 15+ на VPS «Mysterious Bittern»
+     (`5.129.251.56`, где уже живут garden-auth + cron-monitor +
+     push-server): `apt install`, base config, `pg_hba.conf`, SSL,
+     swap, sysctl.
+  2. `pg_dump` текущей managed → restore на Bittern + integrity check
+     (row counts по всем таблицам, проверка sequences, RLS политики).
+  3. Переключение connection strings: garden-auth, PostgREST,
+     `scripts/check_grants.sh`, push-server.
+  4. Backup pipeline: `pg_dump` → cron daily → отдельный disk или
+     S3-compatible storage с retention 30 дней.
+  5. Verify PostgREST `web_anon` + `authenticated` роли с правильными
+     GRANT'ами, RLS политики живые.
+  6. Decommission managed cluster после ~7 дней backup-period.
+- **Зависимости:** Bittern должен иметь достаточно RAM/CPU/disk
+  (recon: проверить актуальные ресурсы), backup-storage решение.
+- **План:** подготовительная сессия (план + dump structure) +
+  отдельная migration сессия (live cutover в low-traffic окно).
+- **Связано:** SEC-014 (mitigation сейчас), GRANTS-CRON-FREQUENCY
+  (closed, 17.05), RUNBOOK 1.3.
+
 ## 🤔 К обсуждению / решению
 
 ### DEC-001: Закрыть продукт на 1-2 недели для большой починки
@@ -4101,3 +4231,82 @@ related_docs:
 - **Артефакты сессии:** `migrations/2026-05-15_phase29_prodamus_path_c.sql`,
   `plans/2026-05-15-feat015-prodamus-c.md`, `docs/journal/RECON_2026-05-15_feat015_prodamus.md`,
   `docs/_session/2026-05-16_01..15_*.md`.
+
+#### 2026-05-17
+- ✅ **UX-batch — PVL pills split + meetings income required + admin
+  counter + Mastery width** (commit `b8c2ab4`). PVL ментор-дашборд
+  теперь рендерит два отдельных pill «нужна проверка (N)» и «ждём
+  доработку (N)» вместо одного склеенного лейбла (feedback от
+  Юли Габрух). Закрытие встречи требует поле «Доход» (`*`-required +
+  placeholder «0 если бесплатная») с core invariant в
+  `dataService.{Remote,Local}.updateMeeting`. AdminPanel показывает
+  «по N из M встреч» под «Общим доходом». `MasteryTab` получил
+  `w-full` для выравнивания с «Календарь». Полный smoke verify.
+- ✅ **phase33 migration — income backfill** для 11 completed-встреч
+  с NULL income → `0` (миграция `2026-05-17_phase33_meetings_income_
+  backfill.sql`, idempotent, в транзакции). Чтобы новая required-валидация
+  не сломала редактирование старых встреч.
+- ✅ **BUG-MEETINGS-INCOME-NOTIFY-SILENT** (commit `9780ee8`). После
+  UX-batch обнаружилось: required-валидация в `handleSaveResult`
+  вызывала `onNotify()`, но toast был не виден за открытой
+  `ModalShell` (Toast рендерился без `createPortal`, его `z-[100]`
+  ловился stacking context'ом родителя, ModalShell на body-портале
+  с `z-[80]` визуально перекрывал). Фиксы: `Toast` → `createPortal(
+  document.body)` + SSR guard; pre-submit валидация переезжает на
+  inline-error под полем Input (state `incomeError`, сброс при
+  onChange и при open модалки); `handleOpenResult` —
+  `meeting.income ?? ''` вместо `|| ''` (existing bug: `0 || ''`
+  → `''` → ведущая открывала старую completed-встречу с
+  income=0, ничего не меняла, жмёт «Сохранить» → inline error;
+  с `?? ''` корректно пропускает `0`).
+- ✅ **WORKFLOW-CONCURRENCY** (commit `ca37309`). Добавлен блок
+  `concurrency: { group: deploy-ftp, cancel-in-progress: false }`
+  в `.github/workflows/deploy.yml`. Закрывает race condition между
+  параллельными FTP-deploys, который привёл к 1.5-часовой
+  production-incident-саге 17.05 (parallel docs + code коммитов
+  с интервалом ~1 мин пересекались в `dangerous-clean-slate=true`
+  → partial garbage state на проде → 6 chunks 404). Verified
+  железно через GH public API: #206 in_progress + #207 pending
+  одновременно, #207 стартовал только после success #206, без
+  overlap. См. `docs/_session/_60`.
+- ✅ **GRANTS-CRON-FREQUENCY** (commit `89d4db0`). После ответа
+  Timeweb support (daily reconciliation отключить нельзя — root
+  cause = их scheduled wipe, не UI quirk) ускорили cron'у
+  `/opt/garden-monitor/check_grants.sh` периодичность с `*/5` на
+  `* * * * *`. Окно недоступности при daily wipe ~13:08 UTC
+  сократилось с ≤5 мин до ≤1 мин. Сегодняшний wipe (18.05 13:08:01)
+  пойман и recovery'нут <1 сек. Long-term mitigation —
+  `PG-MIGRATE-TO-VPS-BITTERN` (заведён в P3 roadmap, см. ниже).
+  Sync'нуто в репо: `scripts/check_grants.sh:5,24` +
+  `docs/RUNBOOK_garden.md:132`.
+- ✅ **Курс «Социальная психология»** — recovered (был случайно
+  скрыт через `app_settings.library_settings.hiddenCourses`, fix
+  через UI). Корень: невозможно узнать, кто скрыл — наблюдаемость
+  отсутствует. Породило тикет `TECH-DEBT-AUDIT-LOG` (P2).
+- ✅ **Timeweb support ticket** про daily ACL wipe — отправлен,
+  ответ принят: их штатное scheduled reconciliation, через
+  панель грантов отключить нельзя (security regression). Это
+  закрывает SEC-014 в part «расследование корневой причины».
+  См. `docs/_session/_54`.
+
+#### 2026-05-18
+- ✅ **BUG-TG-TRIGGER-STATUS-MISMATCH — P0 hotfix** (commit `2a767a3`,
+  phase34). Менторы не получали push о сданных ДЗ. Функция-trigger
+  `tg_enqueue_homework_event()` проверяла `to_status='submitted'`,
+  а в реальной схеме `pvl_student_homework_submissions.status`
+  принимает `in_review` / `revision` / `accepted` (за всё время
+  `submitted_count=0`, `in_review_count=64`). Триггеры
+  `trg_tg_enqueue_*` (на `pvl_homework_status_history` и
+  `pvl_direct_messages`) **есть** и enabled — первоначальный recon
+  ошибся из-за фильтра `LIKE 'tg_%'` (имена начинаются с `trg_tg_*`).
+  Фикс: миграция `2026-05-18_phase34_tg_trigger_status_fix.sql` —
+  `CREATE OR REPLACE FUNCTION` с заменой одной строки
+  (`'submitted'` → `'in_review'`) + pre/post assertions +
+  `ensure_garden_grants()` (RUNBOOK 1.3). Backfill 211 hw-событий
+  не делали — менторы знают через другие каналы, push'и со
+  старыми событиями создадут confusion. Queue была пуста по
+  природной причине: до 17.05 ни одна студентка не привязала
+  TG (Ирина Петруня — первая). Lesson **не пишем** — не
+  системный класс, точечный сорт-баг.
+- ✅ **Backlog update** (commit TBD) — этот файл за 2026-05-17/18:
+  closed → в «История», новые тикеты → в P2/P3/roadmap.

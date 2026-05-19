@@ -2170,7 +2170,7 @@ async function doPersistSubmissionToDb(studentId, taskId) {
     }
 
     const existing = await pvlPostgrestApi.listStudentHomeworkSubmissions(sqlStudentId);
-    const row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
+    let row = (existing || []).find((x) => String(x.homework_item_id) === String(sqlHomeworkId));
     const patch = {
         student_id: sqlStudentId,
         homework_item_id: sqlHomeworkId,
@@ -2184,10 +2184,13 @@ async function doPersistSubmissionToDb(studentId, taskId) {
         payload,
     };
     if (!row) {
-        await pvlPostgrestApi.createHomeworkSubmission(patch);
-        return;
+        row = await pvlPostgrestApi.createHomeworkSubmission(patch);
+        if (!row || !row.id) {
+            throw new Error(`createHomeworkSubmission returned null for studentId=${studentId} taskId=${taskId}`);
+        }
+    } else {
+        await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
     }
-    await pvlPostgrestApi.updateHomeworkSubmission(row.id, patch);
     const changedBy = getAuthUserId();
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!changedBy || !UUID_RE.test(String(changedBy))) {

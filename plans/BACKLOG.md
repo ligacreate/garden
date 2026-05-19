@@ -163,6 +163,44 @@ related_docs:
 
 ## 🟡 P1 — Важно (на этой неделе)
 
+### BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD: новые applicant'ы в profiles не получают row в pvl_students → silent FK violation при сохранении ДЗ
+- **Статус:** 🔴 TODO (architectural — recovery лечит симптом, не корень)
+- **Приоритет:** P1
+- **Создано:** 2026-05-19
+- **Контекст:** Сегодня обнаружились две студентки (Ольга Разжигаева
+  `90c9b7c7-…-571b1`, plus expected Александра Суроватская — оказалась
+  вне scope audit), у которых был profile + auth row, но **не было**
+  записи в `pvl_students`. На frontend'е попытка сохранить ДЗ давала
+  silent FK violation `pvl_student_homework_submissions.student_id →
+  pvl_students.id` — ответы пропадали без видимого error'а.
+- **Recovery (симптом-fix, уже сделано 2026-05-19):**
+  - Direct `INSERT INTO pvl_students` под `gen_user` для Разжигаевой.
+  - Audit-query на остальных applicant-orphans → 0 (Суроватская не
+    попала в predicate — нужен отдельный point lookup, отложено).
+  - См. `docs/_session/_75_codeexec_recovery_pvl_student_razzhigaeva_diff.md`
+    + `_76_codeexec_recovery_pvl_student_razzhigaeva_applied.md`.
+- **Корень:** создание `pvl_students` row **не атомарно** с
+  регистрацией в garden-auth / `profiles`. Скорее всего онбординг-flow
+  пропускает INSERT'у `pvl_students` для роли `applicant` (или
+  fall-through ветка где роль не resolve'ится корректно).
+- **Скоп архитектурного fix'а (отложен на завтра):**
+  1. Recon: точно понять где в onboarding-flow должен быть INSERT в
+     `pvl_students` (frontend `ensurePvlStudentInDb`, garden-auth signup,
+     или DB trigger на `profiles INSERT`?).
+  2. Решение: DB-side **trigger** на `profiles AFTER INSERT WHERE role IN
+     ('applicant','intern','leader')` → INSERT в `pvl_students` (cohort
+     default = текущий поток через `app_settings`).
+  3. Альтернатива A: атомарный flow в garden-auth signup (Express endpoint
+     создаёт обе записи в одной транзакции).
+  4. Альтернатива B: frontend `ensurePvlStudentInDb` (есть уже, но
+     [[BUG-PVL-ENSURE-RESPECTS-ROLE]] показывает что не вызывается
+     корректно для нового пути регистрации FEAT-023).
+- **Зависимости:** связано с [[BUG-PVL-ENSURE-RESPECTS-ROLE]] (P2),
+  [[ARCH-010]] (формализовать связь pvl_students ↔ profiles, P2),
+  [[ARCH-012]] (убрать клиентский self-heal в пользу серверного flow, P2).
+- **Следующая новая студентка снова застрянет** до architectural fix'а
+  — recovery лечит ровно одну запись.
+
 ### SEC-014: расследование причины GRANT wipeout 2026-05-04 + защита
 - **Статус:** 🟡 IN PROGRESS (большая часть scope закрыта 2026-05-05 phase 23 hot-fix; остаётся: тикет в Timeweb support для root cause)
 - **Приоритет:** P1 (повтор инцидента = повтор 2-часового outage у всех пользователей, пока кто-то не заметит)
@@ -2581,29 +2619,26 @@ related_docs:
      config для контента + persistent cache в CI.
 - **Оценка:** recon + 1 решение — ~1-2 часа работы.
 
-### TG-WEBHOOK-INBOUND-BLOCKED: TG не может достучаться до нашего IP — fix через polling
-- **Статус:** 🔴 TODO
-- **Приоритет:** P2 (бот живёт на polling-эмуляции через push-server cron;
-  не блокер пока, но webhook-режим даст мгновенные сообщения вместо
-  цикла ~15 сек)
-- **Создано:** 2026-05-18
-- **Контекст:** При попытке настроить inbound webhook от Telegram Bot API
-  на наш IP `5.129.251.56` Telegram'овский запрос приходит с
-  `Connection timed out`. Outbound TG-API работает (мы шлём push'и через
-  worker), но **inbound** заблокирован — вероятно Timeweb firewall режет
-  входящие на нестандартные порты или сам IP закрыт для входящих по
-  политике провайдера.
-- **Скоп:**
-  1. Проверить firewall/iptables правила на 5.129.251.56 (порт 443
-     открыт для outbound, но что с inbound от TG IP-блоков?).
-  2. Уточнить у Timeweb support — есть ли inbound-filtering для VPS.
-  3. **Fallback:** реализовать polling-режим (`getUpdates` long-polling
-     через push-server worker, цикл ~15 сек). Это решает inbound
-     блокировку без необходимости открывать порт.
-- **Связано:** push-server, FEAT-024 Phase 4 (TG-чат двусторонний),
-  RUNBOOK_garden.md (раздел про TG ограничения).
-
 ## ⚪ P3 — Хотелось бы (потом)
+
+### UX-MEETINGS-FORM-NATIVE-ALERT: native window.alert() в форме Meetings вместо inline-error
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (косметика, не блокер — форма работает, error message
+  доходит до пользователя)
+- **Создано:** 2026-05-19
+- **Контекст:** [`views/MeetingsView.jsx:894`](../views/MeetingsView.jsx#L894)
+  при missing required fields кидает `window.alert(...)` — браузер
+  показывает native dialog, иногда с дополнительным чекбоксом
+  «Блокировать диалоговые окна на этой странице». Inconsistent с нашим
+  Toast portal + inline `rose-error` pattern, который мы применили
+  на других validation'ах (например BUG-MEETINGS-INCOME-NOTIFY-SILENT
+  вчера).
+- **Скоп:** заменить `window.alert(...)` на:
+  - либо `setError(...)` + inline render под полем (как в form-валидации
+    на других экранах),
+  - либо `toast(...)` через `useToast` portal (как in BUG-MEETINGS-INCOME-NOTIFY).
+- **Оценка:** ~30 мин codeexec. Завязано на текущий refactor UX-консистентности.
+- **Связано:** общая UX-консистентность Garden (Toast vs alert vs inline).
 
 ### BOT-DISPLAY-NAME-RENAME: переименовать бота в BotFather (косметика)
 - **Статус:** 🔴 TODO (Ольгино ручное действие)
@@ -4422,3 +4457,64 @@ related_docs:
   продублирована в 2026-05-17 — фактический recovery был тогда, не 18.05).
 - ✅ **Backlog update** (single коммит) — этот файл за 2026-05-17/18:
   closed → в «История», новые тикеты → в P2/P3/roadmap.
+
+#### 2026-05-19
+- ✅ **TG-WEBHOOK-INBOUND-BLOCKED закрыт.** Inbound webhook от Telegram
+  на наш IP `5.129.251.56` падал с `Connection timed out` (вероятно
+  Timeweb firewall режет inbound). Перевели `@garden_notifications_bot`
+  с webhook-режима на **long-polling** (`getUpdates timeout=25`).
+  Коммиты в `ligacreate/garden-auth`: `0b9a6d7` (deps housekeeping AWS-SDK
+  installed-on-prod), `93c21c3` (polling-fix). `deleteWebhook` + verify
+  `"url":""`, journalctl silent (silent long-poll = good). Сессии
+  `_70..._72`. **Сюрпризный bug** при apply — первая версия с
+  `setInterval(pollTgUpdates, 2000)` создавала 12 параллельных in-flight
+  `getUpdates` → TG валил 409 Conflict «multiple bot instances» (один
+  процесс, но overlapping long-polls). Фикс — рекурсивный `setTimeout`
+  с `await pollTgUpdates()` до next schedule. Lesson:
+  `docs/lessons/2026-05-19-tg-long-polling-setinterval-self-dos.md`.
+- ✅ **BUG-PVL-FRONTEND-STUDENT-HISTORY-WRITE — P0 hotfix** (commit `26b5c54`).
+  Frontend `services/pvlMockApi.js doPersistSubmissionToDb` для **первой**
+  сдачи ДЗ имел `if (!row) { create; return; }` — early-return съедал
+  loop `appendHomeworkStatusHistory`. Запись в `pvl_homework_status_history`
+  для первого submit'а никогда не создавалась → trigger не выстреливал
+  → ментор не получал push о новой сдаче. После phase36 (DB-side
+  SECURITY DEFINER, commit `82b0a6c` от 2026-05-18) push'и о
+  revision/accepted работали, но первая сдача — нет: два stacked-баг'а
+  маскировали друг друга. Fix: `const row → let row`, branch
+  create/update, loop status_history теперь исполняется в обоих случаях.
+  **Natural acceptance verified 2026-05-19 11:06 МСК:** Ольга Разжигаева
+  → Василина hw_submitted_new push через ~5 сек. Lessons:
+  `docs/lessons/2026-05-19-pvl-first-submit-early-return.md` (frontend),
+  `docs/lessons/2026-05-18-tg-trigger-security-definer-permission-cascade.md`
+  (DB-side, дополнен Smoke verified). Сессии `_72_73`.
+- ✅ **UX-MEETINGS-PUBLIC-FORM-AUTOFILL** (commit `794d5a9`). FEAT-002
+  follow-up: `views/MeetingsView.jsx handleOpenPlan` auto-fill
+  `payment_link` из `user.telegram` или `user.vk` + label «Ссылка для
+  регистрации (TG/VK из профиля)». Унаследовано из FEAT-002 (TG/VK в
+  profiles). Verified — Мария Бардина и любая ведущая с заполненным
+  `profile.telegram` получает prefill автоматически.
+- ✅ **Recovery — pvl_students row для Ольги Разжигаевой** (commit `d1ca2ca`,
+  data-only через psql под `gen_user`). Новая applicant'ка имела profile +
+  auth row, но не имела `pvl_students` row → silent FK violation при
+  попытке сохранить ДЗ. Direct INSERT через прод-VPS Bittern, idempotent
+  (`ON CONFLICT DO NOTHING`). Audit на остальных applicant-orphans
+  вернул 0 (Александра Суроватская, expected, не попала в predicate —
+  отложено для point lookup). **Не миграция, не schema-change.**
+  Корневая причина (онбординг создаёт `profiles + auth.users` без
+  `pvl_students`) заведена как новый P1 тикет
+  [[BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD]] (architectural fix
+  на завтра — recovery лечит симптом). Сессии `_75_76`.
+- ✅ **Admin password reset — Maria Romanova** (`58b74756-…-f1d79`,
+  `masha152@yahoo.com`). Не могла войти. Direct UPDATE
+  `users_auth.password_hash` под `gen_user` через psql от Bittern,
+  с pre-flight guard (sync bcryptjs + length 60 + prefix `$2` ДО UPDATE,
+  чтобы не записать пустой hash). Temp-pwd передан out-of-band, в git
+  не пишется. Сессия `_77`.
+- ✅ **Открыто** (новые тикеты сегодня):
+  - **BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD** (P1) —
+    architectural follow-up по recovery Разжигаевой.
+  - **UX-MEETINGS-FORM-NATIVE-ALERT** (P3) — refactor
+    `views/MeetingsView.jsx:894` `window.alert()` → inline-error/Toast.
+- ✅ **Backlog update + lessons batch** (single коммит — этот файл).
+  Накопили docs за день, выпускаем одним deploy'ем, чтобы
+  не крутить chunk-hashes 4 раза подряд (см. [[VITE-CHUNK-HASH-FLAPPING]]).

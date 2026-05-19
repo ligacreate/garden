@@ -3698,6 +3698,38 @@ related_docs:
      алерт раньше чем юзеры.
 - **Связано:** WORKFLOW-CONCURRENCY (closed, 17.05), VITE-CHUNK-HASH-FLAPPING.
 
+### TECH-DEBT-GARDEN-AUTH-PROD-DRIFT: процесс для синхронизации /opt/garden-auth с git
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (закрыли drift одним housekeeping 2026-05-19, но
+  без процесса накопится опять)
+- **Создано:** 2026-05-19
+- **Контекст:** При apply TG-WEBHOOK-INBOUND-BLOCKED обнаружили, что
+  репо `ligacreate/garden-auth` отставал от `/opt/garden-auth/` на:
+  - `package.json` / `package-lock.json` — `@aws-sdk/client-s3` и
+    `@aws-sdk/s3-request-presigner` были установлены через
+    `npm install` прямо на проде, manifest в git не обновлялся.
+  - `server.js` — был in-sync (это была удача — все правки шли через
+    PR'ы, npm install — единственная out-of-band операция).
+  - Также в моей сессии я по ошибке клонировал **архивный**
+    `olgaskrebeyko/garden-auth` вместо актуального `ligacreate/garden-auth`
+    (~633 строки фантом-drift'а). Отдельная путаница, но из той же
+    серии «прод и репо живут самостоятельно».
+- **Скоп (один из, не все):**
+  1. **CI/CD для garden-auth** — GitHub Actions запускает на push:
+     - `npm ci` (детектит lockfile drift)
+     - lint/тесты (?)
+     - rsync на VPS Bittern `/opt/garden-auth/` + `systemctl restart`
+     - smoke `/api/health`.
+  2. **Pre-edit guard на VPS** — git pre-commit hook или
+     `before_npm.sh` обёртка, которая проверяет `git status` и
+     отказывается работать при dirty tree. Дисциплина, не enforcement.
+  3. **Periodic drift check** — cron-job, который раз в день делает
+     `git diff` в `/opt/garden-auth/` и алертит в monitor-bot если
+     non-empty. Light, не enforcement, но видимость.
+- **Связано:** PG-MIGRATE-TO-VPS-BITTERN (если переезжаем на self-managed
+  Postgres, заодно стандартизуем deploy pipeline), 2026-05-19 _72 applied
+  doc, RUNBOOK раздел про prod-state.
+
 ### PG-MIGRATE-TO-VPS-BITTERN: переезд на self-managed Postgres (long-term roadmap)
 - **Статус:** 🔴 TODO (long-term roadmap, ~4-8 часов)
 - **Приоритет:** P3 (не срочно — текущий cron-recovery держит окно

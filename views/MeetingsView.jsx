@@ -756,7 +756,8 @@ const MeetingsView = ({
             meeting_format: meetingFormat,
             online_visibility: meeting?.online_visibility || 'online_only',
             image_focus_x: meeting.image_focus_x ?? 50,
-            image_focus_y: meeting.image_focus_y ?? 50
+            image_focus_y: meeting.image_focus_y ?? 50,
+            payment_link: meeting.payment_link || user?.telegram || user?.vk || ''
         } : {
             title: '',
             date: new Date().toISOString().split('T')[0],
@@ -771,7 +772,8 @@ const MeetingsView = ({
             meeting_format: 'offline',
             online_visibility: 'online_only',
             image_focus_x: 50,
-            image_focus_y: 50
+            image_focus_y: 50,
+            payment_link: user?.telegram || user?.vk || ''
         });
         setIsPlanModalOpen(true);
     };
@@ -1501,7 +1503,7 @@ const MeetingsView = ({
                                                 </div>
                                             </div>
                                             <Input
-                                                label="Ссылка для регистрации/оплаты (опционально)"
+                                                label="Ссылка для регистрации (TG/VK из профиля)"
                                                 value={formData.payment_link}
                                                 onChange={e => setFormData({ ...formData, payment_link: e.target.value })}
                                                 placeholder="https://... (если есть отдельная регистрация на платформе)"

@@ -4847,3 +4847,20 @@ related_docs:
   пушит накопленные коммиты (`8d2cf5d` housekeeping morning + два
   вечерних: backend-fix в `ligacreate/garden-auth` + docs-update в
   `ligacreate/garden`).
+
+### 2026-05-20 поздний вечер (стратег + codeexec session `_88`..`_89`)
+
+- ✅ **paths-ignore в `.github/workflows/deploy.yml`** — docs/plans/.business/*.md
+  больше не triggerят frontend deploy. Один chunk-flap при этом push'e
+  (expected — workflow yml меняется), после — `feedback-batch-deploys-no-race`
+  перестаёт быть narrow constraint для docs-only коммитов. Частично
+  закрывает [[VITE-CHUNK-HASH-FLAPPING]] (для docs-path; code-level Vite
+  contenthash flapping остаётся отдельной темой).
+  - Pattern: `*.md` (не `**/*.md`) — точечно для корневых README/CHANGELOG;
+    рекурсивный игнорировал бы любой .md внутри `src/`/`views/`.
+- ✅ **Push накопленного batch'a** — 4 коммита одним заходом:
+  - `c00765a` (garden-auth) backend single-line fix (404→200) — sync с прод
+  - `8d2cf5d` (garden) AM housekeeping + carry-forward `_80` + lesson + `_81..84`
+  - `722572e` (garden) Evening tails + `_85..86`
+  - `1bc8d09` (garden) paths-ignore в `deploy.yml`
+  Bundle hash, deploy status, GH Actions link — см. `_89_codeexec_paths_ignore_pushed.md`.

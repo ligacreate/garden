@@ -201,6 +201,38 @@ related_docs:
 - **Следующая новая студентка снова застрянет** до architectural fix'а
   — recovery лечит ровно одну запись.
 
+### BUG-PVL-ADMIN-HW-HTML-RAW-RENDER: HTML-теги в админских sub-полях анкеты/чек-листа рендерились как литерал ✅ DONE
+- **Статус:** ✅ DONE 2026-05-20 ночь (session `_90`..`_94`)
+- **Приоритет:** P1 (admin-workflow blocker — workaround через Obsidian был)
+- **Создано:** 2026-05-20 поздний вечер (после live recon — админ
+  редактировала текст ДЗ ПВЛ, у студентки в карточке задания виден
+  сырой `<p><strong>Шаг 1.</strong>…` вместо отрендеренного жирного)
+- **Симптом:** В чек-листах и анкетах ПВЛ админ-введённые поля
+  (`item.prompt`, `b.question`, `b.label`, `questionnaireDescription`)
+  рендерились через React text-node `{value}` → React автоэкранировал
+  `<` → `&lt;` → браузер показывал `<p>` как литерал.
+- **Корневая причина:** 9 точек text-node рендера в 2 файлах:
+  `views/pvlChecklistShared.jsx` (lines 16, 45) и
+  `views/pvlQuestionnaireShared.jsx` (lines 19, 28, 63, 81, 191, 202, 233).
+  Главный prompt ДЗ уже работал нормально через RichEditor +
+  `dangerouslySetInnerHTML(sanitizeHomeworkAnswerHtml)`; только sub-поля
+  были забыты в той пайплайн-зоне (см. lesson
+  [2026-05-04-dompurify-keep-content-leaks-style-text](../docs/lessons/2026-05-04-dompurify-keep-content-leaks-style-text.md) —
+  тогда покрытие было только для answers, не для admin-input fields).
+- **Fix:** заменить `{value}` → `dangerouslySetInnerHTML={{ __html:
+  sanitizeHomeworkAnswerHtml(value || fallback) }}` в 9 точках. Три
+  паттерна: Variant A (чистый text), Variant B (text + sibling JSX
+  как `*` для required), Variant C (text с JSX-fallback на `||`).
+  Sanitizer whitelist уже покрывает `<strong>`, `<em>`, `<p>`, `<br>`,
+  `<a>` (+ `href`/`target`/`rel`) — продуктовое решение Ольги:
+  inline-форматирование в админ-полях — feature, не bug.
+- **Связь:** [[VITE-CHUNK-HASH-FLAPPING]] — этот push даст один
+  expected chunk-flap. Admin-side апгрейд (`<input>` → `<RichEditor>`
+  для admin-полей) — P3 follow-up, не вечерний scope.
+- **SHA:** `6ad788b` (garden, deploy run #223 — completed/success).
+  Bundle: `index-Bn0u3NCY.js → index-CTrlSsPw.js`. Подробности —
+  `_94_codeexec_pvl_hw_html_render_fix_applied.md`.
+
 ### FEAT-022: Magic link login (passwordless email-link auth)
 - **Статус:** 🔴 TODO (recon не делался, scope из handover'а `_79`)
 - **Приоритет:** P1
@@ -4864,3 +4896,21 @@ related_docs:
   - `722572e` (garden) Evening tails + `_85..86`
   - `1bc8d09` (garden) paths-ignore в `deploy.yml`
   Bundle hash, deploy status, GH Actions link — см. `_89_codeexec_paths_ignore_pushed.md`.
+
+### 2026-05-20 ночь (стратег + codeexec session `_90`..`_94`)
+
+- ✅ **BUG-PVL-ADMIN-HW-HTML-RAW-RENDER** — закрыт за один заход
+  (recon `_91` → fix-brief `_92` → diff `_93` → apply `_94`). 9 точек
+  text-node `{value}` → `dangerouslySetInnerHTML(sanitizeHomeworkAnswerHtml)`
+  в `pvlChecklistShared.jsx` и `pvlQuestionnaireShared.jsx`. Узкий
+  scope: admin-side не трогали, БД не правили (данные валидны —
+  HTML legitimate), только render. SHA: `6ad788b`. Deploy run `#223`
+  completed/success. Bundle: `index-Bn0u3NCY.js → index-CTrlSsPw.js`
+  (один expected chunk-flap).
+- 📋 **Заведены два параллельных тикета без recon** (из брифа `_90`):
+  - `BUG-PVL-SLOW-MATERIALS-LOAD` — пользователь жалуется на медленную
+    загрузку материалов курса (много reload'ов), P2-P3, утром.
+  - `BUG-PVL-WHITESPACE-CORRUPTION` — пробелы ломаются при copy-paste
+    из файла, P3, утром.
+  (Тикеты ещё не оформлены полноценно в P2 секции — заведу утром при
+  ответственном recon'е.)

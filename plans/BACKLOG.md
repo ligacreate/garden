@@ -201,6 +201,47 @@ related_docs:
 - **Следующая новая студентка снова застрянет** до architectural fix'а
   — recovery лечит ровно одну запись.
 
+### FEAT-022: Magic link login (passwordless email-link auth)
+- **Статус:** 🔴 TODO (recon не делался, scope из handover'а `_79`)
+- **Приоритет:** P1
+- **Создано:** 2026-05-19 (вечером, после закрытия BUG-PUBLIC-MEETING-SAVE
+  как JWT staleness — это второй кейс за два дня класса «не могу
+  войти»/«не тот JWT»)
+- **Контекст:** За 18-19 мая два разных пользователя застряли на разных
+  flavor'ах auth-problem (Бардина — paused-user RLS; Романова — JWT
+  staleness после admin-password-reset), и оба раза generic
+  «Неверные данные...» error забрал ~час диагностики. Magic link login
+  обходит весь класс «пароль/JWT не такой как ожидаем» — одноразовый
+  email-token → новый JWT с нуля.
+- **Scope (из handover, ~3-5 часов codeexec):**
+  - Backend (garden-auth):
+    - `POST /auth/request-magic-link` (email → generate one-time token →
+      INSERT в `magic_link_tokens` с TTL 15 минут + jti → send email)
+    - `GET /auth/consume-magic-link?token=X` (lookup → verify TTL и
+      not-consumed → mark consumed → выдать JWT → 302 redirect на `/`)
+    - DB-таблица `magic_link_tokens` (id, user_id, token_hash, jti,
+      issued_at, consumed_at, expires_at)
+  - Frontend (garden):
+    - Кнопка «Войти по ссылке» на AuthScreen (под обычной формой)
+    - Confirmation screen после клика «мы отправили ссылку на ваш email»
+    - Route `/auth/consume-magic-link` для обработки redirect'a
+  - Email template (HTML + plain text fallback, тема «Вход в Garden»)
+- **Acceptance:**
+  - Пользователь без пароля (или с забытым) может войти через email-link
+  - TTL не больше 15 минут, single-use, jti записывается для audit
+  - Email доставляется через тот же smtp/sendgrid что и текущие
+    transactional emails (если уже настроено) — иначе отдельный тикет
+    `INFRA-EMAIL-SETUP` сначала
+- **Зависимости:**
+  - Нужно подтвердить что smtp/email доставка реально работает (в
+    handover не зафиксирован конкретный transport)
+  - DDL миграция → не забыть `SELECT public.ensure_garden_grants()` в
+    конце (RUNBOOK 1.3)
+- **Связано:** BUG-PUBLIC-MEETING-SAVE-INVALID-CREDENTIALS (CLOSED, root
+  cause = JWT staleness), [[SEC-PWD-RESET-INVALIDATE-JWTS]] (новый тикет
+  предложен в lesson 2026-05-19-jwt-staleness-after-admin-password-reset),
+  [[UX-MEETINGS-FORM-NATIVE-ALERT]] (P3 → bump в P1).
+
 ### SEC-014: расследование причины GRANT wipeout 2026-05-04 + защита
 - **Статус:** 🟡 IN PROGRESS (большая часть scope закрыта 2026-05-05 phase 23 hot-fix; остаётся: тикет в Timeweb support для root cause)
 - **Приоритет:** P1 (повтор инцидента = повтор 2-часового outage у всех пользователей, пока кто-то не заметит)
@@ -2619,6 +2660,88 @@ related_docs:
      config для контента + persistent cache в CI.
 - **Оценка:** recon + 1 решение — ~1-2 часа работы.
 
+### SEC-PWD-RESET-INVALIDATE-JWTS: password reset / admin-reset должен инвалидировать существующие JWT пользователя
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (security smell; risk profile low — closed community
+  + Ольга 2026-05-20 оценила «вряд ли кто-то будет красть пароли», но
+  known incident: BUG-PUBLIC-MEETING-SAVE 2026-05-19)
+- **Создано:** 2026-05-20 (после verify FEAT-025 — smoke 2026-05-20
+  показал что reset не инвалидирует существующие JWT)
+- **Контекст:** Подтверждено живым smoke'ом — Ольга сменила пароль в
+  incognito, основная (не incognito) сессия с старым JWT продолжает
+  работать. Access-token TTL = 30 дней в garden-auth, refresh не
+  реализован. Это означает:
+  - User-initiated reset (забыл пароль) — не защищает от уже
+    выпущенных украденных JWT в течение 30 дней
+  - Admin-reset (admin меняет hash через psql) — старые JWT
+    пользователя в браузере продолжают жить, RLS/triggers могут
+    реджектить странным generic-error'ом
+- **Реальный кейс:** BUG-PUBLIC-MEETING-SAVE-INVALID-CREDENTIALS (Maria
+  Romanova, 2026-05-19) — admin-reset hash'a не инвалидировал её JWT
+  в браузере → public save фейлил с generic «Неверные данные...» →
+  час диагностики. См. lesson
+  `docs/lessons/2026-05-19-jwt-staleness-after-admin-password-reset.md`.
+- **Scope (один батч, ~2-4 часа codeexec):**
+  1. DDL миграция: `ALTER TABLE profiles ADD COLUMN jwt_min_iat
+     timestamptz DEFAULT '1970-01-01'` (backfill: старые JWT остаются
+     валидны до миграции; новые после миграции с `iat > jwt_min_iat`).
+  2. garden-auth middleware: при проверке JWT добавить
+     `if (decoded.iat * 1000 < user.jwt_min_iat.getTime()) return 401`
+  3. garden-auth `/auth/reset` endpoint: после успешной смены пароля —
+     `UPDATE profiles SET jwt_min_iat = NOW() WHERE id = user.id`
+  4. (опционально) Документировать в RUNBOOK: при ручном admin-reset
+     hash через psql — выполнить также
+     `UPDATE profiles SET jwt_min_iat = NOW() WHERE id = $1`
+  5. ⚠ Не забыть `SELECT public.ensure_garden_grants()` в конце
+     миграции (RUNBOOK 1.3)
+- **Acceptance:**
+  - User делает reset через email → старые JWT во всех
+    вкладках/устройствах не работают (401)
+  - Admin делает reset через psql + `jwt_min_iat = NOW()` → то же
+  - Smoke: воспроизвести Maria-кейс — admin-reset, попытка public save
+    в старой вкладке → теперь должна давать 401 (понятный), а не
+    silent generic
+- **Связано:** lesson 2026-05-19-jwt-staleness, FEAT-025 (закрыт
+  verify, этот тикет — security follow-up),
+  [[feedback-strategist-trigger-fix-jwt-verify]] (соседняя тема)
+
+### UX-AUTH-FORM-FEEDBACK: AuthScreen reset-форма не валидирует пустой email и не показывает backend-ошибки
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (UX smell, тот же класс что
+  [[UX-MEETINGS-FORM-NATIVE-ALERT]])
+- **Создано:** 2026-05-20 (после live UI recon Claude in Chrome
+  `_82b_cinc_pwd_reset_recon.md`)
+- **Контекст:** Smoke recon CinC показал два UI бага в reset-форме:
+  1. Пустой email + клик «Сбросить пароль» → запрос не уходит, но
+     и **никакой ошибки/блокировки** пользователю не показывается.
+     Console: silent exception без сообщения. Кнопка остаётся
+     активной.
+  2. Несуществующий email → запрос уходит (POST
+     `/auth/request-reset`), backend возвращает 404 `Email not
+     found`, но UI **никак не реагирует** — ни toast, ни inline
+     error. Пользователь не понимает, ушло письмо или нет.
+- **Это тот же класс** что UX-MEETINGS-FORM-NATIVE-ALERT: silent
+  fails + generic alerts. За 18-20 мая третий тикет в этой категории.
+- **Recommend объединить** с UX-MEETINGS-FORM-NATIVE-ALERT в один
+  эпик «AuthForms-UX-Refresh»:
+  - Универсальный handler errors из garden-auth + PostgREST → читаемый
+    message по HTTP-status code
+  - Inline валидация email (HTML5 `type="email" required` + pre-submit
+    check)
+  - Toast или inline error compatible с обоими формами (login + reset
+    + meeting save)
+- **Файлы:** `views/AuthScreen.jsx:95-136` (handleForgot,
+  handleResetSubmit), `views/MeetingsView.jsx:894` (window.alert),
+  общий компонент Toast (если есть) или создать
+- **Acceptance:**
+  - Empty submit blocked клиентски с inline-error
+  - Backend 4xx показан читаемым сообщением (не generic «Неверные
+    данные...»)
+  - 404 на unknown email → нейтральное «Если email зарегистрирован,
+    ссылка отправлена» (см. также [[FEAT-025-INFO-DISCLOSURE-FIX]])
+- **Связано:** [[UX-MEETINGS-FORM-NATIVE-ALERT]] (handover `_79`),
+  lesson 2026-05-19-jwt-staleness (та же боль)
+
 ## ⚪ P3 — Хотелось бы (потом)
 
 ### UX-MEETINGS-FORM-NATIVE-ALERT: native window.alert() в форме Meetings вместо inline-error
@@ -3799,6 +3922,76 @@ related_docs:
 - **Связано:** SEC-014 (mitigation сейчас), GRANTS-CRON-FREQUENCY
   (closed, 17.05), RUNBOOK 1.3.
 
+### FEAT-025-INFO-DISCLOSURE-FIX: /auth/request-reset возвращает 404 для несуществующего email — раскрытие
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (минорный security smell; для Garden = closed
+  community с approval-flow для applicant'ов — невысокий риск)
+- **Создано:** 2026-05-20 (после recon `_82` line 151)
+- **Контекст:** `garden-auth/server.js:151` —
+  `if (!rows.length) return res.status(404).json({ error: 'Email not found' })`.
+  Это раскрывает существование email-адреса в системе. Security best
+  practice — всегда возвращать 200 OK независимо от существования
+  email.
+- **Решение:** изменить на:
+  ```js
+  if (!rows.length) {
+    console.info(`[request-reset] unknown email: ${normalizedEmail}`);
+    return res.json({ ok: true });  // silent для security
+  }
+  ```
+- **Effort:** ~15 минут, single-line fix в server.js + scp на прод +
+  restart garden-auth
+- **Связано:** [[FEAT-025]] (parent), [[UX-AUTH-FORM-FEEDBACK]]
+  (frontend часть — нейтральное сообщение)
+
+### FEAT-025-EMAIL-HTML: HTML email template + brand + DKIM/SPF для deliverability
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (cosmetic + deliverability)
+- **Создано:** 2026-05-20 (после verify FEAT-025; smoke 2026-05-20
+  показал что текущий plain text доходит в inbox у Ольги — но без
+  warmup на массовых провайдерах риск spam для других пользователей)
+- **Контекст:** Текущее email — `garden-auth/server.js:716` —
+  однострочный plain text «Ссылка для сброса пароля: <url>».
+  Функционально OK, но:
+  - Plain text + no DKIM/SPF → высокий шанс spam-фильтрации на mail.ru,
+    yandex, gmail, outlook (особенно для массовых отправок в будущем)
+  - Без брендинга «Сад ведущих» / приветствия / footer / expiration-hint
+    — пользователь может подумать что фишинг
+- **Scope:**
+  1. HTML template с inline CSS — приветствие, кнопка-ссылка, expiration
+     hint (30 минут), footer с brand
+  2. Plain text fallback с тем же содержанием (в `text:` параллельно с
+     `html:`)
+  3. Subject: «Восстановление пароля — Сад ведущих» (вместо
+     «Восстановление пароля»)
+  4. Проверить DKIM/SPF на `skrebeyko.ru` через mxtoolbox.com или
+     dig, при необходимости — обновить DNS у hightek
+  5. (опционально) `console.info` об успешной отправке в garden-auth
+     logs для observability
+- **Effort:** ~1-2 часа на template + plain fallback; +30 мин на
+  DKIM/SPF проверку + DNS update (внешняя зависимость — hightek
+  поддержка)
+- **Связано:** [[FEAT-025]] (parent), будущий magic link если решим
+  делать, [[FEAT-024 Phase 5]] (TG-анонс если будет email-fallback)
+
+### INFRA-AUTH-PROD-GIT-REMOTE: /opt/garden-auth/.git origin указывает на архив olgaskrebeyko
+- **Статус:** ✅ DONE 2026-05-20 (этот же batch — см. ниже)
+- **Приоритет:** P3
+- **Создано:** 2026-05-20 (после recon `_82` Q3)
+- **Контекст:** На проде `/opt/garden-auth/.git` remote `origin` =
+  `https://github.com/olgaskrebeyko/garden-auth` (АРХИВ с 20 фев 2026,
+  GitHub не пускает push). Не блокер (deploy через scp, не git pull
+  на проде), но любой случайный `git pull origin main` на проде
+  потянет stale контент.
+- **Решение (применено):** одна ssh-команда:
+  ```bash
+  ssh root@5.129.251.56 'cd /opt/garden-auth && git remote set-url origin https://github.com/ligacreate/garden-auth.git && git remote -v'
+  ```
+- **Acceptance:** `git remote -v` на проде показывает
+  `ligacreate/garden-auth.git` для fetch и push — ✅ verified в _84.
+- **Связано:** [memory project-garden-auth] (актуальные репозитории под
+  ligacreate)
+
 ## 🤔 К обсуждению / решению
 
 ### DEC-001: Закрыть продукт на 1-2 недели для большой починки
@@ -4518,3 +4711,82 @@ related_docs:
 - ✅ **Backlog update + lessons batch** (single коммит — этот файл).
   Накопили docs за день, выпускаем одним deploy'ем, чтобы
   не крутить chunk-hashes 4 раза подряд (см. [[VITE-CHUNK-HASH-FLAPPING]]).
+
+### 2026-05-19 поздний вечер (стратег session `_80`)
+
+- ✅ **BUG-PUBLIC-MEETING-SAVE-INVALID-CREDENTIALS** (CLOSED — root cause:
+  JWT staleness после admin-password-reset). Maria Romanova вечером
+  сделала полный logout → close/open browser → re-login с тем же
+  `LigaTemp2026!` вручную → public save прошёл. Гипотеза (a) JWT
+  staleness подтверждена, гипотезы (b) RLS regression и (c)
+  UX-MEETINGS-PUBLIC-FORM-AUTOFILL отброшены. **Никакого кода не
+  меняли** — root-cause диагностика + workaround. Lesson:
+  `docs/lessons/2026-05-19-jwt-staleness-after-admin-password-reset.md`.
+- ✅ **FEAT-022 magic link login** добавлен в P1 (см. выше) — был только
+  в handover `_79`, теперь зафиксирован формально с scope из 3-5 часов.
+- ✅ **Алерт ChunkLoadError 18:55** (один анонимный юзер на `/reset/`,
+  старый bundle `index-D7kQs_32` → новый `Dgwl91od` после deploy
+  `9aeb55b` 12:55 МСК) — расследован, это **expected** chunk-hash
+  rotation от одного daily deploy'a, ErrorBoundary auto-reload спас
+  юзера. Не нарушение `feedback-batch-deploys-no-race`. Не открывали
+  тикет — связано с уже existing [[VITE-CHUNK-HASH-FLAPPING]] (P3),
+  pattern документирован в evening-close `_80`.
+- ✅ **Открыто** (новые рекомендации к ревью завтра):
+  - **UX-MEETINGS-FORM-NATIVE-ALERT** — bump из P3 в P1 (вторая
+    пользовательница за два дня застряла на generic error)
+  - **SEC-PWD-RESET-INVALIDATE-JWTS** (новый тикет) — admin-reset
+    должен invalidate существующие JWT (см. lesson)
+- 🟡 **Не пушили вечером** — `feedback-batch-deploys-no-race`: один
+  deploy за день (12:55 МСК `9aeb55b`) уже привёл к одному
+  ChunkLoadError. Сегодняшние docs (этот lesson + backlog update +
+  evening close) лежат локально в репо — codeexec завтра возьмёт
+  одним batch'ем вместе с первыми утренними фиксами.
+
+### 2026-05-20 утро (стратег + codeexec session `_81`..`_83`)
+
+- ✅ **FEAT-025 Password reset email flow** (verify-only, без code changes).
+  Recon `_82` показал что полный flow уже реализован: frontend
+  AuthScreen «Забыли пароль?» → `onLogin({isReset:true})` →
+  `dataService.resetPassword` → `POST /auth/request-reset` → sha256(token)
+  в `users_auth` + nodemailer send → email с ссылкой → `?token=`
+  парсится в AuthScreen → `POST /auth/reset` → bcrypt новый pwd.
+  **Live smoke 2026-05-20 (Ольга):** письмо пришло в inbox, ссылка
+  работает, новый пароль работает.
+  - Frontend: `views/AuthScreen.jsx:14-26, 95-136, 154, 246`;
+    `App.jsx:225, 290`; `services/dataService.js:1340-1348`
+  - Backend: `garden-auth/server.js:691, 727`
+  - БД: `public.users_auth.reset_token` + `reset_expires` (sha256 hash,
+    TTL 30 мин)
+  - SMTP: nodemailer + env `SMTP_HOST/PORT/USER/PASS/FROM` в
+    `/opt/garden-auth/.env`
+  - **Старая сессия НЕ инвалидируется** — заведён отдельный тикет
+    [[SEC-PWD-RESET-INVALIDATE-JWTS]] (P2).
+  - Live UI recon Claude in Chrome выявил 2 UX-бага (no client
+    validation на пустой email + silent fail на 404 backend) —
+    заведён тикет [[UX-AUTH-FORM-FEEDBACK]] (P2). См. `_82b` с моей
+    аннотацией (CinC ошибочно приписал Garden Firebase, реально
+    самописный garden-auth — поправлено).
+  - Сессии: `_81, _81b, _82, _82b, _83`.
+- ✅ **INFRA-AUTH-PROD-GIT-REMOTE** (housekeeping, 5 минут).
+  `/opt/garden-auth/.git origin` обновлён с архива
+  `olgaskrebeyko/garden-auth` на актуальный
+  `ligacreate/garden-auth.git`. Verify через `git remote -v` на проде —
+  оба URL (fetch/push) теперь правильные. Случайный `git pull` на
+  проде больше не потянет stale.
+- ✅ **Открыто (новые тикеты для будущих сессий):**
+  - **SEC-PWD-RESET-INVALIDATE-JWTS** (P2) — admin/user reset должен
+    bump `jwt_min_iat`, чтобы старые JWT инвалидировались. Закрывает
+    root-cause Maria Romanova кейса вчера. Подробности в lesson
+    `docs/lessons/2026-05-19-jwt-staleness-after-admin-password-reset.md`.
+  - **UX-AUTH-FORM-FEEDBACK** (P2) — AuthScreen reset форма silent
+    fails. Объединить с UX-MEETINGS-FORM-NATIVE-ALERT в один эпик
+    «AuthForms-UX-Refresh».
+  - **FEAT-025-INFO-DISCLOSURE-FIX** (P3) — `/auth/request-reset`
+    возвращает 404 для unknown email вместо нейтрального 200.
+  - **FEAT-025-EMAIL-HTML** (P3) — HTML template + DKIM/SPF для
+    deliverability.
+- 🟡 **Не пушим утром** — `.github/workflows/deploy.yml` не имеет
+  `paths-ignore` на `docs/**` + `plans/**`, любой push триггернёт
+  frontend re-build → новый chunk-hash → `feedback-batch-deploys-no-race`.
+  Local commit готов, push отложен до утреннего батча с первыми
+  code-фиксами (как в плане evening-close `_80`).

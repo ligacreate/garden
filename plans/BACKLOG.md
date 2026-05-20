@@ -2739,29 +2739,52 @@ related_docs:
     данные...»)
   - 404 на unknown email → нейтральное «Если email зарегистрирован,
     ссылка отправлена» (см. также [[FEAT-025-INFO-DISCLOSURE-FIX]])
-- **Связано:** [[UX-MEETINGS-FORM-NATIVE-ALERT]] (handover `_79`),
-  lesson 2026-05-19-jwt-staleness (та же боль)
+- **Связано:** [[UX-MEETINGS-FORM-NATIVE-ALERT]] (handover `_79`, bumped в P2 2026-05-20),
+  lesson 2026-05-19-jwt-staleness (та же боль),
+  **Эпик «AuthForms-UX-Refresh»** вместе с [[UX-MEETINGS-FORM-NATIVE-ALERT]]
+  (теперь тоже P2, bumped 2026-05-20)
+
+### UX-MEETINGS-FORM-NATIVE-ALERT: window.alert() в MeetingsView сохранении встречи + общая необработка backend errors
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (bumped 2026-05-20 — третий тикет в классе AuthForms-UX за три дня)
+- **Создано:** 2026-05-19 (handover `_79` после Maria Romanova BUG-PUBLIC-MEETING-SAVE)
+- **Контекст:** `views/MeetingsView.jsx:894` использует
+  `window.alert('Неверные данные, либо ваша почта не подтверждена...')`
+  для отображения всех 4xx backend errors при сохранении встречи. За
+  18-20 мая **три** пользовательницы попались на этот generic text при
+  **разных** backend причинах:
+  - Бардина 18.05: на самом деле paused-RLS exception
+  - Романова 19.05: на самом деле JWT staleness после admin-reset
+  - Reset форма (CinC recon 20.05): silent fail на 404 unknown email
+  Каждый раз ~час диагностики ушёл на разбор «какая ошибка на самом
+  деле».
+- **Эпик «AuthForms-UX-Refresh»** объединяет этот тикет с
+  [[UX-AUTH-FORM-FEEDBACK]] — решаем оба одним рефакторингом:
+  1. Универсальный handler errors из garden-auth + PostgREST →
+     читаемый message по HTTP-status code + endpoint context
+  2. Inline валидация на форме (HTML5 + pre-submit check) — пустой
+     email, неправильный формат
+  3. Toast или inline error component (не `window.alert`) compatible
+     со всеми формами (login, register, reset, meeting save)
+  4. Нейтральное «Если email зарегистрирован, ссылка отправлена» для
+     unknown email (синхронно с FEAT-025-INFO-DISCLOSURE-FIX ✅ DONE
+     2026-05-20)
+- **Файлы:** `views/MeetingsView.jsx:894` (window.alert),
+  `views/AuthScreen.jsx:95-136` (handleForgot, handleResetSubmit),
+  общий компонент Toast (если есть) или создать
+- **Acceptance:**
+  - Никаких `window.alert()` в auth/meeting формах
+  - Empty submit blocked клиентски с inline-error
+  - Backend 4xx показан читаемым сообщением (не «Неверные данные...»)
+- **Effort:** ~3-4 часа одним батчем (рефакторинг + новый Toast/Error
+  component + перевод 2 форм на новый flow)
+- **Связано:** [[UX-AUTH-FORM-FEEDBACK]] (sister в эпике),
+  [[FEAT-025-INFO-DISCLOSURE-FIX]] (backend часть нейтрального
+  сообщения, уже ✅ DONE), lesson
+  `2026-05-19-jwt-staleness-after-admin-password-reset.md`
+  (мотивация — генерик ошибки маскируют root causes)
 
 ## ⚪ P3 — Хотелось бы (потом)
-
-### UX-MEETINGS-FORM-NATIVE-ALERT: native window.alert() в форме Meetings вместо inline-error
-- **Статус:** 🔴 TODO
-- **Приоритет:** P3 (косметика, не блокер — форма работает, error message
-  доходит до пользователя)
-- **Создано:** 2026-05-19
-- **Контекст:** [`views/MeetingsView.jsx:894`](../views/MeetingsView.jsx#L894)
-  при missing required fields кидает `window.alert(...)` — браузер
-  показывает native dialog, иногда с дополнительным чекбоксом
-  «Блокировать диалоговые окна на этой странице». Inconsistent с нашим
-  Toast portal + inline `rose-error` pattern, который мы применили
-  на других validation'ах (например BUG-MEETINGS-INCOME-NOTIFY-SILENT
-  вчера).
-- **Скоп:** заменить `window.alert(...)` на:
-  - либо `setError(...)` + inline render под полем (как в form-валидации
-    на других экранах),
-  - либо `toast(...)` через `useToast` portal (как in BUG-MEETINGS-INCOME-NOTIFY).
-- **Оценка:** ~30 мин codeexec. Завязано на текущий refactor UX-консистентности.
-- **Связано:** общая UX-консистентность Garden (Toast vs alert vs inline).
 
 ### BOT-DISPLAY-NAME-RENAME: переименовать бота в BotFather (косметика)
 - **Статус:** 🔴 TODO (Ольгино ручное действие)
@@ -3923,24 +3946,34 @@ related_docs:
   (closed, 17.05), RUNBOOK 1.3.
 
 ### FEAT-025-INFO-DISCLOSURE-FIX: /auth/request-reset возвращает 404 для несуществующего email — раскрытие
-- **Статус:** 🔴 TODO
+- **Статус:** ✅ DONE 2026-05-20 вечер (session `_85`/`_86`)
 - **Приоритет:** P3 (минорный security smell; для Garden = closed
   community с approval-flow для applicant'ов — невысокий риск)
 - **Создано:** 2026-05-20 (после recon `_82` line 151)
-- **Контекст:** `garden-auth/server.js:151` —
+- **Контекст:** `garden-auth/server.js:697` —
   `if (!rows.length) return res.status(404).json({ error: 'Email not found' })`.
   Это раскрывает существование email-адреса в системе. Security best
   practice — всегда возвращать 200 OK независимо от существования
   email.
-- **Решение:** изменить на:
+- **Решение (применено):**
   ```js
   if (!rows.length) {
     console.info(`[request-reset] unknown email: ${normalizedEmail}`);
     return res.json({ ok: true });  // silent для security
   }
   ```
-- **Effort:** ~15 минут, single-line fix в server.js + scp на прод +
-  restart garden-auth
+- **Закрыто 2026-05-20 (вечер):**
+  - Backend commit в `ligacreate/garden-auth`: local-only (push отложен
+    до утреннего батча), SHA указан в `_86_codeexec_evening_tails_applied.md`.
+  - `scp` + `systemctl restart garden-auth` прошли чисто, service
+    `Active: active (running)` (PID 1659654, restart 2026-05-20 13:44:49 UTC).
+  - Smoke: `curl -i -X POST .../auth/request-reset` с
+    `nonexistent_xyz_20250520@example.invalid` →
+    `HTTP/2 200`, body `{"ok":true}` (раньше было `404` + `Email not found`).
+  - Journalctl verify: `[request-reset] unknown email: nonexistent_xyz_20250520@example.invalid`.
+  - Regression: ветка `!rows.length === false` не задета — existing-email
+    path не сломан (статичный анализ diff; реальный curl на
+    `olga@skrebeyko.com` намеренно не отправлял, чтоб не спамить inbox).
 - **Связано:** [[FEAT-025]] (parent), [[UX-AUTH-FORM-FEEDBACK]]
   (frontend часть — нейтральное сообщение)
 
@@ -4790,3 +4823,27 @@ related_docs:
   frontend re-build → новый chunk-hash → `feedback-batch-deploys-no-race`.
   Local commit готов, push отложен до утреннего батча с первыми
   code-фиксами (как в плане evening-close `_80`).
+
+### 2026-05-20 вечер (стратег + codeexec session `_85`..`_86`)
+
+- ✅ **FEAT-025-INFO-DISCLOSURE-FIX** — `garden-auth/server.js:697`
+  `if (!rows.length)` ветка теперь возвращает `200 {"ok":true}` +
+  `console.info('[request-reset] unknown email: ...')` вместо `404
+  {"error":"Email not found"}`. Backend-only scp + restart, без
+  frontend deploy. Smoke: curl с несуществующим email → `HTTP/2 200`
+  `{"ok":true}` ✅. Journalctl показывает `[request-reset] unknown
+  email: nonexistent_xyz_20250520@example.invalid` info-log.
+  Regression check — ветка для existing email не задета (статичный
+  анализ diff; real-curl на olga@skrebeyko.com намеренно не делали,
+  чтоб не спамить inbox). SHA: см. `_86`.
+- ✅ **Bump UX-MEETINGS-FORM-NATIVE-ALERT P3 → P2** — расширен в
+  полноценный тикет на месте (раньше была одна строка-упоминание
+  из handover `_79`). Объединено с [[UX-AUTH-FORM-FEEDBACK]] в эпик
+  «AuthForms-UX-Refresh» (3-4h одним батчем). Decision Ольги
+  2026-05-20.
+- 🟡 **Не пушили** — paths-ignore в `deploy.yml` ещё не настроен,
+  любой push triggernet frontend deploy + chunk-flap. Утром
+  следующая сессия начинает с paths-ignore, после чего безопасно
+  пушит накопленные коммиты (`8d2cf5d` housekeeping morning + два
+  вечерних: backend-fix в `ligacreate/garden-auth` + docs-update в
+  `ligacreate/garden`).

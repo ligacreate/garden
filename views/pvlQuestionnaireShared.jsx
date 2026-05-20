@@ -16,7 +16,10 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                     {questionnaireTitle || 'Анкета'}
                 </h2>
                 {questionnaireDescription ? (
-                    <p className="mt-2 text-sm text-slate-600 whitespace-pre-wrap">{questionnaireDescription}</p>
+                    <p
+                        className="mt-2 text-sm text-slate-600 whitespace-pre-wrap"
+                        dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(questionnaireDescription) }}
+                    />
                 ) : null}
             </div>
 
@@ -25,7 +28,11 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                 <div key={b.id} className="rounded-xl bg-white shadow-md p-5 space-y-3">
                     <p className="text-sm text-slate-800">
                         <span className="text-slate-400 mr-2">{idx + 1}.</span>
-                        {b.question || <span className="text-slate-400 italic">Вопрос</span>}
+                        {b.question ? (
+                            <span dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(b.question) }} />
+                        ) : (
+                            <span className="text-slate-400 italic">Вопрос</span>
+                        )}
                     </p>
                     <RichEditor
                         value={v[b.id] || ''}
@@ -60,7 +67,9 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                             return (
                                 <label key={b.id} className="block space-y-1">
                                     <span className="text-sm text-slate-800">
-                                        {b.label || 'Вопрос'}
+                                        <span
+                                            dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(b.label || 'Вопрос') }}
+                                        />
                                         {b.required ? <span className="text-rose-600"> *</span> : null}
                                     </span>
                                     <input
@@ -78,7 +87,9 @@ export function QuestionnaireFieldsEditor({ blocks, questionnaireTitle, question
                             return (
                                 <div key={b.id} className="space-y-1">
                                     <span className="text-sm text-slate-800 block">
-                                        {b.label || 'Вопрос'}
+                                        <span
+                                            dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(b.label || 'Вопрос') }}
+                                        />
                                         {b.required ? <span className="text-rose-600"> *</span> : null}
                                     </span>
                                     <RichEditor
@@ -188,7 +199,12 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
             {(questionnaireTitle || questionnaireDescription) ? (
                 <div className="rounded-lg border-t-4 border-emerald-500 bg-white p-4 shadow-sm">
                     {questionnaireTitle ? <div className="text-base font-medium text-slate-800">{questionnaireTitle}</div> : null}
-                    {questionnaireDescription ? <div className="text-sm text-slate-500 mt-1 whitespace-pre-wrap">{questionnaireDescription}</div> : null}
+                    {questionnaireDescription ? (
+                        <div
+                            className="text-sm text-slate-500 mt-1 whitespace-pre-wrap"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(questionnaireDescription) }}
+                        />
+                    ) : null}
                 </div>
             ) : null}
 
@@ -199,7 +215,10 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
                 return (
                     <div key={b.id} className="rounded-lg bg-white p-4 shadow-sm border border-slate-100 space-y-2">
                         <div className="text-xs font-medium text-slate-500">
-                            {idx + 1}. {b.question || 'Вопрос'}
+                            {idx + 1}.{' '}
+                            <span
+                                dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(b.question || 'Вопрос') }}
+                            />
                         </div>
                         <div
                             className={`${pvlMaterialBodyClass} mt-1 text-slate-800`}
@@ -230,7 +249,10 @@ export function QuestionnaireAnswersReadonly({ blocks, questionnaireTitle, quest
                         const has = raw != null && String(raw).trim() !== '' && (b.type === 'long_text' ? homeworkAnswerPlainText(String(raw)).trim() : String(raw).trim());
                         return (
                             <div key={b.id} className="text-sm">
-                                <div className="text-xs font-medium text-slate-500">{b.label || b.id}</div>
+                                <div
+                                    className="text-xs font-medium text-slate-500"
+                                    dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(b.label || b.id) }}
+                                />
                                 {b.type === 'long_text' ? (
                                     <div
                                         className={`${pvlMaterialBodyClass} mt-1 text-slate-800`}

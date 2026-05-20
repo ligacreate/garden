@@ -13,7 +13,10 @@ export function ChecklistFieldsEditor({ sections, value, onChange, disabled }) {
                     <div className="space-y-4">
                         {(sec.items || []).map((item) => (
                             <div key={item.id} className="block">
-                                <span className="text-xs text-slate-600 block mb-1">{item.prompt}</span>
+                                <span
+                                    className="text-xs text-slate-600 block mb-1"
+                                    dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(item.prompt || '') }}
+                                />
                                 <RichEditor
                                     value={v[item.id] || ''}
                                     onChange={(html) => onChange({ ...v, [item.id]: html })}
@@ -42,7 +45,10 @@ export function ChecklistAnswersReadonly({ sections, answersJson }) {
                     <ul className="mt-1 space-y-3">
                         {(sec.items || []).map((item) => (
                             <li key={item.id} className="text-sm">
-                                <span className="text-slate-500 text-xs block">{item.prompt}</span>
+                                <span
+                                    className="text-slate-500 text-xs block"
+                                    dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(item.prompt || '') }}
+                                />
                                 <div
                                     className={`${pvlMaterialBodyClass} mt-1 text-slate-800`}
                                     dangerouslySetInnerHTML={{

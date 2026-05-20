@@ -3,6 +3,11 @@ name: Deploy to FTP
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - 'docs/**'
+      - 'plans/**'
+      - '.business/**'
+      - '*.md'
   workflow_dispatch:
 
 concurrency:

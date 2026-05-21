@@ -777,7 +777,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                 )}
 
                 {tab === 'pvl-progress' && (
-                    <AdminPvlProgress hiddenIds={hiddenGardenUserIds} />
+                    <AdminPvlProgress users={users} hiddenIds={hiddenGardenUserIds} />
                 )}
 
                 {tab === 'news' && (

@@ -7569,6 +7569,19 @@ function AdminPage({
         return <PvlAdminCalendarScreen navigate={navigate} refresh={forceRefresh} route={route} />;
     }
     if (ADMIN_COURSE_ROUTE_RE.test(route)) {
+        /** Гард от stub-fallback: пока первый syncPvlActorsFromGarden не
+         *  закончил — показываем loader, не запускаем рендер от лица
+         *  technical preview student'a (race в getFirstCohortStudentId). */
+        if (!actorsSyncReady) {
+            return (
+                <div className="rounded-3xl bg-white p-8 text-center text-slate-500 text-sm shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)]">
+                    <div className="inline-flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full border-2 border-slate-300 border-t-emerald-600 animate-spin" aria-hidden />
+                        <span>Загружается предпросмотр курса…</span>
+                    </div>
+                </div>
+            );
+        }
         const previewSid = getFirstCohortStudentId();
         if (!previewSid) {
             return (
@@ -7599,17 +7612,31 @@ function AdminPage({
             }
             navigate(next);
         };
+        /** Резолюция имени preview-ученицы для admin banner'a. */
+        const previewUser = (pvlDomainApi.db.users || []).find(
+            (u) => String(u.id) === String(previewSid),
+        );
+        const previewName = previewUser?.fullName || previewUser?.email || 'неизвестная ученица';
         return (
-            <StudentPage
-                route={studentRoute}
-                studentId={previewSid}
-                navigate={wrapNav}
-                cmsItems={cmsItems}
-                cmsPlacements={cmsPlacements}
-                refresh={forceRefresh}
-                refreshKey={refreshKey}
-                routePrefix="/admin"
-            />
+            <>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 mb-4 flex items-center gap-2 text-sm text-amber-900">
+                    <Info size={16} className="shrink-0" aria-hidden />
+                    <div className="min-w-0">
+                        <span className="font-medium">Вы видите курс как ученица: {previewName}</span>
+                        <span className="ml-2 text-xs text-amber-800/75">(предпросмотр админа)</span>
+                    </div>
+                </div>
+                <StudentPage
+                    route={studentRoute}
+                    studentId={previewSid}
+                    navigate={wrapNav}
+                    cmsItems={cmsItems}
+                    cmsPlacements={cmsPlacements}
+                    refresh={forceRefresh}
+                    refreshKey={refreshKey}
+                    routePrefix="/admin"
+                />
+            </>
         );
     }
     if (adminPathOnly === '/admin/students') return <AdminStudents navigate={navigate} route={route} refreshKey={refreshKey} cmsItems={cmsItems} cmsPlacements={cmsPlacements} />;
@@ -8055,6 +8082,9 @@ export default function PvlPrototypeApp({
     });
     const [cmsItems, setCmsItems] = useState(() => buildMergedCmsState().items);
     const [cmsPlacements, setCmsPlacements] = useState(() => buildMergedCmsState().placements);
+    /** Готовность studentProfiles из Garden — guard для admin preview routes,
+     *  чтобы не показывать stub-fallback пользователю до завершения первого sync. */
+    const [actorsSyncReady, setActorsSyncReady] = useState(false);
     const [dataTick, setDataTick] = useState(0);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const forceRefresh = () => setDataTick((x) => x + 1);
@@ -8086,6 +8116,12 @@ export default function PvlPrototypeApp({
 
     useEffect(() => {
         let mounted = true;
+        /** Safety net: если sync не finished за 5s — снимаем guard на admin
+         *  preview routes, чтобы UI не висел вечно. Stub-fallback покажется
+         *  только в этом крайнем случае (нет network / тотальный fail). */
+        const watchdog = window.setTimeout(() => {
+            if (mounted) setActorsSyncReady(true);
+        }, 5000);
         // SWR: применяем кэш мгновенно до любых сетевых запросов
         if (syncPvlRuntimeFromCache()) {
             const cached = buildMergedCmsState();
@@ -8110,6 +8146,8 @@ export default function PvlPrototypeApp({
             setCmsItems(next.items);
             setCmsPlacements(next.placements);
             forceRefresh();
+            /** Первый sync actors закончен — снимаем guard на admin preview. */
+            setActorsSyncReady(true);
 
             if (!embeddedInGarden) return;
             await new Promise((r) => setTimeout(r, 600));
@@ -8123,6 +8161,7 @@ export default function PvlPrototypeApp({
         })();
         return () => {
             mounted = false;
+            window.clearTimeout(watchdog);
         };
     }, [embeddedInGarden]);
 

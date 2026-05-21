@@ -41,6 +41,28 @@ const COLUMNS = [
 
 const SESSION_KEY_COHORT = 'adminPvlCohortId';
 
+/** SWR cache для admin-dashboard'a: переключение табов внутри 5 сек = instant. */
+const ADMIN_PVL_SWR_TTL_MS = 5 * 1000;
+const ADMIN_PVL_COHORTS_SWR_KEY = 'admin_pvl_cohorts_swr_v1';
+const ADMIN_PVL_SUMMARY_SWR_KEY = (cohortId) => `admin_pvl_summary_${cohortId}_v1`;
+const ADMIN_PVL_DASHBOARD_SWR_KEY = (cohortId) => `admin_pvl_dashboard_${cohortId}_v1`;
+
+function readAdminPvlSwr(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const { ts, d } = JSON.parse(raw);
+        if (!d || Date.now() - ts > ADMIN_PVL_SWR_TTL_MS) return null;
+        return d;
+    } catch { return null; }
+}
+
+function writeAdminPvlSwr(key, d) {
+    try {
+        localStorage.setItem(key, JSON.stringify({ ts: Date.now(), d }));
+    } catch { /* quota — ignore */ }
+}
+
 function compareRows(a, b, key) {
     const va = a[key];
     const vb = b[key];
@@ -394,7 +416,7 @@ function BulkExportButton({
     );
 }
 
-export default function AdminPvlProgress({ hiddenIds = [] }) {
+export default function AdminPvlProgress({ hiddenIds = [], users = [] }) {
     const [cohorts, setCohorts] = useState([]);
     const [cohortId, setCohortIdState] = useState(() => sessionStorage.getItem(SESSION_KEY_COHORT) || null);
     const [rows, setRows] = useState([]);
@@ -420,12 +442,26 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
 
     useEffect(() => {
         let cancelled = false;
+        /** SWR hit — мгновенно применяем cached cohorts, fetch не запускаем (TTL 5s). */
+        const cached = readAdminPvlSwr(ADMIN_PVL_COHORTS_SWR_KEY);
+        if (cached) {
+            setCohorts(cached);
+            setCohortIdState((prev) => {
+                if (prev && cached.some((c) => c.id === prev)) return prev;
+                const first = cached[0]?.id || null;
+                if (first) sessionStorage.setItem(SESSION_KEY_COHORT, first);
+                else sessionStorage.removeItem(SESSION_KEY_COHORT);
+                return first;
+            });
+            return () => { cancelled = true; };
+        }
         setCohortsLoading(true);
         pvlPostgrestApi.listCohorts()
             .then((list) => {
                 if (cancelled) return;
                 const safe = Array.isArray(list) ? list : [];
                 setCohorts(safe);
+                writeAdminPvlSwr(ADMIN_PVL_COHORTS_SWR_KEY, safe);
                 /** Если в sessionStorage когорта, которой больше нет — fallback на первую. */
                 setCohortIdState((prev) => {
                     if (prev && safe.some((c) => c.id === prev)) return prev;
@@ -443,19 +479,39 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
     useEffect(() => {
         if (!cohortId) { setRows([]); return undefined; }
         let cancelled = false;
+        const cached = readAdminPvlSwr(ADMIN_PVL_SUMMARY_SWR_KEY(cohortId));
+        if (cached) {
+            setRows(cached);
+            return () => { cancelled = true; };
+        }
         setLoading(true);
         setError(null);
         pvlPostgrestApi.getAdminProgressSummary(cohortId)
-            .then((data) => { if (!cancelled) setRows(Array.isArray(data) ? data : []); })
+            .then((data) => {
+                if (cancelled) return;
+                const safe = Array.isArray(data) ? data : [];
+                setRows(safe);
+                writeAdminPvlSwr(ADMIN_PVL_SUMMARY_SWR_KEY(cohortId), safe);
+            })
             .catch((err) => { if (!cancelled) setError(formatError(err)); })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
     }, [cohortId, refreshCounter]);
 
-    /** Данные для MD-отчёта (загружаются один раз). */
+    /** Данные для MD-отчёта (homework_items, content_items, weeks, lessons). SWR TTL 5s. */
     useEffect(() => {
         if (!pvlPostgrestApi.isEnabled?.()) return undefined;
         let cancelled = false;
+        const dashKey = ADMIN_PVL_DASHBOARD_SWR_KEY(cohortId || '_global');
+        const cached = readAdminPvlSwr(dashKey);
+        if (cached) {
+            setHomeworkItems(cached.homeworkItems || []);
+            setContentItems(cached.contentItems || []);
+            setWeeks(cached.weeks || []);
+            setLessons(cached.lessons || []);
+            setReportDataReady(true);
+            return () => { cancelled = true; };
+        }
         const tag = '[FEAT-016 report v2]';
         const wrap = (label, p) => p
             .then((v) => {
@@ -507,12 +563,34 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
             setWeeks(safeWeeks);
             setLessons(safeLessons);
             setReportDataReady(true);
+            writeAdminPvlSwr(dashKey, {
+                homeworkItems: safeItems,
+                contentItems: safeContent,
+                weeks: safeWeeks,
+                lessons: safeLessons,
+            });
         });
+        return () => { cancelled = true; };
+    }, [cohortId]);
+
+    /** mentorsById — props-based (App → AdminPanel → AdminPvlProgress).
+     *  Fallback на api.getUsers только если prop пустой (защитное — текущая
+     *  схема всегда передаёт users, но компонент может быть re-used). */
+    useEffect(() => {
+        let cancelled = false;
+        if (Array.isArray(users) && users.length > 0) {
+            const map = new Map();
+            for (const u of users) {
+                if (u?.id) map.set(String(u.id), u.name || '');
+            }
+            setMentorsById(map);
+            return () => { cancelled = true; };
+        }
         api.getUsers?.()
-            .then((users) => {
+            .then((fetched) => {
                 if (cancelled) return;
                 const map = new Map();
-                for (const u of users || []) {
+                for (const u of fetched || []) {
                     if (u?.id) map.set(String(u.id), u.name || '');
                 }
                 setMentorsById(map);
@@ -522,7 +600,7 @@ export default function AdminPvlProgress({ hiddenIds = [] }) {
                 console.warn('[FEAT-016 report] api.getUsers FAILED', err);
             });
         return () => { cancelled = true; };
-    }, []);
+    }, [users]);
 
     const visibleRows = useMemo(() => {
         let out = rows;

@@ -201,8 +201,8 @@ related_docs:
 - **Следующая новая студентка снова застрянет** до architectural fix'а
   — recovery лечит ровно одну запись.
 
-### BUG-PVL-SLOW-MATERIALS-LOAD: админ открывает /admin/library → видит пустой курс, нужно много раз обновлять
-- **Статус:** 🔴 TODO (fix утром, бриф будет в `_100..`)
+### BUG-PVL-SLOW-MATERIALS-LOAD: админ открывает /admin/library → видит пустой курс, нужно много раз обновлять ✅ DONE
+- **Статус:** ✅ DONE 2026-05-20 ночь (session `_100..102`)
 - **Приоритет:** P1 (admin-workflow blocker — закрытие сегодняшней
   жалобы от Ольги)
 - **Создано:** 2026-05-20 ночь (recon `_98` → decisions `_99`)
@@ -241,6 +241,10 @@ related_docs:
   но в AdminPvlProgress нет такой обработки).
 - **Effort estimate:** ~1 час (header + loader + AdminPvlProgress
   SWR), двухшаговый workflow (diff на review → apply).
+- **Fixed:** commit `cb24ad5`. 3 файла, 134 insertions, 17 deletions.
+  Sub-task 1 (loader + watchdog 5s), sub-task 2 (banner с Info icon
+  + bg-amber-50), sub-task 3 (SWR TTL 5s + users prop вместо
+  `api.getUsers` дубликата). Bundle подрос на ~2 KB.
 
 ### BUG-PVL-ADMIN-HW-HTML-RAW-RENDER: HTML-теги в админских sub-полях анкеты/чек-листа рендерились как литерал ✅ DONE
 - **Статус:** ✅ DONE 2026-05-20 ночь (session `_90`..`_94`)
@@ -5075,3 +5079,27 @@ related_docs:
 - 🟡 **Live telemetry gap** — при recon обнаружено отсутствие Caddy
   access log; диагностика slow user-sessions сейчас невозможна.
   Завели OBS-001 как side-фикс.
+
+### 2026-05-20 ночь +4 (стратег + codeexec session `_100..102`)
+
+- ✅ **BUG-PVL-SLOW-MATERIALS-LOAD** закрыт за один заход
+  (fix-brief `_100` → diff `_101` → apply `_102`). 3 sub-tasks из
+  `_99` decisions Ольги:
+  - **Loader instead of stub** — actorsSyncReady state + 5s
+    watchdog в PvlPrototypeApp. Admin preview routes теперь не
+    рендерят stub-fallback пока первый syncPvlActorsFromGarden не
+    finished.
+  - **Header «как ученица: ИМЯ»** — inline banner с Info icon
+    (нулевой bundle cost — уже импортирован) + bg-amber-50
+    (паттерн уже используется в файле).
+  - **SWR TTL 5s** на AdminPvlProgress (cohorts + summary RPC +
+    dashboard 4-fetch payload). Дубликат `api.getUsers` убран —
+    через prop `users` из AdminPanel (App-level fetch уже есть).
+  SHA: `cb24ad5`. 3 файла, 134/-17 строк. Deploy run #225 —
+  completed/success.
+- 📋 **Не сделано в этом батче (отдельные тикеты):**
+  - [[PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC]] (P3) — recon RPC.
+  - [[OBS-001-CADDY-ACCESS-LOG]] (P3) — config на VPS.
+  - [[CI-PATHSIGNORE-CLAUDE]] (P3) — `.claude/**` в paths-ignore.
+  - `UX-PVL-ADMIN-PREVIEW-VIEW-AS-DROPDOWN` (P2) — выбор конкретной
+    ученицы для preview, не first-from-list.

@@ -2818,6 +2818,32 @@ related_docs:
 
 ## ⚪ P3 — Хотелось бы (потом)
 
+### CI-PATHSIGNORE-CLAUDE: добавить `.claude/**` в paths-ignore deploy.yml
+- **Статус:** 🔴 TODO (~5 минут)
+- **Приоритет:** P3
+- **Создано:** 2026-05-20 ночь (session `_96`, после natural verify #3
+  провалился из-за этого gap'a)
+- **Контекст:** Текущий paths-ignore в `.github/workflows/deploy.yml`
+  покрывает `docs/**`, `plans/**`, `.business/**`, `*.md` (корневые),
+  но **не** `.claude/**`. В коммите `7c862ea` (docs reorganize) были
+  два `M .claude/settings*.json` → deploy `#224` запустился, хотя
+  логически это IDE/agent config, не frontend.
+- **Скоп:** добавить одну строку:
+  ```yaml
+  paths-ignore:
+    - 'docs/**'
+    - 'plans/**'
+    - '.business/**'
+    - '.claude/**'   # ← новое
+    - '*.md'
+  ```
+- **Smoke:** следующий `.claude/settings.json` push не должен
+  триггернуть GH Actions run. Natural verify через любую следующую
+  permissions-sync сессию.
+- **Связано:** [[VITE-CHUNK-HASH-FLAPPING]] (P3, code-level chunk
+  hash rotation остаётся отдельной темой), `_89` (initial paths-ignore
+  brief), `_96` (gap detected).
+
 ### BOT-DISPLAY-NAME-RENAME: переименовать бота в BotFather (косметика)
 - **Статус:** 🔴 TODO (Ольгино ручное действие)
 - **Приоритет:** P3
@@ -4914,3 +4940,25 @@ related_docs:
     из файла, P3, утром.
   (Тикеты ещё не оформлены полноценно в P2 секции — заведу утром при
   ответственном recon'е.)
+
+### 2026-05-20 поздний вечер +2 (стратег + codeexec session `_95..96`)
+
+- ✅ **Housekeeping: docs/ → docs/journal/ + snapshots/ реорганизация**
+  — закоммичено 54 git rename'а (история сохранена через rename detection,
+  similarity 100% — содержимое не менялось) + 22 add'а (4 lessons,
+  3 README index-файла для journal/snapshots/, 7 EXEC/HANDOVER/RECON
+  созданных сразу в journal/, 4 session docs `_78/_79/_87/_95`).
+  CLAUDE.md описывает новую структуру, добавлен корневой README.md.
+  Sync `.claude/settings*.json` permissions. SHA: `7c862ea`.
+- 🟡 **Natural verify paths-ignore #3 — провалился**, но **не из-за
+  багa в pattern'е**: docs/plans/.business/*.md (root) покрыты, но
+  `.claude/**` НЕ в paths-ignore списке → deploy #224 запустился
+  (deploy завершился `completed/success`, просто пересобрал тот же
+  code что после `#223`, один лишний chunk-flap). Это **gap** в
+  текущей конфигурации, не нарушение работы paths-ignore. Заведён
+  follow-up [[CI-PATHSIGNORE-CLAUDE]] P3 (добавить `'.claude/**'` в
+  paths-ignore deploy.yml — `.claude/` это IDE/agent config, не
+  frontend).
+- 🟡 **Не закрыто:** `dist/*` (untracked + modified из локальных
+  build'ов) — bundled код, не должен быть в git. Тикет [[CLEAN-002]]
+  (P2) — сегодня не трогали по правилу брифа.

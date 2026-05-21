@@ -201,6 +201,47 @@ related_docs:
 - **Следующая новая студентка снова застрянет** до architectural fix'а
   — recovery лечит ровно одну запись.
 
+### BUG-PVL-SLOW-MATERIALS-LOAD: админ открывает /admin/library → видит пустой курс, нужно много раз обновлять
+- **Статус:** 🔴 TODO (fix утром, бриф будет в `_100..`)
+- **Приоритет:** P1 (admin-workflow blocker — закрытие сегодняшней
+  жалобы от Ольги)
+- **Создано:** 2026-05-20 ночь (recon `_98` → decisions `_99`)
+- **Симптом:** Админ кликает «Библиотека» / «Трекер» / «Уроки» в
+  admin sidebar — на первом mount видит **пустой курс** (нет
+  материалов). После 2-5 refresh'ей материалы появляются.
+- **Корневая причина (из `_98`):** Маршрут `/admin/library` (и
+  аналоги под `ADMIN_COURSE_ROUTE_RE`) рендерит `StudentPage` от
+  лица **первой попавшейся ученицы** через
+  [getFirstCohortStudentId](../views/PvlPrototypeApp.jsx#L152). На
+  первом mount `syncPvlActorsFromGarden` ещё не отработал →
+  `studentProfiles` пуст → fallback на
+  `ensurePvlPreviewStudentProfile` создаёт **технический stub** с
+  `currentWeek: 0`, без прогресса. Курс выглядит пустым. Refresh →
+  data загружена → реальная ученица → курс виден.
+- **Не perf:** Все запросы параллельны
+  (`Promise.allSettled` на 4 endpoint, 53+38+57+6 rows — небольшие
+  объёмы). DB performance подтверждена не причиной.
+- **Скоп fix'a (3 sub-задачи, продуктовые решения Ольги в `_99`):**
+  1. **Loader instead of stub-fallback:** не рендерить `StudentPage`
+     с preview-stub'ом; пока `syncPvlActorsFromGarden` не finished
+     — показывать «Загружается предпросмотр…»
+     ([PvlPrototypeApp.jsx:7571-7613](../views/PvlPrototypeApp.jsx#L7571)).
+  2. **Header «Вы видите курс как ученица: ИМЯ»** — поверх
+     existing StudentPage в admin preview mode (`routePrefix="/admin"`).
+     Helps админу понять что она в **preview** режиме.
+  3. **3-5s SWR cache на `AdminPvlProgress` dashboard** — переключение
+     табов внутри окна = instant; через минуту = свежий fetch.
+     ([AdminPvlProgress.jsx:443-518](../views/AdminPvlProgress.jsx#L443)).
+- **Out-of-scope:** `getAdminProgressSummary` RPC — в отдельный
+  recon-тикет [[PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC]] (P3).
+  `View as` dropdown с выбором ученицы — P2 продуктовый,
+  отдельный тикет.
+- **Связано:** [[ARCH-003]] (Graceful degradation в App.jsx init —
+  уже частично работает через `Promise.allSettled` + `maintenanceBanner`,
+  но в AdminPvlProgress нет такой обработки).
+- **Effort estimate:** ~1 час (header + loader + AdminPvlProgress
+  SWR), двухшаговый workflow (diff на review → apply).
+
 ### BUG-PVL-ADMIN-HW-HTML-RAW-RENDER: HTML-теги в админских sub-полях анкеты/чек-листа рендерились как литерал ✅ DONE
 - **Статус:** ✅ DONE 2026-05-20 ночь (session `_90`..`_94`)
 - **Приоритет:** P1 (admin-workflow blocker — workaround через Obsidian был)
@@ -2844,6 +2885,59 @@ related_docs:
   hash rotation остаётся отдельной темой), `_89` (initial paths-ignore
   brief), `_96` (gap detected).
 
+### PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC: recon тяжести RPC `get_admin_progress_summary`
+- **Статус:** 🔴 TODO (~30 минут recon)
+- **Приоритет:** P3
+- **Создано:** 2026-05-20 ночь (вынесено из `_98`/`_99` Q2 —
+  оторвано от текущего BUG-PVL-SLOW-MATERIALS-LOAD)
+- **Контекст:** `AdminPvlProgress` дёргает
+  `pvlPostgrestApi.getAdminProgressSummary(cohortId)` ([AdminPvlProgress.jsx:448](../views/AdminPvlProgress.jsx#L448)) —
+  это PostgreSQL RPC (имя в DB точно не verified, ожидается
+  `public.pvl_admin_progress_summary` или схожее). На текущем
+  recon `_98` подозрение что RPC может быть тяжёлым (JOIN'ы по
+  homework_status_history + content_items + students).
+- **Скоп recon (без apply):**
+  1. Найти RPC source в `migrations/*.sql` (искать `CREATE.*FUNCTION.*admin_progress_summary`).
+  2. `EXPLAIN ANALYZE` в read-only сессии под `gen_user` с
+     `set_config('request.jwt.claims', '{"role":"authenticated","email":"olga@..."}')`
+     или похоже (см. lesson `2026-05-02-jwt-fallback`).
+  3. Замерить duration на реальной cohort'е (15 студенток, 53
+     content items).
+  4. Если >200ms — предложить либо SQL view + RLS вместо RPC, либо
+     добавить индексы (`pvl_homework_status_history(student_id,
+     changed_at)` и т.п.).
+- **Связано:** [[BUG-PVL-SLOW-MATERIALS-LOAD]] (родительский recon
+  `_98` его упомянул но не verify), [[PERF-001]] (ANALYZE всех
+  таблиц — общий perf тикет).
+
+### OBS-001-CADDY-ACCESS-LOG: включить access log в Caddyfile
+- **Статус:** 🔴 TODO (~10 минут)
+- **Приоритет:** P3
+- **Создано:** 2026-05-20 ночь (вынесено из `_98`/`_99` Q4 —
+  observability gap обнаружен)
+- **Контекст:** При recon `BUG-PVL-SLOW-MATERIALS-LOAD` пытались
+  посмотреть `/var/log/caddy/access.log` — **файла нет**, Caddy unit
+  active, но в `/etc/caddy/Caddyfile` нет `log {output file ...}`
+  директивы → access log вообще не пишется. При диагностике slow API
+  / 4xx у конкретных пользователей мы **слепые** в этом канале.
+- **Скоп fix:**
+  ```bash
+  # /etc/caddy/Caddyfile (root level, или на конкретный host'е)
+  log {
+      output file /var/log/caddy/access.log {
+          roll_size 100mb
+          roll_keep 7
+      }
+      format json
+  }
+  ```
+  Затем `mkdir -p /var/log/caddy/`, `systemctl reload caddy`,
+  `tail /var/log/caddy/access.log` чтобы verify.
+- **Smoke:** один публичный запрос на любой proxied host →
+  появляется JSON-line в access.log с request_uri, status, duration.
+- **Связано:** [[PERF-001]] (общий perf), [[MON-001]] (frontend
+  error reporter — backend пара).
+
 ### BOT-DISPLAY-NAME-RENAME: переименовать бота в BotFather (косметика)
 - **Статус:** 🔴 TODO (Ольгино ручное действие)
 - **Приоритет:** P3
@@ -4962,3 +5056,22 @@ related_docs:
 - 🟡 **Не закрыто:** `dist/*` (untracked + modified из локальных
   build'ов) — bundled код, не должен быть в git. Тикет [[CLEAN-002]]
   (P2) — сегодня не трогали по правилу брифа.
+
+### 2026-05-20 ночь +3 (стратег + codeexec + Ольга, session `_97..99`)
+
+- ✅ **Recon BUG-PVL-SLOW-MATERIALS-LOAD** (`_97 → _98`) — read-only,
+  без mutate'ов. Главная находка: race condition в `getFirstCohortStudentId`
+  + `ensurePvlPreviewStudentProfile` fallback на первом mount admin
+  course route. Не perf — параллельные fetch'и небольших объёмов
+  (53/38/57/6 rows).
+- ✅ **Decisions Ольги** (`_99`) на 4 open question'а из recon:
+  - Q1 → preview-as-first-student + header «как ученица» + loader
+    вместо stub (closes основной баг).
+  - Q2 → отдельный recon [[PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC]] P3.
+  - Q3 → 3-5s SWR cache на AdminPvlProgress dashboard (часть P1 fix'а).
+  - Q4 → отдельный config-fix [[OBS-001-CADDY-ACCESS-LOG]] P3 (~10 мин).
+- 📋 **Fix утром, не сегодня вечером** — codeexec получит конкретный
+  diff-on-review brief от стратега. Двухшаговый workflow как обычно.
+- 🟡 **Live telemetry gap** — при recon обнаружено отсутствие Caddy
+  access log; диагностика slow user-sessions сейчас невозможна.
+  Завели OBS-001 как side-фикс.

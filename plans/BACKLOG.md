@@ -2863,8 +2863,8 @@ related_docs:
 
 ## ⚪ P3 — Хотелось бы (потом)
 
-### CI-PATHSIGNORE-CLAUDE: добавить `.claude/**` в paths-ignore deploy.yml
-- **Статус:** 🔴 TODO (~5 минут)
+### CI-PATHSIGNORE-CLAUDE: добавить `.claude/**` в paths-ignore deploy.yml ✅ DONE
+- **Статус:** ✅ DONE 2026-05-22 ночь (session `_103..104`, SHA `34565a1`)
 - **Приоритет:** P3
 - **Создано:** 2026-05-20 ночь (session `_96`, после natural verify #3
   провалился из-за этого gap'a)
@@ -2889,8 +2889,8 @@ related_docs:
   hash rotation остаётся отдельной темой), `_89` (initial paths-ignore
   brief), `_96` (gap detected).
 
-### PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC: recon тяжести RPC `get_admin_progress_summary`
-- **Статус:** 🔴 TODO (~30 минут recon)
+### PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC: recon тяжести RPC `get_admin_progress_summary` ✅ DONE
+- **Статус:** ✅ DONE 2026-05-22 ночь (session `_103..104`) — **EXPLAIN ANALYZE 5.468 ms, OK** (см. `_104` для деталей)
 - **Приоритет:** P3
 - **Создано:** 2026-05-20 ночь (вынесено из `_98`/`_99` Q2 —
   оторвано от текущего BUG-PVL-SLOW-MATERIALS-LOAD)
@@ -2914,8 +2914,8 @@ related_docs:
   `_98` его упомянул но не verify), [[PERF-001]] (ANALYZE всех
   таблиц — общий perf тикет).
 
-### OBS-001-CADDY-ACCESS-LOG: включить access log в Caddyfile
-- **Статус:** 🔴 TODO (~10 минут)
+### OBS-001-CADDY-ACCESS-LOG: включить access log в Caddyfile ✅ DONE
+- **Статус:** ✅ DONE 2026-05-22 ночь (session `_103..104`) — global `log default` + per-site `import access_log` snippet, JSON format, rotation 100mb × 5 × 30 days
 - **Приоритет:** P3
 - **Создано:** 2026-05-20 ночь (вынесено из `_98`/`_99` Q4 —
   observability gap обнаружен)
@@ -5103,3 +5103,28 @@ related_docs:
   - [[CI-PATHSIGNORE-CLAUDE]] (P3) — `.claude/**` в paths-ignore.
   - `UX-PVL-ADMIN-PREVIEW-VIEW-AS-DROPDOWN` (P2) — выбор конкретной
     ученицы для preview, не first-from-list.
+
+### 2026-05-22 ночь (стратег + codeexec session `_103..104`)
+
+3 P3 хвоста закрыты одним батчем, порядок safe → risky.
+
+- ✅ **PERF-CHECK-ADMIN-PROGRESS-SUMMARY-RPC** — `EXPLAIN ANALYZE`
+  на проде показал **Execution Time 5.468 ms** (cache hit
+  `shared hit=1224`, planning 0.114 ms). Заключение: **OK, не
+  оптимизируем**. Function — SECURITY DEFINER plpgsql с
+  `is_admin()` гардом; внутри 1 main SELECT с LATERAL'ами на
+  pvl_homework_items, pvl_student_homework_submissions,
+  pvl_garden_mentor_links, pvl_mentors, profiles. Объёмы небольшие
+  (`_98`: 15 students, 53 content). Никакого N+1, никакого Seq
+  Scan на больших таблицах.
+- ✅ **OBS-001-CADDY-ACCESS-LOG** — global `log default` (system
+  logs) + named snippet `(access_log)` + `import access_log` в
+  каждом site block. JSON format, rotation 100mb × 5 × 30 days.
+  `/var/log/caddy/access.log` теперь пишет all access entries +
+  system. Verified test curl + live traffic от Chrome client.
+  Caddy reload graceful, no downtime. Caddyfile backup сохранён
+  в `Caddyfile.bak.2026-05-22-pre-obs001`.
+- ✅ **CI-PATHSIGNORE-CLAUDE** — `.claude/**` добавлен в paths-ignore
+  deploy.yml (5 строк → 6 строк, одна insert). SHA `34565a1`,
+  expected deploy #226 (последний «выкуп» за свободу future
+  `.claude/` коммитов). Один chunk-flap.

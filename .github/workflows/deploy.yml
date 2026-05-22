@@ -7,6 +7,7 @@ on:
       - 'docs/**'
       - 'plans/**'
       - '.business/**'
+      - '.claude/**'
       - '*.md'
   workflow_dispatch:
 

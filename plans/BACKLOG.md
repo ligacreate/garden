@@ -163,8 +163,8 @@ related_docs:
 
 ## 🟡 P1 — Важно (на этой неделе)
 
-### BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD: новые applicant'ы в profiles не получают row в pvl_students → silent FK violation при сохранении ДЗ
-- **Статус:** 🔴 TODO (architectural — recovery лечит симптом, не корень)
+### BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD: новые applicant'ы в profiles не получают row в pvl_students → silent FK violation при сохранении ДЗ ✅ DONE
+- **Статус:** ✅ DONE 2026-05-23 (phase37 commit `03a4d50` — DB trigger AFTER UPDATE OF role,access_status на profiles + FK pvl_students.id → profiles(id) + backfill 13 interns + 2 cohorts с датами для cohort_id auto-резолюции). End-to-end smoke 19:14 на Суроватской: Ольга нажала ⛔ → триггер создал pvl_students row с cohort_id Потока 1. Session `_107..118`.
 - **Приоритет:** P1
 - **Создано:** 2026-05-19
 - **Контекст:** Сегодня обнаружились две студентки (Ольга Разжигаева
@@ -944,6 +944,20 @@ related_docs:
 
 ## 🟢 P2 — Нужно (в этом месяце)
 
+### UI-PENDING-APPROVAL-LIST: admin не видит новых регистраций как «на одобрение»
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (admin UX gap, не data-loss; admin может найти через Ctrl+F, но регрессия-prone)
+- **Создано:** 2026-05-23 (засветилось при smoke phase37, recon `_117`)
+- **Проблема:** новые регистрации `access_status='pending_approval'` визуально не отличаются от других suspended-юзеров в `views/AdminPanel.jsx` tab='users'. Все 7 suspended (5 leader + 1 mentor + 1 applicant Суроватская) показывают одинаковую ⛔ кнопку с tooltip «Вернуть доступ» — нет бейджа «PENDING» / «НОВАЯ ЗАЯВКА». 23.05 при smoke Ольга не нашла applicant'а среди 7 одинаковых ⛔, искала через Ctrl+F. До этого Суроватская висела с 2026-05-19 (4 дня) без одобрения.
+- **Acceptance:**
+  - В админ-UI должна быть либо отдельная секция «📥 На одобрение» в начале списка, либо фильтр / тоггл «Только pending», либо явный бейдж «PENDING» / «НОВАЯ ЗАЯВКА» на row'ах с `access_status='pending_approval'`.
+  - Опционально: счётчик «N на одобрение» в шапке tab'а.
+- **Опционально (но рекомендуется):** подключить RPC `admin_approve_registration(uuid, text)` (phase31, уже существует, не используется UI) к новой кнопке «Одобрить» вместо текущего split-PATCH (toggleUserStatus + onUpdateUserRole). Даёт atomicity + audit-log; back-end ничего не нужен.
+- **Why:** без UI-фичи admin вынужден вручную искать pending через Ctrl+F или SQL — regression-risk + cognitive overhead каждый раз при новой регистрации.
+- **Estimate:** ~30-60 минут на фронт.
+- **Связано:** [[BUG-ADMIN-ISNEW-BADGE-UUID]] (latent UI bug — isNew бейдж не работает для UUID, поэтому даже «свежие» регистрации не выделены).
+- **Recon:** `docs/_session/2026-05-22_117_codeexec_pending_approval_ui_recon.md`.
+
 ### SEC-004: Future hardening — FORCE ROW LEVEL SECURITY на чувствительных таблицах
 - **Статус:** 🔴 TODO (отложено осознанно 2026-05-02)
 - **Приоритет:** P2 (не блокирует открытие платформы, но нужно
@@ -988,8 +1002,8 @@ related_docs:
 - **Связано:** SEC-001 (это его прямое продолжение),
   docs/DB_SECURITY_AUDIT.md, docs/HANDOVER_2026-05-02_session1.md
 
-### ARCH-010: Формализовать связь pvl_students ↔ profiles
-- **Статус:** 🔴 TODO (зависит от подтверждения через Chat A v4)
+### ARCH-010: Формализовать связь pvl_students ↔ profiles ✅ DONE
+- **Статус:** ✅ DONE 2026-05-23 (phase37 commit `03a4d50` Section 4 — `ALTER TABLE pvl_students ADD CONSTRAINT pvl_students_id_fk_profiles FOREIGN KEY (id) REFERENCES profiles(id) ON DELETE CASCADE`). Выбран вариант (a) — convention зафиксирована FK. Pre-apply assertion подтвердил `orphan_pvl_students = 0` (FK добавился без ошибок). Session `_108..116`.
 - **Приоритет:** P2
 - **Контекст:**
   - В pvl_students нет FK на profiles, нет user_id, нет
@@ -1021,7 +1035,7 @@ related_docs:
   этой связки), docs/REPORT_2026-05-02_db_audit_v3.md
 
 ### ARCH-012: Убрать клиентский `ensurePvlStudentInDb` self-heal в пользу серверного flow
-- **Статус:** 🟡 PARTIALLY DONE (2026-05-03, hotfix 45f1402 — early-exit для не-admin закрыл retry-loop). Архитектурный фикс (убрать ensure-loop с клиента полностью) остаётся как P2.
+- **Статус:** 🟡 PARTIALLY DONE 2026-05-23 (server-side flow готов через phase37 trigger, commit `03a4d50` — pvl_students row создаётся атомарно при одобрении админом). Client-side `ensurePvlStudentInDb` + 8 callsite'ов в `services/pvlMockApi.js` остаются как fallback на 2-3 дня; cleanup отдельным PR после verify trigger'а в проде (план в `_109` Workflow пункт 6). Раньше (2026-05-03, hotfix 45f1402) был early-exit для не-admin — закрыл retry-loop, но не убрал паттерн.
 - **Приоритет:** P2 (всплыло в проде после открытия Caddy
   2026-05-03; временно смягчено через RLS-расширение, но
   архитектурно остаётся неправильным паттерном)
@@ -2127,8 +2141,8 @@ related_docs:
   отдельным заходом, ~30 мин.
 - **Открыто:** 2026-05-11 при apply Variant B для race-fix.
 
-### BUG-PVL-ENSURE-RESPECTS-ROLE: ensurePvlStudentInDb не проверяет роль
-- **Статус:** 🔴 TODO
+### BUG-PVL-ENSURE-RESPECTS-ROLE: ensurePvlStudentInDb не проверяет роль ✅ DONE
+- **Статус:** ✅ DONE 2026-05-23 (phase37 commit `03a4d50` Section 6 — WHEN clause `NEW.role IN ('applicant','intern')` гарантирует, что серверный trigger не создаёт фейк-rows для admin/mentor/leader/curator). Client-side `ensurePvlStudentInDb` остаётся как fallback (см. [[ARCH-012]] partial), но проблема fake-rows закрыта на серверном уровне — даже если ensure-loop сработает, trigger никогда не fire'ит для admin/mentor. Session `_107..118`.
 - **Приоритет:** P2
 - **Создано:** 2026-05-08 (после cleanup'а 5 не-студенческих записей —
   commit `e3a992f`)
@@ -2862,6 +2876,19 @@ related_docs:
   (мотивация — генерик ошибки маскируют root causes)
 
 ## ⚪ P3 — Хотелось бы (потом)
+
+### BUG-ADMIN-ISNEW-BADGE-UUID: isNew бейдж в AdminPanel рассчитан на числовые id, для UUID никогда не загорается
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (latent UI bug — не блокирует работу, но обесценивает фичу)
+- **Создано:** 2026-05-23 (засветилось при recon `_117` по UI-PENDING-APPROVAL-LIST)
+- **Контекст:** [`views/AdminPanel.jsx:1214`](../views/AdminPanel.jsx#L1214):
+  ```jsx
+  const isNew = (Date.now() - u.id) < 24 * 60 * 60 * 1000 && u.id > 1000;
+  ```
+  Логика рассчитана на числовые id (Date.now()-based, legacy эра). Для UUID-юзеров `Date.now() - "e5343d9d-..."` = NaN → `NaN < число` = false → бейдж **никогда не true** для UUID. Используется для подсветки строки `className={isNew ? "bg-blue-50/30" : ""}` + «New» badge — оба эффекта мёртвые.
+- **Лечение:** заменить условие на проверку через `created_at` / `join_date` / `access_status='pending_approval'` — что больше отражает «новую регистрацию». Если стоит цель «подсветить pending», то это де-факто решает [[UI-PENDING-APPROVAL-LIST]] частично — pending'и подсветятся.
+- **Estimate:** ~5-15 минут.
+- **Связано:** [[UI-PENDING-APPROVAL-LIST]] (родственный — тоже про UI визуализации pending/новых юзеров).
 
 ### CI-PATHSIGNORE-CLAUDE: добавить `.claude/**` в paths-ignore deploy.yml ✅ DONE
 - **Статус:** ✅ DONE 2026-05-22 ночь (session `_103..104`, SHA `34565a1`)
@@ -5128,3 +5155,57 @@ related_docs:
   deploy.yml (5 строк → 6 строк, одна insert). SHA `34565a1`,
   expected deploy #226 (последний «выкуп» за свободу future
   `.claude/` коммитов). Один chunk-flap.
+
+### 2026-05-23 (стратег + codeexec session `_107..118`)
+
+Phase37 — атомарное создание pvl_students при одобрении админом.
+
+- ✅ **BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD (P1)** закрыт
+  одной миграцией (commit `03a4d50`). DB trigger
+  `trg_profiles_pvl_student_on_approval` AFTER UPDATE OF
+  role,access_status на profiles с комбинированным WHEN
+  (механизм c из `_110` — покрывает unblock без role-change И
+  role-change без unblock). SECURITY DEFINER обходит RLS
+  `pvl_students_insert_admin`. Cohort auto-резолвится по
+  CURRENT_DATE через новые колонки `pvl_cohorts.start_date /
+  end_date`. Два потока засеяны: Поток 1 (15.04–01.07) +
+  Поток 2 (15.09–20.12).
+- ✅ **ARCH-010 (P2)** закрыт той же миграцией Section 4 — FK
+  `pvl_students.id → profiles(id) ON DELETE CASCADE`. Pre-apply
+  assertion подтвердил orphan reverse = 0 → FK добавился без
+  ошибок.
+- ✅ **BUG-PVL-ENSURE-RESPECTS-ROLE (P2)** закрыт WHEN-clause
+  `NEW.role IN ('applicant','intern')` — admin/mentor/leader/
+  curator никогда не получат phantom-row из триггера.
+- 🟡 **ARCH-012 (P2) partially** — server-side flow готов.
+  Client-side `ensurePvlStudentInDb` + 8 callsite'ов остаются
+  как fallback на 2-3 дня; cleanup отдельным PR после verify
+  trigger'а в проде.
+- 🩹 **Латентный bug pvl_set_updated_at без колонки** закрыт для
+  pvl_cohorts/pvl_course_lessons/pvl_mentors (Section 1a). Тот
+  же паттерн, что phase25 уже чинила для pvl_homework_items —
+  v1 apply упал именно на этом, v2 расширила скоп
+  (feedback "extend scope for parallel bugs", см. `_111`).
+- 🐛 **Drama дня:** apply шёл в 3 захода. v1 убит латентным bug'ом
+  pvl_cohorts. v2 убит backfill-assertion на 14 (была моя
+  recon-ошибка в `_108`: написала «1 applicant + 14 intern +
+  18 leader = 33» вместо «2+13+18=33»; sum совпал, разбивка
+  нет). v3 после tatrusi exclusion + assertion 13 → COMMIT.
+  Каждый раз транзакция атомарно откатывалась, прод чистый.
+- 🧹 **tatrusi@mail.ru cleanup** — Таня Волошанина (applicant/
+  paused_manual, случайный залёт, не из ПВЛ потока). Audit
+  показал 0 rows во всех 22 связанных таблицах. Удалена через
+  UI → RPC `admin_delete_user_full` (commit phase24 уже умеет).
+  Recon в `_114`.
+- 🎯 **End-to-end smoke 19:14** — Ольга нажала ⛔ на Суроватской →
+  trigger создал pvl_students row + cohort_id Потока 1.
+  Verified все 9 проверок (`_118`).
+- 📋 **Новые тикеты засветились:**
+  - [[UI-PENDING-APPROVAL-LIST]] (P2) — admin не видит pending
+    среди 7 одинаковых ⛔. При smoke Ольга нашла Суроватскую
+    через Ctrl+F. Recon `_117`.
+  - [[BUG-ADMIN-ISNEW-BADGE-UUID]] (P3) — latent UI bug,
+    `isNew` рассчитан на числовые id, для UUID = NaN.
+- 📦 **Артефакты:** `migrations/2026-05-23_phase37_pvl_onboarding_atomic.sql`,
+  session docs `docs/_session/2026-05-22_107..118.md`,
+  handover `docs/_session/2026-05-23_120_strategist_day_close.md`.

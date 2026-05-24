@@ -2877,18 +2877,6 @@ related_docs:
 
 ## ⚪ P3 — Хотелось бы (потом)
 
-### UX-ADMIN-EDIT-USER-PROFILE: нет UI для редактирования полей профиля пользователя в админке
-- **Статус:** 🔴 TODO
-- **Приоритет:** P3 (UX gap — есть workaround через psql, но требует SQL-навыков и доступа к серверу)
-- **Создано:** 2026-05-24 (observation при smoke `_118` UI-PENDING-APPROVAL-LIST)
-- **Проблема:** [`views/AdminPanel.jsx`](../views/AdminPanel.jsx) tab='users' позволяет менять `role` (dropdown), `status` (⛔/⏸), visibility (eye-toggle), `auto_pause_exempt` (модалка), удалять (🗑). Но нет кнопки/модалки для редактирования базовых полей — `name`, `email`, `city`, `dob`, `tree`, `telegram`, `vk`, etc. Реальный кейс: 2026-05-23 при regression Суроватская попала в `profiles.name` как «Александа» (опечатка в момент регистрации), trigger phase37 скопировал это в `pvl_students.full_name`. Чтобы поправить — только direct UPDATE через psql под gen_user.
-- **Acceptance:**
-  - В админ-row пользователя добавить кнопку «✏ Edit» рядом с ⛔/🛡/🗑.
-  - Открывает модалку с inputs для основных полей (name / email / city / dob / tree / telegram / vk). Save → PATCH /profiles через существующий `api.updateUser`.
-  - Опционально: при изменении `name` для пользователя с pvl_students row — также sync `pvl_students.full_name` (иначе остаётся stale копия из triggera). Либо отдельный кнопка «Sync to PVL», либо автоматом.
-- **Estimate:** ~30-60 мин фронт. Backend (`api.updateUser`) уже умеет PATCH всех полей.
-- **Связано:** [[UI-PENDING-APPROVAL-LIST]] (родственное — admin tooling для пользователей).
-
 ### BUG-ADMIN-ISNEW-BADGE-UUID: isNew бейдж в AdminPanel рассчитан на числовые id, для UUID никогда не загорается ✅ DONE
 - **Статус:** ✅ DONE 2026-05-24 (commit `b3f5236`, закрыт scope-extend'ом вместе с UI-PENDING-APPROVAL-LIST). isNew теперь рассчитывается через `profiles.updated_at` (primary timestamp source — поднимается на любом UPDATE включая approve через RPC); integer-id fallback оставлен для legacy профилей. UUIDv4 first segment не парсится — random, нет temporal info. Semantic shift: badge теперь означает «недавно обновлён» вместо «зарегался последние 24h» — полезно (подсвечивает свежие админ-действия), плюс primary use case «новые pending'и» решён отдельной секцией. Session `_122`.
 - **Приоритет:** P3 (latent UI bug — не блокирует работу, но обесценивает фичу)
@@ -5245,11 +5233,6 @@ UI-PENDING-APPROVAL-LIST — закрытие UX gap'а после phase37 smoke
   `journalctl -u garden-auth` за 30 мин после deploy'а.
 - 🕐 **Smoke B (одобрение pending)** отложен до реальной
   регистрации или Ольгиного тестового аккаунта.
-- 📋 **Новое observation:** [[UX-ADMIN-EDIT-USER-PROFILE]] (P3) —
-  нет UI для edit user profile fields (name/email/city/dob/etc).
-  Засветилось при regress опечатки «Александа» в `profiles.name`
-  Суроватской (см. `_118` § 3). Workaround — direct UPDATE через
-  psql под gen_user. Estimate ~30-60 мин фронт.
 - 📦 **Артефакты:** `docs/_session/2026-05-23_121_codeexec_pending_approval_recon.md`,
   `_122_codeexec_pending_approval_impl_diff.md`,
   `_123_codeexec_pending_approval_push.md`.

@@ -7534,6 +7534,7 @@ function AdminPage({
     setCmsPlacements,
     refreshKey,
     forceRefresh,
+    actorsSyncReady,
 }) {
     const legacyAdmin = ['/admin/dashboard', '/admin/cohorts', '/admin/review', '/admin/qa-moderation', '/admin/qa', '/admin/questions'];
     if (legacyAdmin.includes(route)) return <AdminLegacyRedirect navigate={navigate} target="/admin/pvl" />;
@@ -8261,6 +8262,7 @@ export default function PvlPrototypeApp({
                     setCmsPlacements={setCmsPlacements}
                     refreshKey={dataTick}
                     forceRefresh={forceRefresh}
+                    actorsSyncReady={actorsSyncReady}
                 />
             );
         }
@@ -8282,7 +8284,7 @@ export default function PvlPrototypeApp({
             );
         }
         return <ScreenState error={`Неизвестный маршрут. Перейдите в раздел через меню или переключатель кабинета.`}><div /></ScreenState>;
-    }, [role, route, studentId, actingUserId, cmsItems, cmsPlacements, dataTick, navigate, embeddedInGarden, gardenBridgeRef]);
+    }, [role, route, studentId, actingUserId, cmsItems, cmsPlacements, dataTick, navigate, embeddedInGarden, gardenBridgeRef, actorsSyncReady]);
 
     const devToolsBar = pvlDevToolsEnabled() ? (
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto justify-end border-t xl:border-t-0 border-[#F0E6DC] pt-2 xl:pt-0">

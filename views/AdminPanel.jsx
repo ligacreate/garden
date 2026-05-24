@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff, Shield, ShieldOff } from 'lucide-react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff, Shield, ShieldOff, UserCheck } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
@@ -521,6 +521,14 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
     const [editingExemptUser, setEditingExemptUser] = useState(null);
     const [exemptForm, setExemptForm] = useState({ enabled: false, mode: 'always', until: '', note: '' });
     const [savingExempt, setSavingExempt] = useState(false);
+    // UI-PENDING-APPROVAL-LIST: per-user выбранная роль для approve-dropdown'а.
+    // {userId: 'applicant'|'intern'|'leader'|'mentor'}. Default — applicant (90%+ кейсов).
+    const [approvalRoles, setApprovalRoles] = useState({});
+
+    const pendingApprovals = useMemo(
+        () => (users || []).filter(u => u.access_status === 'pending_approval'),
+        [users]
+    );
 
     useEffect(() => {
         if (tab === 'stats' && onGetAllMeetings) {
@@ -759,7 +767,16 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-white/70'}`}
                             >
                                 {t === 'stats' ? 'Статистика'
-                                    : t === 'users' ? 'Пользователи'
+                                    : t === 'users' ? (
+                                        <>
+                                            Пользователи
+                                            {pendingApprovals.length > 0 && (
+                                                <span className="ml-1.5 inline-flex items-center justify-center bg-amber-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
+                                                    📥 {pendingApprovals.length}
+                                                </span>
+                                            )}
+                                        </>
+                                    )
                                     : t === 'access' ? 'Льготы'
                                     : t === 'content' ? 'Контент'
                                     : t === 'pvl-progress' ? 'Прогресс ПВЛ'
@@ -1169,6 +1186,78 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
 
                 {tab === 'users' ? (
                     <div className="surface-card p-8 overflow-hidden space-y-6">
+                        {/* UI-PENDING-APPROVAL-LIST: всегда видна, пустое состояние серое */}
+                        <div className={`border rounded-2xl p-4 ${pendingApprovals.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                            <div className={`text-sm font-semibold mb-3 flex items-center gap-2 ${pendingApprovals.length > 0 ? 'text-amber-900' : 'text-slate-500'}`}>
+                                <span>📥</span>
+                                <span>На одобрение{pendingApprovals.length > 0 ? ` (${pendingApprovals.length})` : ''}</span>
+                            </div>
+                            {pendingApprovals.length === 0 ? (
+                                <div className="text-xs text-slate-400">Заявок нет</div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {pendingApprovals.map(u => {
+                                        const selectedRole = approvalRoles[u.id] || 'applicant';
+                                        return (
+                                            <div key={u.id} className="flex items-center justify-between gap-3 bg-white border border-amber-100 rounded-xl p-3">
+                                                <div className="min-w-0">
+                                                    <div className="font-medium text-slate-800 truncate">{u.name || '—'}</div>
+                                                    <div className="text-xs text-slate-500 truncate">{u.email || '—'}</div>
+                                                    {u.city && <div className="text-xs text-slate-400 truncate">{u.city}</div>}
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <select
+                                                        value={selectedRole}
+                                                        onChange={(e) => setApprovalRoles(prev => ({ ...prev, [u.id]: e.target.value }))}
+                                                        className="bg-slate-50 border border-slate-200 rounded-xl text-xs py-2 px-3 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                                                    >
+                                                        <option value="applicant">Абитуриент</option>
+                                                        <option value="intern">Стажер</option>
+                                                        <option value="leader">Ведущая</option>
+                                                        <option value="mentor">Ментор</option>
+                                                    </select>
+                                                    <Button
+                                                        variant="primary"
+                                                        icon={UserCheck}
+                                                        className="!py-2 !px-3 text-xs"
+                                                        onClick={() => {
+                                                            const roleLabel = selectedRole === 'applicant' ? 'Абитуриент'
+                                                                : selectedRole === 'intern' ? 'Стажер'
+                                                                : selectedRole === 'leader' ? 'Ведущая'
+                                                                : 'Ментор';
+                                                            confirmAction(
+                                                                `Одобрить как ${roleLabel}?`,
+                                                                `${u.name || u.email} получит доступ к платформе с ролью «${roleLabel}».`,
+                                                                async () => {
+                                                                    try {
+                                                                        await api.approveUserRegistration(u.id, selectedRole);
+                                                                        onNotify('Заявка одобрена');
+                                                                        if (onRefreshUsers) await onRefreshUsers();
+                                                                    } catch (e) {
+                                                                        const msg = String(e?.message || '');
+                                                                        if (msg.includes('not pending_approval')) {
+                                                                            onNotify('Заявка уже одобрена другим админом');
+                                                                            if (onRefreshUsers) await onRefreshUsers();
+                                                                        } else if (msg.includes('forbidden')) {
+                                                                            onNotify('Нет прав: требуется роль администратора');
+                                                                        } else {
+                                                                            alert(e.message);
+                                                                        }
+                                                                    }
+                                                                },
+                                                                'primary'
+                                                            );
+                                                        }}
+                                                    >
+                                                        Одобрить
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                         <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
                             <div className="flex items-center justify-between gap-4 mb-3">
                                 <div className="text-sm font-semibold text-slate-700">Email всех пользователей</div>
@@ -1210,8 +1299,21 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
-                                {[...(users || [])].sort((a, b) => b.id - a.id).map(u => {
-                                    const isNew = (Date.now() - u.id) < 24 * 60 * 60 * 1000 && u.id > 1000; // Check if registered in last 24h (and not initial seed data)
+                                {[...(users || [])]
+                                    .filter(u => u.access_status !== 'pending_approval') /* UI-PENDING-APPROVAL-LIST: pending'и видны в секции выше — не дублируем */
+                                    .sort((a, b) => b.id - a.id)
+                                    .map(u => {
+                                    // BUG-ADMIN-ISNEW-BADGE-UUID fix: старый расчёт (Date.now() - u.id) работал
+                                    // для legacy integer-id'ов (millis-based), для UUID давал NaN → бейдж никогда
+                                    // не загорался. Теперь primary source — profiles.updated_at (свежий админ-edit
+                                    // / approve поднимает updated_at = now), fallback на integer id для legacy
+                                    // профилей (UUID v4 не несёт temporal info — first segment рандомный).
+                                    const isNew = (() => {
+                                        const ts = u.updated_at ? new Date(u.updated_at).getTime() : null;
+                                        if (Number.isFinite(ts) && (Date.now() - ts) < 24 * 60 * 60 * 1000) return true;
+                                        const idNum = Number(u.id);
+                                        return Number.isFinite(idNum) && idNum > 1000 && (Date.now() - idNum) < 24 * 60 * 60 * 1000;
+                                    })();
                                     const isHiddenInGarden = hiddenGardenUserIds.includes(String(u.id));
                                     return (
                                         <tr key={u.id} className={isNew ? "bg-blue-50/30" : ""}>

@@ -1678,6 +1678,24 @@ class RemoteApiService {
         return true;
     }
 
+    /**
+     * UI-PENDING-APPROVAL-LIST: одобрение pending_approval-регистрации.
+     * RPC admin_approve_registration (phase31) — atomic UPDATE access_status='active' +
+     * role=newRole + audit-log. Trigger phase37 trg_profiles_pvl_student_on_approval
+     * подхватит и создаст pvl_students row, если newRole IN ('applicant','intern').
+     * @param {string} userId
+     * @param {'applicant'|'intern'|'leader'|'mentor'} newRole — RPC отвергает admin/curator
+     */
+    async approveUserRegistration(userId, newRole) {
+        const { data } = await postgrestFetch('rpc/admin_approve_registration', {}, {
+            method: 'POST',
+            body: { p_user_id: userId, p_new_role: newRole },
+            returnRepresentation: true
+        });
+        this._invalidateCache('users');
+        return Array.isArray(data) ? data[0] : data;
+    }
+
     async toggleUserStatus(userId, newStatus) {
         // FEAT-015 Path C: пишем оба поля сразу. После phase29 колонка
         // access_status существует. Bridge-trigger одностороннний

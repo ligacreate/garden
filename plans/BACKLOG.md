@@ -944,8 +944,8 @@ related_docs:
 
 ## 🟢 P2 — Нужно (в этом месяце)
 
-### UI-PENDING-APPROVAL-LIST: admin не видит новых регистраций как «на одобрение»
-- **Статус:** 🔴 TODO
+### UI-PENDING-APPROVAL-LIST: admin не видит новых регистраций как «на одобрение» ✅ DONE
+- **Статус:** ✅ DONE 2026-05-24 (commit `b3f5236` — отдельная amber-секция «📥 На одобрение» вверху Users tab + counter «📥 N» в tab-button + dropdown role с default applicant + кнопка «Одобрить» через RPC `admin_approve_registration` (atomicity + audit-log) + pending filter из основного списка + серое «Заявок нет» если пусто). Deploy verified bundle hash `index-C8r3ZVMY.js`, Smoke A пройден (серая card, без counter). Trigger phase37 подхватывает UPDATE access_status'а от RPC → автоматически создаёт pvl_students row для applicant/intern. Session `_121..123`.
 - **Приоритет:** P2 (admin UX gap, не data-loss; admin может найти через Ctrl+F, но регрессия-prone)
 - **Создано:** 2026-05-23 (засветилось при smoke phase37, recon `_117`)
 - **Проблема:** новые регистрации `access_status='pending_approval'` визуально не отличаются от других suspended-юзеров в `views/AdminPanel.jsx` tab='users'. Все 7 suspended (5 leader + 1 mentor + 1 applicant Суроватская) показывают одинаковую ⛔ кнопку с tooltip «Вернуть доступ» — нет бейджа «PENDING» / «НОВАЯ ЗАЯВКА». 23.05 при smoke Ольга не нашла applicant'а среди 7 одинаковых ⛔, искала через Ctrl+F. До этого Суроватская висела с 2026-05-19 (4 дня) без одобрения.
@@ -2877,8 +2877,20 @@ related_docs:
 
 ## ⚪ P3 — Хотелось бы (потом)
 
-### BUG-ADMIN-ISNEW-BADGE-UUID: isNew бейдж в AdminPanel рассчитан на числовые id, для UUID никогда не загорается
+### UX-ADMIN-EDIT-USER-PROFILE: нет UI для редактирования полей профиля пользователя в админке
 - **Статус:** 🔴 TODO
+- **Приоритет:** P3 (UX gap — есть workaround через psql, но требует SQL-навыков и доступа к серверу)
+- **Создано:** 2026-05-24 (observation при smoke `_118` UI-PENDING-APPROVAL-LIST)
+- **Проблема:** [`views/AdminPanel.jsx`](../views/AdminPanel.jsx) tab='users' позволяет менять `role` (dropdown), `status` (⛔/⏸), visibility (eye-toggle), `auto_pause_exempt` (модалка), удалять (🗑). Но нет кнопки/модалки для редактирования базовых полей — `name`, `email`, `city`, `dob`, `tree`, `telegram`, `vk`, etc. Реальный кейс: 2026-05-23 при regression Суроватская попала в `profiles.name` как «Александа» (опечатка в момент регистрации), trigger phase37 скопировал это в `pvl_students.full_name`. Чтобы поправить — только direct UPDATE через psql под gen_user.
+- **Acceptance:**
+  - В админ-row пользователя добавить кнопку «✏ Edit» рядом с ⛔/🛡/🗑.
+  - Открывает модалку с inputs для основных полей (name / email / city / dob / tree / telegram / vk). Save → PATCH /profiles через существующий `api.updateUser`.
+  - Опционально: при изменении `name` для пользователя с pvl_students row — также sync `pvl_students.full_name` (иначе остаётся stale копия из triggera). Либо отдельный кнопка «Sync to PVL», либо автоматом.
+- **Estimate:** ~30-60 мин фронт. Backend (`api.updateUser`) уже умеет PATCH всех полей.
+- **Связано:** [[UI-PENDING-APPROVAL-LIST]] (родственное — admin tooling для пользователей).
+
+### BUG-ADMIN-ISNEW-BADGE-UUID: isNew бейдж в AdminPanel рассчитан на числовые id, для UUID никогда не загорается ✅ DONE
+- **Статус:** ✅ DONE 2026-05-24 (commit `b3f5236`, закрыт scope-extend'ом вместе с UI-PENDING-APPROVAL-LIST). isNew теперь рассчитывается через `profiles.updated_at` (primary timestamp source — поднимается на любом UPDATE включая approve через RPC); integer-id fallback оставлен для legacy профилей. UUIDv4 first segment не парсится — random, нет temporal info. Semantic shift: badge теперь означает «недавно обновлён» вместо «зарегался последние 24h» — полезно (подсвечивает свежие админ-действия), плюс primary use case «новые pending'и» решён отдельной секцией. Session `_122`.
 - **Приоритет:** P3 (latent UI bug — не блокирует работу, но обесценивает фичу)
 - **Создано:** 2026-05-23 (засветилось при recon `_117` по UI-PENDING-APPROVAL-LIST)
 - **Контекст:** [`views/AdminPanel.jsx:1214`](../views/AdminPanel.jsx#L1214):
@@ -5209,3 +5221,35 @@ Phase37 — атомарное создание pvl_students при одобре
 - 📦 **Артефакты:** `migrations/2026-05-23_phase37_pvl_onboarding_atomic.sql`,
   session docs `docs/_session/2026-05-22_107..118.md`,
   handover `docs/_session/2026-05-23_120_strategist_day_close.md`.
+
+### 2026-05-24 (стратег + codeexec session `_121..123`)
+
+UI-PENDING-APPROVAL-LIST — закрытие UX gap'а после phase37 smoke.
+
+- ✅ **UI-PENDING-APPROVAL-LIST (P2)** + **BUG-ADMIN-ISNEW-BADGE-UUID
+  (P3)** closed одним коммитом `b3f5236`. Отдельная amber-секция
+  «📥 На одобрение» вверху Users tab с counter в tab-button,
+  dropdown role (default applicant), кнопка «Одобрить» через RPC
+  `admin_approve_registration` (atomicity + audit-log). Pending
+  filter'ятся из основного списка. Серое «Заявок нет» если пусто.
+- 🩹 **isNew bug fix через `updated_at`** (semantic shift —
+  badge теперь означает «недавно обновлён» вместо «зарегался
+  последние 24h»; UUIDv4 first segment не парсится, потому что
+  random). Integer-id fallback оставлен для legacy.
+- 🚀 **Deploy verified:** bundle hash `index-MW5GmWly.js` →
+  `index-C8r3ZVMY.js` (488 KB main chunk), ~2-3 мин от push'а до
+  HTTP 200. Промежуточный HTTP 403 во время FTP atomic swap'а —
+  обычное поведение Caddy, не bug.
+- ✅ **Smoke A пройден** (Ольга в Chrome): серая card «Заявок
+  нет», без counter в tab-button. Никаких client-error'ов в
+  `journalctl -u garden-auth` за 30 мин после deploy'а.
+- 🕐 **Smoke B (одобрение pending)** отложен до реальной
+  регистрации или Ольгиного тестового аккаунта.
+- 📋 **Новое observation:** [[UX-ADMIN-EDIT-USER-PROFILE]] (P3) —
+  нет UI для edit user profile fields (name/email/city/dob/etc).
+  Засветилось при regress опечатки «Александа» в `profiles.name`
+  Суроватской (см. `_118` § 3). Workaround — direct UPDATE через
+  psql под gen_user. Estimate ~30-60 мин фронт.
+- 📦 **Артефакты:** `docs/_session/2026-05-23_121_codeexec_pending_approval_recon.md`,
+  `_122_codeexec_pending_approval_impl_diff.md`,
+  `_123_codeexec_pending_approval_push.md`.

@@ -410,11 +410,14 @@ export function TaskHeader({
 }
 
 /** Компактная шапка задания для ментора: только название, дедлайн, статус */
-export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButton = true }) {
+export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButton = true, menteeName }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             {showBackButton ? (
                 <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+            ) : null}
+            {menteeName ? (
+                <p className="text-xs text-[#7A6758] mb-1">Менти: <span className="font-medium text-[#4A3728]">{menteeName}</span></p>
             ) : null}
             <h2 className="font-display text-2xl md:text-3xl text-[#4A3728]">{data.title}</h2>
             <div className="mt-3 rounded-xl border border-[#F0E6DC] bg-[#FAF6F2]/70 px-3 py-2">
@@ -951,6 +954,7 @@ function MentorTaskSlim({
     onRefresh,
     mentorRoutePrefix = '/mentor',
     showHeaderBack = true,
+    menteeName,
 }) {
     const td = state.taskDetail;
     const [reply, setReply] = useState('');
@@ -997,7 +1001,7 @@ function MentorTaskSlim({
 
     return (
         <div className="space-y-4">
-            <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} />
+            <MentorTaskHeaderCompact data={td} onBack={onBack} backLabel={backLabel} showBackButton={showHeaderBack} menteeName={menteeName} />
             <TaskDescription
                 data={state.taskDescription}
                 showControlPointNote={!!td?.isControlPoint}
@@ -1261,6 +1265,12 @@ export default function PvlTaskDetailView({
         && submittedStatuses.has(String(state.taskDetail.status || '').toLowerCase());
 
     if (role === 'mentor') {
+        /** Резолюция имени менти для шапки страницы проверки ДЗ — паттерн
+         *  тот же, что и для admin-preview banner'a (PvlPrototypeApp.jsx:7616). */
+        const menteeUser = (pvlDomainApi.db.users || []).find(
+            (u) => String(u.id) === String(taskStudentId),
+        );
+        const menteeName = menteeUser?.fullName || menteeUser?.email || '';
         return (
             <div className="space-y-3">
                 <MentorTaskSlim
@@ -1272,6 +1282,7 @@ export default function PvlTaskDetailView({
                     onRefresh={onRefresh}
                     mentorRoutePrefix={mentorRoutePrefix}
                     showHeaderBack={showHeaderBack}
+                    menteeName={menteeName}
                 />
             </div>
         );

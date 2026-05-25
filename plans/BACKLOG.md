@@ -2875,6 +2875,27 @@ related_docs:
   `2026-05-19-jwt-staleness-after-admin-password-reset.md`
   (мотивация — генерик ошибки маскируют root causes)
 
+### BUG-PVL-CACHE-PERSISTS-EMPTY-SNAPSHOT: пустой snapshot в localStorage применяется ДО сетевых запросов, держится 24ч
+- **Статус:** Open candidate (depends on Виктория smoke response)
+- **Приоритет:** P2 candidate (если подтвердится — bump до P1, симптом виден ученицам и админу)
+- **Создано:** 2026-05-25 (recon `_127` после materials-missing инцидента у Ольги)
+- **Симптом:** Ольга в admin preview под Еленой Курдюковой видела «Всего материалов: 0» и «Здесь скоро появятся уроки». TG-бот молчит (alert MON-001 не сработал). Не runtime error.
+- **Что отвергнуто (H1/H3/H4):** БД **полна** — 59 published `pvl_content_items` и 20 `pvl_content_placements` для lessons/student/Поток 1. Cohort у Елены правильный (Поток 1). RLS `has_platform_access(uuid)` под Ольгой/Еленой/Викторией = true. Frontend имена endpoint'ов правильные (`pvl_content_items`, не legacy `cms_*`). cb24ad5 не убирал источник материалов, phase37 не трогал `pvl_content_*`.
+- **Корень (H2, primary):** [`services/pvlMockApi.js:1061`](../services/pvlMockApi.js#L1061) `syncPvlRuntimeFromCache` синхронно применяет `localStorage.pvl_runtime_swr_v1` ДО любых сетевых запросов. Cache TTL 24 часа. Если cache когда-то записался **пустым** (после прошлого 401 race / token expiry / sync failure), сейчас применяется пустой snapshot → `db.contentItems = []` → 0 материалов. Дальше `syncPvlRuntimeFromDb` либо не догоняет (если JWT всё ещё broken), либо догоняет, но user уже видит пустую страницу.
+- **Связь с login-hang viktorovna7286@gmail.com:** возможно тот же sync issue, не orphan-state (она `has_pvl_row=t`, cohort=Поток 1).
+- **Защиты:**
+  1. **Не записывать empty snapshot** в `applyRuntimeSnapshot` — если `mappedItems.length === 0 && mappedPlacements.length === 0`, пропустить `localStorage.setItem`.
+  2. **Invalidate cache при auth state change** (login / logout / token refresh) — `localStorage.removeItem(RUNTIME_SWR_KEY)`.
+  3. **Watchdog telemetry**: если `applyRuntimeSnapshot` применяет empty snapshot — отправить heartbeat в MON-001, чтоб catch silent failure mode.
+- **Файлы:** `services/pvlMockApi.js:1041-1093` (`applyRuntimeSnapshot`, `syncPvlRuntimeFromCache`, `syncPvlRuntimeFromDb`).
+- **Acceptance:**
+  - localStorage никогда не содержит snapshot с empty items+placements
+  - После logout/login cache invalidated (нет stale data от прошлого user'а)
+  - Если sync вернул пусто под валидным JWT — alert в MON-001 (TG бот)
+- **Effort:** ~2 часа одним батчем (3 правки + verify).
+- **Wait gate:** прежде чем брать в работу — дождаться Ольгиного и Викториного smoke response (Clear site data → появились ли материалы). Если **да** → подтверждённый корень, делаем fix. Если **нет** → recon ошибся, открывать новую гипотезу.
+- **Связано:** session `_127` recon, [[BUG-PVL-SLOW-MATERIALS-LOAD]] (cb24ad5, исторически связан — guard уровня UI, не cache), parallel investigation login-hang Виктория.
+
 ## ⚪ P3 — Хотелось бы (потом)
 
 ### BUG-ADMIN-ISNEW-BADGE-UUID: isNew бейдж в AdminPanel рассчитан на числовые id, для UUID никогда не загорается ✅ DONE
@@ -5236,3 +5257,44 @@ UI-PENDING-APPROVAL-LIST — закрытие UX gap'а после phase37 smoke
 - 📦 **Артефакты:** `docs/_session/2026-05-23_121_codeexec_pending_approval_recon.md`,
   `_122_codeexec_pending_approval_impl_diff.md`,
   `_123_codeexec_pending_approval_push.md`.
+
+### 2026-05-25 (codeexec session `_124..128`)
+
+P1 prod-incident actorsSyncReady → materials recon → UX-фикс mentee
+name → cleanup.
+
+- ✅ **actorsSyncReady regression (P1)** closed `ba057b6` — fix forward
+  (+3 строки prop drilling в `views/PvlPrototypeApp.jsx`). Bug-bomb из
+  cb24ad5 (2026-05-21) пролежал 3 дня: `AdminPage` использовал
+  `actorsSyncReady` из соседнего компонента `PvlPrototypeApp` без
+  prop'а → ReferenceError на всех 8 admin preview routes
+  (`/admin/{library,tracker,practicums,results,certification,
+  self-assessment,about,glossary}`). Detected когда Ольга открыла
+  `/admin/library`, ErrorBoundary caught. Не регрессия от вчерашнего
+  `b3f5236`. Sessions `_124` recon + `_125` diff + `_126` push.
+- 🔍 **«Всего материалов: 0» materials missing recon** (session `_127`).
+  БД полна (59 published `pvl_content_items`, 20 `pvl_content_placements`
+  для lessons/student/Поток 1), cohort у Елены правильный (Поток 1),
+  RLS `has_platform_access` под админом/applicant = true, endpoint
+  имена правильные. Отвергнуты H1 (БД пуста), H3 (cohort wrong), H4
+  (cb24ad5/phase37 root). Primary гипотеза H2 — cache 24ч с empty
+  snapshot применяется ДО сетевых. Открыт candidate тикет
+  [[BUG-PVL-CACHE-PERSISTS-EMPTY-SNAPSHOT]] (P2), wait gate — Ольгин
+  и Викторин smoke response (Clear site data).
+- ✅ **UX-MENTOR-MENTEE-NAME-CONTEXT (P3-ish UX gap)** closed `a7399e5` —
+  имя+фамилия менти в шапке страницы проверки ДЗ ментором (источник:
+  жалоба Юли Габрух «проверяешь несколько подряд и забываешь,
+  чьё»). Резолв через `pvlDomainApi.db.users` по `taskStudentId` (тот
+  же паттерн что для admin-preview banner'a из `_125`). 3 правки в
+  одном файле `views/PvlTaskDetailView.jsx`, +10 строк, без новых
+  fetch'ей/endpoint'ов/токенов. Session `_128`.
+- 🩹 **[skip ci] in head commit trap** — chore `d4d6f6e` с `[skip ci]`
+  в commit message стал HEAD push'а, скипнул GH Actions workflow для
+  **всего** push'а включая `a7399e5` с реальным кодом. Recovery через
+  workflow_dispatch (без empty commit). Bundle на проде
+  `index-XTevhYBM.js` → `index-ChQK4w6a.js`. Lesson записан
+  [`2026-05-25-skip-ci-head-commit-trap.md`](../docs/lessons/2026-05-25-skip-ci-head-commit-trap.md).
+- 📦 **Артефакты:** `docs/_session/2026-05-24_124..127.md`,
+  `2026-05-25_128_codeexec_uxfix_mentee_name_on_homework_review.md`,
+  `docs/lessons/2026-05-25-skip-ci-head-commit-trap.md`,
+  `.business/история/2026-05-25-actorsSyncReady-+-mentee-name.md`.

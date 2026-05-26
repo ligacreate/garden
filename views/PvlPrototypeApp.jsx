@@ -8166,13 +8166,39 @@ export default function PvlPrototypeApp({
         };
     }, [embeddedInGarden]);
 
-    // Повторный синк через 30 сек: подхватывает изменения в БД от других устройств
+    // BUG-PVL-MENTI-NO-AUTOREFRESH (recon _131 H3): у menti не было механизма
+    // подхватить mentor-write — state застывал на in_review, edit-окошко
+    // не открывалось. Manual unblock Ирины — _132.
+    //
+    // [A] setInterval(30s) вместо setTimeout(30s) — фоновое обновление пока
+    //     menti на странице (worst case ~30s до подхвата revision от ментора).
+    // [B] visibilitychange + focus — мгновенный sync при возврате во вкладку.
+    //
+    // RLS student_id=auth.uid() ограничивает трафик — menti тянет только свои
+    // submissions; для mentor/admin объём больше, но это их штатный сценарий.
     useEffect(() => {
-        const id = setTimeout(async () => {
-            try { await syncPvlActorsFromGarden(); } catch { /* ignore */ }
-            forceRefresh();
-        }, 30 * 1000);
-        return () => clearTimeout(id);
+        let cancelled = false;
+        let syncing = false;
+        const triggerSync = async () => {
+            if (cancelled || syncing || document.hidden) return;
+            syncing = true;
+            try {
+                await syncPvlActorsFromGarden();
+            } catch { /* ignore */ }
+            syncing = false;
+            if (!cancelled) forceRefresh();
+        };
+        const intervalId = setInterval(triggerSync, 30 * 1000);
+        const onVisibility = () => { if (!document.hidden) triggerSync(); };
+        const onFocus = () => triggerSync();
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('focus', onFocus);
+        return () => {
+            cancelled = true;
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', onVisibility);
+            window.removeEventListener('focus', onFocus);
+        };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

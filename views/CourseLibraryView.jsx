@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { FileText, Video } from 'lucide-react';
 import Button from '../components/Button';
 import PvlErrorBoundary from '../components/PvlErrorBoundary';
@@ -15,8 +15,10 @@ import {
     gardenPvlItemActive,
 } from '../services/pvlGardenNav';
 
-/** PvlPrototypeApp грузится отдельным чанком только после входа в курс ПВЛ — не в стартовом графе библиотеки */
-const PvlPrototypeApp = lazy(() => import('./PvlPrototypeApp'));
+// Eager import: lazy chunk не рендерился на проде после revert hotfix A+B
+// (commit 46cc058) — корень неясен, релиз-блокер перед менти-events.
+// Trade-off: initial load +~550KB, но гарантированно работает.
+import PvlPrototypeApp from './PvlPrototypeApp';
 
 const COURSES = [
     {
@@ -836,22 +838,17 @@ const CourseLibraryView = ({
                                     onExit={handleAiCampLogout}
                                     onReset={() => setPvlResetKey((k) => k + 1)}
                                 >
-                                    <Suspense fallback={(
-                                        <div className="p-8 text-center text-slate-500 text-sm">Загрузка курса…</div>
-                                    )}
-                                    >
-                                        <PvlPrototypeApp
-                                            key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.linkedUserId || 'anon'}`}
-                                            embeddedInGarden
-                                            gardenResolvedRole={pvlEmbeddedResolvedRole}
-                                            hideEmbeddedStudentRoleSwitch={pvlResolvedRole === 'admin'}
-                                            gardenBridgeRef={gardenPvlBridgeRef}
-                                            onGardenRouteChange={setPvlGardenRoute}
-                                            onGardenExit={onBackToGarden}
-                                            onEmbeddedDemoRoleChange={handleEmbeddedPvlDemoRoleChange}
-                                            hideEmbeddedRoleSwitch={pvlResolvedRole !== 'admin'}
-                                        />
-                                    </Suspense>
+                                    <PvlPrototypeApp
+                                        key={`${pvlResetKey}-al-camp-${aiCampSession.role}-${aiCampSession.linkedUserId || 'anon'}`}
+                                        embeddedInGarden
+                                        gardenResolvedRole={pvlEmbeddedResolvedRole}
+                                        hideEmbeddedStudentRoleSwitch={pvlResolvedRole === 'admin'}
+                                        gardenBridgeRef={gardenPvlBridgeRef}
+                                        onGardenRouteChange={setPvlGardenRoute}
+                                        onGardenExit={onBackToGarden}
+                                        onEmbeddedDemoRoleChange={handleEmbeddedPvlDemoRoleChange}
+                                        hideEmbeddedRoleSwitch={pvlResolvedRole !== 'admin'}
+                                    />
                                 </PvlErrorBoundary>
                             </div>
                         </div>

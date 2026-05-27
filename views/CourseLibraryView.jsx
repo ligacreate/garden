@@ -641,8 +641,8 @@ const CourseLibraryView = ({
         const roleForNav = routeBasedRole || aiCampSession.role;
         if (roleForNav === 'mentor') return buildGardenPvlMentorNav();
         if (roleForNav === 'admin') return buildGardenPvlAdminNav();
-        return buildGardenPvlStudentNav();
-    }, [aiCampSession, pvlGardenRoute]);
+        return buildGardenPvlStudentNav(aiCampSession?.linkedUserId || user?.id || null);
+    }, [aiCampSession, pvlGardenRoute, user?.id]);
 
     const gardenPvlActiveKey = useMemo(() => {
         if (pvlGardenRoute == null) return null;

@@ -15,7 +15,7 @@ export const GARDEN_PVL_ICON = {
     messages: 'messages',
 };
 
-export function buildGardenPvlStudentNav() {
+export function buildGardenPvlStudentNav(studentId = null) {
     return [
         { type: 'item', key: 'pvl-st-about', label: 'О курсе', iconKey: 'book', route: '/student/about' },
         { type: 'item', key: 'pvl-st-trk', label: 'Трекер', iconKey: 'tracker', route: '/student/tracker' },
@@ -25,6 +25,9 @@ export function buildGardenPvlStudentNav() {
         { type: 'item', key: 'pvl-st-msg', label: 'Чат с ментором', iconKey: 'messages', route: '/student/messages' },
         { type: 'item', key: 'pvl-st-res', label: 'Результаты', iconKey: 'book', route: '/student/results' },
         { type: 'item', key: 'pvl-st-cert', label: 'Сертификация', iconKey: 'book', route: '/student/certification' },
+        { type: 'divider', key: 'pvl-st-d1' },
+        { type: 'item', key: 'pvl-st-my-page', label: 'Моя страница', iconKey: 'mentor', route: studentId ? `/student/peer/${studentId}` : '/student/cohort' },
+        { type: 'item', key: 'pvl-st-cohort', label: 'Участницы курса', iconKey: 'users', route: '/student/cohort' },
         { type: 'divider', key: 'pvl-st-d2' },
         { type: 'item', key: 'pvl-st-settings', label: 'Настройки', iconKey: 'dashboard', action: 'settings' },
         { type: 'item', key: 'pvl-st-exit', label: 'Вернуться в сад', iconKey: 'dashboard', action: 'exit_pvl' },
@@ -57,6 +60,7 @@ export function buildGardenPvlAdminNav() {
         { type: 'divider', key: 'pvl-adm-d0' },
         { type: 'item', key: 'pvl-adm-st', label: 'Ученицы', iconKey: 'users', route: '/admin/students' },
         { type: 'item', key: 'pvl-adm-men', label: 'Менторы', iconKey: 'users', route: '/admin/mentors' },
+        { type: 'item', key: 'pvl-adm-cohort', label: 'Участницы курса', iconKey: 'users', route: '/admin/cohort' },
         { type: 'item', key: 'pvl-adm-content', label: 'Материалы курса', iconKey: 'graduation', route: '/admin/content' },
         { type: 'item', key: 'pvl-adm-cal', label: 'События', iconKey: 'calendar', route: '/admin/calendar' },
         { type: 'divider', key: 'pvl-adm-d1' },
@@ -81,6 +85,9 @@ export function gardenPvlItemActive(route, item) {
     if (base === '/admin/questions' && (route === '/admin/questions' || route === '/admin/qa')) return true;
     if (base === '/admin/students' && /^\/admin\/students(\/|$)/.test(route || '')) return true;
     if (base === '/admin/mentors' && /^\/admin\/mentors(\/|$)/.test(route || '')) return true;
+    if (base === '/admin/cohort' && /^\/admin\/(cohort|peer\/)/.test(route || '')) return true;
+    if (base === '/student/cohort' && /^\/student\/(cohort|peer\/)/.test(route || '')) return true;
+    if (base.startsWith('/student/peer/') && route === base) return true;
     if (base === '/admin/content') {
         const p = (route || '').split('?')[0];
         return p === '/admin/content' || /^\/admin\/content\/.+/.test(p);

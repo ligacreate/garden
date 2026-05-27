@@ -1,4 +1,4 @@
-// SW_VERSION: 2026-05-27-pvl-etap1-eager-import-fix
+// SW_VERSION: 2026-05-27-pvl-etap1-garden-nav-cohort-items
 // Сразу активируем новый SW, не ждём закрытия всех табов
 self.addEventListener('install', (event) => {
   self.skipWaiting();

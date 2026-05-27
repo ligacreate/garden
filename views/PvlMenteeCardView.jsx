@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import PvlTrainingSessionBlock from '../components/PvlTrainingSessionBlock';
 import { RISK_LEVEL } from '../data/pvl/enums';
 import { pvlDomainApi } from '../services/pvlMockApi';
 import { normalizePvlRiskLevel } from '../selectors/pvlCalculators';
@@ -602,6 +603,10 @@ export function renderMenteeCard({
     onBack,
     backLabel,
     showHeaderBack = true,
+    studentId,
+    viewerId,
+    viewerRole,
+    isMentorOfStudent = false,
 }) {
     const riskHint = buildRiskHint(risks);
     return (
@@ -618,6 +623,19 @@ export function renderMenteeCard({
             />
             <MenteeHomeworkResultsList tasks={homeworkResults} onOpenTask={onOpenTask} />
             {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
+            {studentId ? (
+                <PvlTrainingSessionBlock
+                    studentId={studentId}
+                    viewerId={viewerId}
+                    viewerRole={viewerRole}
+                    isMentorOfStudent={isMentorOfStudent}
+                />
+            ) : null}
+            {viewerRole === 'admin' ? (
+                <div className="rounded-2xl bg-[#FAF6F2] border border-[#E8D5C4] p-4 text-xs text-[#7A6758]">
+                    Выгрузка отзывов (MD/ZIP) — скоро.
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -671,6 +689,8 @@ export default function PvlMenteeCardView({
     backLabel,
     /** false — когда «назад» показывает общая шапка учительской (AdminDrilldownNavBar) */
     showHeaderBack = true,
+    /** auth.uid() пользователя, который смотрит карточку (нужен SessionBlock для own-page вычисления) */
+    viewerId = null,
 }) {
     const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
 
@@ -776,6 +796,15 @@ export default function PvlMenteeCardView({
         }
     };
 
+    const mentorOfStudent = (() => {
+        try {
+            const sp = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(resolvedStudentId));
+            return !!(sp && viewerId && String(sp.mentorId) === String(viewerId));
+        } catch {
+            return false;
+        }
+    })();
+
     return renderMenteeCard({
         profile: viewModel.profile,
         homeworkResults: viewModel.homeworkResults,
@@ -789,6 +818,10 @@ export default function PvlMenteeCardView({
         onBack,
         backLabel,
         showHeaderBack,
+        studentId: resolvedStudentId,
+        viewerId,
+        viewerRole: linkMode === 'admin' ? 'admin' : 'mentor',
+        isMentorOfStudent: linkMode === 'mentor' && mentorOfStudent,
     });
 }
 

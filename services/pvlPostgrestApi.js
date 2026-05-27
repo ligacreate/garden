@@ -746,9 +746,13 @@ export const pvlPostgrestApi = {
      * Фильтр role='applicant' встроен в helper.
      */
     async listMyCohortPeers() {
-        return asArray(await request('pvl_students', {
-            params: { select: 'id,full_name,cohort_id,mentor_id', order: 'full_name.asc' },
-        }));
+        const rows = await request('pvl_students', {
+            params: {
+                select: 'id,full_name,cohort_id,mentor_id,profile:profiles!inner(role)',
+                order: 'full_name.asc',
+            },
+        });
+        return asArray(rows).map((p) => ({ ...p, role: p.profile?.role || null }));
     },
 
     async listTrainingSessions(studentId) {

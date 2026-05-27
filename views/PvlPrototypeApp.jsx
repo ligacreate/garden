@@ -298,6 +298,7 @@ const ADMIN_SIDEBAR_CONFIG = [
     { type: 'item', label: 'Дашборд', path: '/admin/pvl' },
     { type: 'item', label: 'Ученицы', path: '/admin/students' },
     { type: 'item', label: 'Менторы', path: '/admin/mentors' },
+    { type: 'item', label: 'Участницы курса', path: '/admin/cohort' },
     { type: 'item', label: 'Материалы курса', path: '/admin/content' },
     { type: 'item', label: 'События', path: '/admin/calendar' },
     { type: 'divider' },
@@ -343,6 +344,7 @@ function adminSectionForRoute(allowedRoute) {
     if (ap === '/admin/pvl') return 'Дашборд';
     if (/^\/admin\/students(\/|$)/.test(ap)) return 'Ученицы';
     if (/^\/admin\/mentors(\/|$)/.test(ap)) return 'Менторы';
+    if (ap === '/admin/cohort' || /^\/admin\/peer\//.test(ap)) return 'Участницы курса';
     if (ap === '/admin/content' || /^\/admin\/content\//.test(ap)) return 'Материалы курса';
     if (ap === '/admin/calendar') return 'События';
     if (ap === '/admin/settings') return 'Настройки';
@@ -510,7 +512,7 @@ const COURSE_MENU_ICON = {
 
 const STUDENT_MENU_ICON = {
     Дашборд: LayoutGrid,
-    'Моя когорта': Users,
+    'Участницы курса': Users,
     Настройки: Settings2,
     'Вернуться в сад': CornerUpLeft,
     ...COURSE_MENU_ICON,
@@ -530,6 +532,7 @@ const ADMIN_MENU_ICON = {
     Дашборд: LayoutGrid,
     Ученицы: Users,
     Менторы: UserCog,
+    'Участницы курса': Users,
     'Материалы курса': Files,
     События: CalendarDays,
     Настройки: Settings2,
@@ -612,12 +615,12 @@ const SidebarMenu = ({
                     type="button"
                     key="cohort"
                     onClick={() => {
-                        setStudentSection('Моя когорта');
+                        setStudentSection('Участницы курса');
                         navigate('/student/cohort');
                     }}
                     className={pvlSidebarNavClass(routePath === '/student/cohort' || routePath.startsWith('/student/peer/'))}
                 >
-                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Моя когорта" />
+                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Участницы курса" />
                 </button>
                 <div className={pvlSidebarDividerClass} />
                 <button
@@ -3420,7 +3423,7 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
     if (route === '/student/cohort') return <PvlMyCohortView selfStudentId={studentId} navigate={navigate} viewerRole="student" />;
     if (route.startsWith('/student/peer/')) {
         const peerId = route.split('/')[3];
-        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="student" />;
+        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="student" viewerId={studentId} />;
     }
     if (route === '/student/tracker') {
         return (
@@ -4124,13 +4127,16 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                 menteeId={menteeId}
                 navigate={navigate}
                 refreshKey={refreshKey}
+                viewerId={mentorId}
                 onBack={() => navigate('/mentor/dashboard')}
             />
         );
     }
     if (route.startsWith('/mentor/peer/')) {
         const peerId = route.split('/')[3];
-        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="mentor" />;
+        const peerProfile = (pvlDomainApi.db.studentProfiles || []).find((p) => String(p.userId) === String(peerId));
+        const isMentorLink = !!(peerProfile && String(peerProfile.mentorId) === String(mentorId));
+        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="mentor" viewerId={mentorId} isMentorOfPeer={isMentorLink} />;
     }
 
     const mentorCourseNavigate = (r) => {
@@ -7712,13 +7718,17 @@ function AdminPage({
                 backLabel="← Вернуться к списку учениц"
                 navigate={navigate}
                 refreshKey={refreshKey}
+                viewerId={null}
                 onBack={() => navigate('/admin/students')}
             />
         );
     }
     if (adminPathOnly.startsWith('/admin/peer/')) {
         const peerId = adminPathOnly.split('/')[3];
-        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="admin" />;
+        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="admin" viewerId={null} />;
+    }
+    if (adminPathOnly === '/admin/cohort') {
+        return <PvlMyCohortView selfStudentId={null} navigate={navigate} viewerRole="admin" />;
     }
 
     return <TeacherPvlHome navigate={navigate} />;
@@ -7774,6 +7784,8 @@ const QA_ROUTE_LIST = [
     '/student/certification',
     '/student/self-assessment',
     '/student/cultural-code',
+    '/student/cohort',
+    '/student/peer/:id',
     '/mentor/dashboard',
     '/mentor/applicants',
     '/mentor/mentees',
@@ -7784,7 +7796,10 @@ const QA_ROUTE_LIST = [
     '/mentor/materials',
     '/mentor/mentee/:id',
     '/mentor/mentee/:id/task/:taskId',
+    '/mentor/peer/:id',
     '/admin/pvl',
+    '/admin/cohort',
+    '/admin/peer/:id',
     '/admin/content',
     '/admin/content/:contentId',
     '/admin/students',
@@ -7843,7 +7858,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
     const cps = pvlDomainApi.db.controlPoints;
     const week6CpCount = cps.filter((c) => c.weekNumber === 6).length;
     const szDeadlineOk = cps.some((c) => c.code === 'KT8' && c.deadlineAt === '2026-06-30');
-    const adminMenuOk = ADMIN_SIDEBAR_CONFIG.filter((x) => x.type === 'item').length === 14;
+    const adminMenuOk = ADMIN_SIDEBAR_CONFIG.filter((x) => x.type === 'item').length === 15;
     const pvlCalendarOk = Array.isArray(pvlDomainApi.calendarApi.listForViewer('admin', null));
     const scoresSeparated = true;
 

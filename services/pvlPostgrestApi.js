@@ -737,5 +737,82 @@ export const pvlPostgrestApi = {
         });
         return asArray(rows)[0] || null;
     },
+
+    // ── Training breakfasts (phase 38 + phase 39 RLS) ───────────────────────
+
+    /**
+     * Список peer-менти моей когорты. RLS на pvl_students (после phase39)
+     * пускает own/mentor/admin + cohort-peer через is_pvl_cohort_peer.
+     * Фильтр role='applicant' встроен в helper.
+     */
+    async listMyCohortPeers() {
+        return asArray(await request('pvl_students', {
+            params: { select: 'id,full_name,cohort_id,mentor_id', order: 'full_name.asc' },
+        }));
+    },
+
+    async listTrainingSessions(studentId) {
+        if (!studentId) return [];
+        return asArray(await request('pvl_training_sessions', {
+            params: {
+                select: 'id,student_id,conducted_at,scenario_topic,created_at,updated_at',
+                student_id: `eq.${studentId}`,
+                order: 'conducted_at.desc',
+            },
+        }));
+    },
+
+    /**
+     * Триггер enforce_pvl_training_sessions_limit при 3-й вставке кидает
+     * RAISE EXCEPTION с message «Лимит тренировочных завтраков превышен».
+     * Возвращаем { limitExceeded: true } чтобы caller отличил от других 400.
+     */
+    async createTrainingSession({ student_id, conducted_at, scenario_topic }) {
+        try {
+            const rows = await request('pvl_training_sessions', {
+                method: 'POST',
+                body: [{ student_id, conducted_at, scenario_topic }],
+                prefer: 'return=representation',
+            });
+            return { row: asArray(rows)[0] || null, limitExceeded: false };
+        } catch (e) {
+            const msg = String(e?.message || '');
+            if (msg.includes('Лимит тренировочных завтраков')) {
+                return { row: null, limitExceeded: true, error: msg };
+            }
+            throw e;
+        }
+    },
+
+    async deleteTrainingSession(sessionId) {
+        if (!sessionId) return false;
+        await request('pvl_training_sessions', {
+            method: 'DELETE',
+            params: { id: `eq.${sessionId}` },
+        });
+        return true;
+    },
+
+    async listTrainingFeedback(sessionId) {
+        if (!sessionId) return [];
+        return asArray(await request('pvl_training_feedback', {
+            params: {
+                select: 'id,session_id,author_id,text_what_worked,text_what_to_strengthen,text_one_technique,text_open_question,created_at,updated_at',
+                session_id: `eq.${sessionId}`,
+                order: 'created_at.desc',
+            },
+        }));
+    },
+
+    /** UPSERT через UNIQUE (session_id, author_id) — для edit без отдельного PATCH. */
+    async upsertTrainingFeedback(payload) {
+        const rows = await request('pvl_training_feedback', {
+            method: 'POST',
+            params: { on_conflict: 'session_id,author_id' },
+            body: [payload],
+            prefer: 'resolution=merge-duplicates,return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
 };
 

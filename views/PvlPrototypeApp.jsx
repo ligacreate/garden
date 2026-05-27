@@ -31,6 +31,8 @@ import Button from '../components/Button';
 import RichEditor from '../components/RichEditor';
 import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
+import PvlMyCohortView from './PvlMyCohortView';
+import PvlPeerProfileView from './PvlPeerProfileView';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
 import PvlSzAssessmentFlow from './PvlSzAssessmentFlow';
 import {
@@ -508,6 +510,7 @@ const COURSE_MENU_ICON = {
 
 const STUDENT_MENU_ICON = {
     Дашборд: LayoutGrid,
+    'Моя когорта': Users,
     Настройки: Settings2,
     'Вернуться в сад': CornerUpLeft,
     ...COURSE_MENU_ICON,
@@ -604,6 +607,18 @@ const SidebarMenu = ({
                         </button>
                     );
                 })}
+                <div className={pvlSidebarDividerClass} />
+                <button
+                    type="button"
+                    key="cohort"
+                    onClick={() => {
+                        setStudentSection('Моя когорта');
+                        navigate('/student/cohort');
+                    }}
+                    className={pvlSidebarNavClass(routePath === '/student/cohort' || routePath.startsWith('/student/peer/'))}
+                >
+                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Моя когорта" />
+                </button>
                 <div className={pvlSidebarDividerClass} />
                 <button
                     type="button"
@@ -3402,6 +3417,11 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/messages') return <StudentDirectMessages studentId={studentId} />;
+    if (route === '/student/cohort') return <PvlMyCohortView selfStudentId={studentId} navigate={navigate} viewerRole="student" />;
+    if (route.startsWith('/student/peer/')) {
+        const peerId = route.split('/')[3];
+        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="student" />;
+    }
     if (route === '/student/tracker') {
         return (
             <StudentCourseTracker
@@ -4107,6 +4127,10 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                 onBack={() => navigate('/mentor/dashboard')}
             />
         );
+    }
+    if (route.startsWith('/mentor/peer/')) {
+        const peerId = route.split('/')[3];
+        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="mentor" />;
     }
 
     const mentorCourseNavigate = (r) => {
@@ -7691,6 +7715,10 @@ function AdminPage({
                 onBack={() => navigate('/admin/students')}
             />
         );
+    }
+    if (adminPathOnly.startsWith('/admin/peer/')) {
+        const peerId = adminPathOnly.split('/')[3];
+        return <PvlPeerProfileView peerId={peerId} navigate={navigate} viewerRole="admin" />;
     }
 
     return <TeacherPvlHome navigate={navigate} />;

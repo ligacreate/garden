@@ -23,6 +23,7 @@ import {
     MessageCircle,
     Route,
     Settings2,
+    User,
     UserCog,
     Users,
     X,
@@ -512,6 +513,7 @@ const COURSE_MENU_ICON = {
 
 const STUDENT_MENU_ICON = {
     Дашборд: LayoutGrid,
+    'Моя страница': User,
     'Участницы курса': Users,
     Настройки: Settings2,
     'Вернуться в сад': CornerUpLeft,
@@ -613,12 +615,23 @@ const SidebarMenu = ({
                 <div className={pvlSidebarDividerClass} />
                 <button
                     type="button"
+                    key="my-page"
+                    onClick={() => {
+                        setStudentSection('Моя страница');
+                        navigate(`/student/peer/${studentId}`);
+                    }}
+                    className={pvlSidebarNavClass(routePath === `/student/peer/${studentId}`)}
+                >
+                    <MenuLabel iconMap={STUDENT_MENU_ICON} label="Моя страница" />
+                </button>
+                <button
+                    type="button"
                     key="cohort"
                     onClick={() => {
                         setStudentSection('Участницы курса');
                         navigate('/student/cohort');
                     }}
-                    className={pvlSidebarNavClass(routePath === '/student/cohort' || routePath.startsWith('/student/peer/'))}
+                    className={pvlSidebarNavClass(routePath === '/student/cohort' || (routePath.startsWith('/student/peer/') && routePath !== `/student/peer/${studentId}`))}
                 >
                     <MenuLabel iconMap={STUDENT_MENU_ICON} label="Участницы курса" />
                 </button>

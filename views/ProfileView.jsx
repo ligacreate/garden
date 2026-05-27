@@ -846,8 +846,11 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                     </div>
                     <div>
                         <p className="text-sm text-slate-600 mb-3">
-                            Шаг 2. Если бот не открылся автоматически — скопируйте код и отправьте боту командой <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">/start &lt;код&gt;</code>:
+                            Шаг 2. Если бот не открылся автоматически — отправьте боту командой:
                         </p>
+                        <div className="bg-slate-100 px-3 py-2 rounded font-mono text-sm text-slate-800 mb-3 select-all">
+                            /start {tgLinkModal?.code || 'КОД'}
+                        </div>
                         <div className="flex items-center gap-2">
                             <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-mono text-lg text-slate-800 tracking-wider text-center">
                                 {tgLinkModal?.code || ''}

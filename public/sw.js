@@ -1,4 +1,4 @@
-// SW_VERSION: 2026-05-27-pvl-etap1-own-page-button-fix
+// SW_VERSION: 2026-05-28-pvl-md-first-heading-preserve
 // Сразу активируем новый SW, не ждём закрытия всех табов
 self.addEventListener('install', (event) => {
   self.skipWaiting();

@@ -107,7 +107,7 @@ export function parsePvlImportedMarkdownDoc(text = '') {
     if (!title) title = 'Материал из документа';
 
     let mdBody = afterYaml;
-    if (headingIndex >= 0) {
+    if (headingIndex >= 0 && !yamlTitle) {
         const nl = [...lines];
         nl.splice(headingIndex, 1);
         mdBody = nl.join('\n').replace(/^\n+/, '');

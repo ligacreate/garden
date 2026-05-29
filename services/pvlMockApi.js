@@ -1182,13 +1182,15 @@ const USERS_SWR_KEY = 'pvl_users_swr_v1';
 
 export async function syncPvlActorsFromGarden() {
     try {
-        // SWR: берём кэш пользователей из localStorage (актуален 1 час)
+        // SWR: берём кэш пользователей из localStorage (актуален 24 часа — bump от 1ч,
+        // hedge против пустого mentor view когда background-refresh падает на network/JWT блипе;
+        // см. docs/_session/2026-05-29_155_codeexec_swr_ttl_bump_hot_patch_diff.md)
         let cachedUsers = null;
         try {
             const raw = localStorage.getItem(USERS_SWR_KEY);
             if (raw) {
                 const { ts, d } = JSON.parse(raw);
-                if (d && Date.now() - ts < 60 * 60 * 1000) cachedUsers = d;
+                if (d && Date.now() - ts < 24 * 60 * 60 * 1000) cachedUsers = d;
             }
         } catch { /* ignore */ }
 

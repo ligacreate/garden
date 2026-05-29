@@ -1,4 +1,4 @@
-// SW_VERSION: 2026-05-28-pvl-md-first-heading-preserve
+// SW_VERSION: 2026-05-29-swr-ttl-bump
 // Сразу активируем новый SW, не ждём закрытия всех табов
 self.addEventListener('install', (event) => {
   self.skipWaiting();

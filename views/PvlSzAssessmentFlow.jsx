@@ -1,26 +1,49 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     SZ_ASSESSMENT_CRITICAL,
     SZ_ASSESSMENT_SECTIONS,
     SZ_REFLECTION_PROMPTS,
+    SZ_REFLECTION_PROMPTS_MENTOR,
 } from '../data/pvlReferenceContent';
-import { pvlDomainApi } from '../services/pvlMockApi';
+import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 
-const STORAGE_PREFIX = 'pvl_sz_flow_v1_';
+// Этап 2 / Сессия 3: двусторонний parallel-blind assessment СЗ на реальном API.
+// ПРАВИЛА ФОКУСА (из _167, иначе вернётся баг ментора BUG-PVL-AUTOREFRESH-BREAKS-MENTOR-INPUT):
+//   - textarea и баллы живут в ЛОКАЛЬНОМ useState, инициализируются из данных/localStorage
+//     ОДИН РАЗ (через initRef ниже); НИКОГДА не пере-синкаются с сервера во время набора;
+//   - autosave (PATCH черновика) — только на переходе вперёд по шагам, fire-and-forget;
+//     localStorage-черновик — сетевой safety-net; возвращаемую строку в стейт НЕ кладём;
+//   - getCertificationCompare/рефетч делает родитель только по onCommitted, не во время набора.
 
-function loadDraft(studentId) {
+const STORAGE_PREFIX = 'pvl_sz_flow_v2_';
+
+const REFLECTION_MIN = 50;
+const CRITICAL_COMMENT_MIN = 30;
+
+function storageKey(mode, studentId) {
+    return `${STORAGE_PREFIX}${mode}_${studentId}`;
+}
+
+function loadDraft(mode, studentId) {
     try {
-        const raw = localStorage.getItem(`${STORAGE_PREFIX}${studentId}`);
-        if (!raw) return null;
-        return JSON.parse(raw);
+        const raw = localStorage.getItem(storageKey(mode, studentId));
+        return raw ? JSON.parse(raw) : null;
     } catch {
         return null;
     }
 }
 
-function saveDraft(studentId, data) {
+function saveDraft(mode, studentId, data) {
     try {
-        localStorage.setItem(`${STORAGE_PREFIX}${studentId}`, JSON.stringify(data));
+        localStorage.setItem(storageKey(mode, studentId), JSON.stringify(data));
+    } catch {
+        /* ignore */
+    }
+}
+
+function clearLocalDraft(mode, studentId) {
+    try {
+        localStorage.removeItem(storageKey(mode, studentId));
     } catch {
         /* ignore */
     }
@@ -35,7 +58,7 @@ function emptyScores() {
 }
 
 function emptyCritical() {
-    return Array(10).fill(false);
+    return Array(SZ_ASSESSMENT_CRITICAL.length).fill(false);
 }
 
 function totalScores(arr) {
@@ -55,90 +78,169 @@ function levelLabel(total) {
     return 'сильный уровень';
 }
 
-/** Пошаговая самооценка СЗ по референсу pvl_assessment.html */
-export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, onCommitted }) {
-    const draft = useMemo(() => loadDraft(studentId), [studentId]);
-    const [step, setStep] = useState(draft?.step ?? 0);
-    const [reflections, setReflections] = useState(draft?.reflections ?? emptyReflections());
-    const [scores, setScores] = useState(draft?.scores ?? emptyScores());
-    const [critical, setCritical] = useState(draft?.critical ?? emptyCritical());
-    const [criticalComment, setCriticalComment] = useState(draft?.criticalComment ?? '');
-    const [mentorScores, setMentorScores] = useState(draft?.mentorScores ?? emptyScores());
-    const [showMentorCompare, setShowMentorCompare] = useState(!!draft?.showMentorCompare);
+// ── маппинг локальные массивы ↔ JSONB-колонки БД ─────────────────────────────
+// criteria_scores: { "A1": 2, …, "F3": 3 } (ключ = letter+index из SZ_ASSESSMENT_SECTIONS)
+function criteriaToJsonb(scores) {
+    const out = {};
+    SZ_ASSESSMENT_SECTIONS.forEach((sec, si) => {
+        sec.items.forEach((_, j) => {
+            const v = scores[si * 3 + j];
+            if (typeof v === 'number') out[`${sec.letter}${j + 1}`] = v;
+        });
+    });
+    return out;
+}
 
-    const persist = useCallback(
-        (patch) => {
-            const next = {
-                step: patch.step ?? step,
-                reflections: patch.reflections ?? reflections,
-                scores: patch.scores ?? scores,
-                critical: patch.critical ?? critical,
-                criticalComment: patch.criticalComment ?? criticalComment,
-                mentorScores: patch.mentorScores ?? mentorScores,
-                showMentorCompare: patch.showMentorCompare ?? showMentorCompare,
-            };
-            saveDraft(studentId, next);
-        },
-        [studentId, step, reflections, scores, critical, criticalComment, mentorScores, showMentorCompare],
-    );
+// reflections: { "prompt_1": "…", … } по prompt.key выбранного режима
+function reflectionsToJsonb(reflections, prompts) {
+    const out = {};
+    prompts.forEach((p, i) => { out[p.key] = reflections[i] ?? ''; });
+    return out;
+}
+
+// critical_flags: ["critical_1", "critical_5", …] — id отмеченных условий
+function criticalToFlags(critical) {
+    return SZ_ASSESSMENT_CRITICAL.filter((_, i) => critical[i]).map((c) => c.id);
+}
+
+// ── init ОДИН РАЗ: сервер-черновик (initialData) → иначе localStorage → иначе пусто ──
+function computeInitial(initialData, mode, studentId, prompts) {
+    if (initialData) {
+        const scores = emptyScores();
+        SZ_ASSESSMENT_SECTIONS.forEach((sec, si) => sec.items.forEach((_, j) => {
+            const v = initialData.criteria_scores?.[`${sec.letter}${j + 1}`];
+            if (typeof v === 'number') scores[si * 3 + j] = v;
+        }));
+        const reflections = emptyReflections();
+        prompts.forEach((p, i) => { reflections[i] = String(initialData.reflections?.[p.key] ?? ''); });
+        const flags = Array.isArray(initialData.critical_flags) ? initialData.critical_flags : [];
+        const critical = SZ_ASSESSMENT_CRITICAL.map((c) => flags.includes(c.id));
+        return { step: 0, reflections, scores, critical, criticalComment: initialData.critical_comment ?? '' };
+    }
+    const d = loadDraft(mode, studentId);
+    if (d) {
+        return {
+            step: typeof d.step === 'number' ? d.step : 0,
+            reflections: Array.isArray(d.reflections) && d.reflections.length === 6 ? d.reflections : emptyReflections(),
+            scores: Array.isArray(d.scores) && d.scores.length === 18 ? d.scores : emptyScores(),
+            critical: Array.isArray(d.critical) && d.critical.length === SZ_ASSESSMENT_CRITICAL.length ? d.critical : emptyCritical(),
+            criticalComment: d.criticalComment ?? '',
+        };
+    }
+    return { step: 0, reflections: emptyReflections(), scores: emptyScores(), critical: emptyCritical(), criticalComment: '' };
+}
+
+/**
+ * Пошаговый бланк СЗ. mode='self' (менти о себе) | 'mentor' (ментор о менти).
+ * studentId — оцениваемая менти (в обоих режимах это student_id строки БД);
+ * mentor_id проставляет триггер БД. onCommitted — родитель рефетчит после submit.
+ */
+export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, peerName = '', initialData = null, onCommitted }) {
+    const isMentor = mode === 'mentor';
+    const prompts = isMentor ? SZ_REFLECTION_PROMPTS_MENTOR : SZ_REFLECTION_PROMPTS;
+
+    // init ОДИН РАЗ (компонент ремаунтится по key=`${mode}-${studentId}` в родителе)
+    const initRef = useRef(null);
+    if (initRef.current === null) initRef.current = computeInitial(initialData, mode, studentId, prompts);
+    const init = initRef.current;
+
+    const [step, setStep] = useState(init.step);
+    const [reflections, setReflections] = useState(init.reflections);
+    const [scores, setScores] = useState(init.scores);
+    const [critical, setCritical] = useState(init.critical);
+    const [criticalComment, setCriticalComment] = useState(init.criticalComment);
+    const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState(null);
+
+    const persistLocal = (patch) => {
+        saveDraft(mode, studentId, {
+            step: patch.step ?? step,
+            reflections: patch.reflections ?? reflections,
+            scores: patch.scores ?? scores,
+            critical: patch.critical ?? critical,
+            criticalComment: patch.criticalComment ?? criticalComment,
+        });
+    };
+
+    const buildPayload = () => ({
+        student_id: studentId,
+        criteria_scores: criteriaToJsonb(scores),
+        score_total: totalScores(scores),
+        reflections: reflectionsToJsonb(reflections, prompts),
+        critical_flags: criticalToFlags(critical),
+        critical_comment: criticalComment.trim() ? criticalComment.trim() : null,
+    });
+
+    // autosave черновика на сервер; результат в стейт НЕ кладём (правило фокуса)
+    const saveDraftToServer = async () => {
+        const payload = buildPayload();
+        if (isMentor) return pvlPostgrestApi.upsertCertificationMentorDraft(payload);
+        return pvlPostgrestApi.upsertCertificationSelfDraft(payload);
+    };
 
     const setScore = (idx, val) => {
         const next = [...scores];
         next[idx] = val;
         setScores(next);
-        persist({ scores: next });
+        persistLocal({ scores: next });
     };
 
-    const setMentorScore = (idx, val) => {
-        const next = [...mentorScores];
-        next[idx] = val;
-        setMentorScores(next);
-        persist({ mentorScores: next });
+    const goStep = (n) => { setStep(n); persistLocal({ step: n }); };
+    const goForward = (n) => {
+        goStep(n);
+        // PATCH черновика на переходе вперёд (≤ нескольких раз за flow); localStorage — safety-net
+        saveDraftToServer().catch(() => { /* сетевой сбой — черновик уже в localStorage */ });
     };
 
-    const reflectionsOk = reflections.every((t) => String(t).trim().length > 0);
+    // ── валидации (ТЗ _144 §4.5, _146 §5) ─────────────────────────────────────
+    const reflectionOk = (i) => reflections[i].trim().length >= REFLECTION_MIN;
+    const reflectionsOk = reflections.every((_, i) => reflectionOk(i));
     const scoresOk = scores.every((s) => s === 1 || s === 2 || s === 3);
     const anyCritical = critical.some(Boolean);
-    const criticalOk = !anyCritical || String(criticalComment).trim().length > 0;
+    const criticalOk = !anyCritical || criticalComment.trim().length >= CRITICAL_COMMENT_MIN;
+    const allValid = reflectionsOk && scoresOk && criticalOk;
 
     const total = totalScores(scores);
     const secSums = sectionSums(scores);
 
-    const comparisonRows = useMemo(() => {
-        const rows = [];
-        let idx = 0;
-        SZ_ASSESSMENT_SECTIONS.forEach((sec) => {
-            sec.items.forEach((text, j) => {
-                const self = scores[idx];
-                const men = mentorScores[idx];
-                const diff = typeof self === 'number' && typeof men === 'number' ? Math.abs(self - men) : null;
-                rows.push({
-                    idx,
-                    section: sec.letter,
-                    text,
-                    self,
-                    men,
-                    flag: diff != null && diff >= 3,
-                });
-                idx += 1;
-            });
-        });
-        return rows;
-    }, [scores, mentorScores]);
+    const handleSubmit = async () => {
+        if (!allValid || submitting) return;
+        setSubmitting(true);
+        setSubmitError(null);
+        try {
+            await saveDraftToServer(); // гарантируем строку + финальные данные
+            if (isMentor) await pvlPostgrestApi.submitCertificationMentor(studentId);
+            else await pvlPostgrestApi.submitCertificationSelf(studentId);
+            clearLocalDraft(mode, studentId);
+            onCommitted?.();
+        } catch (e) {
+            setSubmitError(String(e?.message || 'Не удалось отправить. Черновик сохранён локально — попробуйте ещё раз.'));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const title = isMentor
+        ? `Моя оценка ведущей${peerName ? `: ${peerName}` : ''}`
+        : 'Моя самооценка сертификационного завтрака';
 
     const stepsMeta = [
         { n: 0, title: 'Как это работает' },
         { n: 1, title: 'Рефлексия' },
         { n: 2, title: '18 критериев' },
         { n: 3, title: 'Критические условия' },
-        { n: 4, title: 'Итог' },
+        { n: 4, title: 'Отправка' },
     ];
 
     return (
         <div className="space-y-4">
             <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                <h2 className="font-display text-2xl text-slate-800">Самооценка сертификационного завтрака</h2>
-                <p className="text-sm text-slate-500 mt-1">Заполни в течение 24 часов после встречи — пока впечатления свежие.</p>
+                <h2 className="font-display text-2xl text-slate-800">{title}</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                    {isMentor
+                        ? 'Оцените работу ведущей по тем же критериям и зафиксируйте наблюдения.'
+                        : 'Заполни в течение 24 часов после встречи — пока впечатления свежие.'}
+                </p>
                 <div className="flex flex-wrap gap-2 mt-4">
                     {stepsMeta.map((s) => (
                         <span
@@ -153,10 +255,18 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
 
             {step === 0 && (
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm space-y-4 text-sm text-slate-700 leading-relaxed">
-                    <p>
-                        Этот бланк помогает честно зафиксировать, как прошла встреча: что получилось, что хочется усилить и где были сложности.
-                        Ответы нужны <strong>только тебе и ментору</strong> — для развития, а не для оценки «хорошо / плохо».
-                    </p>
+                    {isMentor ? (
+                        <p>
+                            Вы оцениваете работу ведущей по 18 критериям и шести вопросам рефлексии.
+                            Ваши ответы и самооценка ведущей сравниваются <strong>только после того, как обе стороны отправят анкету</strong>
+                            {' '}(parallel-blind): до этого вы не видите её оценок, а она — ваших.
+                        </p>
+                    ) : (
+                        <p>
+                            Этот бланк помогает честно зафиксировать, как прошла встреча: что получилось, что хочется усилить и где были сложности.
+                            Ответы нужны <strong>только тебе и ментору</strong> — для развития, а не для оценки «хорошо / плохо».
+                        </p>
+                    )}
                     <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
                         <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Шкала для критериев (шаг 3)</div>
                         <ul className="space-y-1 text-slate-600">
@@ -165,14 +275,11 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                             <li><span className="font-medium text-slate-800">3</span> — сильно / именно так и задумывала</li>
                         </ul>
                     </div>
-                    <p className="text-slate-500">Сначала — свободные ответы, затем оценки по блокам A–F, затем критические условия и итог.</p>
+                    <p className="text-slate-500">Сначала — свободные ответы, затем оценки по блокам A–F, затем критические условия и отправка.</p>
                     <button
                         type="button"
                         className="rounded-xl bg-slate-800 text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-900"
-                        onClick={() => {
-                            setStep(1);
-                            persist({ step: 1 });
-                        }}
+                        onClick={() => goForward(1)}
                     >
                         Начать
                     </button>
@@ -181,33 +288,38 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
 
             {step === 1 && (
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm space-y-5">
-                    <h3 className="font-display text-lg text-slate-800">Шаг 1 — рефлексия (обязательно)</h3>
-                    {SZ_REFLECTION_PROMPTS.map((p, i) => (
-                        <label key={p.q} className="block space-y-2">
-                            <span className="text-sm font-medium text-slate-800">{i + 1}. {p.q}</span>
-                            <span className="text-xs text-slate-500 block">{p.hint}</span>
-                            <textarea
-                                className="w-full min-h-[88px] rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800"
-                                value={reflections[i]}
-                                onChange={(e) => {
-                                    const next = [...reflections];
-                                    next[i] = e.target.value;
-                                    setReflections(next);
-                                    persist({ reflections: next });
-                                }}
-                            />
-                        </label>
-                    ))}
-                    <div className="flex flex-wrap gap-2">
-                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => { setStep(0); persist({ step: 0 }); }}>Назад</button>
+                    <h3 className="font-display text-lg text-slate-800">Шаг 1 — рефлексия (каждый ответ ≥ {REFLECTION_MIN} символов)</h3>
+                    {prompts.map((p, i) => {
+                        const len = reflections[i].trim().length;
+                        return (
+                            <label key={p.key} className="block space-y-2">
+                                <span className="text-sm font-medium text-slate-800">{i + 1}. {p.q}</span>
+                                <span className="text-xs text-slate-500 block">{p.hint}</span>
+                                <textarea
+                                    className="w-full min-h-[88px] rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800"
+                                    value={reflections[i]}
+                                    onChange={(e) => {
+                                        const next = [...reflections];
+                                        next[i] = e.target.value;
+                                        setReflections(next);
+                                        persistLocal({ reflections: next });
+                                    }}
+                                />
+                                <span className={`text-[11px] ${len >= REFLECTION_MIN ? 'text-emerald-600' : 'text-slate-400'}`}>{len}/{REFLECTION_MIN}</span>
+                            </label>
+                        );
+                    })}
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => goStep(0)}>Назад</button>
                         <button
                             type="button"
                             disabled={!reflectionsOk}
                             className="rounded-xl bg-slate-800 text-white px-5 py-2 text-sm font-medium disabled:opacity-40"
-                            onClick={() => { setStep(2); persist({ step: 2 }); }}
+                            onClick={() => goForward(2)}
                         >
                             Дальше
                         </button>
+                        {!reflectionsOk ? <span className="text-xs text-slate-400">Каждый из 6 ответов — минимум {REFLECTION_MIN} символов.</span> : null}
                     </div>
                 </div>
             )}
@@ -215,6 +327,7 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
             {step === 2 && (
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm space-y-6">
                     <h3 className="font-display text-lg text-slate-800">Шаг 2 — оценка по критериям (1–3 балла)</h3>
+                    <p className="text-sm text-slate-600">{isMentor ? 'Оцените работу ведущей по каждому критерию.' : 'Оцените себя по каждому критерию.'}</p>
                     {SZ_ASSESSMENT_SECTIONS.map((sec, si) => (
                         <section key={sec.letter} className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 space-y-3">
                             <div className="text-sm font-semibold text-slate-800">{sec.letter}. {sec.name}</div>
@@ -240,16 +353,17 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                             })}
                         </section>
                     ))}
-                    <div className="flex flex-wrap gap-2">
-                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => { setStep(1); persist({ step: 1 }); }}>Назад</button>
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => goStep(1)}>Назад</button>
                         <button
                             type="button"
                             disabled={!scoresOk}
                             className="rounded-xl bg-slate-800 text-white px-5 py-2 text-sm font-medium disabled:opacity-40"
-                            onClick={() => { setStep(3); persist({ step: 3 }); }}
+                            onClick={() => goForward(3)}
                         >
                             Дальше
                         </button>
+                        {!scoresOk ? <span className="text-xs text-slate-400">Проставьте балл по всем 18 критериям.</span> : null}
                     </div>
                 </div>
             )}
@@ -257,10 +371,10 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
             {step === 3 && (
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm space-y-4">
                     <h3 className="font-display text-lg text-slate-800">Шаг 3 — критические условия</h3>
-                    <p className="text-sm text-slate-600">Отметь только то, что <strong>реально было</strong> на встрече. Если отмечено хоть одно — обязательно поясни в комментарии.</p>
+                    <p className="text-sm text-slate-600">Отметьте только то, что <strong>реально было</strong> на встрече. Если отмечено хоть одно — обязательно поясните в комментарии (≥ {CRITICAL_COMMENT_MIN} символов).</p>
                     <ul className="space-y-2">
                         {SZ_ASSESSMENT_CRITICAL.map((item, i) => (
-                            <li key={i} className="flex gap-3 items-start text-sm text-slate-700">
+                            <li key={item.id} className="flex gap-3 items-start text-sm text-slate-700">
                                 <input
                                     type="checkbox"
                                     className="mt-1 rounded border-slate-300"
@@ -269,7 +383,7 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                                         const next = [...critical];
                                         next[i] = !next[i];
                                         setCritical(next);
-                                        persist({ critical: next });
+                                        persistLocal({ critical: next });
                                     }}
                                 />
                                 <span>{item.text}</span>
@@ -277,36 +391,27 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                         ))}
                     </ul>
                     <label className="block space-y-1">
-                        <span className="text-xs font-medium text-slate-500">Комментарий {anyCritical ? '(обязательно)' : '(если нужно)'}</span>
+                        <span className="text-xs font-medium text-slate-500">Комментарий {anyCritical ? `(обязательно, ≥ ${CRITICAL_COMMENT_MIN})` : '(если нужно)'}</span>
                         <textarea
                             className="w-full min-h-[80px] rounded-xl border border-slate-200 p-3 text-sm"
                             value={criticalComment}
                             onChange={(e) => {
                                 setCriticalComment(e.target.value);
-                                persist({ criticalComment: e.target.value });
+                                persistLocal({ criticalComment: e.target.value });
                             }}
                         />
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => { setStep(2); persist({ step: 2 }); }}>Назад</button>
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => goStep(2)}>Назад</button>
                         <button
                             type="button"
-                            disabled={(anyCritical && !criticalOk) || !scoresOk}
+                            disabled={anyCritical && !criticalOk}
                             className="rounded-xl bg-slate-800 text-white px-5 py-2 text-sm font-medium disabled:opacity-40"
-                            onClick={() => {
-                                const critN = critical.filter(Boolean).length;
-                                pvlDomainApi.studentApi.commitSzSelfAssessment(studentId, {
-                                    selfScoreTotal: totalScores(scores),
-                                    criticalFlagsCount: critN,
-                                    mentorScores,
-                                });
-                                onCommitted?.();
-                                setStep(4);
-                                persist({ step: 4 });
-                            }}
+                            onClick={() => goForward(4)}
                         >
-                            Завершить и посмотреть итог
+                            Дальше
                         </button>
+                        {anyCritical && !criticalOk ? <span className="text-xs text-slate-400">Поясните отмеченные условия (≥ {CRITICAL_COMMENT_MIN} символов).</span> : null}
                     </div>
                 </div>
             )}
@@ -314,19 +419,17 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
             {step === 4 && (
                 <div className="space-y-4">
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-6 shadow-sm">
-                        <h3 className="font-display text-xl text-slate-800">Итог самооценки</h3>
+                        <h3 className="font-display text-xl text-slate-800">{isMentor ? 'Итог оценки' : 'Итог самооценки'}</h3>
                         <p className="text-3xl font-display text-slate-900 mt-2 tabular-nums">{total} / 54</p>
                         <p className="text-sm text-slate-600 mt-1">Уровень: <span className="font-medium text-slate-800">{levelLabel(total)}</span></p>
-                        <p className="text-xs text-slate-500 mt-3">
-                            18–30 = базовый · 31–45 = рабочий · 46–54 = сильный (как в материалах по СЗ).
-                        </p>
+                        <p className="text-xs text-slate-500 mt-3">18–30 = базовый · 31–45 = рабочий · 46–54 = сильный (как в материалах по СЗ).</p>
                     </div>
 
                     {anyCritical ? (
                         <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4 text-sm text-rose-900">
                             <div className="font-medium mb-2">Отмечены критические условия</div>
                             <ul className="list-disc pl-5 space-y-1">
-                                {SZ_ASSESSMENT_CRITICAL.map((item, i) => (critical[i] ? <li key={i}>{item.text}</li> : null))}
+                                {SZ_ASSESSMENT_CRITICAL.map((item, i) => (critical[i] ? <li key={item.id}>{item.text}</li> : null))}
                             </ul>
                             {criticalComment ? <p className="mt-3 text-rose-800/90 whitespace-pre-wrap">{criticalComment}</p> : null}
                         </div>
@@ -346,80 +449,28 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                         </ul>
                     </div>
 
-                    {certPoints != null ? (
-                        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-600">
-                            В разделе «Сертификация» сейчас: самооценка <span className="font-medium tabular-nums">{certPoints.szSelfAssessmentTotal}/54</span>
-                            {' · '}ментор <span className="font-medium tabular-nums">{certPoints.szMentorAssessmentTotal}/54</span>
-                            . После нажатия «Завершить» на шаге 3 эти значения обновляются из бланка; черновик шагов по-прежнему хранится в браузере до завершения.
+                    <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
+                        <p className="text-sm text-slate-600">
+                            После отправки бланк закрывается на правки. Сравнение с {isMentor ? 'самооценкой ведущей' : 'оценкой ментора'} откроется,
+                            когда обе стороны отправят анкеты.
+                        </p>
+                        {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
+                        <div className="flex flex-wrap gap-2 items-center">
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => goStep(3)}>Назад к правкам</button>
+                            <button
+                                type="button"
+                                disabled={!allValid || submitting}
+                                className="rounded-xl bg-emerald-700 text-white px-5 py-2 text-sm font-medium hover:bg-emerald-800 disabled:opacity-40"
+                                onClick={handleSubmit}
+                            >
+                                {submitting ? 'Отправляем…' : 'Отправить'}
+                            </button>
+                            {!allValid ? (
+                                <span className="text-xs text-slate-400">
+                                    Заполните все поля: 18 баллов, 6 рефлексий ≥ {REFLECTION_MIN} симв.{anyCritical ? `, комментарий к критическим ≥ ${CRITICAL_COMMENT_MIN}` : ''}.
+                                </span>
+                            ) : null}
                         </div>
-                    ) : null}
-
-                    <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
-                        <button
-                            type="button"
-                            className="text-sm font-medium text-blue-700 hover:underline"
-                            onClick={() => {
-                                const next = !showMentorCompare;
-                                setShowMentorCompare(next);
-                                persist({ showMentorCompare: next });
-                            }}
-                        >
-                            {showMentorCompare ? 'Скрыть сравнение с оценкой ментора' : 'Сравнить с оценкой ментора (ввод вручную)'}
-                        </button>
-                        {showMentorCompare ? (
-                            <div className="mt-4 space-y-4">
-                                <p className="text-xs text-slate-500">Введите баллы ментора по тем же 18 критериям. Разница ≥ 3 баллов по пункту — повод для разговора (как в регламенте СЗ).</p>
-                                {SZ_ASSESSMENT_SECTIONS.map((sec, si) => (
-                                    <div key={sec.letter} className="text-sm space-y-2">
-                                        <div className="font-medium text-slate-800">{sec.letter}. {sec.name}</div>
-                                        {sec.items.map((itemText, j) => {
-                                            const idx = si * 3 + j;
-                                            return (
-                                                <div key={idx} className="pl-2 border-l-2 border-slate-100">
-                                                    <p className="text-slate-600 text-xs mb-1">{itemText}</p>
-                                                    <div className="flex gap-2">
-                                                        {[1, 2, 3].map((v) => (
-                                                            <button
-                                                                key={v}
-                                                                type="button"
-                                                                onClick={() => setMentorScore(idx, v)}
-                                                                className={`rounded border px-2 py-1 text-xs ${mentorScores[idx] === v ? 'border-amber-400 bg-amber-50' : 'border-slate-200'}`}
-                                                            >
-                                                                {v}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ))}
-                                <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3 text-xs space-y-1 max-h-48 overflow-y-auto">
-                                    {comparisonRows.filter((r) => r.flag).length === 0 ? (
-                                        <span className="text-slate-600">Нет расхождений ≥ 3 баллов (при заполненных парах баллов).</span>
-                                    ) : (
-                                        comparisonRows
-                                            .filter((r) => r.flag)
-                                            .map((r) => (
-                                                <div key={r.idx} className="text-amber-900">
-                                                    <span className="font-medium">{r.section}:</span> {r.text.slice(0, 80)}
-                                                    … (ты: {r.self}, ментор: {r.men})
-                                                </div>
-                                            ))
-                                    )}
-                                </div>
-                            </div>
-                        ) : null}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => { setStep(3); persist({ step: 3 }); }}>Назад к правкам</button>
-                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => navigate('/student/certification')}>
-                            К разделу «Сертификация»
-                        </button>
-                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => navigate('/student/dashboard')}>
-                            На главную
-                        </button>
                     </div>
                 </div>
             )}

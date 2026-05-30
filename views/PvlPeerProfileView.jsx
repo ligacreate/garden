@@ -2,6 +2,7 @@ import React from 'react';
 import { pvlDomainApi } from '../services/pvlMockApi';
 import { readGardenCurrentUserFromStorage } from '../services/pvlRoleResolver';
 import PvlTrainingSessionBlock from '../components/PvlTrainingSessionBlock';
+import PvlCertificationBlock from '../components/PvlCertificationBlock';
 
 function resolvePeerDisplayName(peerId) {
     if (!peerId) return '';
@@ -58,6 +59,14 @@ export default function PvlPeerProfileView({
                 viewerId={effectiveViewerId}
                 viewerRole={viewerRole}
                 isMentorOfStudent={isMentorOfPeer}
+            />
+
+            <PvlCertificationBlock
+                studentId={peerId}
+                viewerRole={viewerRole}
+                viewerId={effectiveViewerId}
+                isMentorOfStudent={isMentorOfPeer}
+                peerName={peerName}
             />
         </div>
     );

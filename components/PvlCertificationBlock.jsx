@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { pvlPostgrestApi } from '../services/pvlPostgrestApi';
 import PvlSzAssessmentFlow from '../views/PvlSzAssessmentFlow';
+import PvlCertificationCompareView from './PvlCertificationCompareView';
+import PvlCertificationAdminPanel from './PvlCertificationAdminPanel';
 
 // Этап 2 / Сессия 3: switcher двустороннего parallel-blind assessment СЗ (ТЗ _144 §4.5).
 // ПРАВИЛА ФОКУСА (_167): getCertificationCompare грузим ТОЛЬКО на [studentId];
@@ -12,31 +14,6 @@ function WaitingCard({ text }) {
         <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
             <h3 className="font-display text-lg text-slate-800 mb-1">Сертификационный завтрак</h3>
             <p className="text-sm text-slate-600">{text}</p>
-        </div>
-    );
-}
-
-// Минимальная заглушка compare — полный PvlCertificationCompareView это Сессия 4.
-function CompareStub({ self, mentor, admin }) {
-    const selfTotal = typeof self?.score_total === 'number' ? `${self.score_total}/54` : '—';
-    const mentorTotal = typeof mentor?.score_total === 'number' ? `${mentor.score_total}/54` : '—';
-    return (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-6 shadow-sm space-y-2">
-            <h3 className="font-display text-lg text-slate-800">Сертификация: сравнение готовится</h3>
-            <p className="text-sm text-slate-600">
-                {admin
-                    ? 'Обзор для админа. Полное сравнение по критериям и рефлексиям откроется здесь (Сессия 4).'
-                    : 'Обе стороны отправили оценки — здесь откроется сравнение по критериям и рефлексиям (готовится).'}
-            </p>
-            <p className="text-sm text-slate-700">
-                Самооценка: <span className="font-medium tabular-nums">{selfTotal}</span>
-                {' · '}Ментор: <span className="font-medium tabular-nums">{mentorTotal}</span>
-            </p>
-            {admin ? (
-                <p className="text-xs text-slate-500">
-                    Статусы: self — {self?.status || 'нет записи'} · mentor — {mentor?.status || 'нет записи'}.
-                </p>
-            ) : null}
         </div>
     );
 }
@@ -105,7 +82,7 @@ export default function PvlCertificationBlock({
         if (self?.status !== 'submitted') {
             body = <PvlSzAssessmentFlow key={`self-${studentId}`} mode="self" studentId={studentId} initialData={self} onCommitted={onCommitted} />;
         } else if (mentor?.status === 'submitted') {
-            body = <CompareStub self={self} mentor={mentor} />;
+            body = <PvlCertificationCompareView self={self} mentor={mentor} peerName={peerName} />;
         } else {
             body = <WaitingCard text="Самооценка отправлена. Когда ментор отправит свою оценку — здесь откроется сравнение." />;
         }
@@ -113,12 +90,18 @@ export default function PvlCertificationBlock({
         if (!mentor || mentor.status !== 'submitted') {
             body = <PvlSzAssessmentFlow key={`mentor-${studentId}`} mode="mentor" studentId={studentId} peerId={studentId} peerName={peerName} initialData={mentor} onCommitted={onCommitted} />;
         } else if (self?.status === 'submitted') {
-            body = <CompareStub self={self} mentor={mentor} />;
+            body = <PvlCertificationCompareView self={self} mentor={mentor} peerName={peerName} />;
         } else {
             body = <WaitingCard text="Ваша оценка отправлена. Когда менти отправит самооценку — здесь откроется сравнение." />;
         }
     } else if (isAdmin) {
-        body = <CompareStub self={self} mentor={mentor} admin />;
+        // showDraftsExplicitly: админ видит сравнение даже когда стороны ещё в draft.
+        body = (
+            <>
+                <PvlCertificationCompareView self={self} mentor={mentor} peerName={peerName} />
+                <PvlCertificationAdminPanel studentId={studentId} self={self} mentor={mentor} onChanged={onCommitted} />
+            </>
+        );
     } else {
         // peer-зритель без прав на сертификацию (чужая когорта и т.п.) — не показываем
         body = null;

@@ -72,12 +72,6 @@ function sectionSums(scores) {
     });
 }
 
-function levelLabel(total) {
-    if (total <= 30) return 'базовый уровень';
-    if (total <= 45) return 'рабочий уровень';
-    return 'сильный уровень';
-}
-
 // ── маппинг локальные массивы ↔ JSONB-колонки БД ─────────────────────────────
 // criteria_scores: { "A1": 2, …, "F3": 3 } (ключ = letter+index из SZ_ASSESSMENT_SECTIONS)
 function criteriaToJsonb(scores) {
@@ -167,8 +161,9 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
         criteria_scores: criteriaToJsonb(scores),
         score_total: totalScores(scores),
         reflections: reflectionsToJsonb(reflections, prompts),
-        critical_flags: criticalToFlags(critical),
-        critical_comment: criticalComment.trim() ? criticalComment.trim() : null,
+        // Критические — ТОЛЬКО режим ментора (микроправка Сессии 4): self их не пишет.
+        critical_flags: isMentor ? criticalToFlags(critical) : [],
+        critical_comment: isMentor && criticalComment.trim() ? criticalComment.trim() : null,
     });
 
     // autosave черновика на сервер; результат в стейт НЕ кладём (правило фокуса)
@@ -196,7 +191,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
     const reflectionOk = (i) => reflections[i].trim().length >= REFLECTION_MIN;
     const reflectionsOk = reflections.every((_, i) => reflectionOk(i));
     const scoresOk = scores.every((s) => s === 1 || s === 2 || s === 3);
-    const anyCritical = critical.some(Boolean);
+    const anyCritical = isMentor && critical.some(Boolean);
     const criticalOk = !anyCritical || criticalComment.trim().length >= CRITICAL_COMMENT_MIN;
     const allValid = reflectionsOk && scoresOk && criticalOk;
 
@@ -224,13 +219,22 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
         ? `Моя оценка ведущей${peerName ? `: ${peerName}` : ''}`
         : 'Моя самооценка сертификационного завтрака';
 
-    const stepsMeta = [
-        { n: 0, title: 'Как это работает' },
-        { n: 1, title: 'Рефлексия' },
-        { n: 2, title: '18 критериев' },
-        { n: 3, title: 'Критические условия' },
-        { n: 4, title: 'Отправка' },
-    ];
+    // Критические условия — отдельный шаг (n=3) ТОЛЬКО у ментора (микроправка Сессии 4);
+    // менти себя по критическим условиям не оценивает и этот шаг пропускает.
+    const stepsMeta = isMentor
+        ? [
+            { n: 0, title: 'Как это работает' },
+            { n: 1, title: 'Рефлексия' },
+            { n: 2, title: '18 критериев' },
+            { n: 3, title: 'Критические условия' },
+            { n: 4, title: 'Отправка' },
+        ]
+        : [
+            { n: 0, title: 'Как это работает' },
+            { n: 1, title: 'Рефлексия' },
+            { n: 2, title: '18 критериев' },
+            { n: 4, title: 'Отправка' },
+        ];
 
     return (
         <div className="space-y-4">
@@ -242,12 +246,12 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                         : 'Заполни в течение 24 часов после встречи — пока впечатления свежие.'}
                 </p>
                 <div className="flex flex-wrap gap-2 mt-4">
-                    {stepsMeta.map((s) => (
+                    {stepsMeta.map((s, i) => (
                         <span
                             key={s.n}
                             className={`text-xs rounded-full px-3 py-1 border ${step === s.n ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-100 text-slate-500'}`}
                         >
-                            {s.n + 1}. {s.title}
+                            {i + 1}. {s.title}
                         </span>
                     ))}
                 </div>
@@ -275,7 +279,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                             <li><span className="font-medium text-slate-800">3</span> — сильно / именно так и задумывала</li>
                         </ul>
                     </div>
-                    <p className="text-slate-500">Сначала — свободные ответы, затем оценки по блокам A–F, затем критические условия и отправка.</p>
+                    <p className="text-slate-500">Сначала — свободные ответы, затем оценки по блокам A–F, {isMentor ? 'затем критические условия и отправка' : 'затем отправка'}.</p>
                     <button
                         type="button"
                         className="rounded-xl bg-slate-800 text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-900"
@@ -359,7 +363,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                             type="button"
                             disabled={!scoresOk}
                             className="rounded-xl bg-slate-800 text-white px-5 py-2 text-sm font-medium disabled:opacity-40"
-                            onClick={() => goForward(3)}
+                            onClick={() => goForward(isMentor ? 3 : 4)}
                         >
                             Дальше
                         </button>
@@ -368,7 +372,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                 </div>
             )}
 
-            {step === 3 && (
+            {step === 3 && isMentor && (
                 <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm space-y-4">
                     <h3 className="font-display text-lg text-slate-800">Шаг 3 — критические условия</h3>
                     <p className="text-sm text-slate-600">Отметьте только то, что <strong>реально было</strong> на встрече. Если отмечено хоть одно — обязательно поясните в комментарии (≥ {CRITICAL_COMMENT_MIN} символов).</p>
@@ -421,11 +425,9 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-6 shadow-sm">
                         <h3 className="font-display text-xl text-slate-800">{isMentor ? 'Итог оценки' : 'Итог самооценки'}</h3>
                         <p className="text-3xl font-display text-slate-900 mt-2 tabular-nums">{total} / 54</p>
-                        <p className="text-sm text-slate-600 mt-1">Уровень: <span className="font-medium text-slate-800">{levelLabel(total)}</span></p>
-                        <p className="text-xs text-slate-500 mt-3">18–30 = базовый · 31–45 = рабочий · 46–54 = сильный (как в материалах по СЗ).</p>
                     </div>
 
-                    {anyCritical ? (
+                    {isMentor ? (anyCritical ? (
                         <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4 text-sm text-rose-900">
                             <div className="font-medium mb-2">Отмечены критические условия</div>
                             <ul className="list-disc pl-5 space-y-1">
@@ -435,7 +437,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                         </div>
                     ) : (
                         <div className="rounded-2xl border border-slate-100 bg-white p-4 text-sm text-slate-600">Критические условия не отмечены.</div>
-                    )}
+                    )) : null}
 
                     <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm">
                         <h4 className="font-display text-lg text-slate-800 mb-3">Суммы по блокам</h4>
@@ -456,7 +458,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                         </p>
                         {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
                         <div className="flex flex-wrap gap-2 items-center">
-                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => goStep(3)}>Назад к правкам</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => goStep(isMentor ? 3 : 2)}>Назад к правкам</button>
                             <button
                                 type="button"
                                 disabled={!allValid || submitting}

@@ -259,7 +259,7 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                     <h3 className="font-display text-lg text-slate-800">Шаг 3 — критические условия</h3>
                     <p className="text-sm text-slate-600">Отметь только то, что <strong>реально было</strong> на встрече. Если отмечено хоть одно — обязательно поясни в комментарии.</p>
                     <ul className="space-y-2">
-                        {SZ_ASSESSMENT_CRITICAL.map((line, i) => (
+                        {SZ_ASSESSMENT_CRITICAL.map((item, i) => (
                             <li key={i} className="flex gap-3 items-start text-sm text-slate-700">
                                 <input
                                     type="checkbox"
@@ -272,7 +272,7 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                                         persist({ critical: next });
                                     }}
                                 />
-                                <span>{line}</span>
+                                <span>{item.text}</span>
                             </li>
                         ))}
                     </ul>
@@ -326,7 +326,7 @@ export default function PvlSzAssessmentFlow({ studentId, navigate, certPoints, o
                         <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4 text-sm text-rose-900">
                             <div className="font-medium mb-2">Отмечены критические условия</div>
                             <ul className="list-disc pl-5 space-y-1">
-                                {SZ_ASSESSMENT_CRITICAL.map((line, i) => (critical[i] ? <li key={i}>{line}</li> : null))}
+                                {SZ_ASSESSMENT_CRITICAL.map((item, i) => (critical[i] ? <li key={i}>{item.text}</li> : null))}
                             </ul>
                             {criticalComment ? <p className="mt-3 text-rose-800/90 whitespace-pre-wrap">{criticalComment}</p> : null}
                         </div>

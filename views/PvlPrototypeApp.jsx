@@ -1950,6 +1950,20 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
     );
 }
 
+// Этап 2 / Сессия 2: старые cert-роуты больше не показывают заглушку.
+// Студентку ведём на её peer-страницу (там в Сессии 3 встанет блок
+// сертификации), ментора/админа — на их домашние экраны. Якорь
+// #pvl-certification отложен в Сессию 3: router здесь — internal route-state,
+// peerId парсится через split('/')[3], hash в строке маршрута сломал бы парсинг.
+function redirectLegacyCertificationRoute(route, selfStudentId) {
+    if (route === '/student/certification' || route === '/student/self-assessment') {
+        return selfStudentId ? `/student/peer/${selfStudentId}` : '/student/dashboard';
+    }
+    if (route === '/mentor/certification' || route === '/mentor/self-assessment') return '/mentor/dashboard';
+    if (route === '/admin/certification' || route === '/admin/self-assessment') return '/admin/pvl';
+    return route;
+}
+
 function navigateToStudentCard(navigate, studentId) {
     navigate(`/mentor/mentee/${studentId}`);
 }
@@ -3451,24 +3465,11 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/certification' || route === '/student/self-assessment') {
-        return (
-            <div className="space-y-6">
-                <div className="rounded-3xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                    <h2 className="font-display text-xl text-slate-800">Сертификация и самооценка</h2>
-                </div>
-                <StudentCertificationReference navigate={navigate} />
-                <div id="pvl-sz-flow" className="scroll-mt-4 rounded-3xl border border-amber-200 bg-amber-50 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.07)] p-5">
-                    <h3 className="font-display text-lg text-slate-800 mb-2">Бланк самооценки</h3>
-                    <div className="flex gap-3 items-start">
-                        <span className="text-lg text-amber-600 shrink-0">⚠</span>
-                        <div className="text-sm text-amber-900">
-                            <p className="font-medium">Анкета временно недоступна</p>
-                            <p className="text-xs text-amber-800 mt-1">Бланк самооценки сертификационного завтрака будет открыт позже. Следите за обновлениями на платформе.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
+        // Этап 2 / Сессия 2: экран-заглушка «Анкета временно недоступна» убран.
+        // App-эффект (redirectLegacyCertificationRoute по studentId) уводит на
+        // /student/peer/<self-id>, где в Сессии 3 встанет блок сертификации.
+        // До setRoute — один пустой кадр (null), без мигающей заглушки.
+        return null;
     }
     if (route === '/student/cultural-code') {
         const sectionKey = SECTION_ROUTE_TO_KEY[route];
@@ -8233,9 +8234,10 @@ export default function PvlPrototypeApp({
     }, []);
 
     const navigate = useCallback((nextRoute) => {
-        const allowedRoute = redirectToAllowedRoute(role, nextRoute);
-        if (!PVL_REVIEW_NAV_UNLOCK && allowedRoute !== nextRoute) {
-            pvlDomainApi.audit.addAuditEvent(actingUserId, role, 'role_route_redirect', 'route', nextRoute, 'Redirected to allowed route', { allowedRoute });
+        const certRoute = redirectLegacyCertificationRoute(nextRoute, studentId);
+        const allowedRoute = redirectToAllowedRoute(role, certRoute);
+        if (!PVL_REVIEW_NAV_UNLOCK && allowedRoute !== certRoute) {
+            pvlDomainApi.audit.addAuditEvent(actingUserId, role, 'role_route_redirect', 'route', certRoute, 'Redirected to allowed route', { allowedRoute });
         }
         setRoute(allowedRoute);
         if (allowedRoute.startsWith('/student/')) {
@@ -8265,7 +8267,7 @@ export default function PvlPrototypeApp({
             const a = adminSectionForRoute(allowedRoute);
             if (a) setAdminSection(a);
         }
-    }, [role, actingUserId]);
+    }, [role, actingUserId, studentId]);
 
     useEffect(() => {
         let nextRoute = route;
@@ -8276,9 +8278,10 @@ export default function PvlPrototypeApp({
         } else if (role === 'admin' && typeof nextRoute === 'string' && (nextRoute.startsWith('/student/') || nextRoute.startsWith('/mentor/'))) {
             nextRoute = '/admin/pvl';
         }
+        nextRoute = redirectLegacyCertificationRoute(nextRoute, studentId);
         const allowedRoute = redirectToAllowedRoute(role, nextRoute);
         if (allowedRoute !== route) setRoute(allowedRoute);
-    }, [role, route]);
+    }, [role, route, studentId]);
 
     useEffect(() => {
         saveAppSession({ role, studentId, actingUserId, nowDate, route, studentSection, adminSection, mentorSection });

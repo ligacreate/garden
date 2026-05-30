@@ -818,5 +818,131 @@ export const pvlPostgrestApi = {
         });
         return asArray(rows)[0] || null;
     },
+
+    // ── Сертификация Этапа 2: двойной parallel-blind assessment (phase40) ────
+    // Таблицы pvl_student_certification_self / _mentor.
+    // RLS отдаёт чужую запись ТОЛЬКО когда её status='submitted' (parallel-blind):
+    // get* «другой» стороны до её submit вернёт 0 строк → null. Это by design.
+    // mentor_id в _mentor проставляет триггер pvl_set_certification_mentor_id
+    // из auth.uid() — с клиента его НЕ передаём.
+    // PK обеих таблиц — student_id (одна активная запись на menti).
+
+    /** Самооценка menti. Возвращает row или null (RLS-blind / ещё не создана). */
+    async getCertificationSelf(studentId) {
+        if (!studentId) return null;
+        const rows = await request('pvl_student_certification_self', {
+            params: { select: '*', student_id: `eq.${studentId}`, limit: 1 },
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /**
+     * Autosave черновика самооценки. UPSERT по student_id (PK).
+     * status='draft' переводит revision→draft при пересдаче и удовлетворяет
+     * INSERT-политику (status='draft'). submitted-строку RLS править не даст.
+     */
+    async upsertCertificationSelfDraft({
+        student_id, cohort_id, criteria_scores, score_total,
+        reflections, critical_flags, critical_comment,
+    }) {
+        const row = {
+            student_id,
+            ...(cohort_id ? { cohort_id } : {}),
+            criteria_scores,
+            score_total,
+            reflections,
+            critical_flags,
+            critical_comment,
+            status: 'draft',
+        };
+        const rows = await request('pvl_student_certification_self', {
+            method: 'POST',
+            params: { on_conflict: 'student_id' },
+            body: [row],
+            prefer: 'resolution=merge-duplicates,return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /** Отправка самооценки: draft/revision → submitted. */
+    async submitCertificationSelf(studentId) {
+        const rows = await request('pvl_student_certification_self', {
+            method: 'PATCH',
+            params: { student_id: `eq.${studentId}` },
+            body: { status: 'submitted', submitted_at: new Date().toISOString() },
+            prefer: 'return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /** Оценка ментора. Возвращает row или null (RLS-blind / ещё не создана). */
+    async getCertificationMentor(studentId) {
+        if (!studentId) return null;
+        const rows = await request('pvl_student_certification_mentor', {
+            params: { select: '*', student_id: `eq.${studentId}`, limit: 1 },
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /** Autosave черновика оценки ментора. mentor_id НЕ передаём (триггер). */
+    async upsertCertificationMentorDraft({
+        student_id, cohort_id, criteria_scores, score_total,
+        reflections, critical_flags, critical_comment,
+    }) {
+        const row = {
+            student_id,
+            ...(cohort_id ? { cohort_id } : {}),
+            criteria_scores,
+            score_total,
+            reflections,
+            critical_flags,
+            critical_comment,
+            status: 'draft',
+        };
+        const rows = await request('pvl_student_certification_mentor', {
+            method: 'POST',
+            params: { on_conflict: 'student_id' },
+            body: [row],
+            prefer: 'resolution=merge-duplicates,return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /** Отправка оценки ментора: draft/revision → submitted. */
+    async submitCertificationMentor(studentId) {
+        const rows = await request('pvl_student_certification_mentor', {
+            method: 'PATCH',
+            params: { student_id: `eq.${studentId}` },
+            body: { status: 'submitted', submitted_at: new Date().toISOString() },
+            prefer: 'return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /** Admin: вернуть одну сторону на пересдачу (submitted → revision). */
+    async adminRequestRevision(studentId, side) {
+        if (side !== 'self' && side !== 'mentor') {
+            throw new Error(`adminRequestRevision: invalid side "${side}" (expected 'self' | 'mentor')`);
+        }
+        const rows = await request(`pvl_student_certification_${side}`, {
+            method: 'PATCH',
+            params: { student_id: `eq.${studentId}` },
+            body: { status: 'revision' },
+            prefer: 'return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+
+    /**
+     * Обе стороны разом для compare-экрана. До submit обеих RLS вернёт
+     * для «чужой» стороны null — compare раскрывается, когда обе submitted.
+     */
+    async getCertificationCompare(studentId) {
+        const [self, mentor] = await Promise.all([
+            this.getCertificationSelf(studentId),
+            this.getCertificationMentor(studentId),
+        ]);
+        return { self, mentor };
+    },
 };
 

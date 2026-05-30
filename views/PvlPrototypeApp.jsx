@@ -34,6 +34,7 @@ import PvlTaskDetailView from './PvlTaskDetailView';
 import PvlMenteeCardView from './PvlMenteeCardView';
 import PvlMyCohortView from './PvlMyCohortView';
 import PvlPeerProfileView from './PvlPeerProfileView';
+import PvlCertificationBlock from '../components/PvlCertificationBlock';
 import { PvlAdminCalendarScreen, PvlDashboardCalendarBlock } from './PvlCalendarBlock';
 import {
     stripMaterialNumbering,
@@ -1954,10 +1955,10 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
 // сертификации), ментора/админа — на их домашние экраны. Якорь
 // #pvl-certification отложен в Сессию 3: router здесь — internal route-state,
 // peerId парсится через split('/')[3], hash в строке маршрута сломал бы парсинг.
-function redirectLegacyCertificationRoute(route, selfStudentId) {
-    if (route === '/student/certification' || route === '/student/self-assessment') {
-        return selfStudentId ? `/student/peer/${selfStudentId}` : '/student/dashboard';
-    }
+// Этап 2 / _170: /student/certification — статическая страница ПРАВИЛ, БОЛЬШЕ НЕ редиректит
+// на peer (бланк/тест живёт только на «Моей странице»). Ментор/админ cert-роуты остаются
+// редиректом на их дашборды (отдельной cert-страницы у них нет).
+function redirectLegacyCertificationRoute(route) {
     if (route === '/mentor/certification' || route === '/mentor/self-assessment') return '/mentor/dashboard';
     if (route === '/admin/certification' || route === '/admin/self-assessment') return '/admin/pvl';
     return route;
@@ -2875,6 +2876,132 @@ function StudentGlossarySearch({ studentId = '', cmsItems = [], cmsPlacements = 
     );
 }
 
+// Этап 2 / _170: СТАТИЧЕСКАЯ страница ПРАВИЛ сертификации (/student/certification).
+// Восстановлен контент, удалённый в Сессии 3, БЕЗ битой заглушки «Анкета … временно недоступна».
+// Бланк/тест здесь НЕ монтируется — он живёт только на «Моей странице» (peer).
+function StudentCertificationReference({ navigate, studentId }) {
+    return (
+        <div className="space-y-6 text-sm text-slate-700">
+            <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 leading-relaxed">
+                <p>Этот документ — ваша опора перед сертификацией. Здесь собрано всё, что важно: как подготовиться, какие есть обязательные условия, на что обращает внимание ментор и как устроена оценка. Наша цель — помочь вам провести встречу уверенно, бережно и в духе встреч с письменными практиками.</p>
+            </div>
+
+            <div>
+                <h3 className="font-display text-lg text-slate-800 mb-3">Когда можно выходить на сертификацию</h3>
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm leading-relaxed">
+                    <ul className="space-y-2 list-disc pl-5">
+                        <li>вы выполнили все обязательные домашние задания модулей 1–3, и ментор их принял</li>
+                        <li>вы провели пробный завтрак или поучаствовали в тренировочной встрече</li>
+                        <li>вы посетили минимум 1 завтрак действующей ведущей Лиги и заполнили чек-лист с вашими наблюдениями</li>
+                        <li>вы согласовали сценарий сертификационного завтрака заранее</li>
+                        <li>вы собрали группу: минимум 3 человека, это не однокурсницы и не подруги</li>
+                        <li>вы назначили дату встречи, выбрали формат и подготовились технически к записи</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div>
+                <h3 className="font-display text-lg text-slate-800 mb-3">Административные требования</h3>
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-4 leading-relaxed">
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Формат и сроки</p>
+                        <p>Формат встречи — на ваш выбор: онлайн или офлайн. Длительность — <strong>60–90 минут</strong>. В группе должно быть <strong>не менее 3 участников</strong> из вашей целевой аудитории.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Анонс и приглашение</p>
+                        <p>Встреча должна быть анонсирована в ваших медиа — это может быть пост, личные сообщения, рассылка в целевую группу. В анонсе важно указать тему, формат, стоимость и то, что встреча является сертификационной. Отправьте анонс ментору.</p>
+                        <p className="mt-1">До встречи в личном общении с каждым участником обязательно проговорите, что встреча сертификационная и будет записана для проверки ментором.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Запись</p>
+                        <p>Встреча должна быть записана в аудиоформате. После встречи вы передаёте запись ментору и заполняете лист самооценки.</p>
+                    </div>
+                    <div>
+                        <p className="font-medium text-[#4A3728]">Оплата</p>
+                        <p>Встреча проводится <strong>на платной основе</strong> — от 500 рублей с участника. Исключение: бесплатная встреча для благотворительной организации или фонда.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-[#FAF6F2] p-4">
+                        <p className="font-medium text-[#4A3728] mb-1">Фраза, которую важно произнести в начале записи:</p>
+                        <p className="italic">«Эта встреча является сертификационной в рамках курса. Встреча записывается, запись передаётся только ментору для проверки моей работы как ведущей».</p>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 className="font-display text-lg text-slate-800 mb-3">На что ментор обращает внимание</h3>
+                <div className="grid sm:grid-cols-3 gap-4">
+                    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Сценарий</div>
+                        <p className="text-xs text-slate-600 leading-relaxed">Соответствие теме, ясная драматургия: правила безопасности, знакомство/разминка, основная часть, подведение итогов. Понятные инструкции, сохранены ключевые компоненты: настройка, инструкция, рефлексивный отклик, обратная связь.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Техническая часть</div>
+                        <p className="text-xs text-slate-600 leading-relaxed">В начале встречи проговорены правила взаимодействия. Материалы подготовлены. Нет значимых технических сбоев.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Работа ведущей</div>
+                        <p className="text-xs text-slate-600 leading-relaxed">Удержан тайминг и этика. Баланс — примерно <strong>30/70 (разговор/письмо)</strong>. Инструкции короткие и ясные, есть время тишины. Удержана роль ведущей как хозяйки процесса.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 className="font-display text-lg text-slate-800 mb-3">Условия, при которых встреча уходит на пересдачу</h3>
+                <div className="rounded-2xl border border-rose-200/80 bg-rose-50/50 p-5 text-rose-900 leading-relaxed space-y-2">
+                    <div>🚫 Формат встречи не соответствует встрече с письменными практиками</div>
+                    <div>🚫 Не удержан баланс письма и разговоров (ориентир 30/70)</div>
+                    <div>🚫 Не удержана роль ведущей — управление перехвачено участниками</div>
+                    <div>🚫 Пропущены обязательные этапы встречи (начало, практики, завершение/рефлексия)</div>
+                    <div>🚫 Проблемы с записью — неполная, неразборчивая, не прозвучала обязательная фраза</div>
+                    <div>🚫 Количество участников ниже минимального (менее 3)</div>
+                    <div>🚫 Серьёзные нарушения этики или безопасности без реакции ведущей</div>
+                </div>
+            </div>
+
+            <div>
+                <h3 className="font-display text-lg text-slate-800 mb-3">Как проходит оценка</h3>
+                <div className="rounded-3xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 shadow-sm space-y-0 divide-y divide-slate-50">
+                    {[
+                        'Вы передаёте ментору запись сертификационного завтрака',
+                        'Проходите тест для самооценки',
+                        'Ментор слушает запись и даёт свою оценку по тем же маркерам',
+                        'Ментор даёт обратную связь',
+                        'Вы сверяете результаты, фиксируете точки роста и намечаете шаги к следующей встрече',
+                    ].map((text, idx) => (
+                        <div key={text} className="flex gap-4 py-3 first:pt-0">
+                            <span className="font-display text-xl text-[#C8855A] w-7 shrink-0 tabular-nums">{idx + 1}</span>
+                            <p>{text}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-6">
+                <div className="flex gap-4 items-start">
+                    <span className="text-2xl text-emerald-700">✦</span>
+                    <div>
+                        <div className="font-display text-lg text-[#4A3728]">Важное напоминание</div>
+                        <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed">Сертификация — это не экзамен на идеальность. Вы учитесь видеть, что уже получается хорошо, и что стоит подкрутить, чтобы вести встречи ещё увереннее и бережнее. Мы в чате с менторами всегда рядом — поможем и поддержим.</p>
+                    </div>
+                </div>
+            </div>
+
+            {studentId ? (
+                <div className="rounded-2xl bg-white shadow-[0_10px_32px_-12px_rgba(15,23,42,0.06)] p-5 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-600">Бланк самооценки заполняется на вашей странице.</p>
+                    <button
+                        type="button"
+                        onClick={() => navigate(`/student/peer/${studentId}`)}
+                        className="rounded-xl bg-slate-800 text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-900"
+                    >
+                        Открыть бланк на моей странице →
+                    </button>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 function StudentResults({ studentId, navigate, routePrefix = '/student' }) {
     const pref = loadViewPreferences('student.results');
     const [filter, setFilter] = useState(pref?.filter || 'все');
@@ -3344,11 +3471,9 @@ function StudentPage({ route, studentId, navigate, cmsItems, cmsPlacements, refr
         );
     }
     if (route === '/student/certification' || route === '/student/self-assessment') {
-        // Этап 2 / Сессия 2: экран-заглушка «Анкета временно недоступна» убран.
-        // App-эффект (redirectLegacyCertificationRoute по studentId) уводит на
-        // /student/peer/<self-id>, где в Сессии 3 встанет блок сертификации.
-        // До setRoute — один пустой кадр (null), без мигающей заглушки.
-        return null;
+        // Этап 2 / _170: статическая страница ПРАВИЛ (без бланка/теста).
+        // Бланк самооценки живёт ТОЛЬКО на «Моей странице» (/student/peer/<self-id>).
+        return <StudentCertificationReference navigate={navigate} studentId={studentId} />;
     }
     if (route === '/student/cultural-code') {
         const sectionKey = SECTION_ROUTE_TO_KEY[route];
@@ -4016,13 +4141,26 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
     if (/^\/mentor\/mentee\/[^/]+$/.test(route)) {
         const [, , , menteeId] = route.split('/');
         return (
-            <PvlMenteeCardView
-                menteeId={menteeId}
-                navigate={navigate}
-                refreshKey={refreshKey}
-                viewerId={mentorId}
-                onBack={() => navigate('/mentor/dashboard')}
-            />
+            <div className="space-y-4">
+                <PvlMenteeCardView
+                    menteeId={menteeId}
+                    navigate={navigate}
+                    refreshKey={refreshKey}
+                    viewerId={mentorId}
+                    onBack={() => navigate('/mentor/dashboard')}
+                />
+                {/* Этап 2 e2e: ментор доходит до менти через карточку /mentor/mentee/:id,
+                    а не /mentor/peer/:id — поэтому блок менторской анкеты монтируем здесь.
+                    isMentorOfStudent=true: это его менти из списка; реальную авторизацию
+                    записи держит RLS (is_mentor_for через pvl_garden_mentor_links). */}
+                <PvlCertificationBlock
+                    studentId={menteeId}
+                    viewerRole="mentor"
+                    viewerId={mentorId}
+                    isMentorOfStudent
+                    peerName={resolveActorDisplayName(menteeId) || ''}
+                />
+            </div>
         );
     }
     if (route.startsWith('/mentor/peer/')) {
@@ -8113,13 +8251,7 @@ export default function PvlPrototypeApp({
     }, []);
 
     const navigate = useCallback((nextRoute) => {
-        const certRoute = redirectLegacyCertificationRoute(nextRoute, studentId);
-        // Этап 2 / Сессия 3: при редиректе старого student-cert роута на peer-страницу
-        // ставим якорь к блоку сертификации. Hash живёт ОТДЕЛЬНО от route-state
-        // (его парсер режет split('/')[3]); PvlCertificationBlock прочитает его на mount.
-        if (certRoute !== nextRoute && (nextRoute === '/student/certification' || nextRoute === '/student/self-assessment')) {
-            try { window.location.hash = 'pvl-certification'; } catch { /* noop */ }
-        }
+        const certRoute = redirectLegacyCertificationRoute(nextRoute);
         const allowedRoute = redirectToAllowedRoute(role, certRoute);
         if (!PVL_REVIEW_NAV_UNLOCK && allowedRoute !== certRoute) {
             pvlDomainApi.audit.addAuditEvent(actingUserId, role, 'role_route_redirect', 'route', certRoute, 'Redirected to allowed route', { allowedRoute });
@@ -8163,7 +8295,7 @@ export default function PvlPrototypeApp({
         } else if (role === 'admin' && typeof nextRoute === 'string' && (nextRoute.startsWith('/student/') || nextRoute.startsWith('/mentor/'))) {
             nextRoute = '/admin/pvl';
         }
-        nextRoute = redirectLegacyCertificationRoute(nextRoute, studentId);
+        nextRoute = redirectLegacyCertificationRoute(nextRoute);
         const allowedRoute = redirectToAllowedRoute(role, nextRoute);
         if (allowedRoute !== route) setRoute(allowedRoute);
     }, [role, route, studentId]);

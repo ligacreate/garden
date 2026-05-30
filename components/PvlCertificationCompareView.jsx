@@ -39,7 +39,7 @@ export default function PvlCertificationCompareView({
             {/* Шапка: имя + статус + две сырые суммы (БЕЗ уровня) */}
             <div className="rounded-2xl bg-white border border-[#E8D5C4] shadow-sm p-5">
                 <h3 className="font-display text-xl text-[#4A3728]">{peerName || 'Сертификационный завтрак'}</h3>
-                <p className="text-sm text-[#7A6758] mt-1">Сертификация открыта для разговора.</p>
+                <p className="text-sm text-[#7A6758] mt-1">И менти, и ментор заполнили анкету после сертификационного завтрака. Теперь можно обсудить результаты!</p>
                 {/* Точка расширения: сюда отдельной правкой встанет «уровень», когда пороги утвердят. */}
                 <div className="mt-4 grid grid-cols-2 gap-3">
                     <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-3 text-center">

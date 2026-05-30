@@ -216,7 +216,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
     };
 
     const title = isMentor
-        ? `Моя оценка ведущей${peerName ? `: ${peerName}` : ''}`
+        ? 'Сертификационный завтрак'
         : 'Моя самооценка сертификационного завтрака';
 
     // Критические условия — отдельный шаг (n=3) ТОЛЬКО у ментора (микроправка Сессии 4);
@@ -242,7 +242,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                 <h2 className="font-display text-2xl text-slate-800">{title}</h2>
                 <p className="text-sm text-slate-500 mt-1">
                     {isMentor
-                        ? 'Оцените работу ведущей по тем же критериям и зафиксируйте наблюдения.'
+                        ? `Оценка ведущей${peerName ? `: ${peerName}` : ''} — заполняйте после прослушивания записи встречи.`
                         : 'Заполни в течение 24 часов после встречи — пока впечатления свежие.'}
                 </p>
                 <div className="flex flex-wrap gap-2 mt-4">
@@ -266,20 +266,17 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
                             {' '}(parallel-blind): до этого вы не видите её оценок, а она — ваших.
                         </p>
                     ) : (
-                        <p>
-                            Этот бланк помогает честно зафиксировать, как прошла встреча: что получилось, что хочется усилить и где были сложности.
-                            Ответы нужны <strong>только тебе и ментору</strong> — для развития, а не для оценки «хорошо / плохо».
-                        </p>
+                        <p>Эта анкета поможет поисследовать, как прошла встреча: что получилось, что хочется усилить, где были сложности.</p>
                     )}
                     <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
                         <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Шкала для критериев (шаг 3)</div>
                         <ul className="space-y-1 text-slate-600">
-                            <li><span className="font-medium text-slate-800">1</span> — слабо / не удалось / было срывом</li>
+                            <li><span className="font-medium text-slate-800">1</span> — не удалось / получилось слабо / совсем не получилось</li>
                             <li><span className="font-medium text-slate-800">2</span> — нормально / в целом справилась</li>
-                            <li><span className="font-medium text-slate-800">3</span> — сильно / именно так и задумывала</li>
+                            <li><span className="font-medium text-slate-800">3</span> — {isMentor ? 'отлично удалось / на высоком уровне' : 'отлично удалось / именно так я и задумывала'}</li>
                         </ul>
                     </div>
-                    <p className="text-slate-500">Сначала — свободные ответы, затем оценки по блокам A–F, {isMentor ? 'затем критические условия и отправка' : 'затем отправка'}.</p>
+                    <p className="text-slate-500">Сначала будут блоки для свободных ответов и размышлений, а потом – тест.</p>
                     <button
                         type="button"
                         className="rounded-xl bg-slate-800 text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-900"
@@ -453,8 +450,7 @@ export default function PvlSzAssessmentFlow({ studentId, mode = 'self', peerId, 
 
                     <div className="rounded-2xl border border-slate-100/90 bg-white p-5 shadow-sm space-y-3">
                         <p className="text-sm text-slate-600">
-                            После отправки бланк закрывается на правки. Сравнение с {isMentor ? 'самооценкой ведущей' : 'оценкой ментора'} откроется,
-                            когда обе стороны отправят анкеты.
+                            Внесите изменения, если нужно, и отправляйте анкету. Когда и менти, и ментор заполнят анкету, можно будет посмотреть результаты.
                         </p>
                         {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
                         <div className="flex flex-wrap gap-2 items-center">

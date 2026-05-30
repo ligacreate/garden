@@ -1252,7 +1252,14 @@ class RemoteApiService {
             profile = await this._ensureDefaultApplicantRoleInDb(profile);
         }
 
-        return this._assertActive(profile || authUser);
+        // _170 (path b): пишем garden_currentUser в реальном режиме (RemoteApiService),
+        // чтобы embedded PVL-кабинет знал настоящий uuid, а не дефолтил на mock 'u-st-1'.
+        // Раньше это делал только LocalStorageService (mock) — отсюда баг id-проброса.
+        const _gardenUser = this._assertActive(profile || authUser);
+        try {
+            if (_gardenUser?.id) localStorage.setItem('garden_currentUser', JSON.stringify(_gardenUser));
+        } catch { /* noop */ }
+        return _gardenUser;
     }
 
     async updatePassword(newPassword) {
@@ -1467,6 +1474,7 @@ class RemoteApiService {
 
     async logout() {
         setAuthToken(null);
+        try { localStorage.removeItem('garden_currentUser'); } catch { /* noop */ }
     }
 
     async getCurrentUser() {
@@ -1482,7 +1490,14 @@ class RemoteApiService {
         if (profile?.id) {
             profile = await this._ensureDefaultApplicantRoleInDb(profile);
         }
-        return this._assertActive(profile || authUser);
+        // _170 (path b): пишем garden_currentUser в реальном режиме (RemoteApiService),
+        // чтобы embedded PVL-кабинет знал настоящий uuid, а не дефолтил на mock 'u-st-1'.
+        // Раньше это делал только LocalStorageService (mock) — отсюда баг id-проброса.
+        const _gardenUser = this._assertActive(profile || authUser);
+        try {
+            if (_gardenUser?.id) localStorage.setItem('garden_currentUser', JSON.stringify(_gardenUser));
+        } catch { /* noop */ }
+        return _gardenUser;
     }
 
     async _ensurePostgrestUser(user) {

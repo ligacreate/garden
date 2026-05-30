@@ -433,6 +433,8 @@ export default function AdminPvlProgress({ hiddenIds = [], users = [] }) {
     const [mentorsById, setMentorsById] = useState(null);
     const [reportError, setReportError] = useState(null);
     const [reportDataReady, setReportDataReady] = useState(false);
+    const [certBusy, setCertBusy] = useState(false);   // phase42: тумблер приёма СЗ
+    const [certError, setCertError] = useState(null);
 
     const setCohortId = (id) => {
         setCohortIdState(id);
@@ -628,6 +630,36 @@ export default function AdminPvlProgress({ hiddenIds = [], users = [] }) {
 
     const handleRefresh = () => setRefreshCounter((c) => c + 1);
 
+    // phase42: admin-тумблер приёма сертификационных завтраков по когорте.
+    // Флаг приходит из listCohorts (certification_open). setCohortCertificationOpen
+    // PATCH'ит pvl_cohorts — RLS пускает только is_admin(). После успеха обновляем
+    // локальный стейт + SWR-кэш когорт, чтобы UI и следующий mount были консистентны.
+    const selectedCohort = cohorts.find((c) => c.id === cohortId) || null;
+    const certOpen = Boolean(selectedCohort?.certification_open);
+    const toggleCertificationOpen = async () => {
+        if (!cohortId) return;
+        const next = !certOpen;
+        const action = next ? 'ОТКРЫТЬ' : 'ЗАКРЫТЬ';
+        // eslint-disable-next-line no-alert
+        if (typeof window !== 'undefined' && !window.confirm(
+            `${action} приём сертификационных завтраков для когорты «${selectedCohort?.title || ''}»?`,
+        )) return;
+        setCertBusy(true);
+        setCertError(null);
+        try {
+            await pvlPostgrestApi.setCohortCertificationOpen(cohortId, next);
+            setCohorts((prev) => {
+                const updated = prev.map((c) => (c.id === cohortId ? { ...c, certification_open: next } : c));
+                writeAdminPvlSwr(ADMIN_PVL_COHORTS_SWR_KEY, updated);
+                return updated;
+            });
+        } catch (e) {
+            setCertError(formatError(e));
+        } finally {
+            setCertBusy(false);
+        }
+    };
+
     return (
         <div className="surface-card p-8 space-y-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -672,6 +704,33 @@ export default function AdminPvlProgress({ hiddenIds = [], users = [] }) {
                     </Button>
                 </div>
             </div>
+
+            {cohortId && (
+                <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div>
+                        <div className="font-display text-slate-900 font-semibold">Сертификационные завтраки</div>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                            Приём для когорты «{selectedCohort?.title || ''}»:{' '}
+                            <strong className={certOpen ? 'text-emerald-700' : 'text-slate-700'}>
+                                {certOpen ? 'открыт' : 'закрыт'}
+                            </strong>
+                        </p>
+                        {certError && <p className="text-sm text-rose-700 mt-1">{certError}</p>}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={toggleCertificationOpen}
+                        disabled={certBusy}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium transition disabled:opacity-50 ${
+                            certOpen
+                                ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        }`}
+                    >
+                        {certBusy ? 'Сохраняем…' : certOpen ? 'Закрыть приём' : 'Открыть приём'}
+                    </button>
+                </div>
+            )}
 
             {pvlPostgrestApi.isEnabled?.() && (
                 <div className="flex justify-end">

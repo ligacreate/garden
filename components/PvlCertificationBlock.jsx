@@ -18,6 +18,20 @@ function WaitingCard({ text }) {
     );
 }
 
+// phase42: спокойное locked-состояние, когда приём по когорте ещё закрыт
+// (certification_open=false) и зритель не admin. Wizard НЕ монтируется.
+function LockedCard() {
+    return (
+        <div className="rounded-2xl border border-slate-100/90 bg-white p-6 shadow-sm">
+            <h3 className="font-display text-lg text-slate-800 mb-1">Сертификационный завтрак</h3>
+            <p className="text-sm text-slate-600">
+                Приём сертификационных завтраков откроется позже. Пока изучите раздел
+                о сертификации, собирайте группу и готовьте сценарий. Мы в вас верим!
+            </p>
+        </div>
+    );
+}
+
 export default function PvlCertificationBlock({
     studentId,
     viewerRole = 'student',
@@ -26,6 +40,7 @@ export default function PvlCertificationBlock({
     peerName = '',
 }) {
     const [data, setData] = useState({ self: null, mentor: null });
+    const [certOpen, setCertOpen] = useState(false); // phase42: приём по когорте (fail-closed)
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -33,8 +48,15 @@ export default function PvlCertificationBlock({
         if (!studentId) { setLoading(false); return; }
         setLoading(true);
         setError(null);
-        pvlPostgrestApi.getCertificationCompare(studentId)
-            .then((res) => setData({ self: res?.self ?? null, mentor: res?.mentor ?? null }))
+        Promise.all([
+            pvlPostgrestApi.getCertificationCompare(studentId),
+            // certOpen не фатален: ошибка чтения → закрыто (fail-closed), compare не ломаем
+            pvlPostgrestApi.getStudentCertificationOpen(studentId).catch(() => false),
+        ])
+            .then(([res, open]) => {
+                setData({ self: res?.self ?? null, mentor: res?.mentor ?? null });
+                setCertOpen(Boolean(open));
+            })
             .catch((e) => setError(String(e?.message || 'Не удалось загрузить сертификацию')))
             .finally(() => setLoading(false));
     }, [studentId]);
@@ -78,6 +100,10 @@ export default function PvlCertificationBlock({
                 <p className="text-sm text-red-600">Ошибка: {error}</p>
             </div>
         );
+    } else if ((isSelf || isMentor) && !certOpen && !isAdmin) {
+        // phase42: приём по когорте закрыт и зритель не admin → locked, wizard не монтируем.
+        // admin (ниже) видит превью всегда, независимо от флага.
+        body = <LockedCard />;
     } else if (isSelf) {
         if (self?.status !== 'submitted') {
             body = <PvlSzAssessmentFlow key={`self-${studentId}`} mode="self" studentId={studentId} initialData={self} onCommitted={onCommitted} />;

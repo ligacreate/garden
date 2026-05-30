@@ -580,9 +580,47 @@ export const pvlPostgrestApi = {
     },
     async listCohorts() {
         return request('pvl_cohorts', {
-            params: { select: 'id,title,year', order: 'year.desc,title.asc' },
+            params: { select: 'id,title,year,certification_open', order: 'year.desc,title.asc' },
         });
     },
+
+    // ── Тумблер приёма сертификационных завтраков по когорте (phase42) ──────
+    /** Флаг приёма для когорты. Нет строки → false (закрыто). */
+    async getCohortCertificationOpen(cohortId) {
+        if (!cohortId) return false;
+        const rows = await request('pvl_cohorts', {
+            params: { select: 'certification_open', id: `eq.${cohortId}`, limit: 1 },
+        });
+        return Boolean(asArray(rows)[0]?.certification_open);
+    },
+    /** Открыть/закрыть приём для когорты. RLS пускает только is_admin() (иначе 403). */
+    async setCohortCertificationOpen(cohortId, open) {
+        const rows = await request('pvl_cohorts', {
+            method: 'PATCH',
+            params: { id: `eq.${cohortId}` },
+            body: { certification_open: Boolean(open) },
+            prefer: 'return=representation',
+        });
+        return asArray(rows)[0] || null;
+    },
+    /**
+     * Флаг приёма когорты КОНКРЕТНОГО студента — для gating блока сертификации.
+     * Embed pvl_students→pvl_cohorts по FK cohort_id. RLS pvl_students пускает
+     * own/mentor/admin/cohort-peer (как listMyCohortPeers), pvl_cohorts.select_all
+     * отдаёт флаг. Нет строки/когорты → false (закрыто по умолчанию, fail-closed).
+     */
+    async getStudentCertificationOpen(studentId) {
+        if (!studentId) return false;
+        const rows = await request('pvl_students', {
+            params: {
+                select: 'cohort_id,cohort:pvl_cohorts(certification_open)',
+                id: `eq.${studentId}`,
+                limit: 1,
+            },
+        });
+        return Boolean(asArray(rows)[0]?.cohort?.certification_open);
+    },
+
     async getAdminProgressSummary(cohortId) {
         const result = await request('rpc/pvl_admin_progress_summary', {
             method: 'POST',

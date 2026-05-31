@@ -604,21 +604,27 @@ export const pvlPostgrestApi = {
         return asArray(rows)[0] || null;
     },
     /**
-     * Флаг приёма когорты КОНКРЕТНОГО студента — для gating блока сертификации.
-     * Embed pvl_students→pvl_cohorts по FK cohort_id. RLS pvl_students пускает
-     * own/mentor/admin/cohort-peer (как listMyCohortPeers), pvl_cohorts.select_all
-     * отдаёт флаг. Нет строки/когорты → false (закрыто по умолчанию, fail-closed).
+     * Право на бланк сертификации КОНКРЕТНОГО студента — для gating блока.
+     * Условие = приём когорты открыт (pvl_cohorts.certification_open) И студент —
+     * текущая абитуриентка (profiles.role='applicant'). intern/leader (выпустившиеся,
+     * добавленные в когорту для доступа к материалам) → false ДАЖЕ при открытом
+     * приёме: бланк им не положен. Тот же различитель, что в дашборде
+     * pvl_admin_progress_summary (phase43). Embed pvl_students→pvl_cohorts (FK
+     * cohort_id) и →profiles (FK id=profiles.id, как listMyCohortPeers). RLS
+     * pvl_students пускает own/mentor/admin/cohort-peer. Нет строки/роли → false
+     * (закрыто по умолчанию, fail-closed).
      */
     async getStudentCertificationOpen(studentId) {
         if (!studentId) return false;
         const rows = await request('pvl_students', {
             params: {
-                select: 'cohort_id,cohort:pvl_cohorts(certification_open)',
+                select: 'cohort_id,cohort:pvl_cohorts(certification_open),profile:profiles!inner(role)',
                 id: `eq.${studentId}`,
                 limit: 1,
             },
         });
-        return Boolean(asArray(rows)[0]?.cohort?.certification_open);
+        const row = asArray(rows)[0];
+        return Boolean(row?.cohort?.certification_open) && row?.profile?.role === 'applicant';
     },
 
     async getAdminProgressSummary(cohortId) {

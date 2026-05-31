@@ -161,3 +161,50 @@ postbuild OK (dist/reset/index.html)
 - `npm run build` зелёный.
 
 **Файл:** `docs/_session/2026-05-30_173_codeexec_phase42_session_b_diff.md`
+
+---
+
+## 8. UI-полиш (amend уже сделан) + предполётные факты к PUSH
+
+**Дата:** 2026-05-31.
+
+> ⚠️ **ИСПРАВЛЕНО 2026-05-31.** Первая редакция этой секции содержала три неверных факта,
+> написанных без сверки с репозиторием: (1) хэш после amend `2eb4ef1` — такого объекта в
+> git НЕТ; (2) «билда в CI нет, заливается закоммиченный dist/» — наоборот, CI делает
+> `npm run build`; (3) diff BACKLOG = 1 строка «(тест автосейва)» — на деле +58 строк,
+> 3 тикета. Ниже — проверенные по факту данные.
+
+### 8.1 UI-правки — УЖЕ в коммите (amend выполнен в прошлый ход)
+- `components/PvlCertificationBlock.jsx:29` — текст locked-состояния: «Приём… откроется позже. Пока изучите раздел о сертификации, собирайте группу и готовьте сценарий. Мы в вас верим!»
+- `components/PvlCertificationCompareView.jsx:41` — заголовок шапки сравнения теперь всегда «Сертификационный завтрак» (было `{peerName || 'Сертификационный завтрак'}`). Метка колонки `selfLabel = peerName ? `Ведущая · ${peerName}` : 'Ведущая'` (стр. 32) — ОСТАВЛЕНА (различает чьи баллы). ✓
+
+**Состояние коммита (проверено reflog):** `67b746f` уже был заменён `git commit --amend` → **`fb12e8f`**. Этот amend изменил ровно эти 2 файла (3+/3−) — то есть это и есть запрошенные UI-правки. Повторный amend НЕ нужен (исходники чисты, source-изменений в рабочем дереве нет; повторный amend лишь сменил бы хэш без изменения дерева и рискнул бы затащить dist/BACKLOG). `git log -1` = `fb12e8f`. **origin/main=`9b441d4`, local впереди на 5, НЕ запушено.** Сообщение коммита не менялось.
+
+### 8.2 Факт 1 — как деплоится FTP (.github/workflows/deploy.yml, committed `34565a1`, не менялся)
+- Триггер: `on: push` в `main` с `paths-ignore: [docs/**, plans/**, .business/**, .claude/**, *.md]` (+ `workflow_dispatch`). То есть push, трогающий код (`.jsx/.js/.sql/...`), деплой ЗАПУСКАЕТ; push только docs/plans/md — нет.
+- Шаги: `npm ci` → **`npm run build`** (стр. 43) → собирает бандл в `deploy/` (`cp -R dist/. deploy/` + goroscop/trees/assets/favicon) → `SamKirkland/FTP-Deploy-Action`, `local-dir: deploy/` (стр. 66), `dangerous-clean-slate: true` → smoke `curl liga.skrebeyko.ru`.
+- **CI СОБИРАЕТ `dist/` сам из исходников. Закоммиченный `dist/` для деплоя НЕ используется** (CI перезатирает его своим билдом).
+- → **Вывод:** свежий `dist/` в PUSH-коммит тащить НЕ нужно. Достаточно запушить код — CI соберёт и зальёт. Коммитить `dist/` даже вредно (лишний шум + крутит chunk-хэши, см. lesson VITE-CHUNK-HASH-FLAPPING). `dist/` в рабочем дереве сейчас грязный (пересобран локально) — можно оставить dirty или `git checkout -- dist/`; на деплой не влияет.
+
+### 8.3 Факт 2 — «чужой» plans/BACKLOG.md (реальный diff)
+- `git diff --numstat` = **`58  0`** (1 ханк, чисто аддитивно, 0 удалений). Не «тест автосейва».
+- Добавлены 3 тикета **P3** (раздел «⚪ P3 — Хотелось бы (потом)»):
+  1. **AUTH-VALIDATION-HARDENING** — email-валидация в 3 слоя (создан 2026-05-29 после `_154` фикса email Курдюковой).
+  2. **CMS-PVL-RICHEDITOR-MANUAL-HEADING** — ручной H2/H3 в RichEditor нестабилен (2026-05-28).
+  3. **CMS-PVL-MD-IMPORT-BACKFILL-CHECK** — аудит материалов на съеденный первый `##` (2026-05-28).
+- Это НЕ мусор и не чужое в смысле «постороннее»: легитимные тикеты нашей же двухагентной работы (ссылаются на `_141/_142/_153/_154`, lessons, memory `project_garden_auth`), просто накопились с 28–29 мая и не были закоммичены (последний commit BACKLOG — `a3212cf`, 2026-05-25, olgaskrebeyko). К phase42 отношения не имеют.
+- **Рекомендация:** НЕ ревертить (потеряем реальные findings). Отдельный коммит `docs(backlog): 3 тикета P3 (auth-validation + cms-richeditor + md-import-backfill)` — батчем, согласно правилу «backlog/lessons батчами, не micro-docs». Это docs/plans → `paths-ignore`, деплой НЕ триггерит, chunk-хэши не крутит. Можно слить вместе с накопившимися untracked `docs/_session/*` и lessons в один docs-коммит.
+
+### 8.4 План PUSH (на 🟢 PUSH, НЕ выполнено)
+1. **Код-коммит уже готов** = `fb12e8f` (phase42 тумблер + UI-правки). Push его → CI `Deploy to FTP` собирает dist сам → прод. Фича приедет ГОТОВОЙ-ЗАКРЫТОЙ (флаг в БД=false), Ольга открывает тумблером.
+2. `dist/` в коммит НЕ добавлять (CI билдит). `git checkout -- dist/` или оставить dirty.
+3. BACKLOG + накопившиеся docs/lessons — отдельным docs-коммитом (батч), деплой не триггерит. Можно до или после кода.
+4. `git push origin main`.
+
+### 8.5 ✅ ВЫПОЛНЕНО 2026-05-31 (🟢 PUSH от Ольги)
+- `git push origin main`: `9b441d4..fb12e8f`. **origin/main = `fb12e8f`**, ahead/behind = 0/0.
+- `dist/` НЕ коммитили (оставлен грязный в рабочем дереве; на деплой не влияет — CI билдит сам).
+- CI `Deploy to FTP` run **`26706588113`** (event=push, sha=fb12e8f) → **success за 1m31s**. Все шаги зелёные: Build → Prepare bundle → Deploy via FTP → Smoke check (CI-curl liga.skrebeyko.ru + проверка бандла OK).
+- Аннотации (НЕ фейл): Node 20 deprecation (дедлайн 16.06.2026); `git exit 128` в Post Checkout — безобидный cleanup FTP-экшена.
+- docs-батч (этот файл + untracked `docs/_session/*` + 3 тикета `plans/BACKLOG.md`) — отдельным `chore(docs)`-коммитом, deploy не триггерит (paths-ignore). Untracked `docs/lessons/*`, прочие `plans/*.md`, `scripts/feat002-tg-recon/` — вне scope батча, ждут отдельного решения.
+- Пост-деплой smoke на live — см. `_174`.

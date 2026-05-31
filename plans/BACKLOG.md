@@ -2898,6 +2898,64 @@ related_docs:
 
 ## ⚪ P3 — Хотелось бы (потом)
 
+### AUTH-VALIDATION-HARDENING: email-shape валидация в три слоя (frontend / backend / БД)
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (gigиена, не блокер — случай индивидуальный)
+- **Создано:** 2026-05-29 (после `_154` apply email-fix Курдюковой)
+- **Контекст:** В `users_auth` обнаружена запись с `email = 'курдюкова'` (кириллица, без `@`) — Елена Курдюкова, `id = 5aa62776-…`. Регистрация прошла 2026-04-16 через обычную форму с паролем (`password_hash` bcrypt 60 char, `$2`-prefixed). Дыра в трёх слоях одновременно:
+  1. **Frontend** регистрационная форма `auth.skrebeyko.ru` пропустила — видимо, не было `<input type="email">` или валидация была обходима (mobile Safari / Yandex Browser).
+  2. **Backend** auth-сервиса не отказал — нет server-side regex.
+  3. **БД** `users_auth.email` — только UNIQUE + NOT NULL, без CHECK-constraint на формат.
+
+  Из 60 строк в `users_auth` битая только она (recon `_153`). Не паттерн, единичный случай. После apply `_154` email = `puhlick2004@mail.ru`, но защита от повтора отсутствует.
+- **Что сделать (по слоям):**
+  1. **Frontend** (`auth.skrebeyko.ru`, форма регистрации): `<input type="email" required autocomplete="email">` + JS regex-валидация на `blur` и `submit`. Заблокировать submit при невалидном формате.
+  2. **Backend** (auth-сервис, endpoint регистрации): server-side regex `^[^@\s]+@[^@\s]+\.[^@\s]+$` перед INSERT → возвращать 400 `{ "error": "invalid_email_format" }` если не проходит.
+  3. **БД** (`users_auth.email`): CHECK-constraint после backfill:
+     ```sql
+     ALTER TABLE users_auth
+     ADD CONSTRAINT users_auth_email_shape_check
+     CHECK (email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$');
+     ```
+     **Применять только после** того как в БД не осталось битых email (после `_154` это так, но повторить SELECT перед apply: `SELECT count(*) FROM users_auth WHERE email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$';` → должно быть 0).
+- **Acceptance:** при попытке зарегистрировать `курдюкова` (без `@`) — отказ на всех трёх слоях. Существующие 60 строк не задеты. Smoke-тест регистрации стандартного email проходит как раньше.
+- **Связано:** `_153` (диагностика, где засветился side-finding), `_154` (apply email-fix), репозиторий auth-сервиса (`garden-auth` на Bittern — см. memory `project_garden_auth`).
+
+### CMS-PVL-RICHEDITOR-MANUAL-HEADING: ручной H2/H3 в RichEditor работает непредсказуемо
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (UX-проблема, не блокер — материалы можно править через .md import)
+- **Создано:** 2026-05-28 (после fix CMS-MD-FIRST-HEADING-EATEN, lesson 2026-05-28-pvl-md-import-first-heading-eaten-on-yaml-title)
+- **Контекст:** Жалоба Ольги: «вручную не получается» (добавить heading через кнопки H2/H3 в RichEditor админки). [`components/RichEditor.jsx:440-441`](../components/RichEditor.jsx#L440-L441) использует `document.execCommand('formatBlock', false, '<h2>')` — deprecated API, поведение варьируется по браузерам:
+  - На пустой строке без блочного предка `formatBlock` может вообще ничего не сделать (Chrome иногда оборачивает, иногда нет).
+  - В Safari/Firefox ведёт себя иначе.
+  - Пользователь нажимает кнопку — визуально ничего не меняется → впечатление «не работает».
+- **Воспроизведение:** нужен конкретный шаговый кейс от Ольги (что нажала → где курсор → что увидела), чтобы не гадать. После recon апдейтить этот тикет.
+- **Возможные направления:**
+  1. Markdown-shortcut: ввести `## ` или `### ` + пробел в начале строки → автоконвертация в `<h2>`/`<h3>` через `formatBlock`. Снимает зависимость от кнопки.
+  2. Заменить `document.execCommand` на DOM-операции (создать `<h2>` и пересобрать выделение вручную) — стабильнее, но требует аккуратной работы с Selection API.
+  3. Визуальный feedback после нажатия H2/H3 (toast «Заголовок применён» / подсветка кнопки), чтобы пользователь видел что событие сработало даже когда DOM не изменился из-за пустой строки.
+- **Файлы:** `components/RichEditor.jsx`.
+- **Acceptance:** при добавлении нового материала вручную в RichEditor админка успешно создаёт `<h2>`/`<h3>`, и после сохранения они остаются в `body_html` (проверка через psql SELECT). Воспроизвести на сценарии Ольги.
+- **Связано:** lesson `2026-05-28-pvl-md-import-first-heading-eaten-on-yaml-title.md` (parallel — про парсер импорта, та же сессия), session `_141`, `_142`.
+
+### CMS-PVL-MD-IMPORT-BACKFILL-CHECK: проверить остальные материалы на пропавший первый ## после fix CMS-MD-FIRST-HEADING-EATEN
+- **Статус:** 🟡 OPEN (быстрый аудит, не блокер)
+- **Приоритет:** P3
+- **Создано:** 2026-05-28 (одновременно с CMS-PVL-RICHEDITOR-MANUAL-HEADING)
+- **Контекст:** Fix `d415311` починил парсер `parsePvlImportedMarkdownDoc` для будущих импортов. Но материалы, импортированные **до** этого fix'а из `.md` с YAML frontmatter + первым `##`, имеют пропавший первый heading в `body_html`. Один такой материал найден и руками починен через UPDATE — «Драматургия встречи» (`ff026114-11f8-4adf-8ff6-138bd56229ee`). Могут быть ещё.
+- **Что сделать:**
+  1. SQL-аудит на проде — материалы где первый h2 / h3 «логически» должен быть, но отсутствует. Эвристика: материалы где есть `<h2>` дальше по телу, но тело начинается с `<p>` без heading'а:
+     ```sql
+     SELECT id, title, substring(body_html, 1, 200)
+     FROM pvl_content_items
+     WHERE body_html ~ '<h2>'
+       AND body_html !~ '^\s*<h[1-6]>';
+     ```
+  2. Спросить у Ольги список материалов, которые она импортнула через .md с YAML — иначе по эвристике сложно отделить «реально должно начинаться с `<p>`» от «съело первый heading».
+  3. Если найдены — точечные UPDATE'ы через `REPLACE` с защитой `body_html NOT LIKE ...` от двойного прогона (как для «Драматургии»).
+- **Acceptance:** список проверенных материалов + UPDATE'ы где нужно. Без блокировки релизов.
+- **Связано:** lesson `2026-05-28-pvl-md-import-first-heading-eaten-on-yaml-title.md`, sessions `_141`/`_142`, fix commit `d415311`.
+
 ### BUG-ADMIN-ISNEW-BADGE-UUID: isNew бейдж в AdminPanel рассчитан на числовые id, для UUID никогда не загорается ✅ DONE
 - **Статус:** ✅ DONE 2026-05-24 (commit `b3f5236`, закрыт scope-extend'ом вместе с UI-PENDING-APPROVAL-LIST). isNew теперь рассчитывается через `profiles.updated_at` (primary timestamp source — поднимается на любом UPDATE включая approve через RPC); integer-id fallback оставлен для legacy профилей. UUIDv4 first segment не парсится — random, нет temporal info. Semantic shift: badge теперь означает «недавно обновлён» вместо «зарегался последние 24h» — полезно (подсвечивает свежие админ-действия), плюс primary use case «новые pending'и» решён отдельной секцией. Session `_122`.
 - **Приоритет:** P3 (latent UI bug — не блокирует работу, но обесценивает фичу)

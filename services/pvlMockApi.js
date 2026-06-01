@@ -6,6 +6,7 @@ import { CERTIFICATION_STATUS, CONTENT_STATUS, COURSE_STATUS, ROLES, TASK_STATUS
 import { PVL_PLATFORM_MODULES, PVL_TRACKER_LIBRARY_EXCLUDE_CATEGORY_IDS, pvlPlatformModuleTitleFromInternal } from '../data/pvlReferenceContent';
 import { SCORING_METHOD_QUESTION, SCORING_RULES } from '../data/pvl/scoringRules';
 import { pvlPostgrestApi } from './pvlPostgrestApi';
+import { isUuidString } from './pvlTransforms';
 import { readGardenCurrentUserFromStorage, resolvePvlRoleFromGardenProfile } from './pvlRoleResolver';
 import { getAuthUserId } from './jwtUtils';
 import {
@@ -158,13 +159,6 @@ const PVL_SQL_COHORT_UUID_TO_SEED = Object.freeze({
 const PVL_SEED_COHORT_TO_SQL_UUID = Object.freeze({
     'cohort-2026-1': '11111111-1111-1111-1111-111111111101',
 });
-
-function isUuidString(v) {
-    if (v == null || v === '') return false;
-    const s = String(v).trim();
-    /** RFC-подобный UUID (в т.ч. v6/v7/v8 из auth/БД); строгая проверка версии ломала сохранение профилей. */
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-}
 
 /** Сопоставление id карточек и размещений из PostgREST и строк в UI (регистр UUID). */
 function normalizePvlEntityId(id) {

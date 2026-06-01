@@ -1,3 +1,5 @@
+import { isUuidString } from './pvlTransforms';
+
 const POSTGREST_URL = import.meta.env.VITE_POSTGREST_URL || '';
 const USE_LOCAL_ONLY = import.meta.env.VITE_USE_LOCAL_DB === 'true';
 const IS_DEV = import.meta.env.DEV;
@@ -140,12 +142,6 @@ async function request(table, { method = 'GET', params = {}, body, prefer } = {}
 
 function asArray(data) {
     return Array.isArray(data) ? data : [];
-}
-
-function isUuidString(v) {
-    if (v == null || v === '') return false;
-    const s = String(v).trim();
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
 function normalizeCalendarEventTypeForDb(value) {

@@ -977,6 +977,15 @@ related_docs:
 
 ## 🟢 P2 — Нужно (в этом месяце)
 
+### BUG-PVL-RICHEDITOR-BOGUS-BR: RichEditor оставляет неудаляемый bogus `<br>` в конце `<pre>` при ручном удалении
+- **Статус:** 🔴 TODO
+- **Приоритет:** P2 (источник литерала `<br>` у участниц замаскирован render-фиксом, но не устранён; «неудаляемый пробел в конце» у автора в редакторе остаётся)
+- **Создано:** 2026-05-31 (recon по жалобе на «задание к Уроку 8», см. ниже)
+- **Проблема:** при ручном удалении текста в конце `<pre>`-блока в `RichEditor` (contentEditable) браузер вставляет служебный bogus `<br>`, который нельзя добэкспейсить — для автора это выглядит как «неудаляемый пробел в конце». На сохранении ни `RichEditor.sanitizeIncomingHtml` ([components/RichEditor.jsx:43-49](../components/RichEditor.jsx#L43-L49)), ни `sanitizeHomeworkAnswerHtml` ([utils/pvlHomeworkAnswerRichText.js:18-21](../utils/pvlHomeworkAnswerRichText.js#L18-L21)) его не срезают (`pre` и `br` в whitelist) → `<br>` сохраняется внутри `<pre>` в БД. Раньше это рождало литерал `<br>` у участниц через `normalizeMaterialHtml` (см. fix-коммит ниже); сейчас render замаскирован, но **корень — в редакторе**, и баг шире рендера (затрагивает любой `<pre>`/блок, не только задания).
+- **Что сделать:** срезать хвостовой bogus `<br>` — последний дочерний узел блока (особенно `<pre>`) — в `RichEditor.normalizeEditorHtml`/`sanitizeIncomingHtml`. Аккуратно: contentEditable иногда требует хвостовой `<br>` для позиционирования каретки в пустом блоке — не ломать ввод. Шире по влиянию, чем render-фикс → отдельной задачей.
+- **Acceptance:** после ручного удаления и blur в редакторе сериализованный HTML не содержит хвостового bogus `<br>` внутри блочных элементов; ввод/каретка не сломаны (smoke на пустом параграфе и на `<pre>`).
+- **Связано:** render-фикс [[fix(pvl): <br> внутри <pre>]] (commit с правкой `normalizeMaterialHtml` — маскирует симптом у участниц); recon `docs/_session/2026-05-31_176_codeexec_recon_pvl_richeditor_br_artifact.md`; родственный закрытый [[BUG-PVL-ADMIN-HW-HTML-RAW-RENDER]]; [[BUG-HOMEWORK-PASTE-MSO]] (тот же слой sanitize).
+
 ### BUG-CALENDAR-EVENT-TYPE-DRIFT: normalizeCalendarEventTypeForDb маппит типы по-разному в mock и postgrest
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2 (расхождение поведения mock ≠ prod; не data-loss, но скрытый баг при переключении путей и риск, что новый код скопирует не тот маппинг)

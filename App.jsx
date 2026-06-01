@@ -465,6 +465,89 @@ export default function App() {
         }
     };
 
+    const handleRefreshUsers = async () => {
+        const allUsers = await api.getUsers();
+        setUsers(allUsers || []);
+        showNotification("Список пользователей обновлен");
+    };
+
+    const handleUserPatched = (updated) => {
+        // FEAT-015 Path C — оптимистичный merge после toggle/exempt save.
+        // updated может быть либо partial (status toggle), либо полным
+        // профилем из api.setProfileAutoPauseExempt; в обоих случаях
+        // мерджим через id, не теряя остальные поля.
+        if (!updated?.id) return;
+        setUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
+    };
+
+    const handleAddContent = async (c, options = {}) => {
+        try {
+            const id = c?.id;
+            const isUpdate = options?.isEdit === true || (id != null && id !== '');
+            if (isUpdate) {
+                if (id == null || id === '') {
+                    throw new Error('Не найден id материала для сохранения изменений');
+                }
+                await api.updateKnowledge(c);
+                const fresh = await api.getKnowledgeBase();
+                if (Array.isArray(fresh) && fresh.length > 0) setKnowledgeBase(fresh);
+                else setKnowledgeBase((prev) => prev.map((k) => (String(k.id) === String(id) ? { ...k, ...c } : k)));
+                showNotification('Материал обновлён');
+            } else {
+                await api.addKnowledge(c);
+                setKnowledgeBase((prev) => [...prev, c]);
+                showNotification('Материал добавлен в базу');
+            }
+        } catch (e) {
+            console.error(e);
+            showNotification(e?.message || 'Ошибка сохранения (см. консоль)');
+        }
+    };
+
+    const handleNormalizeKnowledgeContent = async () => {
+        if (!Array.isArray(knowledgeBase) || knowledgeBase.length === 0) {
+            showNotification('Нет материалов для нормализации');
+            return { updated: 0, total: 0 };
+        }
+        const changedItems = [];
+        for (const item of knowledgeBase) {
+            const current = String(item?.content || item?.body || '');
+            const normalized = normalizeLegacyRichContent(current);
+            if (normalized === current) continue;
+            changedItems.push({ ...item, content: normalized });
+        }
+        if (changedItems.length > 0) await api.bulkUpdateKnowledge(changedItems);
+        const fresh = await api.getKnowledgeBase();
+        if (Array.isArray(fresh)) setKnowledgeBase(fresh);
+        showNotification(`Нормализация завершена: обновлено ${changedItems.length} из ${knowledgeBase.length}`);
+        return { updated: changedItems.length, total: knowledgeBase.length };
+    };
+
+    const handleAddNews = async (n, options = {}) => {
+        try {
+            const created = await api.addNews(n);
+            if (created) {
+                setNews([created, ...news]);
+                if (options.sendPush && api.sendNewsPush) {
+                    try {
+                        await api.sendNewsPush(created);
+                        showNotification("Push-уведомление отправлено");
+                    } catch (pushError) {
+                        console.error(pushError);
+                        showNotification(pushError?.message || "Новость опубликована, но push не отправлен");
+                    }
+                }
+            } else {
+                const fresh = await api.getNews();
+                setNews(fresh || []);
+            }
+            showNotification("Новость опубликована");
+        } catch (e) {
+            console.error(e);
+            showNotification(e.message || "Ошибка публикации");
+        }
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600 font-sans">Загрузка...</div>;
 
     const gardenUsers = (users || []).filter((u) => {
@@ -518,80 +601,7 @@ export default function App() {
                         <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
                     )
                 )
-                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <Suspense fallback={<ViewLoading label="Загружаем админку…" />}><AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={async () => {
-                        const allUsers = await api.getUsers();
-                        setUsers(allUsers || []);
-                        showNotification("Список пользователей обновлен");
-                    }} onUserPatched={(updated) => {
-                        // FEAT-015 Path C — оптимистичный merge после toggle/exempt save.
-                        // updated может быть либо partial (status toggle), либо полным
-                        // профилем из api.setProfileAutoPauseExempt; в обоих случаях
-                        // мерджим через id, не теряя остальные поля.
-                        if (!updated?.id) return;
-                        setUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)));
-                    }} onAddContent={async (c, options = {}) => {
-                        try {
-                            const id = c?.id;
-                            const isUpdate = options?.isEdit === true || (id != null && id !== '');
-                            if (isUpdate) {
-                                if (id == null || id === '') {
-                                    throw new Error('Не найден id материала для сохранения изменений');
-                                }
-                                await api.updateKnowledge(c);
-                                const fresh = await api.getKnowledgeBase();
-                                if (Array.isArray(fresh) && fresh.length > 0) setKnowledgeBase(fresh);
-                                else setKnowledgeBase((prev) => prev.map((k) => (String(k.id) === String(id) ? { ...k, ...c } : k)));
-                                showNotification('Материал обновлён');
-                            } else {
-                                await api.addKnowledge(c);
-                                setKnowledgeBase((prev) => [...prev, c]);
-                                showNotification('Материал добавлен в базу');
-                            }
-                        } catch (e) {
-                            console.error(e);
-                            showNotification(e?.message || 'Ошибка сохранения (см. консоль)');
-                        }
-                    }} onNormalizeKnowledgeContent={async () => {
-                        if (!Array.isArray(knowledgeBase) || knowledgeBase.length === 0) {
-                            showNotification('Нет материалов для нормализации');
-                            return { updated: 0, total: 0 };
-                        }
-                        const changedItems = [];
-                        for (const item of knowledgeBase) {
-                            const current = String(item?.content || item?.body || '');
-                            const normalized = normalizeLegacyRichContent(current);
-                            if (normalized === current) continue;
-                            changedItems.push({ ...item, content: normalized });
-                        }
-                        if (changedItems.length > 0) await api.bulkUpdateKnowledge(changedItems);
-                        const fresh = await api.getKnowledgeBase();
-                        if (Array.isArray(fresh)) setKnowledgeBase(fresh);
-                        showNotification(`Нормализация завершена: обновлено ${changedItems.length} из ${knowledgeBase.length}`);
-                        return { updated: changedItems.length, total: knowledgeBase.length };
-                    }} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={async (n, options = {}) => {
-                        try {
-                            const created = await api.addNews(n);
-                            if (created) {
-                                setNews([created, ...news]);
-                                if (options.sendPush && api.sendNewsPush) {
-                                    try {
-                                        await api.sendNewsPush(created);
-                                        showNotification("Push-уведомление отправлено");
-                                    } catch (pushError) {
-                                        console.error(pushError);
-                                        showNotification(pushError?.message || "Новость опубликована, но push не отправлен");
-                                    }
-                                }
-                            } else {
-                                const fresh = await api.getNews();
-                                setNews(fresh || []);
-                            }
-                            showNotification("Новость опубликована");
-                        } catch (e) {
-                            console.error(e);
-                            showNotification(e.message || "Ошибка публикации");
-                        }
-                    }} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
+                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <Suspense fallback={<ViewLoading label="Загружаем админку…" />}><AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={handleRefreshUsers} onUserPatched={handleUserPatched} onAddContent={handleAddContent} onNormalizeKnowledgeContent={handleNormalizeKnowledgeContent} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={handleAddNews} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
                         : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onProfileRefresh={handleProfileRefresh} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
             </div>
         </div>

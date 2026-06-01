@@ -155,6 +155,7 @@ export function normalizeMaterialHtml(source = '') {
             .replaceAll('&lt;', '<')
             .replaceAll('&gt;', '>')
             .replaceAll('&amp;', '&')
+            .replace(/<br\s*\/?>/gi, '\n')
             .trim();
         const escaped = escapeHtml(unwrapped).replaceAll('\n', '<br/>');
         return `<div class="pvl-doc-verbatim">${escaped}</div>`;

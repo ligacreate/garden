@@ -78,7 +78,16 @@
 3. **Defense-in-depth (опционально, P3):** Fix 2 — это UI-гейт. Жёсткий запрет сабмита бланка не-абитуриенткой держала бы RLS на INSERT в `pvl_student_certification_scores` (role='applicant'). Не в scope этой задачи — отдельным тикетом, если нужно.
 4. **RLS-зависимость Fix 2:** `profiles!inner(role)` требует, чтобы RLS profiles отдавал role для own/menti (как уже делает listMyCohortPeers). Если вдруг не отдаст — `!inner` уронит строку → false → LockedCard (fail-closed, без падения).
 
-## 7. Применение на 🟢 (план, НЕ выполнено)
-1. **commit** (на 🟢): `services/pvlPostgrestApi.js` + `migrations/2026-05-31_phase43_*.sql`.
-2. **PUSH** (отдельный 🟢) → CI FTP-деплой подхватит Fix 2 (фронт).
-3. **psql apply** (отдельный 🟢) миграции Fix 1 на прод (RPC не деплоится через FTP). Без этого шага дашборд останется 29.
+## 7. Применение на 🟢 (план)
+1. **commit**: `services/pvlPostgrestApi.js` + `migrations/2026-05-31_phase43_*.sql` + этот отчёт.
+2. **PUSH** → CI FTP-деплой подхватит Fix 2 (фронт).
+3. **psql apply** миграции Fix 1 на прод (RPC не деплоится через FTP).
+
+## 8. ✅ ВЫПОЛНЕНО 2026-05-31 (🟢 commit + 🟢 PUSH + 🟢 APPLY)
+- **commit** `f4d76d3` (3 файла, dist/ не включён).
+- **PUSH** `git push origin main`: `fe7ad9f..f4d76d3`. origin/main = `f4d76d3`. CI `Deploy to FTP` run `26707390784`. (Примечание: origin до push был `fe7ad9f` — docs-батч прошлого 🟢, на 1 коммит впереди fb12e8f.)
+- **APPLY Fix 1 (RPC) на прод** — single-tx, `psql -f` phase43:
+  - `CREATE FUNCTION → GRANT → ensure_garden_grants → COMMIT` ✓; V1 SECURITY DEFINER ✓; V2 `applicants=16 / total=29` ✓.
+  - Вызов применённого RPC на Поток 1 → **16** (роли: applicant=16, только applicant) ✓. `pg_get_functiondef` содержит `sp.role` → `t` ✓.
+  - `recover_grants.sh` → `authenticated=166 web_anon=4` → «OK: grants restored to baseline (166/4)» ✓.
+  - **Дашборд /admin/pvl Поток 1: 29 → 16.** Данные не менялись (только фильтр выборки RPC).

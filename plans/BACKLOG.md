@@ -986,18 +986,6 @@ related_docs:
 - **Acceptance:** после ручного удаления и blur в редакторе сериализованный HTML не содержит хвостового bogus `<br>` внутри блочных элементов; ввод/каретка не сломаны (smoke на пустом параграфе и на `<pre>`).
 - **Связано:** render-фикс [[fix(pvl): <br> внутри <pre>]] (commit с правкой `normalizeMaterialHtml` — маскирует симптом у участниц); recon `docs/_session/2026-05-31_176_codeexec_recon_pvl_richeditor_br_artifact.md`; родственный закрытый [[BUG-PVL-ADMIN-HW-HTML-RAW-RENDER]]; [[BUG-HOMEWORK-PASTE-MSO]] (тот же слой sanitize).
 
-### BUG-CALENDAR-EVENT-TYPE-DRIFT: normalizeCalendarEventTypeForDb маппит типы по-разному в mock и postgrest
-- **Статус:** 🔴 TODO
-- **Приоритет:** P2 (расхождение поведения mock ≠ prod; не data-loss, но скрытый баг при переключении путей и риск, что новый код скопирует не тот маппинг)
-- **Создано:** 2026-06-01 (засветилось в care-refactoring R1, commit `d804e60`, при дедупе чистых функций в `services/pvlTransforms.js`)
-- **Проблема:** функция `normalizeCalendarEventTypeForDb` существует в обоих API-слоях, но маппит типы событий в БД по-разному:
-  - [`services/pvlPostgrestApi.js:147`](../services/pvlPostgrestApi.js#L147) (prod): `mentor_meeting→mentor_meeting`, `lesson_release→lesson_release`, `live_stream→live_stream`, `session→mentor_meeting`.
-  - [`services/pvlMockApi.js:526`](../services/pvlMockApi.js#L526) (mock, помечено комментарием `// legacy types:`): `mentor_meeting→practicum`, `lesson_release→lesson`, `live_stream→breakfast`, `session→practicum`.
-  - Следствие: одно и то же событие в mock-режиме и в проде записывается с РАЗНЫМ `type` в БД — поведение mock не воспроизводит prod.
-- **Что сделать:** определить, какой маппинг — источник правды (вероятно postgrest = prod), свести к одному, затем функцию можно дедуплицировать в `services/pvlTransforms.js`. НЕ чинить в рамках care-refactoring — это смена поведения, а не механический рефактор.
-- **Acceptance:** единый маппинг типов; mock и prod дают одинаковый `type` для одинакового события — либо явно задокументировано, почему legacy-маппинг mock намеренно другой.
-- **Связано:** commit `d804e60` (care-refactoring R1), `services/pvlMockApi.js:526`, `services/pvlPostgrestApi.js:147`.
-
 ### UI-PENDING-APPROVAL-LIST: admin не видит новых регистраций как «на одобрение» ✅ DONE
 - **Статус:** ✅ DONE 2026-05-24 (commit `b3f5236` — отдельная amber-секция «📥 На одобрение» вверху Users tab + counter «📥 N» в tab-button + dropdown role с default applicant + кнопка «Одобрить» через RPC `admin_approve_registration` (atomicity + audit-log) + pending filter из основного списка + серое «Заявок нет» если пусто). Deploy verified bundle hash `index-C8r3ZVMY.js`, Smoke A пройден (серая card, без counter). Trigger phase37 подхватывает UPDATE access_status'а от RPC → автоматически создаёт pvl_students row для applicant/intern. Session `_121..123`.
 - **Приоритет:** P2 (admin UX gap, не data-loss; admin может найти через Ctrl+F, но регрессия-prone)
@@ -2951,6 +2939,18 @@ related_docs:
 - **Связано:** session `_127` recon, [[BUG-PVL-SLOW-MATERIALS-LOAD]] (cb24ad5, исторически связан — guard уровня UI, не cache), parallel investigation login-hang Виктория.
 
 ## ⚪ P3 — Хотелось бы (потом)
+
+### BUG-CALENDAR-EVENT-TYPE-DRIFT: normalizeCalendarEventTypeForDb маппит типы по-разному в mock и postgrest
+- **Статус:** 🔴 TODO
+- **Приоритет:** P3 (понижено с P2 2026-06-01 после recon `_177`: ПРОД КОРРЕКТЕН — CHECK-constraint + UI-маппинг; чинить только mock-дрейф, не горит)
+- **Создано:** 2026-06-01 (засветилось в care-refactoring R1, commit `d804e60`, при дедупе чистых функций в `services/pvlTransforms.js`)
+- **Вердикт recon** (`docs/_session/2026-05-31_177_codeexec_recon_calendar_event_type_drift.md`): прод-путь (postgrest) пишет ТОЛЬКО CHECK-валидные канонические типы — констрейнт `pvl_calendar_events_event_type_check` (миграция `010`: `lesson/practicum/practicum_done/breakfast/mentor_meeting/live_stream/lesson_release/deadline/other`), а UI (`PvlCalendarBlock.jsx`: лейблы, цвет точки, навигация, архив-фильтр) их читает и рендерит корректно. Расхождение влияет ТОЛЬКО на dev-mock (в реальную БД не пишет). Влияние на пользователя нулевое — канонический тип и его legacy-аналог дают тот же лейбл и цвет.
+- **Проблема:** функция существует в обоих API-слоях, маппит 4 типа по-разному:
+  - [`services/pvlPostgrestApi.js:147`](../services/pvlPostgrestApi.js#L147) (prod): `mentor_meeting→mentor_meeting`, `lesson_release→lesson_release`, `live_stream→live_stream`, `session→mentor_meeting` — все CHECK-валидны.
+  - [`services/pvlMockApi.js:526`](../services/pvlMockApi.js#L526) (mock, `// legacy types:`): `mentor_meeting→practicum`, `lesson_release→lesson`, `live_stream→breakfast`, `session→practicum`.
+- **Что сделать (не горит):** привести MOCK-маппинг к прод-варианту (postgrest = источник правды = схема + UI), затем функцию можно дедуплицировать в `services/pvlTransforms.js`. **Прод-маппинг НЕ менять.**
+- **Acceptance:** mock даёт те же значения, что postgrest; либо явно задокументировано, почему legacy-сворачивание в mock намеренно.
+- **Связано:** commit `d804e60` (care-refactoring R1), recon `docs/_session/2026-05-31_177_codeexec_recon_calendar_event_type_drift.md`, `services/pvlMockApi.js:526`, `services/pvlPostgrestApi.js:147`.
 
 ### TECH-DEBT-LINT-1165: разгрести 1165 lint-ошибок, всплывших после восстановления линта
 - **Статус:** 🔴 TODO

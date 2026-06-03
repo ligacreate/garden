@@ -163,6 +163,7 @@ export default function PvlTrainingSessionBlock({
                             viewerId={viewerId}
                             viewerRole={viewerRole}
                             canSeeAll={canSeeAllFeedback}
+                            isMentorOfStudent={isMentorOfStudent}
                         />
                     </article>
                 ))}

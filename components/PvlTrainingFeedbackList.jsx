@@ -44,6 +44,7 @@ export default function PvlTrainingFeedbackList({
     viewerId,
     viewerRole,
     canSeeAll,
+    isMentorOfStudent = false,
 }) {
     const [feedback, setFeedback] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -64,6 +65,11 @@ export default function PvlTrainingFeedbackList({
 
     const myFeedback = feedback.find((f) => f.author_id === viewerId) || null;
     const isPeerOnly = viewerRole === 'student' && sessionStudentId !== viewerId;
+    // Ментор СВОИХ менти может оставить/редактировать свой отзыв (phase44: RLS
+    // pvl_training_feedback_insert_mentor через is_mentor_for). Запись держит RLS,
+    // здесь — только точка входа в существующую форму. Свой отзыв ментор видит в
+    // общем списке (canSeeAll), поэтому отдельный «Мой отзыв»-блок не дублируем.
+    const isMentorHere = viewerRole === 'mentor' && isMentorOfStudent;
 
     return (
         <div className="mt-3 border-t border-[#E8D5C4] pt-3">
@@ -109,6 +115,28 @@ export default function PvlTrainingFeedbackList({
                         Оставить отзыв
                     </button>
                 )
+            ) : null}
+
+            {!loading && isMentorHere ? (
+                <div className="mb-3">
+                    {myFeedback ? (
+                        <button
+                            type="button"
+                            onClick={() => { setEditTarget(myFeedback); setFormOpen(true); }}
+                            className="text-sm text-[#4A3728] underline underline-offset-2 hover:opacity-80"
+                        >
+                            Редактировать мой отзыв
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => { setEditTarget(null); setFormOpen(true); }}
+                            className="text-sm bg-[#4A3728] text-white rounded-full px-4 py-1.5 hover:opacity-90"
+                        >
+                            Оставить отзыв
+                        </button>
+                    )}
+                </div>
             ) : null}
 
             {!loading && canSeeAll && feedback.length > 0 ? (

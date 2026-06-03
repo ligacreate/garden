@@ -78,8 +78,10 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const canOpenTeacherCabinet = hasAccess(normalizedRole, ROLES.MENTOR);
     const canOpenPvlButton = isApplicant;
     const openPvlCourse = () => {
-        setLibraryOpenRequest((n) => n + 1);
+        // Порядок важен: handleViewChange('library') сбрасывает libraryOpenRequest в 0,
+        // поэтому инкремент идёт ПОСЛЕ — иначе ПВЛ не откроется (см. _179).
         handleViewChange('library');
+        setLibraryOpenRequest((n) => n + 1);
         setMobileMenuOpen(false);
     };
     const skillOptions = useMemo(() => {
@@ -241,6 +243,10 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
 
         if (newView === 'library') {
             setLibraryResetToken((v) => v + 1);
+            // Обычный заход в библиотеку (Garden-пункт «Библиотека») показывает список
+            // курсов Garden, а не реанимирует ПВЛ из stale-счётчика на ремаунте.
+            // openPvlCourse ре-бампает счётчик ПОСЛЕ этого вызова (см. _179).
+            setLibraryOpenRequest(0);
         } else if (newView === 'builder') {
             const nextBuilderTab = tab || 'builder';
             setBuilderInitialTab(nextBuilderTab);

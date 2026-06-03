@@ -977,6 +977,24 @@ related_docs:
 
 ## 🟢 P2 — Нужно (в этом месяце)
 
+### BUG-PVL-HOMEWORK-SUBMISSION-DUP: дубль-сабмишен затирает accepted старым in_review («принято, а карточка на проверке»)
+- **Статус:** 🔴 TODO (код-первопричина); разовый дубль данных уже устранён
+- **Приоритет:** P2 (видимый рассинхрон статуса у менти/ментора; не data-loss, но подрывает доверие к карточке проверки; на проде встречался 1 раз)
+- **Создано:** 2026-06-01 (recon по жалобе ментора Елены Федотовой на менти Елену Курдюкову)
+- **Проблема:** на одно `(student_id, homework_item_id)` в `pvl_student_homework_submissions` может лечь **несколько строк**, и слой отображения схлопывает их некорректно. Три слоя:
+  1. **Нет `UNIQUE(student_id, homework_item_id)`** на таблице → БД не мешает дублю.
+  2. **Неатомарный select-then-insert + retry** в `doPersistSubmissionToDb` ([services/pvlMockApi.js:2168-2189](../services/pvlMockApi.js#L2168)) поверх `persistSubmissionToDb` retry `[0,2000,5000]ms` ([:2210-2226](../services/pvlMockApi.js#L2210)); `createHomeworkSubmission` — POST **без `on_conflict`** ([services/pvlPostgrestApi.js:464-473](../services/pvlPostgrestApi.js#L464)). Конкурентные/повторные persist'ы → двойной INSERT.
+  3. **Last-write-wins маппер** ([services/pvlMockApi.js:891-925](../services/pvlMockApi.js#L891)) схлопывает строки в один `studentTaskStates.status`, перезаписывая в порядке выборки `updated_at.desc` → итог = строка с **MIN(updated_at)** вместо MAX. Старый `in_review` затирает свежий `accepted`. Симптом: задание принято, а в карточке «На проверке».
+- **Сырьё:** у Курдюковой (`5aa62776…`) по заданию «Рефлексия модуля 2 (Веди)» (`de64aa54…`) было 2 строки (created_at разница ~400мс): orphan `447b16f0` in_review/accepted_at NULL + `6018e8e6` accepted. Единственный дубль во всей БД на момент recon.
+- **Сделано (data fix):** orphan `447b16f0` удалён в транзакции с верификацией 2026-06-01 (COMMIT, дубль-скан по БД → 0). **Код-первопричина жива** — дубль может повториться.
+- **Что сделать (ОТДЕЛЬНОЙ сессией):**
+  1. `UNIQUE(student_id, homework_item_id)` на `pvl_student_homework_submissions` (предварительно убедиться, что дублей нет; миграция + бэкфилл-проверка).
+  2. Идемпотентный persist: `createHomeworkSubmission` через upsert `on_conflict=student_id,homework_item_id` (`resolution=merge-duplicates`) вместо чистого POST; убрать TOCTOU select-then-insert.
+  3. Дедуп в маппере: брать строку с **MAX(updated_at)** per `homework_item_id` (как уже корректно сделано в `utils/pvlHomeworkReport.js:370-380`), а не last-write-wins по desc-порядку.
+- **Acceptance:** двойной/повторный submit одной работы создаёт ровно 1 строку; после accept карточка ментора и трекер менти показывают «Принято»; smoke на тест-паре (двойной клик submit → один ряд; accept → «Принято»). **Трогает core homework-флоу → обязательный smoke, не катать вместе с другими правками.**
+- **Связано:** одна семья с [[STATUS-HISTORY-DUP-REGRESSION]] (тот же неидемпотентный persist; там дубли в `pvl_homework_status_history` через `slice(-3)` re-send, см. `docs/_session/2026-05-26_131_codeexec_recon_petrunya_edit_window_at_revision.md:398`) — фикс _131 не закрывает этот тикет (не добавляет UNIQUE-гард сабмишенам). Родственный [[REFACTOR-002]] (version vs thread в той же таблице).
+- **Recon + data fix:** `docs/_session/2026-06-01_178_codeexec_recon_elena_status_and_socpsy.md`.
+
 ### BUG-PVL-RICHEDITOR-BOGUS-BR: RichEditor оставляет неудаляемый bogus `<br>` в конце `<pre>` при ручном удалении
 - **Статус:** 🔴 TODO
 - **Приоритет:** P2 (источник литерала `<br>` у участниц замаскирован render-фиксом, но не устранён; «неудаляемый пробел в конце» у автора в редакторе остаётся)

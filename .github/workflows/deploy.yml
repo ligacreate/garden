@@ -55,7 +55,7 @@ jobs:
           cp -R assets deploy/ || true
           cp favicon.png deploy/ || true
 
-      - name: Deploy via FTP
+      - name: Deploy via FTP (всё, кроме assets/)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -65,7 +65,34 @@ jobs:
           protocol: ftp
           local-dir: deploy/
           server-dir: /   # FTP user home is already /www/liga.skrebeyko.ru
-          dangerous-clean-slate: true
+          # INFRA-005: убрали dangerous-clean-slate — каталог больше не сносится,
+          # старые хеш-чанки в assets/ переживают деплой. exclude выводит assets/
+          # из-под diff-синхронизации action'а; его доставляет отдельный
+          # additive lftp-шаг ниже (--no-delete). Остальное (index.html, sw.js,
+          # goroscop, trees, favicon) action синхронизирует и чистит их орфаны.
+          exclude: |
+            assets/**
+
+      - name: Upload assets additively (lftp --no-delete)
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+          # Источник = deploy/assets/ (Vite-чанки + статика, уже смержены в
+          # шаге Prepare deploy bundle), НЕ dist/assets/. --no-delete: старые
+          # хеш-чанки на сервере не трогаем → стейл-вкладки догрузят свои модули.
+          lftp -c "
+            set ftp:ssl-allow false;
+            set net:max-retries 2;
+            open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" -p \"$FTP_PORT\" \"$FTP_SERVER\";
+            mirror -R --no-delete --parallel=4 --verbose deploy/assets/ assets/;
+            bye;
+          "
 
       - name: Smoke check after deploy
         run: |

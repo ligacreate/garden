@@ -21,9 +21,16 @@ class ErrorBoundary extends React.Component {
                 stack: error?.stack || msg,
                 source: 'ErrorBoundary.chunkLoad',
             });
-            // Защита от reload-loop
-            if (!sessionStorage.getItem('garden_chunk_reloaded')) {
-                sessionStorage.setItem('garden_chunk_reloaded', String(Date.now()));
+            // Защита от reload-loop с самосбросом по времени (INFRA-005):
+            // свежая метка (< окна) = мы только что перезагрузились и снова упали
+            // → это настоящая петля, не reload'им. Старая/отсутствующая метка =
+            // новый деплой в той же долгой сессии → перезагружаемся и обновляем
+            // метку. last=0 (нет метки) → now-0 заведомо > окна → reload.
+            const RELOAD_GUARD_MS = 30000;
+            const last = Number(sessionStorage.getItem('garden_chunk_reloaded')) || 0;
+            const now = Date.now();
+            if (now - last > RELOAD_GUARD_MS) {
+                sessionStorage.setItem('garden_chunk_reloaded', String(now));
                 window.location.reload();
                 return;
             }

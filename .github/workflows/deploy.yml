@@ -67,18 +67,17 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq lftp
           mkdir -p live_assets
-          # INFRA-005 v2: скачиваем текущие серверные assets/ (download = mirror
+          # INFRA-005 v3: скачиваем текущие серверные assets/ (download = mirror
           # без -R) и мержим в bundle, чтобы старые хеш-чанки пережили
-          # clean-slate-выкладку. Auth через open+user — надёжно к спецсимволам
-          # в пароле (в отличие от -u user,pass). Прошлый провал (v1) был в
-          # несуществующем флаге --no-delete у mirror -R, а НЕ в auth.
-          lftp -e "
+          # clean-slate-выкладку. Auth через --env-password: пароль из
+          # LFTP_PASSWORD, не из строки команды → устойчив к спецсимволам
+          # (v2 падал на 530 Login incorrect из-за манглинга пароля в lftp -e).
+          export LFTP_PASSWORD="$FTP_PASSWORD"
+          lftp --env-password -u "$FTP_USERNAME" -p "$FTP_PORT" "$FTP_SERVER" -e "
             set ftp:ssl-allow false;
             set ftp:passive-mode true;
             set net:max-retries 2;
             set net:timeout 15;
-            open ftp://$FTP_SERVER:$FTP_PORT;
-            user \"$FTP_USERNAME\" \"$FTP_PASSWORD\";
             mirror --parallel=4 assets/ live_assets/;
             bye;
           "

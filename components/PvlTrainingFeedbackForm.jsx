@@ -93,7 +93,7 @@ export default function PvlTrainingFeedbackForm({
             }
         >
             <form id="pvl-training-feedback-form" onSubmit={handleSubmit} className="space-y-5">
-                <Field label="Что в этой встрече сработало" required hint={`Минимум ${MIN_WHAT_WORKED} символов. Два-три конкретных момента.`}>
+                <Field label="Что в этой встрече сработало" required hint={`Минимум ${MIN_WHAT_WORKED} символов — пара предложений.`}>
                     <textarea
                         value={whatWorked}
                         onChange={(e) => setWhatWorked(e.target.value)}
@@ -101,7 +101,7 @@ export default function PvlTrainingFeedbackForm({
                         className="w-full rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] px-3 py-2 text-sm text-[#4A3728]"
                         placeholder="Два-три конкретных момента."
                     />
-                    <div className="text-[11px] text-[#7A6758] mt-1">{whatWorked.trim().length}/{MIN_WHAT_WORKED}</div>
+                    <div className={`text-[11px] mt-1 ${valid ? 'text-green-600' : 'text-[#7A6758]'}`}>{whatWorked.trim().length}/{MIN_WHAT_WORKED}</div>
                 </Field>
                 <Field label="Что можно усилить" hint="Безоценочно и конкретно. Если ничего — можно оставить пустым.">
                     <textarea value={whatToStrengthen} onChange={(e) => setWhatToStrengthen(e.target.value)} rows={3} className="w-full rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] px-3 py-2 text-sm text-[#4A3728]" />

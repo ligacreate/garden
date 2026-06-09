@@ -55,6 +55,38 @@ jobs:
           cp -R assets deploy/ || true
           cp favicon.png deploy/ || true
 
+      - name: Prefetch live assets/ (ретенция старых чанков, non-fatal)
+        continue-on-error: true
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+        run: |
+          set +e   # шаг не должен валить деплой; при частичной загрузке всё равно мержим
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+          mkdir -p live_assets
+          # INFRA-005 v2: скачиваем текущие серверные assets/ (download = mirror
+          # без -R) и мержим в bundle, чтобы старые хеш-чанки пережили
+          # clean-slate-выкладку. Auth через open+user — надёжно к спецсимволам
+          # в пароле (в отличие от -u user,pass). Прошлый провал (v1) был в
+          # несуществующем флаге --no-delete у mirror -R, а НЕ в auth.
+          lftp -e "
+            set ftp:ssl-allow false;
+            set ftp:passive-mode true;
+            set net:max-retries 2;
+            set net:timeout 15;
+            open ftp://$FTP_SERVER:$FTP_PORT;
+            user \"$FTP_USERNAME\" \"$FTP_PASSWORD\";
+            mirror --parallel=4 assets/ live_assets/;
+            bye;
+          "
+          # Мерж старых чанков в bundle БЕЗ перезатирания свежих (cp -n).
+          # Свежий билд приоритетнее; совпавший хеш = идентичный контент.
+          cp -rn live_assets/. deploy/assets/ 2>/dev/null || true
+          echo "deploy/assets файлов после мержа: $(ls deploy/assets 2>/dev/null | wc -l)"
+
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:

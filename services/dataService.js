@@ -1237,6 +1237,17 @@ class RemoteApiService {
         const data = await authFetch('/auth/login', { method: 'POST', body: { email: normalizedEmail, password } });
         if (data?.token) setAuthToken(data.token);
         const authUser = this._normalizeProfile(data.user);
+
+        // FEAT-023: pending — заявка ещё на одобрении админа. PostgREST для неё
+        // закрыт restrictive guard'ом (phase31): _fetchProfile вернёт null, а
+        // _ensurePostgrestUser упадёт на write guard и кинет «Не удалось создать
+        // пользователя…». Это НЕ ошибка — профиль уже создан backend'ом при
+        // регистрации. Возвращаем нормализованный объект; App.jsx#handleLogin
+        // покажет спокойное уведомление и сделает logout (как в register-ветке).
+        if (authUser?.access_status === 'pending_approval') {
+            return authUser;
+        }
+
         let profile = await this._fetchProfile(authUser?.id);
 
         // Safety net for partially migrated users: auth account exists but profile row is missing.

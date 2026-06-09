@@ -227,16 +227,23 @@ export default function App() {
             } else if (authData.isNew) {
                 user = await api.register(authData);
                 // FEAT-023 Phase 2.5: pending — backend создал профиль, ждём одобрения.
-                // До Phase 3 (полный PendingApprovalScreen + polling) — alert + logout,
+                // До Phase 3 (полный PendingApprovalScreen + polling) — уведомление + logout,
                 // чтобы JWT pending'а не висел в localStorage и не делал лишних fetch'ей.
                 if (user?.access_status === 'pending_approval') {
-                    alert('Регистрация отправлена. Администратор скоро предоставит вам доступ к платформе.');
+                    showNotification('Заявка отправлена! Администратор одобрит её в ближайшее время — после этого у вас появится вход.');
                     await api.logout();
                     return false;
                 }
                 showNotification("Добро пожаловать!");
             } else {
                 user = await api.login(authData.email, authData.password);
+                // FEAT-023: pending — заявка ещё на одобрении. Не пускаем в пустой UI
+                // (PostgREST под guard'ом), показываем то же спокойное уведомление.
+                if (user?.access_status === 'pending_approval') {
+                    showNotification('Заявка отправлена! Администратор одобрит её в ближайшее время — после этого у вас появится вход.');
+                    await api.logout();
+                    return false;
+                }
                 showNotification("С возвращением!");
             }
 

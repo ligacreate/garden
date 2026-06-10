@@ -321,7 +321,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             onNotify("Профиль сохранен");
         } catch (e) {
             console.error("Failed to update profile:", e);
-            onNotify("Ошибка сохранения профиля");
+            onNotify(e?.userFacing ? e.message : "Ошибка сохранения профиля");
         }
     };
 

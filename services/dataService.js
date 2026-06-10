@@ -1666,14 +1666,18 @@ class RemoteApiService {
             if (hasField(updatedUser, 'telegram')) {
                 const normalizedTg = normalizeTelegram(clean.telegram);
                 if (!isValidTelegram(normalizedTg)) {
-                    throw new Error('Telegram обязателен и должен быть в формате https://t.me/username');
+                    const err = new Error('Telegram обязателен и должен быть в формате https://t.me/username');
+                    err.userFacing = true;
+                    throw err;
                 }
                 dbUser.telegram = normalizedTg;
             }
             if (hasField(updatedUser, 'vk')) {
                 const normalizedVk = normalizeVk(clean.vk);
                 if (normalizedVk && !isValidVk(normalizedVk)) {
-                    throw new Error('VK должен быть в формате https://vk.me/username');
+                    const err = new Error('VK должен быть в формате https://vk.me/username');
+                    err.userFacing = true;
+                    throw err;
                 }
                 dbUser.vk = normalizedVk;
             }
@@ -1688,6 +1692,7 @@ class RemoteApiService {
             });
         } catch (e) {
             console.warn("Profile update exception:", e);
+            throw e;   // не глушим: невалидный VK/TG или упавший PATCH не должны выдавать ложный успех
         }
 
         // Return the full object so UI updates optimistically

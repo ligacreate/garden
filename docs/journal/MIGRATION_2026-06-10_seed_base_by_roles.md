@@ -56,3 +56,26 @@ WHERE role='leader' AND status='active' AND COALESCE(seeds,0) < 5000;  -- 15 row
 ## Заметки
 - Идемпотентно: повторный прогон даст 0 строк (все active уже = target).
 - suspended ведущие с высоким seeds (Мельникова 680) не понижены — они вне выборки.
+
+---
+
+## Дозапись 2026-06-10 · Плодоносящее (12000) для 2 участниц (by email)
+
+**Кто:** codeexec, по 🟢 Ольги (сессия _192). Отдельный prod-write, в транзакции.
+**Что:** `seeds = 12000` (Плодоносящее, tree-7) для двух email, **no-downgrade**
+(floor `max(current,12000)`), БЕЗ фильтра по роли — точечно по email.
+
+### SQL (применённый, COMMIT)
+```sql
+UPDATE public.profiles SET seeds = 12000
+WHERE email IN ('olga@skrebeyko.com','odintsova.irina.ig@gmail.com')
+  AND COALESCE(seeds,0) < 12000;   -- 2 rows
+```
+
+### Результат: UPDATE 2
+| Имя | Email | role | было → стало |
+|---|---|---|---|
+| Ольга Скребейко | olga@skrebeyko.com | admin | 855 → 12000 |
+| Ирина Одинцова | odintsova.irina.ig@gmail.com | admin | 165 → 12000 |
+
+Обе `admin/active`. Идемпотентно (повторный прогон = 0 строк). Откат: значения «до» в таблице выше.

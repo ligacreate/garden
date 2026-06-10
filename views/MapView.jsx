@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { Search, MapPin, Sparkles, X, Zap } from 'lucide-react';
 import UserAvatar from '../components/UserAvatar';
 import Button from '../components/Button';
-import { getRoleLabel, getSeason } from '../data/data';
+import { getRoleLabel } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
+import { getTreeStage } from '../utils/treeStages';
 import { normalizeSkills } from '../utils/skills';
 import { getTenureText } from '../utils/tenure';
-import LivingTree from '../components/LivingTree';
 
 // Internal Components for the Directory
 const FilterSelect = ({ icon: Icon, value, onChange, options, placeholder }) => (
@@ -250,9 +250,8 @@ const MapView = ({ users, currentUser, onOpenLeader }) => {
                             <div className="flex flex-wrap gap-4 md:gap-12 justify-center content-start p-4 md:p-12 min-h-[50vh] bg-gradient-to-b from-green-50/30 to-blue-50/10 rounded-[3rem] border border-green-100/50">
                                 {filteredUsers.map(user => {
                                     const displayUser = (currentUser && user.id === currentUser.id) ? { ...user, ...currentUser } : user;
-                                    // Determine tree level roughly by role or time (simplified to adult for now for helpers, sprout for newbies)
-                                    const isNew = displayUser.join_date && (new Date() - new Date(displayUser.join_date) < 1000 * 60 * 60 * 24 * 30);
-                                    const level = isNew ? 1 : 3;
+                                    // Дерево растёт ПО СЕМЕНАМ (единый util getTreeStage), а не по времени.
+                                    const treeStage = getTreeStage(displayUser.seeds || 0);
 
                                     // Resolve tree name safely
                                     let treeName = displayUser.tree;
@@ -276,15 +275,13 @@ const MapView = ({ users, currentUser, onOpenLeader }) => {
                                             <div className="w-32 h-32 relative [perspective:1000px]">
                                                 <div className="w-full h-full relative transition-all duration-700 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
 
-                                                    {/* Front Face: Tree */}
+                                                    {/* Front Face: Tree (по семенам, картинка стадии роста) */}
                                                     <div className="absolute inset-0 [backface-visibility:hidden] bg-white/40 rounded-full border border-white/60 shadow-sm flex items-center justify-center overflow-hidden">
-                                                        <div className="w-full h-full">
-                                                            <LivingTree
-                                                                treeName={treeName}
-                                                                season={getSeason()}
-                                                                level={level}
-                                                            />
-                                                        </div>
+                                                        <img
+                                                            src={treeStage.image}
+                                                            alt={treeStage.name}
+                                                            className="w-full h-full object-cover"
+                                                        />
                                                     </div>
 
                                                     {/* Back Face: Avatar or Beautiful Placeholder */}

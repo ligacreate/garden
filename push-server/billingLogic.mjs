@@ -15,6 +15,38 @@ export const classifyProdamusEvent = (flat = {}) => {
   return 'unknown';
 };
 
+// FEAT-015 BotHunter path: матч по Telegram-username, а не email.
+// BotHunter присылает username как «@name», «name» или ссылку
+// «https://t.me/name» / «t.me/name». Нормализуем к голому lowercase-логину.
+// Инвайт-ссылки (t.me/+XXXXX, t.me/joinchat/XXXXX) — это НЕ username,
+// возвращаем null → приёмник отвечает 422. Та же функция применяется к
+// profiles.telegram (в проде = «https://t.me/<username>», плюс одна запись
+// «t.me/+...», которая нормализуется в null и никогда не матчится).
+export const normalizeTelegramUsername = (input) => {
+  let s = String(input ?? '').trim();
+  if (!s) return null;
+  s = s.replace(/^https?:\/\//i, '');           // схема
+  s = s.replace(/^(www\.)?(t\.me|telegram\.me|telegram\.dog)\//i, ''); // домен-префикс
+  s = s.replace(/^@+/, '');                       // ведущий @
+  s = s.split(/[/?#]/)[0].trim();                 // обрезаем path/query/hash и пробелы
+  if (!s) return null;
+  if (s.startsWith('+')) return null;             // инвайт-ссылка t.me/+XXXX
+  const lower = s.toLowerCase();
+  if (lower === 'joinchat') return null;          // старый формат инвайта
+  if (!/^[a-z0-9_]+$/.test(lower)) return null;   // валидный TG-логин: [a-z0-9_]
+  return lower;
+};
+
+// BotHunter событие → внутреннее eventName биллинг-логики.
+// 'expired' → 'finish' (paused_expired, если нет paused_manual/exempt).
+// 'active'  → 'payment_success' (открывает доступ, paid_until +31д).
+export const mapBotHunterEvent = (event) => {
+  const e = String(event ?? '').trim().toLowerCase();
+  if (e === 'expired') return 'finish';
+  if (e === 'active') return 'payment_success';
+  return null;
+};
+
 export const deriveAccessMutation = ({ eventName, currentAccessStatus, autoPauseExempt = false }) => {
   const isManualPaused = String(currentAccessStatus || '').toLowerCase() === 'paused_manual';
 

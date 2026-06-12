@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyProdamusEvent, deriveAccessMutation, isExemptRole } from './billingLogic.mjs';
+import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent } from './billingLogic.mjs';
 
 test('payment_success opens access', () => {
   const mutation = deriveAccessMutation({ eventName: 'payment_success', currentAccessStatus: 'paused_expired' });
@@ -118,4 +118,67 @@ test('phase30 integration: leader role + индивидуальный exempt →
   const m = deriveAccessMutation({ eventName: 'deactivation', currentAccessStatus: profile.access_status, autoPauseExempt });
   assert.equal(autoPauseExempt, true, 'leader защищён индивидуальным флагом');
   assert.equal(m.access_status, 'active');
+});
+
+// FEAT-015 BotHunter path: нормализация username + маппинг событий.
+
+test('normalizeTelegramUsername: принимает @name / name / ссылки → голый lowercase-логин', () => {
+  assert.equal(normalizeTelegramUsername('@olgapogranitskaya'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('olgapogranitskaya'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('OlgaPogranitskaya'), 'olgapogranitskaya', 'регистр срезается');
+  assert.equal(normalizeTelegramUsername('https://t.me/olgapogranitskaya'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('t.me/olgapogranitskaya'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('http://telegram.me/olgapogranitskaya'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('  @Olga_Pogran  '), 'olga_pogran', 'trim + подчёркивание ок');
+});
+
+test('normalizeTelegramUsername: срезает trailing slash, query и hash', () => {
+  assert.equal(normalizeTelegramUsername('https://t.me/olgapogranitskaya/'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('t.me/olgapogranitskaya?start=abc'), 'olgapogranitskaya');
+  assert.equal(normalizeTelegramUsername('https://t.me/olga#frag'), 'olga');
+});
+
+test('normalizeTelegramUsername: инвайт-ссылки и мусор → null', () => {
+  assert.equal(normalizeTelegramUsername('https://t.me/+AbCdEf123'), null, 't.me/+ — инвайт, не username');
+  assert.equal(normalizeTelegramUsername('t.me/+AbCdEf123'), null);
+  assert.equal(normalizeTelegramUsername('+79991234567'), null, 'голый + → null');
+  assert.equal(normalizeTelegramUsername('https://t.me/joinchat/AAAA'), null, 'старый инвайт joinchat');
+  assert.equal(normalizeTelegramUsername(''), null);
+  assert.equal(normalizeTelegramUsername(null), null);
+  assert.equal(normalizeTelegramUsername(undefined), null);
+  assert.equal(normalizeTelegramUsername('   '), null);
+  assert.equal(normalizeTelegramUsername('имя-с-дефисом'), null, 'кириллица/дефис вне [a-z0-9_] → null');
+});
+
+test('normalizeTelegramUsername: профиль и входящий username нормализуются одинаково (матч)', () => {
+  // В проде profiles.telegram = "https://t.me/<username>", BotHunter шлёт "@<username>".
+  const fromProfile = normalizeTelegramUsername('https://t.me/olgapogranitskaya');
+  const fromWebhook = normalizeTelegramUsername('@OlgaPogranitskaya');
+  assert.equal(fromProfile, fromWebhook, 'обе стороны → один ключ');
+  // Запись-исключение в проде: t.me/+... никогда не должна матчиться.
+  assert.equal(normalizeTelegramUsername('t.me/+xyz'), null);
+});
+
+test('mapBotHunterEvent: expired→finish, active→payment_success, прочее→null', () => {
+  assert.equal(mapBotHunterEvent('expired'), 'finish');
+  assert.equal(mapBotHunterEvent('active'), 'payment_success');
+  assert.equal(mapBotHunterEvent('EXPIRED'), 'finish', 'регистронезависимо');
+  assert.equal(mapBotHunterEvent('  active  '), 'payment_success', 'trim');
+  assert.equal(mapBotHunterEvent('paused'), null);
+  assert.equal(mapBotHunterEvent(''), null);
+  assert.equal(mapBotHunterEvent(undefined), null);
+});
+
+test('BotHunter маппинг согласован с deriveAccessMutation (expired паузит, active открывает)', () => {
+  // expired → finish → paused_expired (для платящей роли без exempt/manual).
+  const exp = deriveAccessMutation({ eventName: mapBotHunterEvent('expired'), currentAccessStatus: 'active' });
+  assert.equal(exp.subscription_status, 'finished');
+  assert.equal(exp.access_status, 'paused_expired');
+  // active → payment_success → access active.
+  const act = deriveAccessMutation({ eventName: mapBotHunterEvent('active'), currentAccessStatus: 'paused_expired' });
+  assert.equal(act.subscription_status, 'active');
+  assert.equal(act.access_status, 'active');
+  // expired при paused_manual → ручная пауза в приоритете, остаётся paused_manual.
+  const manual = deriveAccessMutation({ eventName: mapBotHunterEvent('expired'), currentAccessStatus: 'paused_manual' });
+  assert.equal(manual.access_status, 'paused_manual');
 });

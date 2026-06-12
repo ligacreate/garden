@@ -5,7 +5,7 @@ import webpush from 'web-push';
 import pkg from 'pg';
 import crypto from 'crypto';
 import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
-import { classifyProdamusEvent, deriveAccessMutation, isExemptRole } from './billingLogic.mjs';
+import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
 
 const { Pool } = pkg;
@@ -23,7 +23,9 @@ const {
   PRODAMUS_SECRET_KEY = '',
   PRODAMUS_ALLOWED_IPS = '',
   DEFAULT_BOT_RENEW_URL = '',
-  BILLING_TIMEZONE = 'Europe/Warsaw'
+  BILLING_TIMEZONE = 'Europe/Warsaw',
+  BOTHUNTER_WEBHOOK_TOKEN = '',
+  BOTHUNTER_PROVIDER_NAME = 'bothunter'
 } = process.env;
 
 if (!DATABASE_URL) {
@@ -230,7 +232,7 @@ const findProfileByCustomer = async (db, { email, phone, extId }) => {
   return null;
 };
 
-const persistWebhookLog = async (client, { eventName, externalId, payload, signatureValid }) => {
+const persistWebhookLog = async (client, { provider = PRODAMUS_PROVIDER_NAME, eventName, externalId, payload, signatureValid }) => {
   // BUG-WEBHOOK-LOG-PARTIAL-INDEX: ON CONFLICT с partial unique index требует
   // явного WHERE-clause, совпадающего с индексом, иначе Postgres выкидывает
   // 42P10 «no unique or exclusion constraint matching».
@@ -240,7 +242,7 @@ const persistWebhookLog = async (client, { eventName, externalId, payload, signa
      values ($1, $2, $3, $4::jsonb, $5, false)
      on conflict (provider, external_id) where external_id is not null do nothing
      returning id, is_processed`,
-    [PRODAMUS_PROVIDER_NAME, eventName, externalId, JSON.stringify(payload || {}), Boolean(signatureValid)]
+    [provider, eventName, externalId, JSON.stringify(payload || {}), Boolean(signatureValid)]
   );
   if (q.rowCount > 0) return q.rows[0];
   const existing = await client.query(
@@ -248,7 +250,7 @@ const persistWebhookLog = async (client, { eventName, externalId, payload, signa
        from public.billing_webhook_logs
       where provider = $1 and external_id = $2
       limit 1`,
-    [PRODAMUS_PROVIDER_NAME, externalId]
+    [provider, externalId]
   );
   return existing.rows[0] || null;
 };
@@ -263,7 +265,7 @@ const markWebhookLogState = async (client, logId, { processed, errorText }) => {
   );
 };
 
-const applyAccessState = async (db, profile, { eventName, paidUntil, payload, customerIds }) => {
+const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME, eventName, paidUntil, payload, customerIds }) => {
   const isManualPaused = String(profile?.access_status || '').toLowerCase() === 'paused_manual';
   // phase30: автопауза не применяется к admin/applicant независимо от флага.
   // Флаг auto_pause_exempt — для индивидуальных исключений (бартеры) среди платящих ролей.
@@ -303,7 +305,7 @@ const applyAccessState = async (db, profile, { eventName, paidUntil, payload, cu
              last_payment_at = now(),
              ended_at = null,
              updated_at = now()`,
-      [profile.id, PRODAMUS_PROVIDER_NAME, subscriptionId || `${profile.id}`, mutation.subscription_status, effectivePaidUntil.toISOString()]
+      [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, effectivePaidUntil.toISOString()]
     );
     return;
   }
@@ -332,7 +334,7 @@ const applyAccessState = async (db, profile, { eventName, paidUntil, payload, cu
              paid_until = excluded.paid_until,
              ended_at = now(),
              updated_at = now()`,
-      [profile.id, PRODAMUS_PROVIDER_NAME, subscriptionId || `${profile.id}`, mutation.subscription_status, paidUntil ? paidUntil.toISOString() : null]
+      [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, paidUntil ? paidUntil.toISOString() : null]
     );
 
     if (!isManualPaused) {
@@ -430,6 +432,121 @@ const handleProdamusWebhook = async (req, res) => {
 app.post('/api/billing/prodamus/webhook', handleProdamusWebhook);
 app.post('/webhooks/prodamus', handleProdamusWebhook);
 
+// ────────────────────────────────────────────────────────────────────
+// FEAT-015 BotHunter: авто-пауза/возобновление подписки ведущих.
+// Prodamus-вебхуки безличны (нет email/события окончания), поэтому ловим
+// окончание через бот BotHunter «ligaskrebeyko», который уже управляет
+// доступом в чаты Лиги. Матч по Telegram-username (profiles.telegram).
+//
+//   POST /webhooks/bothunter?token=<BOTHUNTER_WEBHOOK_TOKEN>
+//   body: { username: "<@name|name|t.me/name>", event: "expired"|"active" }
+//
+// Auth — токен в query: блок «Запрос во вне» в BotHunter не умеет
+// кастомные заголовки. Handover: docs/_session/2026-06-11_192_*.md
+// ────────────────────────────────────────────────────────────────────
+const bothunterEnabled = Boolean(BOTHUNTER_WEBHOOK_TOKEN);
+
+const handleBotHunterWebhook = async (req, res) => {
+  if (!bothunterEnabled) return res.status(503).json({ error: 'BotHunter webhook is not configured' });
+  const token = String(req.query?.token || '');
+  if (!token || token !== BOTHUNTER_WEBHOOK_TOKEN) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const body = req.body || {};
+  const username = normalizeTelegramUsername(body.username);
+  if (!username) {
+    // Пусто или инвайт-ссылка (t.me/+...) — это не username.
+    return res.status(422).json({ error: 'invalid_username', detail: 'username is empty or an invite link, not a @username' });
+  }
+  const eventName = mapBotHunterEvent(body.event);
+  if (!eventName) {
+    return res.status(422).json({ error: 'unknown_event', detail: "event must be 'expired' or 'active'" });
+  }
+
+  // Идемпотентность с гранулярностью «день»: повторы того же события за день
+  // дедуплицируются (не двигают paid_until дважды), а ежемесячное продление
+  // ('active' в следующем месяце) — это новый external_id → обработается.
+  const day = new Date().toISOString().slice(0, 10);
+  const externalId = `${eventName}:${username}:${day}`.slice(0, 512);
+  const lockKey = `billing:${BOTHUNTER_PROVIDER_NAME}:${externalId}`;
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query('select pg_advisory_xact_lock(hashtext($1))', [lockKey]);
+
+    const log = await persistWebhookLog(client, {
+      provider: BOTHUNTER_PROVIDER_NAME,
+      eventName,
+      externalId,
+      payload: body,
+      signatureValid: true // токен в query уже проверен выше; подписи у BotHunter нет
+    });
+    if (!log?.id) {
+      await client.query('rollback');
+      return res.status(500).json({ error: 'Failed to persist webhook log' });
+    }
+    if (log.is_processed) {
+      await client.query('commit');
+      return res.json({ ok: true, duplicate: true, event: eventName, username });
+    }
+
+    // Матч по нормализованному username из profiles.telegram. ILIKE-prefilter
+    // сужает выборку, JS-сравнение через ту же normalizeTelegramUsername даёт
+    // точное совпадение (и отсекает запись «t.me/+...» → normalize=null).
+    const { rows } = await client.query(
+      `select id, role, telegram, access_status, auto_pause_exempt
+         from public.profiles
+        where telegram is not null and lower(telegram) like '%' || $1 || '%'`,
+      [username]
+    );
+    const profile = rows.find((r) => normalizeTelegramUsername(r.telegram) === username) || null;
+
+    if (!profile) {
+      await markWebhookLogState(client, log.id, { processed: false, errorText: 'Profile not found (replayable)' });
+      await client.query('commit');
+      console.info(`[bothunter] profile not found username=${username} event=${eventName}`);
+      return res.status(202).json({ ok: true, processed: false, reason: 'profile_not_found', username });
+    }
+
+    const role = String(profile.role || '').toLowerCase();
+    if (role !== 'leader' && role !== 'mentor') {
+      await markWebhookLogState(client, log.id, { processed: true, errorText: `SKIPPED_BY_ROLE:${role || 'none'}` });
+      await client.query('commit');
+      console.info(`[bothunter] skip role=${role} username=${username} profile=${profile.id}`);
+      return res.status(202).json({ ok: true, processed: false, reason: 'role_not_eligible', role, username });
+    }
+
+    await applyAccessState(client, profile, {
+      provider: BOTHUNTER_PROVIDER_NAME,
+      eventName,
+      paidUntil: null, // у BotHunter нет даты; payment_success даст now()+31д, finish сохранит текущую
+      payload: body,
+      customerIds: { subscriptionId: null, customerId: null }
+    });
+
+    // Аудит skip-by-exempt (как в prodamus): isExemptRole здесь не сработает
+    // (leader/mentor — платящие), но auto_pause_exempt (бартер) — может.
+    let skipReason = null;
+    if (eventName === 'finish') {
+      if (isExemptRole(profile.role)) skipReason = 'SKIPPED_BY_ROLE';
+      else if (Boolean(profile.auto_pause_exempt)) skipReason = 'SKIPPED_BY_AUTO_PAUSE_EXEMPT';
+    }
+    await markWebhookLogState(client, log.id, { processed: true, errorText: skipReason });
+    await client.query('commit');
+    console.info(`[bothunter] applied event=${eventName} username=${username} profile=${profile.id} role=${role}${skipReason ? ` (${skipReason})` : ''}`);
+    return res.json({ ok: true, processed: true, event: eventName, username, profile_id: profile.id });
+  } catch (e) {
+    await client.query('rollback').catch(() => {});
+    console.error('[bothunter] processing failed', e);
+    return res.status(500).json({ error: 'Webhook processing failed', details: e?.message || 'unknown' });
+  } finally {
+    client.release();
+  }
+};
+
+app.post('/webhooks/bothunter', handleBotHunterWebhook);
+
 const runNightlyExpiryReconcile = async () => {
   try {
     // FEAT-015 Path C step 1: auto-expire auto_pause_exempt_until.
@@ -494,5 +611,5 @@ runNightlyExpiryReconcile();
 setInterval(runNightlyExpiryReconcile, 24 * 60 * 60 * 1000);
 
 app.listen(Number(PORT), () => {
-  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'})`);
+  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'})`);
 });

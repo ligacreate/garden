@@ -84,9 +84,14 @@ export default function PvlTrainingFeedbackList({
                 </button>
             </div>
             {showRules ? (
-                <ul className="mb-3 text-[12px] text-[#7A6758] space-y-1 list-disc list-inside">
-                    {FEEDBACK_RULES.map((r) => <li key={r}>{r}</li>)}
-                </ul>
+                <div className="mb-3 space-y-2">
+                    <p className="text-[12px] text-[#7A6758]">
+                        Сценарий, темы, выбор практик — авторская работа ведущей и&nbsp;её ментора. В&nbsp;обратной связи мы не&nbsp;советуем поменять практику, не&nbsp;вмешиваемся в&nbsp;авторскую работу. Нам важно подсветить, что&nbsp;было видно в&nbsp;проведении: как&nbsp;звучала инструкция, как&nbsp;держался тайминг, как&nbsp;ведущая реагировала на&nbsp;группу.
+                    </p>
+                    <ul className="text-[12px] text-[#7A6758] space-y-1 list-disc list-inside">
+                        {FEEDBACK_RULES.map((r) => <li key={r}>{r}</li>)}
+                    </ul>
+                </div>
             ) : null}
 
             {loading ? <p className="text-xs text-[#7A6758]">Загружаем отзывы…</p> : null}

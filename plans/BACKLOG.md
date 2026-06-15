@@ -1562,9 +1562,15 @@ related_docs:
   trigger sync_meeting_to_event(), RLS policies на events.
 
 ### ANOM-003: co_hosts не sync'ится из meetings в events
-- **Статус:** 🔴 TODO
+- **Статус:** 🟢 DONE (2026-06-15)
 - **Приоритет:** P3 (продуктовая фича, не блокер security)
 - **Создано:** 2026-05-04 (post-phase-16 архитектурная ревизия)
+- **Закрыто:** 2026-06-15 — migration `2026-06-15_phase44_event_cohosts_sync.sql`
+  (commit `73cebb6`): trigger `sync_meeting_to_event()` дополнен conversion
+  `co_hosts (uuid[])` → `events.co_hosts (text)` через JOIN на profiles +
+  `string_agg`; бэкфилл 11 events (20 meetings с co_hosts, event есть у 11).
+  Layer 2 (frontend render) — repo meetings commit `d121d13`. Probe event 341 →
+  `Елена Федотова, Мария Романова`. См. docs/RECON_2026-05-26_anom003_cohosts_fix.md.
 - **Контекст:**
   - `meetings.co_hosts` — `uuid[]` (массив UUID со-ведущих).
   - `events.co_hosts` — `text` (колонка существует).
@@ -4436,7 +4442,7 @@ related_docs:
   - `notebooks` и `questions` — это таблицы Meetings, не «чужие» (CLEAN-011 переоформлен).
   - RLS-policy `meetings` = `auth.uid() = user_id` для всех операций — owner-only by design; гости видят встречу через `events` (sync trigger).
   - `events` RLS = `USING (true)` для всех CRUD → защищались только GRANT-слоем; phase 18 закрыла дыру.
-- **Закрыто:** ANOM-002/SEC-011 (phase 18). **Открыто:** ANOM-003 (co_hosts не sync'ится), ANOM-004 (writes на cities/notebooks/questions — audit паттерна), AUDIT-001 (code review репо meetings).
+- **Закрыто:** ANOM-002/SEC-011 (phase 18), ANOM-003 (co_hosts sync — phase44, 2026-06-15). **Открыто:** ANOM-004 (writes на cities/notebooks/questions — audit паттерна), AUDIT-001 (code review репо meetings).
 - **Урок** (docs/lessons/2026-05-04-postgrest-role-switch-anon-clients.md): при включении role-switch в API-gateway (PostgREST) GRANT-слой должен покрывать ВСЕХ клиентов API, включая отдельные сервисы и анонимных читателей, а не только основной фронт.
 
 - **Cover-upload incident у ведущей.** Несколько часов после phase 18 ведущая не могла сохранить событие — alert «Обложка (загрузка не завершена)», затем «Ошибка обновления встречи». Двойной симптом:

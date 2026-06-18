@@ -74,6 +74,21 @@
   --color-rose-800: #9f1239;
   --color-rose-900: #881337;
   --color-rose-950: #4c0519;
+
+  /* DESIGN-001 Фаза A: тёплая палитра ПВЛ/менторки → токены (значения 1:1 с текущими хексами; миграция использований — Фаза D) */
+  --color-surface: #FAF6F2;
+  --color-surface-soft: #F5EDE6;
+  --color-line: #E8D5C4;
+  --color-ink: #4A3728;
+  --color-ink-strong: #2C1810;
+  --color-ink-soft: #7A6758;
+  --color-ink-mute: #9B8B80;
+  --color-clay: #C8855A;
+
+  /* Кривые easing (новые, пока неиспользуемые — для Фаз C/D). Имена НЕ из зарезервированного Tailwind-набора (out/in-out/in), чтобы не переопределить дефолтные .ease-* утилиты → diff=0. */
+  --ease-soft: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-smooth: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @layer base {

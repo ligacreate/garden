@@ -145,7 +145,7 @@ export function progressWidget(label, done, total) {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-            <div className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">{label}</div>
+            <div className="text-meta text-ink-mute mb-1">{label}</div>
             <div className="font-display text-3xl leading-none text-[#C8855A]">{done}/{total}</div>
             <div className="mt-2 h-1.5 rounded-full bg-[#E8D5C4] overflow-hidden">
                 <div className="h-full bg-[#C8855A]" style={{ width: `${pct}%` }} />
@@ -158,7 +158,7 @@ function renderAboutPage() {
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728] mb-2">О курсе «Пиши, веди, люби»</h3>
+                <h3 className="h-section text-[#4A3728] mb-2">О курсе «Пиши, веди, люби»</h3>
                 <p className="text-sm text-[#2C1810] leading-6">
                     Вы начинаете обучение на курсе «Пиши, веди, люби». Курс состоит из трёх модулей: Пиши, Веди, Люби. Отдельный курс — социальная психология (его можно слушать в любое время).
                 </p>
@@ -217,7 +217,7 @@ function renderGlossaryPage() {
             <div className="grid md:grid-cols-2 gap-3">
                 {['Письменная практика', 'Результат встречи', 'Артефакт', 'Рефлексивный отклик'].map((t) => (
                     <article key={t} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                        <h4 className="font-display text-xl text-[#4A3728]">{t}</h4>
+                        <h4 className="h-section text-[#4A3728]">{t}</h4>
                         <p className="text-sm text-[#2C1810] mt-1">Краткое определение термина и практическое применение в курсе.</p>
                     </article>
                 ))}
@@ -233,7 +233,7 @@ export function renderLibraryPage(items = libraryItems, filter = 'all') {
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex items-center justify-between">
                 <div>
-                    <h3 className="font-display text-2xl text-[#4A3728]">Библиотека курса</h3>
+                    <h3 className="h-section text-[#4A3728]">Библиотека курса</h3>
                     <p className="text-sm text-ink-mute">Библиотека отделена от уроков. Фильтр: видео, статьи, PDF, чек-листы.</p>
                 </div>
                 <div className="text-sm text-[#2C1810]">Пройдено: <strong>{completed}/{items.length}</strong></div>
@@ -248,7 +248,7 @@ export function renderLibraryPage(items = libraryItems, filter = 'all') {
             <div className="grid md:grid-cols-2 gap-3">
                 {filtered.map((item) => (
                     <article key={item.id} className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4">
-                        <div className="text-xs text-ink-mute uppercase tracking-[0.08em]">{item.category}</div>
+                        <div className="text-meta text-ink-mute">{item.category}</div>
                         <h4 className="font-medium text-[#4A3728] mt-1">{item.title}</h4>
                         <p className="text-xs text-ink-mute mt-1">{item.contentType} · {item.duration}</p>
                         <div className="mt-2 h-1.5 rounded-full bg-[#E8D5C4] overflow-hidden">
@@ -267,7 +267,7 @@ export function renderLessonsPage() {
             {courseWeeks.map((w) => (
                 <article key={w.weekNumber} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                        <h4 className="font-display text-2xl text-[#4A3728]">Модуль {w.weekNumber}: {w.title}</h4>
+                        <h4 className="h-section text-[#4A3728]">Модуль {w.weekNumber}: {w.title}</h4>
                         <span className="text-xs text-ink-mute">Дедлайн: {w.deadlineAt}</span>
                     </div>
                     <div className="grid md:grid-cols-3 gap-2 text-sm">
@@ -291,7 +291,7 @@ function renderMentorPracticesPage() {
                         <p className="text-sm text-ink-mute">{item.dateTime}</p>
                         <p className="text-xs text-ink-mute mt-1">Напоминание за 24 часа + рефлексия после встречи</p>
                     </div>
-                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadge(item.status)}`}>{item.status}</span>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge(item.status)}`}>{item.status}</span>
                 </article>
             ))}
         </div>
@@ -301,7 +301,7 @@ function renderMentorPracticesPage() {
 function renderChecklistPage() {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Маршрут прохождения</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Маршрут прохождения</h3>
             <p className="text-sm text-ink-mute mb-3">Показывает обязательные точки, что закрыто, что просрочено, что впереди.</p>
             <div className="space-y-2 text-sm">
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">КТ1 закрыта</div>
@@ -317,7 +317,7 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728]">Результаты</h3>
+                <h3 className="h-section text-[#4A3728]">Результаты</h3>
                 <p className="text-sm text-ink-mute">Личная страница ведущей: домашки, статусы, история и комментарии ментора в одном месте.</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -332,7 +332,7 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
                     <article key={item.id} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <h4 className="font-medium text-[#4A3728]">{item.title}</h4>
-                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadge(item.status)}`}>{item.status}</span>
+                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadge(item.status)}`}>{item.status}</span>
                         </div>
                         <p className="text-xs text-ink-mute mt-1">Модуль {item.week} · {item.type}</p>
                         <div className="grid md:grid-cols-3 gap-2 mt-3 text-sm">
@@ -361,7 +361,7 @@ export function renderCertificationPage() {
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728]">Сертификационный завтрак — критерии и подготовка</h3>
+                <h3 className="h-section text-[#4A3728]">Сертификационный завтрак — критерии и подготовка</h3>
                 <p className="text-sm text-[#2C1810] mt-1 leading-6">Этот документ — ваша опора перед сертификацией. Здесь собрано всё, что важно: как подготовиться, какие есть обязательные условия, на что обращает внимание ментор и как устроена оценка.</p>
             </div>
 
@@ -475,13 +475,13 @@ export function renderStudentDashboard(onNavigate, profile = studentProfile, sta
     return (
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h2 className="font-display text-3xl text-[#4A3728]">Дашборд участницы</h2>
+                <h2 className="h-display text-[#4A3728]">Дашборд участницы</h2>
                 <p className="text-sm text-ink-mute mt-1">Где я сейчас и что делать дальше.</p>
             </div>
             <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
                 {dashboardItems.map((i) => (
                     <div key={i.key} className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-                        <div className="text-[11px] uppercase tracking-[0.08em] text-ink-mute">{i.label}</div>
+                        <div className="text-meta text-ink-mute">{i.label}</div>
                         <div className="font-display text-3xl text-[#C8855A] mt-1">{i.value}</div>
                     </div>
                 ))}
@@ -491,14 +491,14 @@ export function renderStudentDashboard(onNavigate, profile = studentProfile, sta
                 {progressWidget('Домашки', stats.homeworkDone, stats.homeworkTotal)}
                 {progressWidget('Контрольные точки', stats.controlPointsDone, stats.controlPointsTotal)}
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-                    <div className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">Курсовые баллы</div>
+                    <div className="text-meta text-ink-mute mb-1">Курсовые баллы</div>
                     <div className="font-display text-3xl text-[#C8855A]">{profile.coursePoints}/400</div>
                     <p className="text-xs text-ink-mute mt-2">Как получить баллы: закрывайте модули, контрольные точки, сдавайте в срок.</p>
                 </div>
             </div>
             <div className="grid md:grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                    <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ближайшие дедлайны</h3>
+                    <h3 className="h-section text-[#4A3728] mb-2">Ближайшие дедлайны</h3>
                     <ul className="text-sm text-[#2C1810] space-y-1">
                         <li>КТ4/КТ5/КТ6 — 2026-06-02</li>
                         <li>Антидолг D+1: 1 задача</li>
@@ -507,14 +507,14 @@ export function renderStudentDashboard(onNavigate, profile = studentProfile, sta
                     </ul>
                 </div>
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                    <h3 className="font-display text-2xl text-[#4A3728] mb-2">FAQ</h3>
+                    <h3 className="h-section text-[#4A3728] mb-2">FAQ</h3>
                     <ul className="text-sm text-[#2C1810] space-y-1">
                         {faqItems.map((f) => <li key={f.id}>• {f.q}</li>)}
                     </ul>
                 </div>
             </div>
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-2xl text-[#4A3728] mb-2">Быстрые переходы</h3>
+                <h3 className="h-section text-[#4A3728] mb-2">Быстрые переходы</h3>
                 <div className="flex flex-wrap gap-2">
                     {['Уроки', 'Результаты', 'Сертификация', 'Библиотека курса'].map((item) => (
                         <button key={item} onClick={() => onNavigate(item)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">
@@ -693,13 +693,13 @@ export default function PvlStudentCabinetView({ user }) {
         <div className="grid grid-cols-1 xl:grid-cols-[240px_1fr] gap-4">
             <aside className="surface-card border border-[#E8D5C4] bg-white p-3 h-fit xl:sticky xl:top-6">
                 <div className="mb-3">
-                    <h2 className="font-display text-2xl text-[#4A3728]">ЛК участницы</h2>
+                    <h2 className="h-section text-[#4A3728]">ЛК участницы</h2>
                     <p className="text-xs text-ink-mute">{profileState.fullName} · {profileState.cohort}</p>
                 </div>
                 {renderMenu(activeMenu, setActiveMenu)}
                 {activeMenu === 'Библиотека курса' && (
                     <div className="mt-3">
-                        <p className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">Фильтр библиотеки</p>
+                        <p className="text-meta text-ink-mute mb-1">Фильтр библиотеки</p>
                         <select value={libraryFilter} onChange={(e) => setLibraryFilter(e.target.value)} className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 text-sm">
                             <option value="all">Все</option>
                             <option value="video">Видео</option>
@@ -711,7 +711,7 @@ export default function PvlStudentCabinetView({ user }) {
                 )}
                 {activeMenu === 'Результаты' && (
                     <div className="mt-3">
-                        <p className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">Фильтр результатов</p>
+                        <p className="text-meta text-ink-mute mb-1">Фильтр результатов</p>
                         <select value={resultsFilter} onChange={(e) => setResultsFilter(e.target.value)} className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 text-sm">
                             <option value="all">Все</option>
                             <option value="к проверке">К проверке</option>

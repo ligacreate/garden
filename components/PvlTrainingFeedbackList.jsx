@@ -21,7 +21,7 @@ function FieldLine({ label, text }) {
     if (!text || !text.trim()) return null;
     return (
         <div>
-            <div className="text-[11px] uppercase tracking-wide text-[#7A6758]">{label}</div>
+            <div className="text-meta text-[#7A6758]">{label}</div>
             <div className="whitespace-pre-wrap">{text}</div>
         </div>
     );

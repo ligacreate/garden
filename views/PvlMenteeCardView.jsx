@@ -66,7 +66,7 @@ const statusTone = (status) => {
 };
 
 const Pill = ({ children, tone }) => (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${tone}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}>
         {children}
     </span>
 );
@@ -85,7 +85,7 @@ const resultsStatusTone = (status) => {
 
 function ResultsStatusBadge({ children }) {
     return (
-        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${resultsStatusTone(children)}`}>
+        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${resultsStatusTone(children)}`}>
             {children}
         </span>
     );
@@ -146,7 +146,7 @@ export function MenteeHeader({
             ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className="font-display text-3xl text-[#4A3728]">{profile.fullName}</h2>
+                    <h2 className="h-display text-[#4A3728]">{profile.fullName}</h2>
                     <p className="text-sm text-[#2C1810] mt-2 font-medium">{coursePathLine}</p>
                 </div>
             </div>
@@ -224,7 +224,7 @@ export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
     return (
         <section className="rounded-3xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
             <div className="mb-4 pb-3 border-b border-slate-200/70">
-                <h3 className="font-display text-xl text-slate-800">Домашние работы</h3>
+                <h3 className="h-section text-slate-800">Домашние работы</h3>
                 <p className="text-xs text-slate-500 mt-1">Данные из раздела «Результаты» участницы ({tasks.length})</p>
             </div>
             <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
@@ -249,7 +249,7 @@ export function MenteeHomeworkResultsList({ tasks, onOpenTask }) {
                                     <div className="text-xs text-slate-500">Модуль {t.moduleNumber ?? t.week ?? '—'} · {t.typeLabel || t.type}</div>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 tabular-nums">
+                                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 tabular-nums">
                                         Доработок: {t.revisionCycles ?? 0}
                                     </span>
                                     <ResultsStatusBadge>{t.displayStatus || t.status}</ResultsStatusBadge>
@@ -329,7 +329,7 @@ export function MenteeHomeworkPrioritized({ tasks, onOpenTask }) {
         <section className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-display text-xl text-[#4A3728]">Домашние работы</h3>
+                    <h3 className="h-section text-[#4A3728]">Домашние работы</h3>
                     <span className="text-xs text-ink-mute">Сначала то, что нужно проверить или доработать</span>
                 </div>
                 <p className="text-sm text-ink-mute mt-1">Всего в потоке: {tasks.length} · принято: {accepted.length}</p>
@@ -361,7 +361,7 @@ export function MenteeHomeworkPrioritized({ tasks, onOpenTask }) {
 export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
     return (
         <article className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h4 className="font-display text-2xl text-[#4A3728] mb-2">Модуль {weekNumber}</h4>
+            <h4 className="h-section text-[#4A3728] mb-2">Модуль {weekNumber}</h4>
             <div className="grid gap-2">
                 {tasks.map((task) => (
                     <div key={task.id} className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">
@@ -378,7 +378,7 @@ export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
                             <div className="tabular-nums">Баллы: {task.score}/{task.maxScore}</div>
                         </div>
                         <div className="mt-2">
-                            <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950 tabular-nums">
+                            <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-950 tabular-nums">
                                 Доработок: {task.revisionCycles ?? 0}
                             </span>
                         </div>
@@ -411,7 +411,7 @@ export function MenteeTasksList({ tasks, statusFilter, setStatusFilter, onOpenTa
         <section className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-display text-2xl text-[#4A3728]">Задания и результаты</h3>
+                    <h3 className="h-section text-[#4A3728]">Задания и результаты</h3>
                     <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-sm">
                         <option value="все">все</option>
                         <option value="к проверке">к проверке</option>
@@ -473,7 +473,7 @@ export function renderDeadlineRisks(risks, onOpenTask) {
 export function DeadlineRiskPanel({ risks, onOpenTask }) {
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Риски и дедлайны</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Риски и дедлайны</h3>
             <div className="space-y-2">{renderDeadlineRisks(risks, onOpenTask)}</div>
         </section>
     );
@@ -522,7 +522,7 @@ export function MenteeThreadFeed({ feed, unreadOnly, setUnreadOnly, taskFilter, 
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <h3 className="font-display text-2xl text-[#4A3728]">Комментарии и треды</h3>
+                <h3 className="h-section text-[#4A3728]">Комментарии и треды</h3>
                 <div className="flex gap-2">
                     <select value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)} className="rounded-xl border border-[#E8D5C4] p-2 text-xs">
                         <option value="">все задания</option>
@@ -568,7 +568,7 @@ export function MentorQuickActions({ tasks, risks = deadlineRisks, onOpenTask })
     const lastPending = tasks.find((t) => t.status === 'к проверке');
     return (
         <aside className="rounded-2xl border border-[#E8D5C4] bg-white p-4 xl:sticky xl:top-6 h-fit">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Действия ментора</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Действия ментора</h3>
             <p className="text-xs text-ink-mute mb-3">{nextAction}</p>
             <div className="grid gap-2">
                 <button onClick={() => lastPending && onOpenTask(lastPending.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Открыть последнее к проверке</button>

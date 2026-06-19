@@ -193,7 +193,7 @@ function trackerHomeworkPillClass(status) {
 }
 
 const Pill = ({ children, tone }) => (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${tone}`}>
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}>
         {children}
     </span>
 );
@@ -359,7 +359,7 @@ export function TaskHeader({
             ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className={trackerLike ? 'font-display text-2xl md:text-3xl text-[#4A3728]' : 'font-display text-3xl text-slate-800'}>{data.title}</h2>
+                    <h2 className={trackerLike ? 'h-display text-[#4A3728]' : 'h-display text-slate-800'}>{data.title}</h2>
                     <p className={trackerLike ? 'text-sm text-[#7A6758] mt-1' : 'text-sm text-slate-500 mt-1'}>
                         Модуль {data.moduleNumber ?? data.weekNumber} · {data.type}
                     </p>
@@ -419,7 +419,7 @@ export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButto
             {menteeName ? (
                 <p className="text-xs text-[#7A6758] mb-1">Менти: <span className="font-medium text-[#4A3728]">{menteeName}</span></p>
             ) : null}
-            <h2 className="font-display text-2xl md:text-3xl text-[#4A3728]">{data.title}</h2>
+            <h2 className="h-display text-[#4A3728]">{data.title}</h2>
             <div className="mt-3 rounded-xl border border-[#F0E6DC] bg-[#FAF6F2]/70 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#7A6758]">
                     <span>Дедлайн: <span className="font-medium text-[#4A3728]">{data.deadlineAt || '—'}</span></span>
@@ -439,7 +439,7 @@ export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButto
 export function TaskMeta({ data }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Метаданные</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Метаданные</h3>
             <div className="grid md:grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Тип: {data.type}</div>
             </div>
@@ -457,7 +457,7 @@ function TaskRevisionSummary({ revisionCyclesFromHistory, storedRevisionCycles }
         <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 text-sm text-[#2C1810] shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-900/75">Доработок (циклов)</div>
+                    <div className="text-[10px] font-semibold text-amber-900/75">Доработок (циклов)</div>
                     <div className="font-display text-2xl tabular-nums text-amber-950">{n}</div>
                 </div>
                 <p className="text-xs text-amber-950/80 max-w-xl leading-relaxed">
@@ -500,7 +500,7 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
     const summaryHtml = summaryRaw ? sanitizeHomeworkAnswerHtml(summaryRaw) : '<p class="text-slate-400">Текст задания не указан.</p>';
     return (
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h3 className="font-display text-xl text-slate-800 mb-2">Задание</h3>
+            <h3 className="h-section text-slate-800 mb-2">Задание</h3>
             <div
                 className={pvlMaterialBodyClass}
                 dangerouslySetInnerHTML={{ __html: summaryHtml }}
@@ -521,7 +521,7 @@ export function SubmissionVersionCard({ version, checklistSections, homeworkAssi
         <article className={`rounded-xl border p-3 ${version.isCurrent ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/70'}`}>
             <div className="flex items-center justify-between gap-2 mb-1">
                 <div className="text-sm font-medium text-slate-800">Версия {version.versionNumber}</div>
-                {version.isCurrent ? <span className="text-[10px] uppercase tracking-[0.08em] text-emerald-700">текущая</span> : null}
+                {version.isCurrent ? <span className="text-[10px] text-emerald-700">текущая</span> : null}
             </div>
             <p className="text-xs text-slate-500">{version.createdAt} · {version.authorRole}</p>
             {showQuestionnaire ? (
@@ -600,7 +600,7 @@ export function SubmissionHistory({
     return (
         <div className={shell}>
             {role !== 'student' ? (
-                <h3 className={`font-display text-xl mb-2 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Ответ участницы</h3>
+                <h3 className={`h-section mb-2 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Ответ участницы</h3>
             ) : null}
             {currentVersion ? (
                 <div>
@@ -724,7 +724,7 @@ export function renderStatusTimeline(history) {
 export function StatusTimeline({ history }) {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Статус и история</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Статус и история</h3>
             <div className="space-y-2">{renderStatusTimeline(history)}</div>
         </div>
     );
@@ -736,7 +736,7 @@ export function renderCommentsThread(messages) {
         <article key={m.id} className={`rounded-xl border p-3 ${m.authorRole === 'mentor' ? 'bg-emerald-50/30 border-emerald-200/70' : m.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-[10px] font-semibold uppercase tracking-wider text-slate-500'}`}>{threadEventLabel(m.messageType)}</span>
+                    <span className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-[10px] font-semibold text-slate-500'}`}>{threadEventLabel(m.messageType)}</span>
                     <p className={`${m.authorRole === 'system' ? 'text-xs text-slate-500' : 'text-sm font-medium text-slate-800'}`}>{m.authorName} <span className="text-xs text-slate-500 font-normal">({m.authorRole})</span></p>
                 </div>
                 <p className={`${m.authorRole === 'system' ? 'text-[10px] text-slate-400' : 'text-xs text-slate-500'}`}>{m.createdAt}</p>
@@ -769,7 +769,7 @@ export function CommentsThread({
         : 'rounded-2xl border border-slate-100 bg-white p-5 shadow-sm';
     return (
         <div className={shell}>
-            <h3 className={`font-display text-xl mb-1 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Лента по заданию</h3>
+            <h3 className={`h-section mb-1 ${trackerLike ? 'text-[#4A3728]' : 'text-slate-800'}`}>Лента по заданию</h3>
             <p className={`text-xs mb-3 ${trackerLike ? 'text-[#7A6758]' : 'text-slate-500'}`}>
                 Сообщения участницы и ментора по заданию.
             </p>
@@ -825,7 +825,7 @@ export function renderMentorResponseForm(form, setForm, onSave) {
     const warning = detectTooManyRevisions(form.nextActions);
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Ответ ментора</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Ответ ментора</h3>
             <div className="grid gap-2">
                 <RichEditor value={form.strengths} onChange={(v) => setForm((p) => ({ ...p, strengths: v }))} placeholder="" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
                 <RichEditor value={form.blockers} onChange={(v) => setForm((p) => ({ ...p, blockers: v }))} placeholder="" variant="student" onUploadImage={pvlReadImageFileAsDataUrl} editorClassName="!min-h-[100px] !max-h-[280px] p-3" />
@@ -858,7 +858,7 @@ export function ControlPointMeta({ taskData }) {
     if (!taskData.isControlPoint) return null;
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Контрольная точка</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Контрольная точка</h3>
             <div className="grid md:grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">ID: {controlPointMeta.id}</div>
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {controlPointMeta.deadlineAt}</div>
@@ -873,7 +873,7 @@ export function ControlPointMeta({ taskData }) {
 export function RelatedLinks() {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-2xl text-[#4A3728] mb-2">Связанные элементы</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Связанные элементы</h3>
             <div className="flex flex-wrap gap-2">
                 {relatedLinks.map((item) => (
                     <a key={item.id} href={item.href} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">
@@ -899,14 +899,14 @@ export function MentorStudentAnswerCompact({
     if (!current) {
         return (
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                <h3 className="font-display text-xl text-[#4A3728] mb-2">Ответ участницы</h3>
+                <h3 className="h-section text-[#4A3728] mb-2">Ответ участницы</h3>
                 <p className="text-sm text-ink-mute">Пока нет отправленной версии.</p>
             </div>
         );
     }
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-            <h3 className="font-display text-xl text-[#4A3728] mb-2">Ответ участницы</h3>
+            <h3 className="h-section text-[#4A3728] mb-2">Ответ участницы</h3>
             <SubmissionVersionCard
                 version={current}
                 checklistSections={checklistSections}
@@ -1018,7 +1018,7 @@ function MentorTaskSlim({
             />
             {!accepted ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 space-y-3">
-                    <h3 className="font-display text-xl text-[#4A3728]">Ответ ментора</h3>
+                    <h3 className="h-section text-[#4A3728]">Ответ ментора</h3>
                     <RichEditor
                         value={reply}
                         onChange={setReply}
@@ -1050,7 +1050,7 @@ function MentorTaskSlim({
             )}
             {state.threadMessages?.length > 0 ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
-                    <h3 className="font-display text-xl text-[#4A3728] mb-1">Лента по заданию</h3>
+                    <h3 className="h-section text-[#4A3728] mb-1">Лента по заданию</h3>
                     <p className="text-xs text-[#7A6758] mb-3">История событий и комментариев.</p>
                     <div className="grid gap-2 max-h-72 overflow-y-auto pr-1">{renderCommentsThread(state.threadMessages)}</div>
                 </div>

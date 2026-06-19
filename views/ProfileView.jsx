@@ -393,7 +393,7 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
             {/* Page Header */}
             <div className="flex justify-between items-end mb-8">
                 <div>
-                    <h1 className="text-4xl font-light text-slate-800 tracking-tight mb-1">Профиль</h1>
+                    <h1 className="h-display text-slate-800 mb-1">Профиль</h1>
                     <p className="text-slate-500">Ваше пространство в Лиге</p>
                 </div>
             </div>
@@ -404,11 +404,11 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                     <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden relative group border border-slate-100/50">
                         {/* Status Bar */}
                         <div className="absolute top-0 left-0 right-0 z-20 p-6 flex justify-between items-start">
-                            <div className="bg-white/30 backdrop-blur-md px-3 py-1 rounded-full border border-white/40 text-white text-[10px] font-bold uppercase tracking-widest shadow-sm">
+                            <div className="bg-white/30 backdrop-blur-md px-3 py-1 rounded-full border border-white/40 text-white text-[10px] font-bold shadow-sm">
                                 {progress}% заполнено
                             </div>
                             {druidTree && (
-                                <div className="bg-black/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-white text-[10px] font-bold uppercase tracking-widest shadow-sm">
+                                <div className="bg-black/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-white text-[10px] font-bold shadow-sm">
                                     {druidTree.name}
                                 </div>
                             )}
@@ -498,12 +498,12 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                         ) : null}
                                     </div>
                                 ) : null}
-                                <h2 className="text-2xl font-bold text-white mb-1 shadow-black/50 drop-shadow-md">{user.name}</h2>
+                                <h2 className="h-section text-white mb-1 shadow-black/50 drop-shadow-md">{user.name}</h2>
                                 <p className="text-white/80 text-sm font-medium mb-4">{user.city || 'Город не указан'}</p>
 
                                 {druidTree && (
                                     <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 text-left w-full mt-4">
-                                        <div className="text-[10px] uppercase tracking-widest text-white/60 mb-1 font-bold">Сила дерева</div>
+                                        <div className="text-[10px] text-white/60 mb-1 font-bold">Сила дерева</div>
                                         <p className="text-white/90 text-xs italic leading-relaxed">{druidTree.description}</p>
                                     </div>
                                 )}
@@ -517,11 +517,11 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                     {/* Header Row */}
                     <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                         <div>
-                            <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                            <div className="flex items-center gap-2 text-slate-400 text-xs font-bold mb-2">
                                 <span className={`w-2 h-2 rounded-full ${user.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}></span>
                                 {getRoleLabel(user.role)}
                             </div>
-                            <h2 className="text-3xl font-bold text-slate-900">{user.name}</h2>
+                            <h2 className="h-display text-slate-900">{user.name}</h2>
                             <div className="flex items-center gap-4 mt-2 text-slate-500 text-sm">
                                 <span className="flex items-center gap-1"><MapPin size={14} /> {user.city || 'Не указан'}</span>
                                 <span className="text-slate-300">|</span>
@@ -557,23 +557,23 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                 ) : (
                                     <>
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1 block">Имя</label>
+                                            <label className="text-[10px] text-slate-400 font-bold mb-1 block">Имя</label>
                                             <div className="text-slate-800 font-medium">{user.name}</div>
                                         </div>
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1 block">Город</label>
+                                            <label className="text-[10px] text-slate-400 font-bold mb-1 block">Город</label>
                                             <div className="text-slate-800">{user.city || '—'}</div>
                                         </div>
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1 block">Дата рождения</label>
+                                            <label className="text-[10px] text-slate-400 font-bold mb-1 block">Дата рождения</label>
                                             <div className="text-slate-800">{user.dob ? new Date(user.dob).toLocaleDateString('ru-RU') : '—'}</div>
                                         </div>
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1 block">В Лиге с</label>
+                                            <label className="text-[10px] text-slate-400 font-bold mb-1 block">В Лиге с</label>
                                             <div className="text-slate-800">{user.join_date ? new Date(user.join_date).toLocaleDateString('ru-RU') : '—'}</div>
                                         </div>
                                         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 col-span-1 md:col-span-2">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1 block">Email</label>
+                                            <label className="text-[10px] text-slate-400 font-bold mb-1 block">Email</label>
                                             <div className="text-slate-800">{user.email}</div>
                                         </div>
                                     </>
@@ -614,7 +614,7 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                 ) : (
                                     <div className="space-y-8">
                                         <div>
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-3">Компетенции</label>
+                                            <label className="text-[10px] text-slate-400 font-bold block mb-3">Компетенции</label>
                                             <div className="flex flex-wrap gap-2">
                                                 {normalizeSkills(user.skills).length > 0 ?
                                                     normalizeSkills(user.skills).map((tag, i) => (
@@ -626,11 +626,11 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                                <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Чем могу быть полезна</label>
+                                                <label className="text-[10px] text-slate-400 font-bold block mb-2">Чем могу быть полезна</label>
                                                 <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.offer || '—'}</p>
                                             </div>
                                             <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-5 rounded-2xl border border-amber-100">
-                                                <label className="text-[10px] uppercase text-amber-400 font-bold tracking-wider block mb-2">⚡️ Superpower</label>
+                                                <label className="text-[10px] text-amber-400 font-bold block mb-2">⚡️ Superpower</label>
                                                 <p className="text-slate-800 text-sm whitespace-pre-wrap leading-relaxed">{user.unique_abilities || '—'}</p>
                                             </div>
                                         </div>
@@ -731,15 +731,15 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                 ) : (
                                     <div className="space-y-6">
                                         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Telegram</label>
+                                            <label className="text-[10px] text-slate-400 font-bold block mb-2">Telegram</label>
                                             <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.telegram || '—'}</p>
                                         </div>
                                         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">ВКонтакте</label>
+                                            <label className="text-[10px] text-slate-400 font-bold block mb-2">ВКонтакте</label>
                                             <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.vk || '—'}</p>
                                         </div>
                                         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                            <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider block mb-2">Что я хочу, чтобы вы про меня знали</label>
+                                            <label className="text-[10px] text-slate-400 font-bold block mb-2">Что я хочу, чтобы вы про меня знали</label>
                                             <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{user.leader_signature || '—'}</p>
                                         </div>
                                         <Button
@@ -802,7 +802,7 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
 
                     {/* Account Actions */}
                     <div className="pt-8 border-t border-slate-200 flex flex-wrap gap-4 items-center justify-between">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Управление аккаунтом</h3>
+                        <h3 className="text-xs font-bold text-slate-400">Управление аккаунтом</h3>
                         <div className="flex gap-3">
                             <Button variant="secondary" icon={LogOut} onClick={onLogout} className="!text-xs !py-2 !px-4">Выйти</Button>
                             <Button variant="danger" icon={Trash2} onClick={() => setIsDeleteOpen(true)} className="!text-xs !py-2 !px-4 hover:bg-red-50 hover:text-red-600 hover:border-red-200">Удалить профиль</Button>

@@ -365,8 +365,8 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                             <UserAvatar user={leader} size="xl" className="w-28 h-28 md:w-32 md:h-32 rounded-3xl shadow-lg" />
                             <div className="flex-1">
                                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                                    <h1 className="text-3xl md:text-4xl font-display font-semibold text-slate-900 tracking-tight">{leader.name}</h1>
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] leading-none text-emerald-700">
+                                    <h1 className="h-display text-slate-900">{leader.name}</h1>
+                                    <span className="text-[11px] font-semibold leading-none text-emerald-700">
                                         {getRoleLabel(leader.role)}
                                     </span>
                                 </div>
@@ -384,11 +384,11 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                                 </div>
                                 <div className="mt-5 grid gap-3">
                                     <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
-                                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Чем могу быть полезна</div>
+                                        <div className="text-[10px] font-bold text-slate-400 mb-1">Чем могу быть полезна</div>
                                         <p className="text-sm text-slate-700 leading-relaxed">{leader.offer || 'Пока без описания.'}</p>
                                     </div>
                                     <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-4">
-                                        <div className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1 flex items-center gap-1">
+                                        <div className="text-[10px] font-bold text-amber-500 mb-1 flex items-center gap-1">
                                             <Sparkles size={12} /> Суперсила
                                         </div>
                                         <p className="text-sm text-slate-700 leading-relaxed">{leader.unique_abilities || '—'}</p>
@@ -429,7 +429,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                                     { label: 'В Сценариях Лиги', value: publicScenarios.length }
                                 ].map((stat) => (
                                     <div key={stat.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{stat.label}</div>
+                                        <div className="text-[10px] font-bold text-slate-400">{stat.label}</div>
                                         <div className="text-3xl font-semibold text-slate-900 mt-2">
                                             {loadingStats ? '—' : stat.value}
                                         </div>
@@ -513,7 +513,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                         <Card title="Новый отзыв" className="!rounded-[2rem]">
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Текст отзыва</label>
+                                    <label className="text-xs font-bold text-slate-400">Текст отзыва</label>
                                     <textarea
                                         className="w-full mt-2 bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400"
                                         value={reviewDraft.text}
@@ -522,7 +522,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Имя участницы</label>
+                                    <label className="text-xs font-bold text-slate-400">Имя участницы</label>
                                     <input
                                         className="w-full mt-2 bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400"
                                         value={reviewDraft.author}
@@ -532,7 +532,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Дата завтрака (опционально)</label>
+                                        <label className="text-xs font-bold text-slate-400">Дата завтрака (опционально)</label>
                                         <input
                                             type="date"
                                             className="w-full mt-2 bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400"
@@ -541,7 +541,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Тема завтрака (опционально)</label>
+                                        <label className="text-xs font-bold text-slate-400">Тема завтрака (опционально)</label>
                                         <input
                                             className="w-full mt-2 bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400"
                                             value={reviewDraft.breakfastTopic}
@@ -551,7 +551,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Цвет карточки</label>
+                                    <label className="text-xs font-bold text-slate-400">Цвет карточки</label>
                                     <div className="flex flex-wrap gap-2 mt-2">
                                         {REVIEW_COLORS.map((color) => (
                                             <button

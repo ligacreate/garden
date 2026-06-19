@@ -324,7 +324,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 w-full gap-3">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h1 className="text-4xl font-light text-slate-800 tracking-tight">Мои практики</h1>
+                        <h1 className="h-display text-slate-800">Мои практики</h1>
                         <span className="md:hidden inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-white/80 border border-slate-200 text-xs font-mono text-blue-600">
                             {practices.length}
                         </span>
@@ -332,7 +332,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                     <p className="text-slate-400 mt-1 font-light">Ваши практики</p>
                 </div>
                 <div className="text-right hidden md:block">
-                    <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">В базе</div>
+                    <div className="text-xs text-slate-400 mb-1">В базе</div>
                     <div className="font-mono text-xl text-blue-600">{practices.length}</div>
                 </div>
             </div>
@@ -355,7 +355,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                         <select
                             value={timeFilter}
                             onChange={(e) => setTimeFilter(e.target.value)}
-                            className="bg-white border border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider rounded-full px-4 py-2 outline-none focus:border-blue-300 transition-all cursor-pointer h-[44px] sm:h-auto"
+                            className="bg-white border border-slate-200 text-slate-500 text-xs font-bold rounded-full px-4 py-2 outline-none focus:border-blue-300 transition-all cursor-pointer h-[44px] sm:h-auto"
                         >
                             <option value="all">Любое время</option>
                             <option value="short">5-15 мин</option>
@@ -375,7 +375,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                             <button
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
-                                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 border ${selectedCategory === cat
+                                className={`px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 border ${selectedCategory === cat
                                     ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20'
                                     : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600'
                                     }`}
@@ -404,7 +404,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                             {practice.icon || '📄'}
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-slate-900 text-lg leading-tight">{practice.title}</h3>
+                                            <h3 className="h-section text-slate-900 leading-tight">{practice.title}</h3>
                                             {practice.type && (
                                                 <span className="px-3 py-1 mt-2 inline-block bg-white border border-dashed border-slate-300 rounded-full text-slate-600 text-xs font-medium">
                                                     {practice.type}
@@ -453,7 +453,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                 ) : (
                     <div className="text-center py-20">
                         <div className="text-6xl mb-4">🌪️</div>
-                        <h3 className="text-xl font-medium text-slate-900 mb-2">Ничего не найдено</h3>
+                        <h3 className="h-section text-slate-900 mb-2">Ничего не найдено</h3>
                         <p className="text-slate-500">Попробуйте изменить параметры поиска или фильтры</p>
                     </div>
                 )}
@@ -520,7 +520,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
 
                     {parsedPractices.length > 0 && (
                         <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                            <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-500">
                                 Предпросмотр ({parsedPractices.length})
                             </div>
                             <div className="max-h-52 overflow-auto">
@@ -570,7 +570,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                 {viewPractice.icon || '📄'}
                             </div>
                             <div>
-                                <h2 className="text-3xl font-bold text-slate-900 mb-3">{viewPractice.title}</h2>
+                                <h2 className="h-display text-slate-900 mb-3">{viewPractice.title}</h2>
                                 <div className="flex gap-2">
                                     {viewPractice.type && <span className="px-3 py-1 bg-white text-slate-600 rounded-full text-sm font-medium border border-dashed border-slate-300">{viewPractice.type}</span>}
                                     {getDurationLabel(viewPractice) && <span className="px-3 py-1 bg-white text-slate-600 rounded-full text-sm font-medium border border-dashed border-slate-300">{getDurationLabel(viewPractice)}</span>}
@@ -581,14 +581,14 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                         <div className="prose prose-slate max-w-none">
                             {viewPractice.short_goal && (
                                 <div className="mb-4 p-4 rounded-2xl border border-blue-100 bg-blue-50/40">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-blue-700 mb-1">Краткая цель</div>
+                                    <div className="text-xs font-bold text-blue-700 mb-1">Краткая цель</div>
                                     <div className="text-slate-800 font-medium">{viewPractice.short_goal}</div>
                                 </div>
                             )}
 
                             {(viewPractice.instruction_short || viewPractice.instruction_full) && (
                                 <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Инструкция</div>
+                                    <div className="text-xs font-bold text-slate-500 mb-2">Инструкция</div>
                                     {viewPractice.instruction_short && (
                                         <p className="text-slate-700 mb-3 whitespace-pre-wrap">
                                             {renderDescriptionWithLinks(viewPractice.instruction_short)}
@@ -607,7 +607,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
 
                             {splitReflectionQuestions(viewPractice.reflection_questions).length > 0 && (
                                 <div className="mb-6 p-5 rounded-2xl border border-slate-100 bg-white">
-                                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Вопросы для рефлексивного отклика</div>
+                                    <div className="text-xs font-bold text-slate-500 mb-2">Вопросы для рефлексивного отклика</div>
                                     <ul className="list-disc pl-6 text-slate-700 space-y-1">
                                         {splitReflectionQuestions(viewPractice.reflection_questions).map((question, idx) => (
                                             <li key={`${question}-${idx}`}>{question}</li>

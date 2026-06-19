@@ -711,12 +711,12 @@ const CourseLibraryView = ({
         <div className="flex min-h-0 flex-col pt-6 px-4 lg:px-0 animate-in fade-in pb-28 md:pb-12">
             <div className="flex justify-between items-end mb-10">
                 <div>
-                    <h1 className="text-4xl font-light text-slate-800 tracking-tight">{selectedCourse ? selectedCourse.title : 'Библиотека'}</h1>
+                    <h1 className="h-display text-slate-800">{selectedCourse ? selectedCourse.title : 'Библиотека'}</h1>
                     {!selectedCourse ? <p className="text-slate-400 mt-1 font-light">Обучающие материалы и курсы</p> : null}
                 </div>
                 {selectedCourse?.id !== PVL_ENTRY_COURSE_ID ? (
                     <div className="text-right hidden md:block">
-                        <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
+                        <div className="text-xs text-slate-400 mb-1">{selectedCourse ? 'Уроков' : 'Курсов'}</div>
                         <div className="font-mono text-xl text-blue-600">{selectedCourse ? totalCount : filteredCourses.length}</div>
                     </div>
                 ) : null}
@@ -765,7 +765,7 @@ const CourseLibraryView = ({
 
                             <div className="px-2 pb-2 flex-1 flex flex-col">
                                 <div className="mb-3">
-                                    <h3 className="text-xl font-bold text-slate-900 leading-tight mb-2">{course.title}</h3>
+                                    <h3 className="h-section text-slate-900 leading-tight mb-2">{course.title}</h3>
                                 </div>
 
                                 <p className="text-slate-500 text-sm mb-6 leading-relaxed">{course.description}</p>
@@ -803,7 +803,7 @@ const CourseLibraryView = ({
                             </div>
                         ) : !user ? (
                             <div className="max-w-xl mx-auto text-center py-10 space-y-3">
-                                <div className="text-2xl font-medium text-slate-900">Вход в курс «{PVL_COURSE_DISPLAY_NAME}»</div>
+                                <div className="h-section text-slate-900">Вход в курс «{PVL_COURSE_DISPLAY_NAME}»</div>
                                 <div className="text-sm text-slate-500">Доступ к ПВЛ определяется только по роли в учетной записи САДА.</div>
                                 <Button variant="secondary" onClick={onBackToGarden}>Вернуться в САД</Button>
                             </div>
@@ -859,8 +859,8 @@ const CourseLibraryView = ({
                 <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-[2.5rem] border border-white/50">
                     <div className="flex flex-col gap-3 mb-6">
                         <div>
-                            <div className="text-xs uppercase tracking-wider text-slate-400">Материал</div>
-                            <div className="text-xl sm:text-2xl font-medium text-slate-900 leading-snug">{selectedMaterial.title}</div>
+                            <div className="text-xs text-slate-400">Материал</div>
+                            <div className="h-section text-slate-900 leading-snug">{selectedMaterial.title}</div>
                             <div className="text-xs text-slate-400 mt-1">{selectedCourse.title}</div>
                         </div>
                         <div>
@@ -870,13 +870,13 @@ const CourseLibraryView = ({
 
                     <div className="flex flex-wrap gap-2 mb-6">
                         {selectedMaterial.video_link && (
-                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Видео</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Видео</span>
                         )}
                         {selectedMaterial.file_link && (
-                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Документ</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Документ</span>
                         )}
                         {selectedMaterial.tags.map(t => (
-                            <span key={t} className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{t}</span>
+                            <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{t}</span>
                         ))}
                     </div>
 
@@ -927,7 +927,7 @@ const CourseLibraryView = ({
                         <div className="text-sm text-slate-600 mb-4">{selectedCourse.description}</div>
 
                         <div className="mb-4">
-                            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Теги</div>
+                            <div className="text-xs font-bold text-slate-400 mb-2">Теги</div>
                             <div className="flex flex-wrap gap-2">
                                 <button
                                     className={`px-3 py-1 rounded-full text-xs font-medium ${selectedTag === 'Все' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
@@ -951,7 +951,7 @@ const CourseLibraryView = ({
                     </div>
 
                     <div className="lg:col-span-2 bg-white/80 backdrop-blur-xl p-5 rounded-[2.5rem] border border-white/50">
-                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Материалы</div>
+                        <div className="text-xs font-bold text-slate-400 mb-3">Материалы</div>
                         {filteredMaterials.length === 0 ? (
                             <div className="text-sm text-slate-400 italic py-8 text-center">Нет материалов по выбранному тегу</div>
                         ) : (
@@ -978,13 +978,13 @@ const CourseLibraryView = ({
                                         </div>
                                         <div className="flex flex-wrap gap-1.5 mt-3">
                                             {m.video_link && (
-                                                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Видео</span>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Видео</span>
                                             )}
                                             {m.file_link && (
-                                                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Документ</span>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Документ</span>
                                             )}
                                             {m.tags.map(t => (
-                                                <span key={t} className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{t}</span>
+                                                <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{t}</span>
                                             ))}
                                         </div>
                                     </div>

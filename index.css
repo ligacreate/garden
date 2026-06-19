@@ -152,6 +152,32 @@ body::before {
     font-family: var(--font-display);
   }
 
+  /* DESIGN-001 T1: типографическая шкала (тип-онли, токены Фазы A).
+     Тёмный текст — для светлых/cream-поверхностей; на surface-ink не применять. */
+  .h-display {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    color: var(--color-ink-strong);
+  }
+
+  .h-section {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.005em;
+    color: var(--color-ink-strong);
+  }
+
+  .text-meta {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    color: var(--color-ink-soft);
+  }
+
   /* Видимая полоса прокрутки (основная колонка, встречи и т.д.; класс уже используется в разметке) */
   .custom-scrollbar {
     scrollbar-gutter: stable;

@@ -112,15 +112,15 @@ const MeetingCard = ({
             >
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusColor()}`}>
+                        <div className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
                             {getStatusLabel()}
                         </div>
-                        <div className="text-xs text-slate-400 font-medium flex items-center gap-1">
+                        <div className="text-meta flex items-center gap-1">
                             <Calendar size={12} />
                             {meeting.date ? new Date(`${meeting.date}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : 'Дата не указана'}
                         </div>
                     </div>
-                    <h3 className={`text-xl font-display font-semibold text-slate-900 mb-1 ${status === 'cancelled' ? 'line-through text-slate-400' : ''}`}>
+                    <h3 className={`h-section mb-1 ${status === 'cancelled' ? 'line-through text-slate-400' : ''}`}>
                         {meeting.title || 'Без названия'}
                     </h3>
                     {meeting.time && (
@@ -205,7 +205,7 @@ const MeetingCard = ({
                     {/* PLANNED or PENDING: Checklist & Edit */}
                     {(status === 'planned' || status === 'pending') && (
                         <div>
-                            <h4 className="font-bold text-slate-900 mb-4 text-sm uppercase tracking-wide">Чеклист подготовки</h4>
+                            <h4 className="font-bold text-slate-900 mb-4 text-sm">Чеклист подготовки</h4>
                             {meeting.checklist && meeting.checklist.length > 0 ? (
                                 <div className="space-y-3">
                                     {meeting.checklist.map((item, idx) => (
@@ -252,15 +252,15 @@ const MeetingCard = ({
                         <div className="space-y-6">
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="bg-slate-50 rounded-2xl p-3 text-center">
-                                    <div className="text-slate-400 text-[10px] uppercase font-bold mb-1">Гостей</div>
+                                    <div className="text-meta mb-1">Гостей</div>
                                     <div className="text-xl font-light text-slate-900">{meeting.guests}</div>
                                 </div>
                                 <div className="bg-slate-50 rounded-2xl p-3 text-center">
-                                    <div className="text-slate-400 text-[10px] uppercase font-bold mb-1">Новеньких</div>
+                                    <div className="text-meta mb-1">Новеньких</div>
                                     <div className="text-xl font-light text-slate-900">{meeting.new_guests || 0}</div>
                                 </div>
                                 <div className="bg-slate-50 rounded-2xl p-3 text-center">
-                                    <div className="text-slate-400 text-[10px] uppercase font-bold mb-1">Доход</div>
+                                    <div className="text-meta mb-1">Доход</div>
                                     <div className="text-xl font-light text-slate-900">{meeting.income} ₽</div>
                                 </div>
                             </div>

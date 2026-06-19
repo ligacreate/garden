@@ -35,9 +35,14 @@ const ModalShell = ({
         if (!isOpen) return;
         const dialog = dialogRef.current;
         const prevFocus = document.activeElement;
-        // Фокусируем сам контейнер, а НЕ первый focusable — иначе фокус сел бы
-        // на крестик «Закрыть» (он первый в DOM).
-        dialog?.focus();
+        // Стартовый фокус: первое текстовое поле формы (если есть), иначе сам
+        // контейнер (role=dialog/aria-modal объявит контекст при входе фокуса).
+        // НЕ первый focusable — там крестик «Закрыть»; и НЕ action-кнопки
+        // (APG: стартовый фокус не сажаем на действие).
+        const field = dialog?.querySelector(
+            'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])'
+        );
+        (field || dialog)?.focus();
 
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {

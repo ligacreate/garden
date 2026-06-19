@@ -145,7 +145,7 @@ export function progressWidget(label, done, total) {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-            <div className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">{label}</div>
+            <div className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">{label}</div>
             <div className="font-display text-3xl leading-none text-[#C8855A]">{done}/{total}</div>
             <div className="mt-2 h-1.5 rounded-full bg-[#E8D5C4] overflow-hidden">
                 <div className="h-full bg-[#C8855A]" style={{ width: `${pct}%` }} />
@@ -234,13 +234,13 @@ export function renderLibraryPage(items = libraryItems, filter = 'all') {
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex items-center justify-between">
                 <div>
                     <h3 className="font-display text-2xl text-[#4A3728]">Библиотека курса</h3>
-                    <p className="text-sm text-[#9B8B80]">Библиотека отделена от уроков. Фильтр: видео, статьи, PDF, чек-листы.</p>
+                    <p className="text-sm text-ink-mute">Библиотека отделена от уроков. Фильтр: видео, статьи, PDF, чек-листы.</p>
                 </div>
                 <div className="text-sm text-[#2C1810]">Пройдено: <strong>{completed}/{items.length}</strong></div>
             </div>
             <div className="flex flex-wrap gap-2">
                 {['all', 'video', 'article', 'pdf', 'checklist'].map((f) => (
-                    <span key={f} className={`text-xs rounded-full border px-3 py-1 ${filter === f ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>
+                    <span key={f} className={`text-xs rounded-full border px-3 py-1 ${filter === f ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-ink-mute'}`}>
                         {f === 'all' ? 'все' : f}
                     </span>
                 ))}
@@ -248,9 +248,9 @@ export function renderLibraryPage(items = libraryItems, filter = 'all') {
             <div className="grid md:grid-cols-2 gap-3">
                 {filtered.map((item) => (
                     <article key={item.id} className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-4">
-                        <div className="text-xs text-[#9B8B80] uppercase tracking-[0.08em]">{item.category}</div>
+                        <div className="text-xs text-ink-mute uppercase tracking-[0.08em]">{item.category}</div>
                         <h4 className="font-medium text-[#4A3728] mt-1">{item.title}</h4>
-                        <p className="text-xs text-[#9B8B80] mt-1">{item.contentType} · {item.duration}</p>
+                        <p className="text-xs text-ink-mute mt-1">{item.contentType} · {item.duration}</p>
                         <div className="mt-2 h-1.5 rounded-full bg-[#E8D5C4] overflow-hidden">
                             <div className="h-full bg-[#C8855A]" style={{ width: `${item.progressPercent}%` }} />
                         </div>
@@ -268,7 +268,7 @@ export function renderLessonsPage() {
                 <article key={w.weekNumber} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <h4 className="font-display text-2xl text-[#4A3728]">Модуль {w.weekNumber}: {w.title}</h4>
-                        <span className="text-xs text-[#9B8B80]">Дедлайн: {w.deadlineAt}</span>
+                        <span className="text-xs text-ink-mute">Дедлайн: {w.deadlineAt}</span>
                     </div>
                     <div className="grid md:grid-cols-3 gap-2 text-sm">
                         <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-3">Изучить · Выполнить · Сдать</div>
@@ -288,8 +288,8 @@ function renderMentorPracticesPage() {
                 <article key={item.id} className="rounded-2xl border border-[#E8D5C4] bg-white p-4 flex items-center justify-between gap-3">
                     <div>
                         <h4 className="font-medium text-[#4A3728]">{item.title}</h4>
-                        <p className="text-sm text-[#9B8B80]">{item.dateTime}</p>
-                        <p className="text-xs text-[#9B8B80] mt-1">Напоминание за 24 часа + рефлексия после встречи</p>
+                        <p className="text-sm text-ink-mute">{item.dateTime}</p>
+                        <p className="text-xs text-ink-mute mt-1">Напоминание за 24 часа + рефлексия после встречи</p>
                     </div>
                     <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadge(item.status)}`}>{item.status}</span>
                 </article>
@@ -302,7 +302,7 @@ function renderChecklistPage() {
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             <h3 className="font-display text-2xl text-[#4A3728] mb-2">Маршрут прохождения</h3>
-            <p className="text-sm text-[#9B8B80] mb-3">Показывает обязательные точки, что закрыто, что просрочено, что впереди.</p>
+            <p className="text-sm text-ink-mute mb-3">Показывает обязательные точки, что закрыто, что просрочено, что впереди.</p>
             <div className="space-y-2 text-sm">
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">КТ1 закрыта</div>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">КТ4-КТ6 скоро (модуль 2)</div>
@@ -318,11 +318,11 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h3 className="font-display text-2xl text-[#4A3728]">Результаты</h3>
-                <p className="text-sm text-[#9B8B80]">Личная страница ведущей: домашки, статусы, история и комментарии ментора в одном месте.</p>
+                <p className="text-sm text-ink-mute">Личная страница ведущей: домашки, статусы, история и комментарии ментора в одном месте.</p>
             </div>
             <div className="flex flex-wrap gap-2">
                 {['all', 'к проверке', 'на доработке', 'принято', 'не сдано'].map((f) => (
-                    <span key={f} className={`text-xs rounded-full border px-3 py-1 ${statusFilter === f ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>
+                    <span key={f} className={`text-xs rounded-full border px-3 py-1 ${statusFilter === f ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-ink-mute'}`}>
                         {f}
                     </span>
                 ))}
@@ -334,7 +334,7 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
                             <h4 className="font-medium text-[#4A3728]">{item.title}</h4>
                             <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${statusBadge(item.status)}`}>{item.status}</span>
                         </div>
-                        <p className="text-xs text-[#9B8B80] mt-1">Модуль {item.week} · {item.type}</p>
+                        <p className="text-xs text-ink-mute mt-1">Модуль {item.week} · {item.type}</p>
                         <div className="grid md:grid-cols-3 gap-2 mt-3 text-sm">
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Дедлайн: {item.deadlineAt}</div>
                             <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Сдано: {item.submittedAt || '—'}</div>
@@ -342,7 +342,7 @@ export function renderResultsPage(items = resultItems, statusFilter = 'all', onO
                         </div>
                         <p className="text-sm text-[#2C1810] mt-2">{pvlHtmlToPlainText(item.mentorCommentPreview)}</p>
                         <div className="mt-2 flex items-center justify-between">
-                            <span className="text-xs text-[#9B8B80]">Вложения: {item.attachments.join(', ')}</span>
+                            <span className="text-xs text-ink-mute">Вложения: {item.attachments.join(', ')}</span>
                             <button
                                 onClick={() => onOpenTask?.(item)}
                                 className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]"
@@ -464,7 +464,7 @@ function renderLeagueCodePage() {
             {['Бережность и границы', 'Без советов и интерпретаций', 'Стиль ведущей: ясность и экологичность', 'Участие в жизни сообщества'].map((item) => (
                 <article key={item} className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                     <h4 className="font-medium text-[#4A3728]">{item}</h4>
-                    <p className="text-sm text-[#9B8B80] mt-1">Краткий тезис культурного кода и поведения внутри Лиги.</p>
+                    <p className="text-sm text-ink-mute mt-1">Краткий тезис культурного кода и поведения внутри Лиги.</p>
                 </article>
             ))}
         </div>
@@ -476,12 +476,12 @@ export function renderStudentDashboard(onNavigate, profile = studentProfile, sta
         <div className="space-y-3">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h2 className="font-display text-3xl text-[#4A3728]">Дашборд участницы</h2>
-                <p className="text-sm text-[#9B8B80] mt-1">Где я сейчас и что делать дальше.</p>
+                <p className="text-sm text-ink-mute mt-1">Где я сейчас и что делать дальше.</p>
             </div>
             <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
                 {dashboardItems.map((i) => (
                     <div key={i.key} className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-                        <div className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80]">{i.label}</div>
+                        <div className="text-[11px] uppercase tracking-[0.08em] text-ink-mute">{i.label}</div>
                         <div className="font-display text-3xl text-[#C8855A] mt-1">{i.value}</div>
                     </div>
                 ))}
@@ -491,9 +491,9 @@ export function renderStudentDashboard(onNavigate, profile = studentProfile, sta
                 {progressWidget('Домашки', stats.homeworkDone, stats.homeworkTotal)}
                 {progressWidget('Контрольные точки', stats.controlPointsDone, stats.controlPointsTotal)}
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3">
-                    <div className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">Курсовые баллы</div>
+                    <div className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">Курсовые баллы</div>
                     <div className="font-display text-3xl text-[#C8855A]">{profile.coursePoints}/400</div>
-                    <p className="text-xs text-[#9B8B80] mt-2">Как получить баллы: закрывайте модули, контрольные точки, сдавайте в срок.</p>
+                    <p className="text-xs text-ink-mute mt-2">Как получить баллы: закрывайте модули, контрольные точки, сдавайте в срок.</p>
                 </div>
             </div>
             <div className="grid md:grid-cols-2 gap-3">
@@ -534,7 +534,7 @@ export function renderMenu(active, onSelect) {
                 <button
                     key={item}
                     onClick={() => onSelect(item)}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-sm transition ${active === item ? 'bg-[#C8855A]/15 text-[#4A3728] border border-[#E8D5C4]' : 'text-[#9B8B80] hover:bg-white/70'}`}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm transition ${active === item ? 'bg-[#C8855A]/15 text-[#4A3728] border border-[#E8D5C4]' : 'text-ink-mute hover:bg-white/70'}`}
                 >
                     {item}
                 </button>
@@ -694,12 +694,12 @@ export default function PvlStudentCabinetView({ user }) {
             <aside className="surface-card border border-[#E8D5C4] bg-white p-3 h-fit xl:sticky xl:top-6">
                 <div className="mb-3">
                     <h2 className="font-display text-2xl text-[#4A3728]">ЛК участницы</h2>
-                    <p className="text-xs text-[#9B8B80]">{profileState.fullName} · {profileState.cohort}</p>
+                    <p className="text-xs text-ink-mute">{profileState.fullName} · {profileState.cohort}</p>
                 </div>
                 {renderMenu(activeMenu, setActiveMenu)}
                 {activeMenu === 'Библиотека курса' && (
                     <div className="mt-3">
-                        <p className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">Фильтр библиотеки</p>
+                        <p className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">Фильтр библиотеки</p>
                         <select value={libraryFilter} onChange={(e) => setLibraryFilter(e.target.value)} className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 text-sm">
                             <option value="all">Все</option>
                             <option value="video">Видео</option>
@@ -711,7 +711,7 @@ export default function PvlStudentCabinetView({ user }) {
                 )}
                 {activeMenu === 'Результаты' && (
                     <div className="mt-3">
-                        <p className="text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] mb-1">Фильтр результатов</p>
+                        <p className="text-[11px] uppercase tracking-[0.08em] text-ink-mute mb-1">Фильтр результатов</p>
                         <select value={resultsFilter} onChange={(e) => setResultsFilter(e.target.value)} className="w-full rounded-xl border border-[#E8D5C4] px-2 py-1.5 text-sm">
                             <option value="all">Все</option>
                             <option value="к проверке">К проверке</option>

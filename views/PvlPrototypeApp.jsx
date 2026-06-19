@@ -474,14 +474,14 @@ function printMaterialSheet(title, bodyText) {
 }
 
 const RiskBadge = ({ level }) => <StatusBadge>{level}</StatusBadge>;
-const DeadlineBadge = ({ value }) => <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-[#9B8B80]">{value}</span>;
+const DeadlineBadge = ({ value }) => <span className="text-xs rounded-full border border-[#E8D5C4] px-2 py-0.5 text-ink-mute">{value}</span>;
 
 const PointsHistoryList = ({ items = [] }) => (
     <div className="grid gap-1">
-        {items.length === 0 ? <div className="text-xs text-[#9B8B80]">Пока нет начислений.</div> : items.map((h) => (
+        {items.length === 0 ? <div className="text-xs text-ink-mute">Пока нет начислений.</div> : items.map((h) => (
             <article key={h.id} className="rounded-xl border border-[#E8D5C4] bg-[#FAF6F2] p-2">
                 <div className="text-xs text-[#2C1810]">{h.sourceLabel}: +{h.pointsDelta}</div>
-                <div className="text-[10px] text-[#9B8B80]">{formatPvlDateTime(h.createdAt)}</div>
+                <div className="text-[10px] text-ink-mute">{formatPvlDateTime(h.createdAt)}</div>
             </article>
         ))}
     </div>
@@ -2853,7 +2853,7 @@ function StudentGlossarySearch({ studentId = '', cmsItems = [], cmsPlacements = 
                             <div className="flex flex-wrap items-baseline gap-2 shrink-0">
                                 <h4 className="font-display text-base text-[#4A3728] leading-tight">{g.term}</h4>
                             </div>
-                            {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-[#9B8B80] mt-1 shrink-0">{g.catLabel}</div> : null}
+                            {g.catLabel ? <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-mute mt-1 shrink-0">{g.catLabel}</div> : null}
                             <div className="mt-2 flex-1 flex flex-col min-h-0">
                                 <div className={isOpen ? 'min-h-0' : 'h-[8rem] overflow-hidden'}>
                                     <p className={`text-xs text-[#2C1810] leading-relaxed ${!isOpen ? 'line-clamp-6' : ''}`}>{defText}</p>
@@ -7985,7 +7985,7 @@ function QaScreen({ navigate, role, setRole, setActingUserId, forceRefresh }) {
         <div className="space-y-5">
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h2 className="font-display text-3xl text-[#4A3728]">QA приемка</h2>
-                <p className="text-sm text-[#9B8B80]">Чек-листы, acceptance scenarios и test harness для ручной проверки.</p>
+                <p className="text-sm text-ink-mute">Чек-листы, acceptance scenarios и test harness для ручной проверки.</p>
             </div>
 
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
@@ -8082,7 +8082,7 @@ function NotificationCenter({ userId }) {
             {open ? (
                 <div className="absolute right-0 mt-2 w-[360px] max-h-[320px] overflow-auto rounded-2xl border border-[#E8D5C4] bg-white p-2 z-20">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-[#9B8B80]">Notification center</span>
+                        <span className="text-xs text-ink-mute">Notification center</span>
                         <button
                             onClick={() => {
                                 pvlDomainApi.notifications.markAllNotificationsRead(userId);
@@ -8095,12 +8095,12 @@ function NotificationCenter({ userId }) {
                         </button>
                     </div>
                     <div className="grid gap-1">
-                        {list.length === 0 ? <div className="text-xs text-[#9B8B80] p-2">No notifications</div> : list.map((n) => (
+                        {list.length === 0 ? <div className="text-xs text-ink-mute p-2">No notifications</div> : list.map((n) => (
                             <article key={n.id} className={`rounded-xl border p-2 ${n.isRead ? 'border-[#E8D5C4] bg-[#FAF6F2]' : 'border-blue-200 bg-blue-50'}`}>
-                                <div className="text-[10px] text-[#9B8B80]">{n.type}</div>
+                                <div className="text-[10px] text-ink-mute">{n.type}</div>
                                 <div className="text-xs text-[#2C1810]">{n.text}</div>
                                 <div className="mt-1 flex justify-between">
-                                    <span className="text-[10px] text-[#9B8B80]">{n.createdAt}</span>
+                                    <span className="text-[10px] text-ink-mute">{n.createdAt}</span>
                                     {!n.isRead ? (
                                         <button
                                             onClick={() => {
@@ -8463,7 +8463,7 @@ export default function PvlPrototypeApp({
                                     <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
                                         Методологический вопрос (для разработки): порог допуска к СЗ — 400 или 500 баллов; в прототипе не решено.
                                     </div>
-                                    <div className="rounded-xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
+                                    <div className="rounded-xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-ink-mute">
                                         Маршрутов в реестре: {validateRouteMap().length} · строк матрицы доступа: {validateRoleAccessMap().length}
                                     </div>
                                 </div>
@@ -8499,7 +8499,7 @@ export default function PvlPrototypeApp({
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
                                         Методологический вопрос (для разработки): порог допуска к СЗ — 400 или 500 баллов; в прототипе не решено.
                                     </div>
-                                    <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-[#9B8B80]">
+                                    <div className="rounded-2xl border border-[#E8D5C4] bg-white p-3 text-[11px] text-ink-mute">
                                         Маршрутов в реестре: {validateRouteMap().length} · строк матрицы доступа: {validateRoleAccessMap().length}
                                     </div>
                                 </>

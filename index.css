@@ -82,7 +82,7 @@
   --color-ink: #4A3728;
   --color-ink-strong: #2C1810;
   --color-ink-soft: #7A6758;
-  --color-ink-mute: #9B8B80;
+  --color-ink-mute: #7C6D61; /* B3: #9B8B80 (3.05:1) → AA-проход 4.63:1 на surface. Примечание: на светлом фоне muted сходится с ink-soft #7A6758 — сверить/слить в Фазе D */
   --color-clay: #C8855A;
 
   /* Кривые easing (новые, пока неиспользуемые — для Фаз C/D). Имена НЕ из зарезервированного Tailwind-набора (out/in-out/in), чтобы не переопределить дефолтные .ease-* утилиты → diff=0. */

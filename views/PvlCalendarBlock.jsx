@@ -638,7 +638,7 @@ export function PvlDashboardCalendarBlock({
                             ›
                         </button>
                     </div>
-                    <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-[#9B8B80]">
+                    <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-ink-mute">
                         {CAL_WEEKDAYS_LOWER.map((d) => (
                             <div key={d} className="flex items-center justify-center py-1">
                                 {d}
@@ -1131,7 +1131,7 @@ export function PvlAdminCalendarScreen({ navigate, refresh, route = '/admin/cale
                             ›
                         </button>
                     </div>
-                    <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-[#9B8B80]">
+                    <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-ink-mute">
                         {CAL_WEEKDAYS_LOWER.map((d) => (
                             <div key={d} className="flex items-center justify-center py-1">
                                 {d}

@@ -66,23 +66,23 @@ export default function MentorDashboardView() {
         <div className="space-y-4">
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white">
                 <h2 className="font-display text-3xl text-[#4A3728] mb-1">ЛК ментора</h2>
-                <p className="text-sm text-[#9B8B80] mb-4">Сводка по менти, проверкам и рискам. Переходы подготовлены на карточку менти.</p>
+                <p className="text-sm text-ink-mute mb-4">Сводка по менти, проверкам и рискам. Переходы подготовлены на карточку менти.</p>
                 <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.menteesCount}</div>
-                        <div className="text-[11px] text-[#9B8B80] uppercase tracking-[0.08em] mt-1">Всего менти</div>
+                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Всего менти</div>
                     </div>
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.activeReviews}</div>
-                        <div className="text-[11px] text-[#9B8B80] uppercase tracking-[0.08em] mt-1">Активных проверок</div>
+                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Активных проверок</div>
                     </div>
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.atRiskMentees}</div>
-                        <div className="text-[11px] text-[#9B8B80] uppercase tracking-[0.08em] mt-1">Менти в риске</div>
+                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Менти в риске</div>
                     </div>
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.totalOverdueHw}</div>
-                        <div className="text-[11px] text-[#9B8B80] uppercase tracking-[0.08em] mt-1">Просроченных ДЗ</div>
+                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Просроченных ДЗ</div>
                     </div>
                 </div>
             </section>
@@ -90,13 +90,13 @@ export default function MentorDashboardView() {
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white overflow-x-auto">
                 <div className="flex items-center justify-between mb-3">
                     <h3 className="font-display text-2xl text-[#4A3728]">Мои менти</h3>
-                    <span className="text-xs text-[#9B8B80]">Курсовые баллы: только шкала до 400</span>
+                    <span className="text-xs text-ink-mute">Курсовые баллы: только шкала до 400</span>
                 </div>
                 <table className="w-full min-w-[980px] border-separate border-spacing-0">
                     <thead>
                         <tr>
                             {['Менти', 'Неделя', 'Встреча', 'Последняя домашка', 'Статус сдачи', 'Баллы', 'Просрочки', 'Переход'].map((h) => (
-                                <th key={h} className="text-left text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] border-b border-[#F5EDE6] p-2">{h}</th>
+                                <th key={h} className="text-left text-[11px] uppercase tracking-[0.08em] text-ink-mute border-b border-[#F5EDE6] p-2">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -108,7 +108,7 @@ export default function MentorDashboardView() {
                                         {m.fullName}
                                         {m.hasUnreadMessage ? <span className="inline-block w-2 h-2 rounded-full bg-rose-600 ml-2" /> : null}
                                     </div>
-                                    <div className="text-xs text-[#9B8B80]">{m.id}</div>
+                                    <div className="text-xs text-ink-mute">{m.id}</div>
                                 </td>
                                 <td className="p-2 border-b border-[#F5EDE6] text-sm">{m.currentWeek}</td>
                                 <td className="p-2 border-b border-[#F5EDE6]"><Pill tone={statusBadge(m.meetingStatus)}>{m.meetingStatus}</Pill></td>
@@ -139,7 +139,7 @@ export default function MentorDashboardView() {
                     <thead>
                         <tr>
                             {['Менти', 'Задание', 'Тип', 'Отправка', 'Дедлайн', 'Статус', 'Переход'].map((h) => (
-                                <th key={h} className="text-left text-[11px] uppercase tracking-[0.08em] text-[#9B8B80] border-b border-[#F5EDE6] p-2">{h}</th>
+                                <th key={h} className="text-left text-[11px] uppercase tracking-[0.08em] text-ink-mute border-b border-[#F5EDE6] p-2">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -184,7 +184,7 @@ export default function MentorDashboardView() {
                             </div>
                             <div className="text-sm text-[#2C1810] mb-2">{r.overdueItem}</div>
                             <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs text-[#9B8B80]">{r.overdueDays} дн. просрочки</span>
+                                <span className="text-xs text-ink-mute">{r.overdueDays} дн. просрочки</span>
                                 <button
                                     onClick={() => {
                                         navigateToMenteeCard(r.menteeId);

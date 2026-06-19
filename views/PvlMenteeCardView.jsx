@@ -142,7 +142,7 @@ export function MenteeHeader({
     return (
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-5">
             {showBackButton ? (
-                <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+                <button type="button" onClick={() => navigateBackToMentorDashboard(onBack)} className="text-xs text-ink-mute hover:text-[#4A3728] mb-2">{backLabel}</button>
             ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -172,9 +172,9 @@ export function MenteeCoursePathShort({ stats, lastLessonTitle, courseProgressPe
             <h3 className="font-display text-lg text-[#4A3728] mb-2">Путь по курсу</h3>
             <p className="text-sm text-[#2C1810]">
                 Уроки в расписании: <span className="font-medium tabular-nums">{stats.lessonsDone}/{stats.lessonsTotal}</span>
-                <span className="text-[#9B8B80]"> (ориентир по текущему модулю потока)</span>
+                <span className="text-ink-mute"> (ориентир по текущему модулю потока)</span>
             </p>
-            <p className="text-sm text-[#9B8B80] mt-1">Последний урок в потоке: <span className="text-[#2C1810]">{lastLessonTitle || '—'}</span></p>
+            <p className="text-sm text-ink-mute mt-1">Последний урок в потоке: <span className="text-[#2C1810]">{lastLessonTitle || '—'}</span></p>
             <p className="text-sm text-[#2C1810] mt-1">
                 Прогресс по закрытию заданий: <span className="font-medium tabular-nums">{pct}%</span>
             </p>
@@ -330,14 +330,14 @@ export function MenteeHomeworkPrioritized({ tasks, onOpenTask }) {
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-display text-xl text-[#4A3728]">Домашние работы</h3>
-                    <span className="text-xs text-[#9B8B80]">Сначала то, что нужно проверить или доработать</span>
+                    <span className="text-xs text-ink-mute">Сначала то, что нужно проверить или доработать</span>
                 </div>
-                <p className="text-sm text-[#9B8B80] mt-1">Всего в потоке: {tasks.length} · принято: {accepted.length}</p>
+                <p className="text-sm text-ink-mute mt-1">Всего в потоке: {tasks.length} · принято: {accepted.length}</p>
             </div>
             {byWeek(attention).map(({ weekNumber, tasks: wt }) => (
                 <MenteeTaskGroupByWeek key={`a-${weekNumber}`} weekNumber={weekNumber} tasks={wt} onOpenTask={onOpenTask} />
             ))}
-            {attention.length === 0 ? <p className="text-sm text-[#9B8B80] px-1">Нет активных работ вне статуса «принято».</p> : null}
+            {attention.length === 0 ? <p className="text-sm text-ink-mute px-1">Нет активных работ вне статуса «принято».</p> : null}
             <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2]/50 p-3">
                 <button
                     type="button"
@@ -368,7 +368,7 @@ export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <div className="text-sm font-medium text-[#4A3728]">{task.title}</div>
-                                <div className="text-xs text-[#9B8B80]">Модуль {task.moduleNumber} · {task.type}</div>
+                                <div className="text-xs text-ink-mute">Модуль {task.moduleNumber} · {task.type}</div>
                             </div>
                             <Pill tone={statusTone(task.status)}>{task.status}</Pill>
                         </div>
@@ -383,7 +383,7 @@ export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
                             </span>
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-xs text-[#9B8B80]">{pvlHtmlToPlainText(task.mentorCommentPreview) || 'Комментария пока нет'}</span>
+                            <span className="text-xs text-ink-mute">{pvlHtmlToPlainText(task.mentorCommentPreview) || 'Комментария пока нет'}</span>
                             <button onClick={() => onOpenTask(task.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть задание</button>
                         </div>
                     </div>
@@ -439,7 +439,7 @@ export function renderControlPoints(points) {
                 <div>Сдано: {cp.submittedAt || '—'}</div>
                 <div>Переход дальше: {cp.affectsAdmission ? 'да' : 'нет'}</div>
             </div>
-            {cp.specialNote ? <p className="text-xs text-[#9B8B80] mt-2">{cp.specialNote}</p> : null}
+            {cp.specialNote ? <p className="text-xs text-ink-mute mt-2">{cp.specialNote}</p> : null}
         </article>
     ));
 }
@@ -460,7 +460,7 @@ export function renderDeadlineRisks(risks, onOpenTask) {
                 <div className="text-sm font-medium text-[#4A3728]">{risk.title}</div>
                 <Pill tone={statusTone(risk.riskLevel)}>{risk.riskLevel}</Pill>
             </div>
-            <p className="text-xs text-[#9B8B80] mt-1">{risk.riskType} · {risk.daysOverdue} дн. просрочки</p>
+            <p className="text-xs text-ink-mute mt-1">{risk.riskType} · {risk.daysOverdue} дн. просрочки</p>
             <p className="text-sm text-[#2C1810] mt-1">{risk.recommendedAction}</p>
             <div className="mt-2 flex gap-2">
                 <button onClick={() => onOpenTask(risk.relatedTaskId)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">К заданию</button>
@@ -486,10 +486,10 @@ export function renderMentorMeetings(items) {
                 <div className="text-sm font-medium text-[#4A3728]">{m.title}</div>
                 <Pill tone={statusTone(m.status)}>{m.status}</Pill>
             </div>
-            <p className="text-xs text-[#9B8B80] mt-1">Модуль {m.weekNumber} · {m.scheduledAt}</p>
+            <p className="text-xs text-ink-mute mt-1">Модуль {m.weekNumber} · {m.scheduledAt}</p>
             <p className="text-sm text-[#2C1810] mt-1">Фокус: {m.focus}</p>
-            <p className="text-xs text-[#9B8B80] mt-1">Рефлексия: {m.reflectionStatus}</p>
-            <p className="text-xs text-[#9B8B80] mt-1">Связано с артефактом: {m.linkedTaskId}</p>
+            <p className="text-xs text-ink-mute mt-1">Рефлексия: {m.reflectionStatus}</p>
+            <p className="text-xs text-ink-mute mt-1">Связано с артефактом: {m.linkedTaskId}</p>
         </article>
     ));
 }
@@ -507,8 +507,8 @@ export function renderThreadFeed(feed, unreadOnly) {
     return filterMessagesByUnread(feed, unreadOnly).map((msg) => (
         <article key={msg.id} className={`rounded-xl border p-3 ${msg.authorRole === 'mentor' ? 'bg-[#FAF6F2] border-[#E8D5C4]' : msg.authorRole === 'system' ? 'bg-slate-50 border-slate-200' : 'bg-white border-[#E8D5C4]'}`}>
             <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-[#4A3728]">{msg.authorName} <span className="text-xs text-[#9B8B80]">({msg.authorRole})</span></div>
-                <div className="text-xs text-[#9B8B80]">{msg.createdAt}</div>
+                <div className="text-sm font-medium text-[#4A3728]">{msg.authorName} <span className="text-xs text-ink-mute">({msg.authorRole})</span></div>
+                <div className="text-xs text-ink-mute">{msg.createdAt}</div>
             </div>
             <div className="text-sm text-[#2C1810] mt-1" dangerouslySetInnerHTML={{ __html: sanitizeHomeworkAnswerHtml(msg.text || '') }} />
             {msg.isUnread ? <p className="text-xs text-rose-700 mt-1">Непрочитано</p> : null}
@@ -528,7 +528,7 @@ export function MenteeThreadFeed({ feed, unreadOnly, setUnreadOnly, taskFilter, 
                         <option value="">все задания</option>
                         {taskOptions.map((id) => <option key={id} value={id}>{id}</option>)}
                     </select>
-                    <button onClick={() => setUnreadOnly((v) => !v)} className={`text-xs rounded-full border px-3 py-1 ${unreadOnly ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-[#9B8B80]'}`}>
+                    <button onClick={() => setUnreadOnly((v) => !v)} className={`text-xs rounded-full border px-3 py-1 ${unreadOnly ? 'border-[#C8855A] text-[#C8855A] bg-[#F5EDE6]' : 'border-[#E8D5C4] text-ink-mute'}`}>
                         только непрочитанное
                     </button>
                 </div>
@@ -543,7 +543,7 @@ export function renderCertificationProgress(progress) {
         <section className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             <h3 className="font-display text-lg text-[#4A3728] mb-2">Сертификация и финальный этап</h3>
             <p className="text-sm text-[#2C1810] mb-2">{progress.readinessLine}</p>
-            <p className="text-sm text-[#9B8B80] mb-3">{progress.prerequisitesBeforeSzLine}</p>
+            <p className="text-sm text-ink-mute mb-3">{progress.prerequisitesBeforeSzLine}</p>
             <div className="grid md:grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">План гостей: {progress.guestPlanStatus}</div>
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Пробный завтрак: {progress.trialBreakfastStatus}</div>
@@ -553,7 +553,7 @@ export function renderCertificationProgress(progress) {
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2">Сертиф. пакет: {progress.certificationPackageStatus}</div>
                 <div className="rounded-xl border border-[#F5EDE6] bg-[#FAF6F2] p-2 md:col-span-2">Дедлайн записи СЗ: {progress.deadlineAt}</div>
             </div>
-            <p className="text-xs text-[#9B8B80] mt-2">Допуск: {progress.admissionStatus}{progress.redFlags?.length ? ` · красные флаги: ${progress.redFlags.length}` : ''}</p>
+            <p className="text-xs text-ink-mute mt-2">Допуск: {progress.admissionStatus}{progress.redFlags?.length ? ` · красные флаги: ${progress.redFlags.length}` : ''}</p>
             {progress.szScoresLine ? <p className="text-xs text-[#2C1810] mt-2 tabular-nums">{progress.szScoresLine}</p> : null}
         </section>
     );
@@ -569,7 +569,7 @@ export function MentorQuickActions({ tasks, risks = deadlineRisks, onOpenTask })
     return (
         <aside className="rounded-2xl border border-[#E8D5C4] bg-white p-4 xl:sticky xl:top-6 h-fit">
             <h3 className="font-display text-2xl text-[#4A3728] mb-2">Действия ментора</h3>
-            <p className="text-xs text-[#9B8B80] mb-3">{nextAction}</p>
+            <p className="text-xs text-ink-mute mb-3">{nextAction}</p>
             <div className="grid gap-2">
                 <button onClick={() => lastPending && onOpenTask(lastPending.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть последнее к проверке</button>
                 <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть на доработке</button>

@@ -352,7 +352,7 @@ export function TaskHeader({
                 <button
                     type="button"
                     onClick={onBack}
-                    className={trackerLike ? 'text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2' : 'text-xs text-slate-500 hover:text-slate-700 mb-2'}
+                    className={trackerLike ? 'text-xs text-ink-mute hover:text-[#4A3728] mb-2' : 'text-xs text-slate-500 hover:text-slate-700 mb-2'}
                 >
                     {backLabel}
                 </button>
@@ -414,7 +414,7 @@ export function MentorTaskHeaderCompact({ data, onBack, backLabel, showBackButto
     return (
         <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
             {showBackButton ? (
-                <button type="button" onClick={onBack} className="text-xs text-[#9B8B80] hover:text-[#4A3728] mb-2">{backLabel}</button>
+                <button type="button" onClick={onBack} className="text-xs text-ink-mute hover:text-[#4A3728] mb-2">{backLabel}</button>
             ) : null}
             {menteeName ? (
                 <p className="text-xs text-[#7A6758] mb-1">Менти: <span className="font-medium text-[#4A3728]">{menteeName}</span></p>
@@ -490,7 +490,7 @@ export function TaskDescription({ data, showControlPointNote = false, taskStatus
                         <p className="text-sm text-slate-400">Текст задания не указан.</p>
                     )}
                     {showControlPointNote ? (
-                        <div className="mt-3 text-xs text-[#9B8B80]">Это контрольная точка: влияет на блок дедлайнов.</div>
+                        <div className="mt-3 text-xs text-ink-mute">Это контрольная точка: влияет на блок дедлайнов.</div>
                     ) : null}
                 </div>
             </div>
@@ -714,8 +714,8 @@ export function renderStatusTimeline(history) {
             <div className="mt-1 w-2 h-2 rounded-full bg-[#C8855A]" />
             <div>
                 <p className="text-sm text-[#2C1810]">{h.fromStatus || '—'} → <strong>{h.toStatus}</strong></p>
-                <p className="text-xs text-[#9B8B80]">{h.changedAt} · {h.changedBy}</p>
-                {h.comment ? <p className="text-xs text-[#9B8B80]">{h.comment}</p> : null}
+                <p className="text-xs text-ink-mute">{h.changedAt} · {h.changedBy}</p>
+                {h.comment ? <p className="text-xs text-ink-mute">{h.comment}</p> : null}
             </div>
         </div>
     ));
@@ -865,7 +865,7 @@ export function ControlPointMeta({ taskData }) {
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Влияет на баллы: {controlPointMeta.affectsPoints ? 'да' : 'нет'}</div>
                 <div className="rounded-xl bg-[#FAF6F2] border border-[#F5EDE6] p-2">Влияет на допуск: {controlPointMeta.affectsAdmission ? 'да' : 'нет'}</div>
             </div>
-            <p className="text-xs text-[#9B8B80] mt-2">{controlPointMeta.specialNote}</p>
+            <p className="text-xs text-ink-mute mt-2">{controlPointMeta.specialNote}</p>
         </div>
     );
 }
@@ -900,7 +900,7 @@ export function MentorStudentAnswerCompact({
         return (
             <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">
                 <h3 className="font-display text-xl text-[#4A3728] mb-2">Ответ участницы</h3>
-                <p className="text-sm text-[#9B8B80]">Пока нет отправленной версии.</p>
+                <p className="text-sm text-ink-mute">Пока нет отправленной версии.</p>
             </div>
         );
     }
@@ -920,7 +920,7 @@ export function MentorStudentAnswerCompact({
                     <button
                         type="button"
                         onClick={() => setShowPrev((v) => !v)}
-                        className="text-xs text-[#9B8B80] hover:text-[#4A3728]"
+                        className="text-xs text-ink-mute hover:text-[#4A3728]"
                     >
                         {showPrev ? '▲' : '▶'} Предыдущие версии ({previous.length})
                     </button>
@@ -1046,7 +1046,7 @@ function MentorTaskSlim({
                     </div>
                 </div>
             ) : (
-                <p className="text-sm text-[#9B8B80] px-1">Работа принята.</p>
+                <p className="text-sm text-ink-mute px-1">Работа принята.</p>
             )}
             {state.threadMessages?.length > 0 ? (
                 <div className="rounded-2xl border border-[#E8D5C4] bg-white p-4">

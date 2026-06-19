@@ -107,7 +107,7 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
                     }}
                     placeholder={placeholder}
                 />
-                <Button variant="secondary" onClick={addTag} className="!p-2" icon={Plus} />
+                <Button variant="secondary" onClick={addTag} className="!p-2 min-h-[44px] min-w-[44px]" icon={Plus} />
             </div>
             {suggestions.length > 0 && (
                 <div className="bg-white border border-slate-100 rounded-xl shadow-sm p-2 flex flex-wrap gap-2">

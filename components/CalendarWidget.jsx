@@ -26,13 +26,13 @@ const CalendarWidget = ({ meetings, onPlanClick, selectedMonth, onMonthChange })
                 <div>
                     <h3 className="font-bold text-slate-900">Календарь</h3>
                     <div className="flex items-center gap-2 mt-1">
-                        <button onClick={handlePrevMonth} className="p-1 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+                        <button onClick={handlePrevMonth} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
                             <ChevronLeft size={16} />
                         </button>
                         <span className="text-slate-500 text-sm capitalize font-medium min-w-[90px] text-center">
                             {selectedMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
                         </span>
-                        <button onClick={handleNextMonth} className="p-1 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+                        <button onClick={handleNextMonth} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
                             <ChevronRight size={16} />
                         </button>
                     </div>

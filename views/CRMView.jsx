@@ -114,7 +114,7 @@ const CRMView = ({ clients, onAddClient, onUpdateClient, onDeleteClient, onNotif
                         <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Клиентов</div>
                         <div className="font-mono text-xl text-blue-600">{clients.length}</div>
                     </div>
-                    <Button variant="secondary" className="!p-2" onClick={handleOpenAdd}><UserPlus size={20} /></Button>
+                    <Button variant="secondary" className="!p-2 min-h-[44px] min-w-[44px]" onClick={handleOpenAdd}><UserPlus size={20} /></Button>
                 </div>
             </div>
             {/* Client Grid */}

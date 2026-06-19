@@ -883,7 +883,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             <span className="text-sm font-medium">Сад</span>
                         </button>
                         <span className="font-display font-semibold text-slate-900 text-base tracking-tight">{courseSidebar.title}</span>
-                        <button onClick={() => setMobileMenuOpen(true)} className="p-1.5 rounded-xl text-slate-400 active:bg-slate-100">
+                        <button onClick={() => setMobileMenuOpen(true)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl text-slate-400 active:bg-slate-100">
                             <Menu size={22} strokeWidth={1.5} />
                         </button>
                     </>
@@ -905,7 +905,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             <h2 className="text-2xl font-display font-semibold text-slate-900">
                                 {isCourseSidebarMode ? courseSidebar.title : 'Меню'}
                             </h2>
-                            <button onClick={() => setMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500">
+                            <button onClick={() => setMobileMenuOpen(false)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] bg-slate-100 rounded-full text-slate-500">
                                 <X size={24} />
                             </button>
                         </div>

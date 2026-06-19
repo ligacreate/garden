@@ -79,11 +79,11 @@ const CalendarWidget = ({ meetings, onPlanClick, currentDate, setCurrentDate, sh
     return (
         <div className="bg-white rounded-[2.5rem] p-4 md:p-6 shadow-sm border border-slate-100 h-fit select-none">
             <div className="flex justify-between items-center mb-6">
-                <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+                <button onClick={prevMonth} className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
                     <ChevronDown className="rotate-90" size={20} />
                 </button>
                 <h3 className="font-bold text-slate-800 capitalize text-center text-lg">{monthName}</h3>
-                <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+                <button onClick={nextMonth} className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
                     <ChevronDown className="-rotate-90" size={20} />
                 </button>
             </div>

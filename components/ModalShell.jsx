@@ -113,7 +113,7 @@ const ModalShell = ({
                 {showClose && (
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                        className="absolute top-4 right-4 inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
                         aria-label="Закрыть"
                     >
                         <X size={18} />

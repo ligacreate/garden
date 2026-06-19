@@ -169,6 +169,7 @@ related_docs:
 - **План:** docs/_session/2026-06-18_197_strategist_design_audit_plan.md (5 фаз A→E)
 - **Корень:** ~680 хардкод-хексов в ПВЛ/менторке vs токены Сада/админки; нет focus-trap/reduced-motion; контраст muted <AA; тач-таргеты <44px
 - **Не трогать:** Onest/Bricolage, бумажную текстуру, русское тире в копи
+- **DESIGN-001-B4-FOLLOWUP (P2):** плотные горизонтальные кластеры мелких кнопок, где честные 44px недостижимы без переверстки (44px ломает раскладку / ::after-зоны перекрывают соседей в gap-1 ряду). Переверстать в tap-friendly раскладку: RichEditor toolbar (12 кнопок p-1.5) → группировка/overflow-меню; PvlPrototypeApp квиз-контролы вопроса (5-ряд) + placement-пиллы → меню «⋯»; ProfileView:92 крестик удаления тега внутри chip; BuilderView move-up/down пара; MeetingsView goal edit/delete p-1 пара. Решение от 2026-06-19 (B4): в B4 не трогали — вынесено сюда. Список спотов — docs/_session/2026-06-19_200_codeexec_design001_phaseB4_touch_targets_diff.md §4.
 
 ### BUG-PVL-ONBOARDING-MISSING-STUDENT-RECORD: новые applicant'ы в profiles не получают row в pvl_students → silent FK violation при сохранении ДЗ ✅ DONE
 - **Статус:** ✅ DONE 2026-05-23 (phase37 commit `03a4d50` — DB trigger AFTER UPDATE OF role,access_status на profiles + FK pvl_students.id → profiles(id) + backfill 13 interns + 2 cohorts с датами для cohort_id auto-резолюции). End-to-end smoke 19:14 на Суроватской: Ольга нажала ⛔ → триггер создал pvl_students row с cohort_id Потока 1. Session `_107..118`.

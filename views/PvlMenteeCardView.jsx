@@ -384,7 +384,7 @@ export function MenteeTaskGroupByWeek({ weekNumber, tasks, onOpenTask }) {
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
                             <span className="text-xs text-ink-mute">{pvlHtmlToPlainText(task.mentorCommentPreview) || 'Комментария пока нет'}</span>
-                            <button onClick={() => onOpenTask(task.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть задание</button>
+                            <button onClick={() => onOpenTask(task.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Открыть задание</button>
                         </div>
                     </div>
                 ))}
@@ -463,8 +463,8 @@ export function renderDeadlineRisks(risks, onOpenTask) {
             <p className="text-xs text-ink-mute mt-1">{risk.riskType} · {risk.daysOverdue} дн. просрочки</p>
             <p className="text-sm text-[#2C1810] mt-1">{risk.recommendedAction}</p>
             <div className="mt-2 flex gap-2">
-                <button onClick={() => onOpenTask(risk.relatedTaskId)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">К заданию</button>
-                <button onClick={() => onOpenTask(risk.relatedTaskId)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">К комментарию</button>
+                <button onClick={() => onOpenTask(risk.relatedTaskId)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">К заданию</button>
+                <button onClick={() => onOpenTask(risk.relatedTaskId)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">К комментарию</button>
             </div>
         </article>
     ));
@@ -571,13 +571,13 @@ export function MentorQuickActions({ tasks, risks = deadlineRisks, onOpenTask })
             <h3 className="font-display text-2xl text-[#4A3728] mb-2">Действия ментора</h3>
             <p className="text-xs text-ink-mute mb-3">{nextAction}</p>
             <div className="grid gap-2">
-                <button onClick={() => lastPending && onOpenTask(lastPending.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть последнее к проверке</button>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть на доработке</button>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Оставить общий комментарий</button>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Назначить ручной бонус</button>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Отметить/снять риск</button>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Перейти к СЗ</button>
-                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 text-[#C8855A] hover:bg-[#F5EDE6]">Открыть самооценку СЗ</button>
+                <button onClick={() => lastPending && onOpenTask(lastPending.id)} className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Открыть последнее к проверке</button>
+                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Открыть на доработке</button>
+                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Оставить общий комментарий</button>
+                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Назначить ручной бонус</button>
+                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Отметить/снять риск</button>
+                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Перейти к СЗ</button>
+                <button className="text-xs rounded-full border border-[#E8D5C4] px-3 py-1 min-h-[44px] inline-flex items-center justify-center text-[#C8855A] hover:bg-[#F5EDE6]">Открыть самооценку СЗ</button>
             </div>
         </aside>
     );

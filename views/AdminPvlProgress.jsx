@@ -229,7 +229,7 @@ function ReportDownloadButton({
                 onClick={() => setOpen((o) => !o)}
                 disabled={loading || !dataReady}
                 title={!dataReady ? 'Загружаю данные курса…' : 'Скачать отчёт'}
-                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-30"
+                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-30"
             >
                 {loading || !dataReady
                     ? <Loader2 size={16} className={!dataReady && !loading ? 'opacity-50' : 'animate-spin'} />

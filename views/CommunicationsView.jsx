@@ -580,7 +580,7 @@ const CommunicationsView = ({ user, users = [], channelItems = [], onNotify, onO
                                 <button
                                     type="button"
                                     onClick={handleRemoveAttachment}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 transition-all"
+                                    className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 transition-all"
                                     title="Убрать фото"
                                 >
                                     <X size={14} />

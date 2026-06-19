@@ -179,7 +179,7 @@ const MeetingCard = ({
                 </div>
 
                 <div className="flex flex-col items-end gap-2">
-                    <button className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors">
+                    <button className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors">
                         {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                     </button>
                     {status === 'completed' && (

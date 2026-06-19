@@ -208,7 +208,7 @@ const TreasuryView = ({ user, practices = [], onForked, onPracticeCreated, onPra
                         <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">В сокровищнице</div>
                         <div className="font-mono text-xl text-blue-600">{items.length}</div>
                     </div>
-                    <Button variant="ghost" className="!p-2" onClick={loadTreasury} title="Обновить">
+                    <Button variant="ghost" className="!p-2 min-h-[44px] min-w-[44px]" onClick={loadTreasury} title="Обновить">
                         <RotateCw size={18} className={loading ? 'animate-spin' : ''} />
                     </Button>
                 </div>

@@ -422,10 +422,10 @@ const ShopAdmin = ({ onNotify }) => {
                                 </div>
                             </div>
                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => openEdit(item)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Редактировать">
+                                <button onClick={() => openEdit(item)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600 transition-colors" title="Редактировать">
                                     <Edit2 size={16} />
                                 </button>
-                                <button onClick={() => handleDelete(item)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors" title="Удалить">
+                                <button onClick={() => handleDelete(item)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-rose-500 transition-colors" title="Удалить">
                                     <Trash2 size={16} />
                                 </button>
                             </div>
@@ -786,7 +786,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                             </button>
                         ))}
                     </div>
-                    {tab === 'users' && <Button variant="ghost" className="!p-2 text-slate-400 hover:text-blue-600" onClick={onRefreshUsers} title="Обновить список"><RotateCw size={20} /></Button>}
+                    {tab === 'users' && <Button variant="ghost" className="!p-2 min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600" onClick={onRefreshUsers} title="Обновить список"><RotateCw size={20} /></Button>}
                 </div>
 
                 {tab === 'stats' && (
@@ -809,7 +809,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                         <div className="text-xs text-slate-400 mt-2">{new Date(n.created_at || Date.now()).toLocaleDateString()}</div>
                                     </div>
                                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => setNewContent({ ...n })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                        <button onClick={() => setNewContent({ ...n })} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
                                         <button onClick={() => {
                                             confirmAction(
                                                 "Удалить новость?",
@@ -820,7 +820,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                 },
                                                 'danger'
                                             );
-                                        }} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                                        }} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
                                     </div>
                                 </div>
                             ))}
@@ -895,7 +895,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                     <div className="surface-card p-8">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="font-display font-semibold text-slate-900">События ({allEvents.length})</h3>
-                            <Button variant="ghost" className="!p-2 text-slate-400 hover:text-blue-600" onClick={async () => {
+                            <Button variant="ghost" className="!p-2 min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600" onClick={async () => {
                                 if (!onGetAllEvents) return;
                                 const data = await onGetAllEvents();
                                 if (data) setAllEvents(data);
@@ -982,8 +982,8 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                 )}
                                             </div>
                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => setEditingEvent({ ...ev, image_focus_x: ev.image_focus_x ?? 50, image_focus_y: ev.image_focus_y ?? 50 })} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
-                                                <button onClick={() => confirmAction("Удалить событие?", `Вы собираетесь удалить событие "${ev.title || 'Без названия'}".`, async () => { if (onDeleteEvent) { await onDeleteEvent(ev.id); setAllEvents(allEvents.filter(e => e.id !== ev.id)); onNotify("Событие удалено"); } }, 'danger')} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                                                <button onClick={() => setEditingEvent({ ...ev, image_focus_x: ev.image_focus_x ?? 50, image_focus_y: ev.image_focus_y ?? 50 })} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                                <button onClick={() => confirmAction("Удалить событие?", `Вы собираетесь удалить событие "${ev.title || 'Без названия'}".`, async () => { if (onDeleteEvent) { await onDeleteEvent(ev.id); setAllEvents(allEvents.filter(e => e.id !== ev.id)); onNotify("Событие удалено"); } }, 'danger')} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
                                             </div>
                                         </div>
                                     );
@@ -1556,7 +1556,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                         <button onClick={() => {
                                                             setEditingMaterialId(item?.id ?? null);
                                                             setNewContent({ ...item, tags: Array.isArray(item.tags) ? item.tags.join(', ') : (item.tags || '') });
-                                                        }} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                                                        }} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
                                                         <button onClick={async () => {
                                                             confirmAction(
                                                                 "Удалить материал?",
@@ -1574,7 +1574,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                                 },
                                                                 'danger'
                                                             );
-                                                        }} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                                                        }} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -1668,7 +1668,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                     <h3 className="font-display font-semibold text-slate-900">Сценарии лиги ({leagueScenarios.length})</h3>
                                     <Button
                                         variant="ghost"
-                                        className="!p-2 text-slate-400 hover:text-blue-600"
+                                        className="!p-2 min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600"
                                         onClick={refreshLeagueScenarios}
                                         title="Обновить список"
                                     >
@@ -1695,7 +1695,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                             </div>
                                             <button
                                                 onClick={() => handleEditLeagueScenario(scenario)}
-                                                className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                                                className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-blue-600 transition-colors"
                                                 title="Редактировать сценарий"
                                             >
                                                 <Edit2 size={16} />

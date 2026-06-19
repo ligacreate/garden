@@ -427,7 +427,7 @@ const PracticesView = ({ user, practices, onAddPractice, onUpdatePractice, onDel
                                     {canEditPractices && (
                                         <button
                                             onClick={(e) => openEditModal(practice, e)}
-                                            className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
+                                            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
                                         >
                                             <Pencil size={18} />
                                         </button>

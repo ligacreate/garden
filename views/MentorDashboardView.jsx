@@ -44,7 +44,7 @@ export function renderMentorDashboard() {
 }
 
 const Pill = ({ children, tone }) => (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${tone}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}>
         {children}
     </span>
 );
@@ -65,38 +65,38 @@ export default function MentorDashboardView() {
     return (
         <div className="space-y-4">
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white">
-                <h2 className="font-display text-3xl text-[#4A3728] mb-1">ЛК ментора</h2>
+                <h2 className="h-display text-[#4A3728] mb-1">ЛК ментора</h2>
                 <p className="text-sm text-ink-mute mb-4">Сводка по менти, проверкам и рискам. Переходы подготовлены на карточку менти.</p>
                 <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.menteesCount}</div>
-                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Всего менти</div>
+                        <div className="text-meta text-ink-mute mt-1">Всего менти</div>
                     </div>
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.activeReviews}</div>
-                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Активных проверок</div>
+                        <div className="text-meta text-ink-mute mt-1">Активных проверок</div>
                     </div>
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.atRiskMentees}</div>
-                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Менти в риске</div>
+                        <div className="text-meta text-ink-mute mt-1">Менти в риске</div>
                     </div>
                     <div className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">
                         <div className="font-display text-4xl leading-none text-[#C8855A]">{summary.totalOverdueHw}</div>
-                        <div className="text-[11px] text-ink-mute uppercase tracking-[0.08em] mt-1">Просроченных ДЗ</div>
+                        <div className="text-meta text-ink-mute mt-1">Просроченных ДЗ</div>
                     </div>
                 </div>
             </section>
 
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white overflow-x-auto">
                 <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-display text-2xl text-[#4A3728]">Мои менти</h3>
+                    <h3 className="h-section text-[#4A3728]">Мои менти</h3>
                     <span className="text-xs text-ink-mute">Курсовые баллы: только шкала до 400</span>
                 </div>
                 <table className="w-full min-w-[980px] border-separate border-spacing-0">
                     <thead>
                         <tr>
                             {['Менти', 'Неделя', 'Встреча', 'Последняя домашка', 'Статус сдачи', 'Баллы', 'Просрочки', 'Переход'].map((h) => (
-                                <th key={h} className="text-left text-[11px] uppercase tracking-[0.08em] text-ink-mute border-b border-[#F5EDE6] p-2">{h}</th>
+                                <th key={h} className="text-left text-meta text-ink-mute border-b border-[#F5EDE6] p-2">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -134,12 +134,12 @@ export default function MentorDashboardView() {
             </section>
 
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white overflow-x-auto">
-                <h3 className="font-display text-2xl text-[#4A3728] mb-3">Очередь проверок</h3>
+                <h3 className="h-section text-[#4A3728] mb-3">Очередь проверок</h3>
                 <table className="w-full min-w-[860px] border-separate border-spacing-0">
                     <thead>
                         <tr>
                             {['Менти', 'Задание', 'Тип', 'Отправка', 'Дедлайн', 'Статус', 'Переход'].map((h) => (
-                                <th key={h} className="text-left text-[11px] uppercase tracking-[0.08em] text-ink-mute border-b border-[#F5EDE6] p-2">{h}</th>
+                                <th key={h} className="text-left text-meta text-ink-mute border-b border-[#F5EDE6] p-2">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -174,7 +174,7 @@ export default function MentorDashboardView() {
             </section>
 
             <section className="surface-card p-5 border border-[#E8D5C4] bg-white">
-                <h3 className="font-display text-2xl text-[#4A3728] mb-3">Риски по дедлайнам</h3>
+                <h3 className="h-section text-[#4A3728] mb-3">Риски по дедлайнам</h3>
                 <div className="grid md:grid-cols-2 gap-3">
                     {deadlineRisks.map((r) => (
                         <article key={r.id} className="rounded-2xl border border-[#E8D5C4] bg-[#FAF6F2] p-3">

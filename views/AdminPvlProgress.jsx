@@ -664,7 +664,7 @@ export default function AdminPvlProgress({ hiddenIds = [], users = [] }) {
         <div className="surface-card p-8 space-y-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                    <h3 className="font-display font-semibold text-slate-900 text-lg">Прогресс студентов ПВЛ</h3>
+                    <h3 className="h-section text-slate-900">Прогресс студентов ПВЛ</h3>
                     <p className="text-sm text-slate-500 mt-1">
                         Сводка по сданным / на проверке / на доработке / просроченным ДЗ.
                     </p>
@@ -708,7 +708,7 @@ export default function AdminPvlProgress({ hiddenIds = [], users = [] }) {
             {cohortId && (
                 <div className="flex items-center justify-between gap-4 flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div>
-                        <div className="font-display text-slate-900 font-semibold">Сертификационные завтраки</div>
+                        <div className="h-sub text-slate-900">Сертификационные завтраки</div>
                         <p className="text-sm text-slate-500 mt-0.5">
                             Приём для когорты «{selectedCohort?.title || ''}»:{' '}
                             <strong className={certOpen ? 'text-emerald-700' : 'text-slate-700'}>

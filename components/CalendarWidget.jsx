@@ -20,6 +20,11 @@ const CalendarWidget = ({ meetings, onPlanClick, selectedMonth, onMonthChange })
         onMonthChange(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1));
     };
 
+    // Sentence-case: только первая буква месяца с заглавной, «г.» строчная
+    // (CSS capitalize ломал бы «г.» → «Г.»).
+    const monthRaw = selectedMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthLabel = monthRaw.charAt(0).toUpperCase() + monthRaw.slice(1);
+
     return (
         <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 h-full flex flex-col">
             <div className="flex justify-between items-center mb-6">
@@ -29,8 +34,8 @@ const CalendarWidget = ({ meetings, onPlanClick, selectedMonth, onMonthChange })
                         <button onClick={handlePrevMonth} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
                             <ChevronLeft size={16} />
                         </button>
-                        <span className="text-slate-500 text-sm capitalize font-medium min-w-[90px] text-center">
-                            {selectedMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
+                        <span className="text-slate-500 text-sm whitespace-nowrap font-medium min-w-[90px] text-center">
+                            {monthLabel}
                         </span>
                         <button onClick={handleNextMonth} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
                             <ChevronRight size={16} />

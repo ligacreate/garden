@@ -48,7 +48,9 @@ const CalendarWidget = ({ meetings, onPlanClick, currentDate, setCurrentDate, sh
         setCurrentDate(new Date(year, month + 1, 1));
     };
 
-    const monthName = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthNameRaw = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    // Sentence-case: только первая буква с заглавной, «г.» строчная (CSS capitalize ломал «г.»→«Г.»)
+    const monthName = monthNameRaw.charAt(0).toUpperCase() + monthNameRaw.slice(1);
 
     // Helper to get status color for a date
     const getDayStatusColor = (day) => {
@@ -82,7 +84,7 @@ const CalendarWidget = ({ meetings, onPlanClick, currentDate, setCurrentDate, sh
                 <button onClick={prevMonth} className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
                     <ChevronDown className="rotate-90" size={20} />
                 </button>
-                <h3 className="font-bold text-slate-800 capitalize text-center text-lg">{monthName}</h3>
+                <h3 className="font-bold text-slate-800 whitespace-nowrap text-center text-lg">{monthName}</h3>
                 <button onClick={nextMonth} className="w-11 h-11 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
                     <ChevronDown className="-rotate-90" size={20} />
                 </button>
@@ -162,7 +164,9 @@ const MonthAnalytics = ({ meetings, currentDate }) => {
         ? Math.round(totalIncome / totalGuests)
         : 0;
 
-    const monthName = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthNameRaw = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    // Sentence-case (см. выше): «Май 2026 г.» с заглавной М, «г.» строчная
+    const monthName = monthNameRaw.charAt(0).toUpperCase() + monthNameRaw.slice(1);
 
     const MetricCard = ({ label, value, subLabel, colorClass = "text-slate-900" }) => (
         <div className="bg-slate-50 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-slate-100">

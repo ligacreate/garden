@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Edit2, AlertCircle, Trash2, Copy } from 'lucide-react';
 import Button from './Button';
-import { getMeetingInstant, getMeetingTimezone, isMeetingPast } from '../utils/meetingTime';
+import { getMeetingInstant, getMeetingTimezone, isMeetingPast, isMeetingDeletable } from '../utils/meetingTime';
 
 const MeetingCard = ({
     meeting,
@@ -25,6 +25,9 @@ const MeetingCard = ({
 
     // Effective status for UI rendering
     const status = isPending ? 'pending' : (meeting.status || 'planned');
+
+    // Удаление доступно только для «без последствий» встреч (planned/pending/cancelled).
+    const deletable = isMeetingDeletable(meeting);
 
     const coHostNames = (Array.isArray(meeting.co_hosts) ? meeting.co_hosts : [])
         .map(id => users.find(u => u.id === id)?.name)
@@ -195,6 +198,16 @@ const MeetingCard = ({
                 <div className="mt-6 flex gap-3 animate-in fade-in slide-in-from-top-2">
                     <Button onClick={(e) => { e.stopPropagation(); onResult(meeting); }} icon={CheckCircle} className="flex-1">Внести результат</Button>
                     <Button onClick={(e) => { e.stopPropagation(); onCancel(meeting); }} variant="secondary" icon={XCircle}>Не состоялась</Button>
+                    {deletable && (
+                        <button
+                            onClick={handleDelete}
+                            aria-label="Удалить встречу"
+                            title="Удалить встречу"
+                            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors shrink-0"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -237,12 +250,14 @@ const MeetingCard = ({
                                 >
                                     <Copy size={14} /> Дублировать
                                 </button>
-                                <button
-                                    onClick={handleDelete}
-                                    className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
-                                >
-                                    <Trash2 size={14} /> Удалить
-                                </button>
+                                {deletable && (
+                                    <button
+                                        onClick={handleDelete}
+                                        className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
+                                    >
+                                        <Trash2 size={14} /> Удалить
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -296,13 +311,10 @@ const MeetingCard = ({
                                 >
                                     <Copy size={14} /> Дублировать
                                 </button>
-                                <button
-                                    onClick={handleDelete}
-                                    className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
-                                >
-                                    <Trash2 size={14} /> Удалить
-                                </button>
                             </div>
+                            <p className="text-xs text-slate-400 mt-3 leading-relaxed">
+                                Завершённую встречу удалить нельзя — по&nbsp;ней уже начислены семена.
+                            </p>
                         </div>
                     )}
 
@@ -320,12 +332,14 @@ const MeetingCard = ({
                                 >
                                     <Copy size={14} /> Перенос встречи
                                 </button>
-                                <button
-                                    onClick={handleDelete}
-                                    className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
-                                >
-                                    <Trash2 size={14} /> Удалить
-                                </button>
+                                {deletable && (
+                                    <button
+                                        onClick={handleDelete}
+                                        className="text-red-400 text-sm font-medium hover:underline flex items-center gap-2 hover:text-red-600"
+                                    >
+                                        <Trash2 size={14} /> Удалить
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}

@@ -52,3 +52,10 @@ export const isMeetingPast = (meeting, now = new Date()) => {
     startOfToday.setHours(0, 0, 0, 0);
     return meetingDay < startOfToday;
 };
+
+// Удалять можно только «без последствий»: встреча не завершена и по ней не
+// начислены семена за проведение (+25). Покрывает planned/pending/cancelled.
+// Завершённые (completed) — это история/аудит, их не удаляем (см.
+// docs/_session/2026-06-25_205_codeexec_meeting_delete_safe_diff.md).
+export const isMeetingDeletable = (meeting) =>
+    !!meeting && meeting.status !== 'completed' && meeting.seeds_awarded !== true;

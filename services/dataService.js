@@ -756,8 +756,20 @@ class LocalStorageService {
 
     async deleteMeeting(meetingId) {
         const allMeetings = JSON.parse(localStorage.getItem('garden_meetings')) || [];
-        const filtered = allMeetings.filter(m => m.id !== meetingId);
+        // Тот же гард, что и в RemoteApiService: не удаляем completed / с семенами.
+        const target = allMeetings.find(m => String(m.id) === String(meetingId));
+        if (target && (target.status === 'completed' || target.seeds_awarded === true)) {
+            const err = new Error('Завершённую встречу нельзя удалить — по ней уже начислены семена.');
+            err.userFacing = true;
+            throw err;
+        }
+        const filtered = allMeetings.filter(m => String(m.id) !== String(meetingId));
         localStorage.setItem('garden_meetings', JSON.stringify(filtered));
+        // В моке нет триггера БД — снимаем зеркало в events руками.
+        const allEvents = JSON.parse(localStorage.getItem('garden_events')) || [];
+        localStorage.setItem('garden_events', JSON.stringify(
+            allEvents.filter(e => String(e.garden_id) !== String(meetingId))
+        ));
         return true;
     }
 
@@ -2104,6 +2116,40 @@ class RemoteApiService {
     }
 
     async deleteMeeting(meetingId) {
+        // Гард источника правды: hard-delete только «без последствий».
+        // Завершённую / с начисленными семенами встречу не удаляем (история+семена).
+        // Дублирует RLS-гард (миграция meeting_delete_safe), но даёт понятную ошибку.
+        const { data: rows } = await postgrestFetch('meetings', {
+            id: `eq.${meetingId}`,
+            select: 'id,status,seeds_awarded'
+        });
+        const meeting = Array.isArray(rows) ? rows[0] : rows;
+        if (meeting && (meeting.status === 'completed' || meeting.seeds_awarded === true)) {
+            const err = new Error('Завершённую встречу нельзя удалить — по ней уже начислены семена.');
+            err.userFacing = true;
+            throw err;
+        }
+        // Снять NO ACTION-ссылки, иначе DELETE упадёт 409 FK (цель / перенос).
+        // Под JWT ведущей затрагиваются только её строки (чужие no-op'нет RLS).
+        try {
+            await postgrestFetch('goals', { linked_meeting_id: `eq.${meetingId}` }, {
+                method: 'PATCH',
+                body: { linked_meeting_id: null },
+                returnRepresentation: false
+            });
+        } catch (e) {
+            console.warn('clear goal link before meeting delete failed', e);
+        }
+        try {
+            await postgrestFetch('meetings', { rescheduled_to: `eq.${meetingId}` }, {
+                method: 'PATCH',
+                body: { rescheduled_to: null },
+                returnRepresentation: false
+            });
+        } catch (e) {
+            console.warn('clear reschedule ref before meeting delete failed', e);
+        }
+        // Зеркало в events снимет триггер on_meeting_change_sync_event автоматически.
         await postgrestFetch('meetings', { id: `eq.${meetingId}` }, {
             method: 'DELETE',
             returnRepresentation: true

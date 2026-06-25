@@ -402,11 +402,21 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const handleDeleteMeeting = async (meetingId) => {
         try {
             await api.deleteMeeting(meetingId);
-            setMeetings(meetings.filter(m => m.id !== meetingId));
+            setMeetings(meetings.filter(m => String(m.id) !== String(meetingId)));
+
+            // Откат +5 за создание (симметрично handleAddMeeting). Удаление доступно
+            // только для «без последствий» встреч (planned/pending/cancelled), поэтому
+            // других семян по встрече нет. Клампим в 0, чтобы не уводить баланс в минус.
+            // NB: со-ведущим +5 НЕ откатываем — increment_user_seeds не клампит и
+            // применяет одну сумму ко всем сразу → может увести чужой баланс в минус.
+            // Откат по со-ведущим отложен (backlog MEETING-COHOST-SEED-REFUND).
+            const CREATE_BONUS = 5;
+            onUpdateUser({ ...user, seeds: Math.max(0, (user.seeds || 0) - CREATE_BONUS) });
+
             onNotify("Встреча удалена");
         } catch (e) {
             console.error(e);
-            onNotify("Ошибка удаления встречи");
+            onNotify(e?.userFacing ? e.message : "Ошибка удаления встречи");
         }
     };
 

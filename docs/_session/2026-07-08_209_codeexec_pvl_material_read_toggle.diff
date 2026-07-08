@@ -1,0 +1,60 @@
+diff --git a/views/PvlPrototypeApp.jsx b/views/PvlPrototypeApp.jsx
+index 687ab81..0dec65f 100644
+--- a/views/PvlPrototypeApp.jsx
++++ b/views/PvlPrototypeApp.jsx
+@@ -1505,6 +1505,43 @@ function clampPvlModule(value) {
+     return Math.max(0, Math.min(3, Math.round(n)));
+ }
+ 
++/**
++ * Тумблер «прочитано / прослушано» В КОНЦЕ материала. Пишет в тот же путь, что сетка трекера —
++ * pvlDomainApi.studentApi.checkItem → pvl_checklist_items (sid:contentItemId). Это кормит % курса.
++ * Отдельно от библиотечного «изучено» (studentLibraryProgress) — тот в % не входит.
++ */
++function PvlMaterialReadToggle({ studentId, contentItemId, onToggled }) {
++    const cid = String(contentItemId || '');
++    const readFromDb = () => {
++        try { return !!(pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {})[`sid:${cid}`]; }
++        catch { return false; }
++    };
++    const [isRead, setIsRead] = useState(readFromDb);
++    useEffect(() => { setIsRead(readFromDb()); }, [studentId, cid]); // eslint-disable-line react-hooks/exhaustive-deps
++    if (!studentId || !cid) return null;
++    const toggle = () => {
++        const next = !isRead;
++        setIsRead(next);
++        if (next) pvlDomainApi.studentApi.checkItem(studentId, cid);
++        else pvlDomainApi.studentApi.uncheckItem(studentId, cid);
++        onToggled?.(next);
++    };
++    return (
++        <div className="mt-6 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
++            <button
++                type="button"
++                onClick={toggle}
++                aria-pressed={isRead}
++                className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-sm font-medium min-h-[44px] border transition-colors ${isRead ? 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600' : 'border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50'}`}
++            >
++                <span className={`flex h-5 w-5 items-center justify-center rounded border-2 text-[11px] ${isRead ? 'border-white/70 bg-white/25 text-white' : 'border-emerald-400 text-transparent'}`} aria-hidden>✓</span>
++                {isRead ? 'Прочитано / прослушано — отмечено' : 'Отметить: прочитано / прослушано'}
++            </button>
++            <span className="text-xs text-slate-500">Идёт в прогресс курса — % модуля и общий %.</span>
++        </div>
++    );
++}
++
+ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/student', refresh = null, refreshKey = 0 }) {
+     const [loading] = useState(false);
+     const [error] = useState('');
+@@ -1941,6 +1978,11 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
+                                     navigate={navigate}
+                                     routePrefix={routePrefix}
+                                 />
++                                <PvlMaterialReadToggle
++                                    studentId={studentId}
++                                    contentItemId={selectedItem.contentItemId || selectedItem.id}
++                                    onToggled={() => { setLibraryTick((v) => v + 1); refresh?.(); }}
++                                />
+                             </section>
+                             </div>
+                         )}

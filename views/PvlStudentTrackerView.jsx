@@ -727,9 +727,9 @@ export function StudentCourseTracker({
     }, [studentId, totalModuleItems]);
 
     const syncLibraryAndStepComplete = useCallback(() => {
-        if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
+        // Один сигнал: toggleItem пишет pvl_checklist_items; библиотечное «пройдено» выводится из него.
         if (activeStep && !checked[activeStep.key]) toggleItem(activeStep.key);
-    }, [activeStep, checked, contentItemId, studentId, toggleItem]);
+    }, [activeStep, checked, toggleItem]);
 
     useEffect(() => { setAsideOpen(false); }, [activeStepKey]);
 
@@ -758,7 +758,7 @@ export function StudentCourseTracker({
                         aria-pressed={checked[activeStep.key] ? 'true' : 'false'}
                         onClick={() => {
                             if (!checked[activeStep.key]) {
-                                if (contentItemId) pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, contentItemId);
+                                // Только чек-лист; «пройдено» в библиотеке выводится из него (единый сигнал).
                                 toggleItem(activeStep.key);
                             }
                         }}

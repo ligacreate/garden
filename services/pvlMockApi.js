@@ -2476,15 +2476,20 @@ function getPublishedLibraryContentForStudent(studentId) {
      */
     const cohortId = profile?.cohortId || 'cohort-2026-1';
     const items = getPublishedContentFor(ROLES.STUDENT, 'library', cohortId);
+    // «Пройдено» ВЫВОДИМ из чек-листа (pvl_checklist_items) — единый источник, что кормит % курса.
+    // Так бейдж/фильтр библиотеки не может рассинхрониться с прогрессом (отметка в сетке трекера,
+    // в конце материала или на квизе — один и тот же ключ). Legacy pr.completed уважаем как fallback.
+    const checks = db.studentTrackerChecks?.[studentId] || {};
     return items.map((item) => {
         const pr = db.studentLibraryProgress.find((x) => x.studentId === studentId && x.libraryItemId === item.id);
         const lp = item.libraryPayload && typeof item.libraryPayload === 'object' ? item.libraryPayload : {};
         const libraryLessonGroupTitle = String(item.libraryLessonGroupTitle || lp.lessonGroupTitle || '').trim();
+        const completed = !!checks[`sid:${item.id}`] || !!pr?.completed;
         return {
             ...item,
             libraryLessonGroupTitle,
             progressPercent: pr?.progressPercent || 0,
-            completed: !!pr?.completed,
+            completed,
             completedAt: pr?.completedAt || null,
             lastOpenedAt: pr?.lastOpenedAt || null,
         };

@@ -1510,18 +1510,23 @@ function clampPvlModule(value) {
  * pvlDomainApi.studentApi.checkItem → pvl_checklist_items (sid:contentItemId). Это кормит % курса.
  * Отдельно от библиотечного «изучено» (studentLibraryProgress) — тот в % не входит.
  */
-function PvlMaterialReadToggle({ studentId, contentItemId, onToggled }) {
+function PvlMaterialReadToggle({ studentId, contentItemId, onToggled, isRead: isReadProp, onToggle }) {
+    // Controlled: родитель (LibraryPage) держит единый сигнал и передаёт isRead/onToggle.
+    // Uncontrolled (fallback): компонент сам читает/пишет pvl_checklist_items.
+    const controlled = typeof isReadProp === 'boolean' && typeof onToggle === 'function';
     const cid = String(contentItemId || '');
     const readFromDb = () => {
         try { return !!(pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {})[`sid:${cid}`]; }
         catch { return false; }
     };
-    const [isRead, setIsRead] = useState(readFromDb);
-    useEffect(() => { setIsRead(readFromDb()); }, [studentId, cid]); // eslint-disable-line react-hooks/exhaustive-deps
-    if (!studentId || !cid) return null;
+    const [localRead, setLocalRead] = useState(readFromDb);
+    useEffect(() => { if (!controlled) setLocalRead(readFromDb()); }, [studentId, cid, controlled]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!studentId || (!cid && !controlled)) return null;
+    const isRead = controlled ? isReadProp : localRead;
     const toggle = () => {
         const next = !isRead;
-        setIsRead(next);
+        if (controlled) { onToggle(next); return; }
+        setLocalRead(next);
         if (next) pvlDomainApi.studentApi.checkItem(studentId, cid);
         else pvlDomainApi.studentApi.uncheckItem(studentId, cid);
         onToggled?.(next);
@@ -1615,6 +1620,20 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
         attachments: [],
     } : null;
     const selectedItem = filteredItems.find((x) => x.id === selectedItemId) || baseItems.find((x) => x.id === selectedItemId) || selectedLessonMaterial || null;
+    // ЕДИНЫЙ сигнал «материал пройден» = pvl_checklist_items (checkItem). Три точки входа —
+    // верхняя кнопка, нижний тумблер, прохождение квиза — пишут/читают ЭТОТ ключ и все считаются в %.
+    // Библиотечный `completed` не хранится отдельно, а ВЫВОДИТСЯ из чек-листа (getPublishedLibraryContentForStudent),
+    // поэтому рассинхрон невозможен — пишем только checkItem/uncheckItem.
+    const selectedMaterialCid = selectedItem ? String(selectedItem.contentItemId || selectedItem.id || '') : '';
+    const selectedMaterialRead = !!(selectedMaterialCid
+        && (pvlDomainApi.studentApi.getTrackerChecklist(studentId) || {})[`sid:${selectedMaterialCid}`]);
+    const setSelectedMaterialRead = useCallback((read) => {
+        if (!selectedMaterialCid) return;
+        if (read) pvlDomainApi.studentApi.checkItem(studentId, selectedMaterialCid);
+        else pvlDomainApi.studentApi.uncheckItem(studentId, selectedMaterialCid);
+        setLibraryTick((v) => v + 1);
+        refresh?.();
+    }, [studentId, selectedMaterialCid, refresh]);
     const lessonVideoPlayerHtml = useMemo(
         () => (selectedItem ? buildLessonVideoPlayerHtml(selectedItem) : ''),
         [selectedItem?.id, selectedItem?.lessonVideoEmbed, selectedItem?.lessonVideoUrl],
@@ -1946,42 +1965,30 @@ function LibraryPage({ studentId, navigate, initialItemId = '', routePrefix = '/
                                         >
                                             Распечатать
                                         </button>
-                                        {selectedItem.completed ? (
-                                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700 min-h-[36px]">
-                                                ✓ Изучено
-                                            </span>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id);
-                                                    setLibraryTick((v) => v + 1);
-                                                    refresh?.();
-                                                }}
-                                                className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]"
-                                            >
-                                                Отметить как изученное
-                                            </button>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedMaterialRead(!selectedMaterialRead)}
+                                            aria-pressed={selectedMaterialRead}
+                                            className={`text-xs rounded-full border px-4 py-2 min-h-[36px] transition-colors ${selectedMaterialRead ? 'border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                        >
+                                            {selectedMaterialRead ? '✓ Пройдено' : 'Отметить пройденным'}
+                                        </button>
                                         <button type="button" onClick={() => { setSelectedItemId(''); if (navigate) navigate(`${routePrefix}/library`); }} className="text-xs rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 min-h-[36px]">Назад к списку</button>
                                     </div>
                                 </div>
                                 <PvlLibraryMaterialBody
                                     selectedItem={selectedItem}
                                     lessonVideoPlayerHtml={lessonVideoPlayerHtml}
-                                    onQuizPassed={() => {
-                                        pvlDomainApi.studentApi.markLibraryItemCompleted(studentId, selectedItem.id);
-                                        setLibraryTick((v) => v + 1);
-                                        refresh?.();
-                                    }}
+                                    onQuizPassed={() => setSelectedMaterialRead(true)}
                                     studentId={studentId}
                                     navigate={navigate}
                                     routePrefix={routePrefix}
                                 />
                                 <PvlMaterialReadToggle
                                     studentId={studentId}
-                                    contentItemId={selectedItem.contentItemId || selectedItem.id}
-                                    onToggled={() => { setLibraryTick((v) => v + 1); refresh?.(); }}
+                                    contentItemId={selectedMaterialCid}
+                                    isRead={selectedMaterialRead}
+                                    onToggle={setSelectedMaterialRead}
                                 />
                             </section>
                             </div>

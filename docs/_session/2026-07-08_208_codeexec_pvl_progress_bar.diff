@@ -1,0 +1,396 @@
+diff --git a/views/PvlMenteeCardView.jsx b/views/PvlMenteeCardView.jsx
+index 7583f8c..e653fca 100644
+--- a/views/PvlMenteeCardView.jsx
++++ b/views/PvlMenteeCardView.jsx
+@@ -6,6 +6,7 @@ import { normalizePvlRiskLevel } from '../selectors/pvlCalculators';
+ import { formatPvlDateTime } from '../utils/pvlDateFormat';
+ import { pvlHtmlToPlainText } from '../utils/pvlPlainText';
+ import { sanitizeHomeworkAnswerHtml } from '../utils/pvlHomeworkAnswerRichText';
++import { PvlCourseProgressBars } from './PvlStudentTrackerView';
+ 
+ export const menteeProfile = {
+     id: '',
+@@ -594,6 +595,7 @@ export function renderMenteeCard({
+     profile,
+     homeworkResults,
+     coursePathLine,
++    courseProgress = null,
+     closedTasksPercent,
+     risks,
+     meetings,
+@@ -621,6 +623,7 @@ export function renderMenteeCard({
+                 backLabel={backLabel}
+                 showBackButton={showHeaderBack}
+             />
++            {courseProgress ? <PvlCourseProgressBars stats={courseProgress} title="Прогресс по курсу" /> : null}
+             <MenteeHomeworkResultsList tasks={homeworkResults} onOpenTask={onOpenTask} />
+             {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
+             {studentId ? (
+@@ -691,6 +694,8 @@ export default function PvlMenteeCardView({
+     showHeaderBack = true,
+     /** auth.uid() пользователя, который смотрит карточку (нужен SessionBlock для own-page вычисления) */
+     viewerId = null,
++    /** Реальный прогресс курса (единый источник computePvlTrackerDashboardStats) — % по модулю и курсу. */
++    courseProgress = null,
+ }) {
+     const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
+ 
+@@ -805,10 +810,16 @@ export default function PvlMenteeCardView({
+         }
+     })();
+ 
++    // «Модуль» выводим из реального прогресса (первый незакрытый), а не из захардкоженного prof.currentModule.
++    const effectiveCoursePathLine = courseProgress
++        ? viewModel.coursePathLine.replace(/·\s*Модуль.*/u, `· Модуль ${courseProgress.currentModuleNumber} · ${courseProgress.currentModuleTitle}`)
++        : viewModel.coursePathLine;
++
+     return renderMenteeCard({
+         profile: viewModel.profile,
+         homeworkResults: viewModel.homeworkResults,
+-        coursePathLine: viewModel.coursePathLine,
++        coursePathLine: effectiveCoursePathLine,
++        courseProgress,
+         closedTasksPercent: viewModel.closedTasksPercent,
+         risks: viewModel.risks,
+         meetings: viewModel.meetings,
+diff --git a/views/PvlPrototypeApp.jsx b/views/PvlPrototypeApp.jsx
+index 0bc0175..687ab81 100644
+--- a/views/PvlPrototypeApp.jsx
++++ b/views/PvlPrototypeApp.jsx
+@@ -48,7 +48,7 @@ import {
+ } from './pvlLibraryMaterialShared';
+ import { parsePvlImportedMarkdownDoc } from '../utils/pvlMarkdownImport';
+ import { pvlMaterialCardExcerpt, pvlHtmlToPlainText } from '../utils/pvlPlainText';
+-import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
++import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats, PvlCourseProgressBars } from './PvlStudentTrackerView';
+ import {
+     PVL_CERT_CONDITIONS,
+     PVL_CERT_CRITERIA_GROUPS,
+@@ -2122,8 +2122,9 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
+         () => buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(studentId)),
+         [studentId, cmsItems, cmsPlacements],
+     );
+-    const tr = useMemo(() => computePvlTrackerDashboardStats(checked, trackerModules), [checked, trackerModules]);
+     const apiTasks = pvlDomainApi.studentApi.getStudentResults(studentId, {});
++    // ЕДИНЫЙ источник: материалы = чек-лист, задания = accepted_at (не toggle). Даёт % по модулю и по курсу.
++    const tr = useMemo(() => computePvlTrackerDashboardStats(checked, trackerModules, { tasks: apiTasks }), [checked, trackerModules, apiTasks]);
+     const activeHomework = apiTasks.filter((t) => ACTIVE_HOMEWORK_LABELS.has(t.displayStatus || t.status));
+     const homeworkShortlist = useMemo(() => {
+         return sortHomeworkByRecency(activeHomework).slice(0, 8);
+@@ -2204,6 +2205,8 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
+                 </div>
+             </section>
+ 
++            <PvlCourseProgressBars stats={tr} />
++
+             <section>
+                 <PvlDashboardCalendarBlock
+                     viewerRole="student"
+@@ -3517,12 +3520,13 @@ function buildTeacherStudentRows(cmsItems = [], cmsPlacements = []) {
+         const mentorUserId = sp.mentorId || '';
+         const mentorLine = mentorUserId ? (resolveActorDisplayName(mentorUserId) || mentorUserId) : '—';
+         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
+-        const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
+         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
+ 
+-        // Трекер: прогресс по шагам (уроки = video/pdf/live теги)
++        // Трекер: единый источник — материалы (чек-лист) + задания (accepted_at) по модулям.
+         const trackerChecked = pvlDomainApi.studentApi.getTrackerChecklist(userId);
+-        const trackerStats = computePvlTrackerDashboardStats(trackerChecked, trackerModules);
++        const trackerStats = computePvlTrackerDashboardStats(trackerChecked, trackerModules, { tasks });
++        // Модуль выводим из реального прогресса (первый незакрытый), а не из захардкоженного sp.currentModule.
++        const courseLine = `${cohortTitle} · Модуль ${trackerStats.currentModuleNumber} · ${trackerStats.currentModuleTitle}`;
+ 
+         // Домашние задания (без контрольных точек)
+         const hwTasks = tasks.filter((t) => !t.isControlPoint);
+@@ -3584,6 +3588,17 @@ function buildMentorMenteeRows(mentorId) {
+         const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === m.userId);
+         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === profile?.cohortId)?.title || 'Поток';
+         const tasks = pvlDomainApi.studentApi.getStudentResults(m.userId, {});
++        // Реальный прогресс: тот же единый источник, что у ученика (материалы + принятые задания по модулям).
++        const trackerModules = buildTrackerModulesFromCms(
++            pvlDomainApi.db.contentItems || [],
++            pvlDomainApi.db.contentPlacements || [],
++            resolveStudentCohortIdForPvl(m.userId),
++        );
++        const trackerStats = computePvlTrackerDashboardStats(
++            pvlDomainApi.studentApi.getTrackerChecklist(m.userId),
++            trackerModules,
++            { tasks },
++        );
+         const total = Math.max(1, tasks.length);
+         const closed = tasks.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
+         const closedPct = Math.round((closed / total) * 100);
+@@ -3626,7 +3641,7 @@ function buildMentorMenteeRows(mentorId) {
+             stateLabels.push({ key: 'rhythm', text: 'в ритме', tone: 'в ритме' });
+         }
+         const cohortLine = `ПВЛ 2026 · ${cohortTitle}`;
+-        const moduleWeekLine = `Модуль ${clampPvlModule(profile?.currentModule ?? profile?.currentWeek ?? 0)}`;
++        const moduleWeekLine = `Модуль ${trackerStats.currentModuleNumber} · ${trackerStats.currentModuleTitle}`;
+         const city = profile?.city || '';
+         return {
+             user,
+@@ -3648,10 +3663,27 @@ function buildMentorMenteeRows(mentorId) {
+             coursePoints: pts.coursePointsTotal ?? 0,
+             coursePointsMax: SCORING_RULES.COURSE_POINTS_MAX,
+             riskCount: risks.length,
++            // Реальный прогресс курса (для баров в списке менти и карточке).
++            coursePct: trackerStats.coursePct,
++            moduleStats: trackerStats.modules,
++            currentModuleNumber: trackerStats.currentModuleNumber,
+         };
+     });
+ }
+ 
++/** Единый прогресс курса для карточки менти (та же формула computePvlTrackerDashboardStats, что у ученика). */
++function computePvlMenteeCourseProgress(userId) {
++    if (!userId) return null;
++    const modules = buildTrackerModulesFromCms(
++        pvlDomainApi.db.contentItems || [],
++        pvlDomainApi.db.contentPlacements || [],
++        resolveStudentCohortIdForPvl(userId),
++    );
++    const checked = pvlDomainApi.studentApi.getTrackerChecklist(userId);
++    const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
++    return computePvlTrackerDashboardStats(checked, modules, { tasks });
++}
++
+ function mentorMenteeInitials(fullName) {
+     const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+     const a = parts[0]?.[0] || '';
+@@ -3714,21 +3746,22 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
+                         <p className="text-[11px] text-slate-600 leading-snug">{row.moduleWeekLine}</p>
+                         <div>
+                             <div className="flex items-center justify-between gap-2 text-[10px] text-slate-600 mb-1">
+-                                <span>
+-                                    Прогресс модуля:{' '}
+-                                    <span className="tabular-nums font-medium text-slate-800">
+-                                        {row.closedCount ?? 0}/{row.totalTasks ?? 0}
+-                                    </span>{' '}
+-                                    закрыто
+-                                </span>
+-                                <span className="tabular-nums text-slate-500">{row.closedPct}%</span>
++                                <span>Прогресс курса</span>
++                                <span className="tabular-nums text-slate-500">{row.coursePct ?? 0}%</span>
+                             </div>
+                             <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                 <div
+                                     className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-[width]"
+-                                    style={{ width: `${Math.min(100, Math.max(0, row.closedPct))}%` }}
++                                    style={{ width: `${Math.min(100, Math.max(0, row.coursePct ?? 0))}%` }}
+                                 />
+                             </div>
++                            {row.moduleStats?.length ? (
++                                <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-slate-500 tabular-nums">
++                                    {row.moduleStats.map((m) => (
++                                        <span key={m.moduleNumber}>{m.label} {m.pct}%</span>
++                                    ))}
++                                </div>
++                            ) : null}
+                         </div>
+                         <div className="flex flex-wrap gap-1.5">
+                             <span className="text-[10px] rounded-full bg-slate-50 px-2 py-0.5 text-slate-700 tabular-nums">
+@@ -4147,6 +4180,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
+                     navigate={navigate}
+                     refreshKey={refreshKey}
+                     viewerId={mentorId}
++                    courseProgress={computePvlMenteeCourseProgress(menteeId)}
+                     onBack={() => navigate('/mentor/dashboard')}
+                 />
+                 {/* Этап 2 e2e: ментор доходит до менти через карточку /mentor/mentee/:id,
+@@ -7750,6 +7784,7 @@ function AdminPage({
+                 navigate={navigate}
+                 refreshKey={refreshKey}
+                 viewerId={null}
++                courseProgress={computePvlMenteeCourseProgress(menteeSeg)}
+                 onBack={() => navigate('/admin/students')}
+             />
+         );
+diff --git a/views/PvlStudentTrackerView.jsx b/views/PvlStudentTrackerView.jsx
+index 2d7fc41..725895e 100644
+--- a/views/PvlStudentTrackerView.jsx
++++ b/views/PvlStudentTrackerView.jsx
+@@ -115,46 +115,115 @@ function computePlatformStepStats(checked, modules = PVL_PLATFORM_MODULES) {
+     return { totalSteps, doneSteps, anchorsTotal, anchorsDone, pct };
+ }
+ 
+-const TRACKER_LESSON_TAGS = new Set(['video', 'pdf', 'live']);
+-const TRACKER_HOMEWORK_TAGS = new Set(['task', 'quiz']);
++/** Цвет заливки бара по модулю (Пиши / Веди / Люби). */
++export const PVL_MODULE_BAR_COLOR = { 1: 'bg-emerald-500', 2: 'bg-teal-600', 3: 'bg-teal-800' };
++
++/** contentItemId, у которых есть задание task-ci-* → эта позиция трекера считается заданием, не материалом. */
++function pvlHomeworkContentItemIds(tasks = []) {
++    const set = new Set();
++    (tasks || []).forEach((t) => {
++        const m = /^task-ci-(.+)$/.exec(String(t?.id || ''));
++        if (m) set.add(String(m[1]));
++    });
++    return set;
++}
++
++/** Задание засчитано ТОЛЬКО когда принято ментором (accepted_at). Отметка студента ≠ принято. */
++function pvlTaskIsAccepted(task) {
++    return !!(task?.acceptedAt || String(task?.displayStatus || '').toLowerCase() === 'принято');
++}
++
++/** Сертификация — отдельная стадия после модулей, в % курса не входит. */
++function pvlTaskIsCertification(task) {
++    const ty = String(task?.type || task?.taskType || '').toLowerCase();
++    return ty.includes('certification');
++}
+ 
+ /**
+- * Показатели дашборда из тех же отметок, что «Трекер курса».
+- * modules — CMS-populated модули из buildTrackerModulesFromCms; без них stats будут нулями.
++ * ЕДИНЫЙ источник вычисления прогресса курса ПВЛ — для ученика И ментора.
++ * Материал «пройден» = отмечен в чек-листе (pvl_checklist_items → `checked`).
++ * Задание «пройдено» = принято ментором (accepted_at). Контрольные точки входят как задания;
++ * сертификация исключена. Считаем 3 модуля (Пиши/Веди/Люби = module_number 1/2/3).
++ *
++ * @param checked  карта отметок чек-листа { trackerStepKey: bool }
++ * @param modules  CMS-модули из buildTrackerModulesFromCms (id 1/2/3, items[])
++ * @param opts.tasks  pvlDomainApi.studentApi.getStudentResults(studentId) — ДЗ + КТ с acceptedAt/moduleNumber
+  */
+-export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_MODULES) {
+-    let lessonsDone = 0;
+-    let lessonsTotal = 0;
+-    let homeworkDone = 0;
+-    let homeworkTotal = 0;
+-    let currentModule = null;
++export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_MODULES, opts = {}) {
++    const tasks = Array.isArray(opts.tasks) ? opts.tasks : [];
++    const hwCids = pvlHomeworkContentItemIds(tasks);
++
++    // Аккумулятор по номеру модуля (1/2/3): материалы (чек-лист) + задания (accepted_at).
++    const perModule = new Map();
++    const ensure = (n) => {
++        if (!perModule.has(n)) perModule.set(n, { materialsDone: 0, materialsTotal: 0, tasksDone: 0, tasksTotal: 0 });
++        return perModule.get(n);
++    };
+ 
++    // Материалы: каждая позиция трекера, кроме тех, что являются заданием (учтём их ниже как accepted).
+     modules.forEach((mod) => {
+-        let moduleHasIncomplete = false;
+-        mod.items.forEach((item, i) => {
+-            const key = trackerStepKey(mod.id, item, i);
+-            const done = !!checked[key];
+-            const tag = item.tag || 'task';
+-            if (TRACKER_LESSON_TAGS.has(tag)) {
+-                lessonsTotal += 1;
+-                if (done) lessonsDone += 1;
+-            }
+-            if (TRACKER_HOMEWORK_TAGS.has(tag)) {
+-                homeworkTotal += 1;
+-                if (done) homeworkDone += 1;
+-            }
+-            if (!done) moduleHasIncomplete = true;
++        const modNum = Number(mod.id);
++        (mod.items || []).forEach((item, i) => {
++            const cid = String(item.contentItemId || item.id || '');
++            if (cid && hwCids.has(cid)) return; // это задание — считаем в блоке заданий по accepted_at
++            const bucket = ensure(modNum);
++            bucket.materialsTotal += 1;
++            if (checked[trackerStepKey(mod.id, item, i)]) bucket.materialsDone += 1;
+         });
+-        if (moduleHasIncomplete && currentModule === null) currentModule = mod;
+     });
+ 
+-    if (!currentModule) {
+-        currentModule = modules[0] || PVL_PLATFORM_MODULES[0] || null;
+-    }
++    // Задания (ДЗ + КТ): done = принято ментором. Сертификацию и внемодульные (нед. 0) не считаем.
++    tasks.forEach((t) => {
++        if (pvlTaskIsCertification(t)) return;
++        const modNum = Number(t.moduleNumber ?? 0);
++        if (![1, 2, 3].includes(modNum)) return;
++        const bucket = ensure(modNum);
++        bucket.tasksTotal += 1;
++        if (pvlTaskIsAccepted(t)) bucket.tasksDone += 1;
++    });
++
++    const moduleStats = modules
++        .filter((mod) => [1, 2, 3].includes(Number(mod.id)))
++        .map((mod) => {
++            const modNum = Number(mod.id);
++            const b = perModule.get(modNum) || { materialsDone: 0, materialsTotal: 0, tasksDone: 0, tasksTotal: 0 };
++            const done = b.materialsDone + b.tasksDone;
++            const total = b.materialsTotal + b.tasksTotal;
++            return {
++                moduleNumber: modNum,
++                label: mod.label || String(modNum),
++                title: mod.title || pvlPlatformModuleTitleFromInternal(modNum),
++                icon: mod.icon || '',
++                cls: mod.cls || `mod-${modNum}`,
++                ...b,
++                done,
++                total,
++                pct: total ? Math.round((done / total) * 100) : 0,
++            };
++        });
++
++    const courseDone = moduleStats.reduce((s, m) => s + m.done, 0);
++    const courseTotal = moduleStats.reduce((s, m) => s + m.total, 0);
++    const coursePct = courseTotal ? Math.round((courseDone / courseTotal) * 100) : 0;
++
++    // «Текущий модуль» — первый незакрытый (pct<100 при наличии контента); всё закрыто → последний с контентом.
++    const withContent = moduleStats.filter((m) => m.total > 0);
++    const firstIncomplete = withContent.find((m) => m.pct < 100);
++    const currentModule = firstIncomplete || withContent[withContent.length - 1] || moduleStats[0] || null;
++
++    const lessonsDone = moduleStats.reduce((s, m) => s + m.materialsDone, 0);
++    const lessonsTotal = moduleStats.reduce((s, m) => s + m.materialsTotal, 0);
++    const homeworkDone = moduleStats.reduce((s, m) => s + m.tasksDone, 0);
++    const homeworkTotal = moduleStats.reduce((s, m) => s + m.tasksTotal, 0);
+ 
+     const base = computePlatformStepStats(checked, modules);
+     return {
+         ...base,
++        modules: moduleStats,
++        courseDone,
++        courseTotal,
++        coursePct,
++        currentModuleNumber: currentModule?.moduleNumber ?? 1,
+         currentModuleTitle: currentModule?.title || pvlPlatformModuleTitleFromInternal(1),
+         lessonsDone,
+         lessonsTotal,
+@@ -165,6 +234,39 @@ export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_
+     };
+ }
+ 
++/**
++ * Бары прогресса: общий бар курса + по модулю (Пиши/Веди/Люби). Один источник — computePvlTrackerDashboardStats.
++ * Светлая поверхность (кабинет ученика, карточка менти). Тёплые токены дизайн-системы.
++ */
++export function PvlCourseProgressBars({ stats, className = '', title = 'Прогресс по курсу' }) {
++    if (!stats || !Array.isArray(stats.modules) || !stats.modules.length) return null;
++    return (
++        <section className={`rounded-2xl border border-[#E8D5C4] bg-white p-4 md:p-5 ${className}`.trim()}>
++            <div className="flex items-baseline justify-between gap-3 mb-2.5">
++                <h3 className="h-section text-[#4A3728]">{title}</h3>
++                <span className="tabular-nums text-sm font-semibold text-[#4A3728]">{stats.coursePct}%</span>
++            </div>
++            <div className="h-2 rounded-full bg-[#F1E7DD] overflow-hidden" role="progressbar" aria-valuenow={stats.coursePct} aria-valuemin={0} aria-valuemax={100} aria-label={`${title}: ${stats.coursePct}%`}>
++                <div className="h-full rounded-full bg-[#C8855A] transition-[width] duration-500" style={{ width: `${stats.coursePct}%` }} />
++            </div>
++            <p className="mt-1 text-[11px] text-ink-mute tabular-nums">{stats.courseDone}/{stats.courseTotal} · материалы и принятые задания по 3 модулям</p>
++            <div className="mt-4 space-y-3">
++                {stats.modules.map((m) => (
++                    <div key={m.moduleNumber}>
++                        <div className="flex items-baseline justify-between gap-2 text-sm">
++                            <span className="text-[#2C1810]">{m.icon ? <span aria-hidden>{m.icon} </span> : null}{m.label || m.title}</span>
++                            <span className="tabular-nums text-ink-mute">{m.done}/{m.total}<span className="text-[#2C1810] font-medium"> · {m.pct}%</span></span>
++                        </div>
++                        <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuenow={m.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Модуль ${m.label}: ${m.pct}%`}>
++                            <div className={`h-full rounded-full ${PVL_MODULE_BAR_COLOR[m.moduleNumber] || 'bg-emerald-500'} transition-[width] duration-500`} style={{ width: `${m.pct}%` }} />
++                        </div>
++                    </div>
++                ))}
++            </div>
++        </section>
++    );
++}
++
+ export function usePlatformStepChecklist(studentId, refreshKey = 0) {
+     const storageKey = platformStepsStorageKey(studentId);
+     // localStorage — только кэш для мгновенного первого рендера.

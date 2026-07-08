@@ -115,46 +115,115 @@ function computePlatformStepStats(checked, modules = PVL_PLATFORM_MODULES) {
     return { totalSteps, doneSteps, anchorsTotal, anchorsDone, pct };
 }
 
-const TRACKER_LESSON_TAGS = new Set(['video', 'pdf', 'live']);
-const TRACKER_HOMEWORK_TAGS = new Set(['task', 'quiz']);
+/** Цвет заливки бара по модулю (Пиши / Веди / Люби). */
+export const PVL_MODULE_BAR_COLOR = { 1: 'bg-emerald-500', 2: 'bg-teal-600', 3: 'bg-teal-800' };
+
+/** contentItemId, у которых есть задание task-ci-* → эта позиция трекера считается заданием, не материалом. */
+function pvlHomeworkContentItemIds(tasks = []) {
+    const set = new Set();
+    (tasks || []).forEach((t) => {
+        const m = /^task-ci-(.+)$/.exec(String(t?.id || ''));
+        if (m) set.add(String(m[1]));
+    });
+    return set;
+}
+
+/** Задание засчитано ТОЛЬКО когда принято ментором (accepted_at). Отметка студента ≠ принято. */
+function pvlTaskIsAccepted(task) {
+    return !!(task?.acceptedAt || String(task?.displayStatus || '').toLowerCase() === 'принято');
+}
+
+/** Сертификация — отдельная стадия после модулей, в % курса не входит. */
+function pvlTaskIsCertification(task) {
+    const ty = String(task?.type || task?.taskType || '').toLowerCase();
+    return ty.includes('certification');
+}
 
 /**
- * Показатели дашборда из тех же отметок, что «Трекер курса».
- * modules — CMS-populated модули из buildTrackerModulesFromCms; без них stats будут нулями.
+ * ЕДИНЫЙ источник вычисления прогресса курса ПВЛ — для ученика И ментора.
+ * Материал «пройден» = отмечен в чек-листе (pvl_checklist_items → `checked`).
+ * Задание «пройдено» = принято ментором (accepted_at). Контрольные точки входят как задания;
+ * сертификация исключена. Считаем 3 модуля (Пиши/Веди/Люби = module_number 1/2/3).
+ *
+ * @param checked  карта отметок чек-листа { trackerStepKey: bool }
+ * @param modules  CMS-модули из buildTrackerModulesFromCms (id 1/2/3, items[])
+ * @param opts.tasks  pvlDomainApi.studentApi.getStudentResults(studentId) — ДЗ + КТ с acceptedAt/moduleNumber
  */
-export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_MODULES) {
-    let lessonsDone = 0;
-    let lessonsTotal = 0;
-    let homeworkDone = 0;
-    let homeworkTotal = 0;
-    let currentModule = null;
+export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_MODULES, opts = {}) {
+    const tasks = Array.isArray(opts.tasks) ? opts.tasks : [];
+    const hwCids = pvlHomeworkContentItemIds(tasks);
 
+    // Аккумулятор по номеру модуля (1/2/3): материалы (чек-лист) + задания (accepted_at).
+    const perModule = new Map();
+    const ensure = (n) => {
+        if (!perModule.has(n)) perModule.set(n, { materialsDone: 0, materialsTotal: 0, tasksDone: 0, tasksTotal: 0 });
+        return perModule.get(n);
+    };
+
+    // Материалы: каждая позиция трекера, кроме тех, что являются заданием (учтём их ниже как accepted).
     modules.forEach((mod) => {
-        let moduleHasIncomplete = false;
-        mod.items.forEach((item, i) => {
-            const key = trackerStepKey(mod.id, item, i);
-            const done = !!checked[key];
-            const tag = item.tag || 'task';
-            if (TRACKER_LESSON_TAGS.has(tag)) {
-                lessonsTotal += 1;
-                if (done) lessonsDone += 1;
-            }
-            if (TRACKER_HOMEWORK_TAGS.has(tag)) {
-                homeworkTotal += 1;
-                if (done) homeworkDone += 1;
-            }
-            if (!done) moduleHasIncomplete = true;
+        const modNum = Number(mod.id);
+        (mod.items || []).forEach((item, i) => {
+            const cid = String(item.contentItemId || item.id || '');
+            if (cid && hwCids.has(cid)) return; // это задание — считаем в блоке заданий по accepted_at
+            const bucket = ensure(modNum);
+            bucket.materialsTotal += 1;
+            if (checked[trackerStepKey(mod.id, item, i)]) bucket.materialsDone += 1;
         });
-        if (moduleHasIncomplete && currentModule === null) currentModule = mod;
     });
 
-    if (!currentModule) {
-        currentModule = modules[0] || PVL_PLATFORM_MODULES[0] || null;
-    }
+    // Задания (ДЗ + КТ): done = принято ментором. Сертификацию и внемодульные (нед. 0) не считаем.
+    tasks.forEach((t) => {
+        if (pvlTaskIsCertification(t)) return;
+        const modNum = Number(t.moduleNumber ?? 0);
+        if (![1, 2, 3].includes(modNum)) return;
+        const bucket = ensure(modNum);
+        bucket.tasksTotal += 1;
+        if (pvlTaskIsAccepted(t)) bucket.tasksDone += 1;
+    });
+
+    const moduleStats = modules
+        .filter((mod) => [1, 2, 3].includes(Number(mod.id)))
+        .map((mod) => {
+            const modNum = Number(mod.id);
+            const b = perModule.get(modNum) || { materialsDone: 0, materialsTotal: 0, tasksDone: 0, tasksTotal: 0 };
+            const done = b.materialsDone + b.tasksDone;
+            const total = b.materialsTotal + b.tasksTotal;
+            return {
+                moduleNumber: modNum,
+                label: mod.label || String(modNum),
+                title: mod.title || pvlPlatformModuleTitleFromInternal(modNum),
+                icon: mod.icon || '',
+                cls: mod.cls || `mod-${modNum}`,
+                ...b,
+                done,
+                total,
+                pct: total ? Math.round((done / total) * 100) : 0,
+            };
+        });
+
+    const courseDone = moduleStats.reduce((s, m) => s + m.done, 0);
+    const courseTotal = moduleStats.reduce((s, m) => s + m.total, 0);
+    const coursePct = courseTotal ? Math.round((courseDone / courseTotal) * 100) : 0;
+
+    // «Текущий модуль» — первый незакрытый (pct<100 при наличии контента); всё закрыто → последний с контентом.
+    const withContent = moduleStats.filter((m) => m.total > 0);
+    const firstIncomplete = withContent.find((m) => m.pct < 100);
+    const currentModule = firstIncomplete || withContent[withContent.length - 1] || moduleStats[0] || null;
+
+    const lessonsDone = moduleStats.reduce((s, m) => s + m.materialsDone, 0);
+    const lessonsTotal = moduleStats.reduce((s, m) => s + m.materialsTotal, 0);
+    const homeworkDone = moduleStats.reduce((s, m) => s + m.tasksDone, 0);
+    const homeworkTotal = moduleStats.reduce((s, m) => s + m.tasksTotal, 0);
 
     const base = computePlatformStepStats(checked, modules);
     return {
         ...base,
+        modules: moduleStats,
+        courseDone,
+        courseTotal,
+        coursePct,
+        currentModuleNumber: currentModule?.moduleNumber ?? 1,
         currentModuleTitle: currentModule?.title || pvlPlatformModuleTitleFromInternal(1),
         lessonsDone,
         lessonsTotal,
@@ -163,6 +232,39 @@ export function computePvlTrackerDashboardStats(checked, modules = PVL_PLATFORM_
         homeworkTotal,
         homeworkRemaining: Math.max(0, homeworkTotal - homeworkDone),
     };
+}
+
+/**
+ * Бары прогресса: общий бар курса + по модулю (Пиши/Веди/Люби). Один источник — computePvlTrackerDashboardStats.
+ * Светлая поверхность (кабинет ученика, карточка менти). Тёплые токены дизайн-системы.
+ */
+export function PvlCourseProgressBars({ stats, className = '', title = 'Прогресс по курсу' }) {
+    if (!stats || !Array.isArray(stats.modules) || !stats.modules.length) return null;
+    return (
+        <section className={`rounded-2xl border border-[#E8D5C4] bg-white p-4 md:p-5 ${className}`.trim()}>
+            <div className="flex items-baseline justify-between gap-3 mb-2.5">
+                <h3 className="h-section text-[#4A3728]">{title}</h3>
+                <span className="tabular-nums text-sm font-semibold text-[#4A3728]">{stats.coursePct}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-[#F1E7DD] overflow-hidden" role="progressbar" aria-valuenow={stats.coursePct} aria-valuemin={0} aria-valuemax={100} aria-label={`${title}: ${stats.coursePct}%`}>
+                <div className="h-full rounded-full bg-[#C8855A] transition-[width] duration-500" style={{ width: `${stats.coursePct}%` }} />
+            </div>
+            <p className="mt-1 text-[11px] text-ink-mute tabular-nums">{stats.courseDone}/{stats.courseTotal} · материалы и принятые задания по 3 модулям</p>
+            <div className="mt-4 space-y-3">
+                {stats.modules.map((m) => (
+                    <div key={m.moduleNumber}>
+                        <div className="flex items-baseline justify-between gap-2 text-sm">
+                            <span className="text-[#2C1810]">{m.icon ? <span aria-hidden>{m.icon} </span> : null}{m.label || m.title}</span>
+                            <span className="tabular-nums text-ink-mute">{m.done}/{m.total}<span className="text-[#2C1810] font-medium"> · {m.pct}%</span></span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuenow={m.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Модуль ${m.label}: ${m.pct}%`}>
+                            <div className={`h-full rounded-full ${PVL_MODULE_BAR_COLOR[m.moduleNumber] || 'bg-emerald-500'} transition-[width] duration-500`} style={{ width: `${m.pct}%` }} />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
 }
 
 export function usePlatformStepChecklist(studentId, refreshKey = 0) {

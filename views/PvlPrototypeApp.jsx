@@ -48,7 +48,7 @@ import {
 } from './pvlLibraryMaterialShared';
 import { parsePvlImportedMarkdownDoc } from '../utils/pvlMarkdownImport';
 import { pvlMaterialCardExcerpt, pvlHtmlToPlainText } from '../utils/pvlPlainText';
-import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats } from './PvlStudentTrackerView';
+import { PlatformCourseModulesGrid, StudentCourseTracker, usePlatformStepChecklist, computePvlTrackerDashboardStats, PvlCourseProgressBars } from './PvlStudentTrackerView';
 import {
     PVL_CERT_CONDITIONS,
     PVL_CERT_CRITERIA_GROUPS,
@@ -2122,8 +2122,9 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
         () => buildTrackerModulesFromCms(cmsItems, cmsPlacements, resolveStudentCohortIdForPvl(studentId)),
         [studentId, cmsItems, cmsPlacements],
     );
-    const tr = useMemo(() => computePvlTrackerDashboardStats(checked, trackerModules), [checked, trackerModules]);
     const apiTasks = pvlDomainApi.studentApi.getStudentResults(studentId, {});
+    // ЕДИНЫЙ источник: материалы = чек-лист, задания = accepted_at (не toggle). Даёт % по модулю и по курсу.
+    const tr = useMemo(() => computePvlTrackerDashboardStats(checked, trackerModules, { tasks: apiTasks }), [checked, trackerModules, apiTasks]);
     const activeHomework = apiTasks.filter((t) => ACTIVE_HOMEWORK_LABELS.has(t.displayStatus || t.status));
     const homeworkShortlist = useMemo(() => {
         return sortHomeworkByRecency(activeHomework).slice(0, 8);
@@ -2203,6 +2204,8 @@ function StudentDashboard({ studentId, navigate, routePrefix = '/student', garde
                     </div>
                 </div>
             </section>
+
+            <PvlCourseProgressBars stats={tr} />
 
             <section>
                 <PvlDashboardCalendarBlock
@@ -3517,12 +3520,13 @@ function buildTeacherStudentRows(cmsItems = [], cmsPlacements = []) {
         const mentorUserId = sp.mentorId || '';
         const mentorLine = mentorUserId ? (resolveActorDisplayName(mentorUserId) || mentorUserId) : '—';
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === sp.cohortId)?.title || '—';
-        const courseLine = `${cohortTitle} · Модуль ${clampPvlModule(sp.currentModule ?? sp.currentWeek ?? 0)}`;
         const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
 
-        // Трекер: прогресс по шагам (уроки = video/pdf/live теги)
+        // Трекер: единый источник — материалы (чек-лист) + задания (accepted_at) по модулям.
         const trackerChecked = pvlDomainApi.studentApi.getTrackerChecklist(userId);
-        const trackerStats = computePvlTrackerDashboardStats(trackerChecked, trackerModules);
+        const trackerStats = computePvlTrackerDashboardStats(trackerChecked, trackerModules, { tasks });
+        // Модуль выводим из реального прогресса (первый незакрытый), а не из захардкоженного sp.currentModule.
+        const courseLine = `${cohortTitle} · Модуль ${trackerStats.currentModuleNumber} · ${trackerStats.currentModuleTitle}`;
 
         // Домашние задания (без контрольных точек)
         const hwTasks = tasks.filter((t) => !t.isControlPoint);
@@ -3584,6 +3588,17 @@ function buildMentorMenteeRows(mentorId) {
         const profile = pvlDomainApi.db.studentProfiles.find((p) => p.userId === m.userId);
         const cohortTitle = pvlDomainApi.db.cohorts.find((c) => c.id === profile?.cohortId)?.title || 'Поток';
         const tasks = pvlDomainApi.studentApi.getStudentResults(m.userId, {});
+        // Реальный прогресс: тот же единый источник, что у ученика (материалы + принятые задания по модулям).
+        const trackerModules = buildTrackerModulesFromCms(
+            pvlDomainApi.db.contentItems || [],
+            pvlDomainApi.db.contentPlacements || [],
+            resolveStudentCohortIdForPvl(m.userId),
+        );
+        const trackerStats = computePvlTrackerDashboardStats(
+            pvlDomainApi.studentApi.getTrackerChecklist(m.userId),
+            trackerModules,
+            { tasks },
+        );
         const total = Math.max(1, tasks.length);
         const closed = tasks.filter((t) => String(t.displayStatus || t.status || '').toLowerCase() === 'принято').length;
         const closedPct = Math.round((closed / total) * 100);
@@ -3626,7 +3641,7 @@ function buildMentorMenteeRows(mentorId) {
             stateLabels.push({ key: 'rhythm', text: 'в ритме', tone: 'в ритме' });
         }
         const cohortLine = `ПВЛ 2026 · ${cohortTitle}`;
-        const moduleWeekLine = `Модуль ${clampPvlModule(profile?.currentModule ?? profile?.currentWeek ?? 0)}`;
+        const moduleWeekLine = `Модуль ${trackerStats.currentModuleNumber} · ${trackerStats.currentModuleTitle}`;
         const city = profile?.city || '';
         return {
             user,
@@ -3648,8 +3663,25 @@ function buildMentorMenteeRows(mentorId) {
             coursePoints: pts.coursePointsTotal ?? 0,
             coursePointsMax: SCORING_RULES.COURSE_POINTS_MAX,
             riskCount: risks.length,
+            // Реальный прогресс курса (для баров в списке менти и карточке).
+            coursePct: trackerStats.coursePct,
+            moduleStats: trackerStats.modules,
+            currentModuleNumber: trackerStats.currentModuleNumber,
         };
     });
+}
+
+/** Единый прогресс курса для карточки менти (та же формула computePvlTrackerDashboardStats, что у ученика). */
+function computePvlMenteeCourseProgress(userId) {
+    if (!userId) return null;
+    const modules = buildTrackerModulesFromCms(
+        pvlDomainApi.db.contentItems || [],
+        pvlDomainApi.db.contentPlacements || [],
+        resolveStudentCohortIdForPvl(userId),
+    );
+    const checked = pvlDomainApi.studentApi.getTrackerChecklist(userId);
+    const tasks = pvlDomainApi.studentApi.getStudentResults(userId, {});
+    return computePvlTrackerDashboardStats(checked, modules, { tasks });
 }
 
 function mentorMenteeInitials(fullName) {
@@ -3714,21 +3746,22 @@ function MentorMenteesGardenGrid({ navigate, menteeRows, heading }) {
                         <p className="text-[11px] text-slate-600 leading-snug">{row.moduleWeekLine}</p>
                         <div>
                             <div className="flex items-center justify-between gap-2 text-[10px] text-slate-600 mb-1">
-                                <span>
-                                    Прогресс модуля:{' '}
-                                    <span className="tabular-nums font-medium text-slate-800">
-                                        {row.closedCount ?? 0}/{row.totalTasks ?? 0}
-                                    </span>{' '}
-                                    закрыто
-                                </span>
-                                <span className="tabular-nums text-slate-500">{row.closedPct}%</span>
+                                <span>Прогресс курса</span>
+                                <span className="tabular-nums text-slate-500">{row.coursePct ?? 0}%</span>
                             </div>
                             <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                 <div
                                     className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-[width]"
-                                    style={{ width: `${Math.min(100, Math.max(0, row.closedPct))}%` }}
+                                    style={{ width: `${Math.min(100, Math.max(0, row.coursePct ?? 0))}%` }}
                                 />
                             </div>
+                            {row.moduleStats?.length ? (
+                                <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-slate-500 tabular-nums">
+                                    {row.moduleStats.map((m) => (
+                                        <span key={m.moduleNumber}>{m.label} {m.pct}%</span>
+                                    ))}
+                                </div>
+                            ) : null}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                             <span className="text-[10px] rounded-full bg-slate-50 px-2 py-0.5 text-slate-700 tabular-nums">
@@ -4147,6 +4180,7 @@ function MentorPage({ route, navigate, cmsItems, cmsPlacements, refresh, refresh
                     navigate={navigate}
                     refreshKey={refreshKey}
                     viewerId={mentorId}
+                    courseProgress={computePvlMenteeCourseProgress(menteeId)}
                     onBack={() => navigate('/mentor/dashboard')}
                 />
                 {/* Этап 2 e2e: ментор доходит до менти через карточку /mentor/mentee/:id,
@@ -7750,6 +7784,7 @@ function AdminPage({
                 navigate={navigate}
                 refreshKey={refreshKey}
                 viewerId={null}
+                courseProgress={computePvlMenteeCourseProgress(menteeSeg)}
                 onBack={() => navigate('/admin/students')}
             />
         );

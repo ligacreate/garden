@@ -6,6 +6,7 @@ import { normalizePvlRiskLevel } from '../selectors/pvlCalculators';
 import { formatPvlDateTime } from '../utils/pvlDateFormat';
 import { pvlHtmlToPlainText } from '../utils/pvlPlainText';
 import { sanitizeHomeworkAnswerHtml } from '../utils/pvlHomeworkAnswerRichText';
+import { PvlCourseProgressBars } from './PvlStudentTrackerView';
 
 export const menteeProfile = {
     id: '',
@@ -594,6 +595,7 @@ export function renderMenteeCard({
     profile,
     homeworkResults,
     coursePathLine,
+    courseProgress = null,
     closedTasksPercent,
     risks,
     meetings,
@@ -621,6 +623,7 @@ export function renderMenteeCard({
                 backLabel={backLabel}
                 showBackButton={showHeaderBack}
             />
+            {courseProgress ? <PvlCourseProgressBars stats={courseProgress} title="Прогресс по курсу" /> : null}
             <MenteeHomeworkResultsList tasks={homeworkResults} onOpenTask={onOpenTask} />
             {meetings?.length ? <MentorMeetingsPanel meetings={meetings} /> : null}
             {studentId ? (
@@ -691,6 +694,8 @@ export default function PvlMenteeCardView({
     showHeaderBack = true,
     /** auth.uid() пользователя, который смотрит карточку (нужен SessionBlock для own-page вычисления) */
     viewerId = null,
+    /** Реальный прогресс курса (единый источник computePvlTrackerDashboardStats) — % по модулю и курсу. */
+    courseProgress = null,
 }) {
     const resolvedStudentId = LEGACY_MENTEE_TO_USER[menteeId] || menteeId;
 
@@ -805,10 +810,16 @@ export default function PvlMenteeCardView({
         }
     })();
 
+    // «Модуль» выводим из реального прогресса (первый незакрытый), а не из захардкоженного prof.currentModule.
+    const effectiveCoursePathLine = courseProgress
+        ? viewModel.coursePathLine.replace(/·\s*Модуль.*/u, `· Модуль ${courseProgress.currentModuleNumber} · ${courseProgress.currentModuleTitle}`)
+        : viewModel.coursePathLine;
+
     return renderMenteeCard({
         profile: viewModel.profile,
         homeworkResults: viewModel.homeworkResults,
-        coursePathLine: viewModel.coursePathLine,
+        coursePathLine: effectiveCoursePathLine,
+        courseProgress,
         closedTasksPercent: viewModel.closedTasksPercent,
         risks: viewModel.risks,
         meetings: viewModel.meetings,

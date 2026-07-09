@@ -359,22 +359,58 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
   }
 };
 
+// ── ОБЩЕЕ ЯДРО начисления доступа (используют и вебхук 1c, и admin mark-paid 1e).
+// Два режима:
+//   - months  → продление СТОПКОЙ: paid_until = greatest(now, paid_until) + N мес (авто-платёж).
+//   - until   → ЯВНАЯ дата «оплачено до» (источник истины; ручная отметка админа).
+//               Дата трактуется как конец дня (23:59:59), чтобы «до DD» было включительно.
+// В обоих режимах: subscription_status=active, access_status active кроме paused_manual,
+// last_payment_at, last_prodamus_event, upsert в subscriptions.
+const applyPayment = async (db, { userId, months = null, until = null, meta = {} }) => {
+  const paidUntilExpr = until
+    ? `($2::date + interval '1 day' - interval '1 second')`
+    : `greatest(now(), coalesce(p.paid_until, now())) + make_interval(months => $2)`;
+  const param2 = until ? until : Number(months);
+
+  const upd = await db.query(
+    `update public.profiles p
+        set paid_until = ${paidUntilExpr},
+            access_status = case when p.access_status = 'paused_manual' then 'paused_manual' else 'active' end,
+            subscription_status = 'active',
+            last_payment_at = now(),
+            last_prodamus_event = $3,
+            last_prodamus_payload = $4::jsonb
+      where p.id = $1
+      returning paid_until, access_status`,
+    [userId, param2, meta.event || 'plan_payment', JSON.stringify(meta.payload || {})]
+  );
+  if (upd.rowCount === 0) return null;
+  const paidUntil = upd.rows[0].paid_until;
+
+  await db.query(
+    `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
+     values ($1, $2, $3, 'active', $4, now(), null, now())
+     on conflict (provider, provider_subscription_id) where provider_subscription_id is not null
+     do update set status='active', paid_until=excluded.paid_until, last_payment_at=now(), ended_at=null, updated_at=now()`,
+    [userId, meta.provider || 'prodamus', String(meta.orderId), paidUntil]
+  );
+  return { paidUntil, accessStatus: upd.rows[0].access_status };
+};
+
 // ── ФАЗА 1c: apply платформо-инициированного плана (детерминированно по order_id).
-// paid_until продлевается СТОПКОЙ: max(now, paid_until) + N месяцев плана.
-// Идемпотентность: (а) billing_webhook_logs dedup по external_id (Prodamus order_id),
-// (б) guard order.status='paid' (повторный apply не двигает paid_until второй раз).
+// Идемпотентность: billing_webhook_logs dedup + guard order.status='paid'.
 const applyPlanPayment = async (db, orderId, payload) => {
   let q;
   try {
     q = await db.query(
-      `select po.id, po.user_id, po.status, po.plan_code, bp.months
+      `select po.id, po.user_id, po.status, po.plan_code, coalesce(po.months, bp.months) as months
          from public.payment_orders po
-         join public.billing_plans bp on bp.code = po.plan_code
+         left join public.billing_plans bp on bp.code = po.plan_code
         where po.id = $1`,
       [orderId]
     );
   } catch {
-    return { reason: 'order_not_found' };   // невалидный uuid → трактуем как «не найден»
+    return { reason: 'order_not_found' };   // невалидный uuid → «не найден»
   }
   if (q.rowCount === 0) return { reason: 'order_not_found' };
   const order = q.rows[0];
@@ -382,37 +418,20 @@ const applyPlanPayment = async (db, orderId, payload) => {
     return { note: 'already_paid', info: { duplicate: true, user_id: order.user_id } };
   }
   const months = Number(order.months);
+  if (!Number.isFinite(months) || months <= 0) return { reason: 'order_no_months' };
   const extPay = String(payload.order_id || payload.payment_id || payload.transaction_id || '').trim() || null;
 
-  const upd = await db.query(
-    `update public.profiles p
-        set paid_until = greatest(now(), coalesce(p.paid_until, now())) + make_interval(months => $2),
-            access_status = case when p.access_status = 'paused_manual' then 'paused_manual' else 'active' end,
-            subscription_status = 'active',
-            last_payment_at = now(),
-            last_prodamus_event = 'plan_payment',
-            last_prodamus_payload = $3::jsonb
-      where p.id = $1
-      returning paid_until, access_status`,
-    [order.user_id, months, JSON.stringify(payload || {})]
-  );
-  if (upd.rowCount === 0) return { reason: 'order_not_found' };  // профиль исчез — считаем заказ невалидным
-  const paidUntil = upd.rows[0].paid_until;
+  const res = await applyPayment(db, {
+    userId: order.user_id, months,
+    meta: { event: 'plan_payment', provider: 'prodamus', orderId: order.id, payload }
+  });
+  if (!res) return { reason: 'order_not_found' };  // профиль исчез
 
   await db.query(
     `update public.payment_orders set status='paid', paid_at=now(), external_payment_id=$2 where id=$1 and status <> 'paid'`,
     [order.id, extPay]
   );
-
-  await db.query(
-    `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
-     values ($1, 'prodamus', $2, 'active', $3, now(), null, now())
-     on conflict (provider, provider_subscription_id) where provider_subscription_id is not null
-     do update set status='active', paid_until=excluded.paid_until, last_payment_at=now(), ended_at=null, updated_at=now()`,
-    [order.user_id, String(order.id), paidUntil]
-  );
-
-  return { info: { user_id: order.user_id, plan: order.plan_code, months, paid_until: paidUntil, access_status: upd.rows[0].access_status } };
+  return { info: { user_id: order.user_id, plan: order.plan_code, months, paid_until: res.paidUntil, access_status: res.accessStatus } };
 };
 
 const handleProdamusWebhook = async (req, res) => {
@@ -749,9 +768,9 @@ const handleBillingCheckout = async (req, res) => {
 
     // 6. Создаём заказ (order_id = источник истины матча вебхука)
     const orderQ = await client.query(
-      `insert into public.payment_orders(user_id, plan_code, provider, amount, status)
-       values ($1, $2, $3, $4, 'created') returning id`,
-      [userId, plan.code, provider, amountRub]
+      `insert into public.payment_orders(user_id, plan_code, provider, amount, months, status)
+       values ($1, $2, $3, $4, $5, 'created') returning id`,
+      [userId, plan.code, provider, amountRub, Number(plan.months)]
     );
     const orderId = orderQ.rows[0].id;
 
@@ -797,6 +816,87 @@ const handleBillingCheckout = async (req, res) => {
 };
 
 app.post('/api/billing/checkout', handleBillingCheckout);
+
+// ────────────────────────────────────────────────────────────────────
+// ФАЗА 1e — ручная отметка оплаты (админ). POST /api/billing/admin/mark-paid
+// Гвард requireAdmin: JWT → user_id → DB-lookup profiles.role='admin'
+// (app-роль в JWT нет, берём из БД). Ручная оплата = аудит-строка
+// payment_orders(provider='manual', status='paid') + applyPayment(until=явная дата).
+// ────────────────────────────────────────────────────────────────────
+const requireAdmin = async (req, res, next) => {
+  const claims = verifyJwtHS256(bearerToken(req.headers.authorization), GARDEN_JWT_SECRET);
+  if (!claims) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const q = await pool.query(`select role from public.profiles where id = $1`, [claims.sub]);
+    if (q.rowCount === 0 || String(q.rows[0].role || '').toLowerCase() !== 'admin') {
+      return res.status(403).json({ error: 'forbidden_admin_only' });
+    }
+  } catch (e) {
+    return res.status(500).json({ error: 'auth_check_failed', detail: e?.message || 'unknown' });
+  }
+  req.adminId = claims.sub;
+  return next();
+};
+
+const handleAdminMarkPaid = async (req, res) => {
+  const adminId = req.adminId;
+  const b = req.body || {};
+  const userId = String(b.user_id || '').trim();
+  const until = String(b.until_date || b.paid_until || '').trim();   // 'YYYY-MM-DD' — источник истины
+  const months = b.months != null && b.months !== '' ? Number(b.months) : null;  // для отчётности (пресет)
+  const planCode = b.plan_code ? String(b.plan_code).trim() : null;
+  const amount = b.amount != null && b.amount !== '' ? Number(b.amount) : null;
+  const note = b.note ? String(b.note).slice(0, 1000) : null;
+  const paymentDate = String(b.payment_date || '').trim() || null;   // когда пришли деньги (может быть задним числом)
+  const idemKey = String(b.idempotency_key || '').trim();
+
+  if (!userId) return res.status(400).json({ error: 'user_id_required' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) return res.status(400).json({ error: 'until_date_required', detail: 'until_date должна быть YYYY-MM-DD' });
+  // «оплачено до» в прошлом бессмысленно (ночной reconcile сразу вернёт paused_expired) → отклоняем.
+  if (until < new Date().toISOString().slice(0, 10)) return res.status(400).json({ error: 'until_date_in_past', detail: 'Дата «оплачено до» не может быть в прошлом' });
+  if (!idemKey) return res.status(400).json({ error: 'idempotency_key_required' });
+  if (amount != null && (!Number.isFinite(amount) || amount < 0)) return res.status(400).json({ error: 'bad_amount' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const prof = await client.query(`select id from public.profiles where id = $1`, [userId]);
+    if (prof.rowCount === 0) { await client.query('rollback'); return res.status(404).json({ error: 'profile_not_found' }); }
+
+    // идемпотентная аудит-строка
+    const ins = await client.query(
+      `insert into public.payment_orders
+         (user_id, plan_code, provider, amount, months, status, marked_by, note, idempotency_key, paid_at, granted_until)
+       values ($1, $2, 'manual', $3, $4, 'paid', $5, $6, $7,
+               coalesce($8::timestamptz, now()), ($9::date + interval '1 day' - interval '1 second'))
+       on conflict (idempotency_key) where idempotency_key is not null do nothing
+       returning id`,
+      [userId, planCode, amount, months, adminId, note, idemKey, paymentDate, until]
+    );
+    if (ins.rowCount === 0) {
+      // тот же idempotency_key уже применён → no-op
+      await client.query('commit');
+      return res.json({ ok: true, duplicate: true });
+    }
+    const orderId = ins.rows[0].id;
+
+    const applied = await applyPayment(client, {
+      userId, until,
+      meta: { event: 'manual_payment', provider: 'manual', orderId, payload: { source: 'admin_mark_paid', marked_by: adminId, note } }
+    });
+    if (!applied) { await client.query('rollback'); return res.status(500).json({ error: 'apply_failed' }); }
+
+    await client.query('commit');
+    return res.json({ ok: true, order_id: orderId, paid_until: applied.paidUntil, access_status: applied.accessStatus });
+  } catch (e) {
+    await client.query('rollback').catch(() => {});
+    return res.status(500).json({ error: 'mark_paid_failed', detail: e?.message || 'unknown' });
+  } finally {
+    client.release();
+  }
+};
+
+app.post('/api/billing/admin/mark-paid', requireAdmin, handleAdminMarkPaid);
 
 // run once on startup and then every night
 runNightlyExpiryReconcile();

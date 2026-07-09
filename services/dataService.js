@@ -1789,6 +1789,45 @@ class RemoteApiService {
         return row ? this._normalizeProfile(row) : null;
     }
 
+    /**
+     * ФАЗА 1e: список активных тарифов (для предзаполнения суммы в «Отметить оплату»).
+     * RLS billing_plans пускает authenticated читать active.
+     */
+    async getBillingPlans() {
+        const { data } = await postgrestFetch('billing_plans', { active: 'eq.true', order: 'sort.asc' });
+        return Array.isArray(data) ? data : [];
+    }
+
+    /**
+     * ФАЗА 1e: ручная отметка оплаты (админ). Пишет через push-server
+     * (payment_orders server-write-only). Идёт под JWT админа → бэк проверяет role='admin'.
+     *
+     * @param {string} userId — кому отмечаем
+     * @param {object} p
+     * @param {string} p.untilDate — 'YYYY-MM-DD' целевой paid_until (источник истины)
+     * @param {number|null} [p.months] — пресет для отчётности
+     * @param {string|null} [p.planCode]
+     * @param {number|null} [p.amount] — реальная сумма (для отчётов)
+     * @param {string|null} [p.paymentDate] — когда пришли деньги (может быть задним числом)
+     * @param {string|null} [p.note]
+     * @param {string} p.idempotencyKey — генерится в UI при открытии модалки (стабилен на двойной клик)
+     */
+    async adminMarkPaid(userId, { untilDate, months = null, planCode = null, amount = null, paymentDate = null, note = null, idempotencyKey } = {}) {
+        return pushFetch('/api/billing/admin/mark-paid', {
+            method: 'POST',
+            body: {
+                user_id: userId,
+                until_date: untilDate,
+                months,
+                plan_code: planCode,
+                amount,
+                payment_date: paymentDate,
+                note,
+                idempotency_key: idempotencyKey
+            }
+        });
+    }
+
 
     // Knowledge Base
     async getKnowledgeBase() {

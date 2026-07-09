@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff, Shield, ShieldOff, UserCheck } from 'lucide-react';
+import { Trash2, LogOut, Edit2, RotateCw, BarChart, MapPin, Users, TrendingUp, Calendar, ArrowUpRight, GripVertical, ChevronDown, ChevronUp, Archive, Eye, EyeOff, Shield, ShieldOff, UserCheck, Wallet } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import RichEditor from '../components/RichEditor';
@@ -521,6 +521,17 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
     const [editingExemptUser, setEditingExemptUser] = useState(null);
     const [exemptForm, setExemptForm] = useState({ enabled: false, mode: 'always', until: '', note: '' });
     const [savingExempt, setSavingExempt] = useState(false);
+    // ФАЗА 1e — модалка «Отметить оплату» (ручная оплата мимо Prodamus).
+    const [editingPaymentUser, setEditingPaymentUser] = useState(null);
+    const [paymentForm, setPaymentForm] = useState({ until: '', amount: '', months: '', planCode: '', paymentDate: '', note: '', idemKey: '' });
+    const [savingPayment, setSavingPayment] = useState(false);
+    const [billingPlans, setBillingPlans] = useState([]);
+    useEffect(() => {
+        if (!editingPaymentUser) return;
+        let alive = true;
+        api.getBillingPlans().then((p) => { if (alive) setBillingPlans(p); }).catch(() => {});
+        return () => { alive = false; };
+    }, [editingPaymentUser]);
     // UI-PENDING-APPROVAL-LIST: per-user выбранная роль для approve-dropdown'а.
     // {userId: 'applicant'|'intern'|'leader'|'mentor'}. Default — applicant (90%+ кейсов).
     const [approvalRoles, setApprovalRoles] = useState({});
@@ -1428,6 +1439,22 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                             </button>
                                                         </>
                                                     )}
+                                                    {/* ФАЗА 1e — «Отметить оплату» (все роли, без role-гейта). */}
+                                                    <button
+                                                        onClick={() => {
+                                                            const today = new Date().toISOString().slice(0, 10);
+                                                            setEditingPaymentUser(u);
+                                                            setPaymentForm({
+                                                                until: '', amount: '', months: '', planCode: '',
+                                                                paymentDate: today, note: '',
+                                                                idemKey: (window.crypto?.randomUUID?.() || `mp-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+                                                            });
+                                                        }}
+                                                        className={`p-2 rounded-lg transition-colors ${u.paid_until ? 'bg-sky-100 text-sky-600' : 'bg-slate-100 text-slate-400 hover:bg-sky-50 hover:text-sky-600'}`}
+                                                        title={u.paid_until ? `Оплачено до ${String(u.paid_until).slice(0, 10)} — отметить оплату` : 'Отметить оплату (ручная)'}
+                                                    >
+                                                        <Wallet size={14} />
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1997,6 +2024,129 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                             </Button>
                         </div>
                     </div>
+                    );
+                })()}
+            </ModalShell>
+
+            {/* ФАЗА 1e — модалка «Отметить оплату» (ручная оплата мимо Prodamus). */}
+            <ModalShell
+                isOpen={!!editingPaymentUser}
+                onClose={() => setEditingPaymentUser(null)}
+                title={editingPaymentUser ? `Отметить оплату — ${editingPaymentUser.name || editingPaymentUser.email}` : ''}
+                size="md"
+            >
+                {editingPaymentUser && (() => {
+                    // Пресет: целевая «оплачено до» = greatest(сегодня, текущий paid_until) + N мес.
+                    // Это лишь ПОДСКАЗКА — поле until редактируемое и оно источник истины.
+                    const presetUntil = (months) => {
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                        const cur = editingPaymentUser.paid_until ? new Date(editingPaymentUser.paid_until) : today;
+                        const start = cur > today ? cur : today;
+                        const d = new Date(start); d.setMonth(d.getMonth() + months);
+                        return d.toISOString().slice(0, 10);
+                    };
+                    const applyPreset = (code, months) => {
+                        const plan = billingPlans.find((p) => p.code === code);
+                        setPaymentForm((f) => ({
+                            ...f,
+                            months: String(months),
+                            planCode: code,
+                            until: presetUntil(months),
+                            amount: plan ? String(plan.amount_rub) : f.amount
+                        }));
+                    };
+                    return (
+                        <div className="space-y-5">
+                            <div className="text-xs text-slate-500 leading-relaxed p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                Для прямых оплат мимо Prodamus (перевод, наличные). Эффект как у обычного платежа:
+                                продлевает подписку. Текущий статус: {editingPaymentUser.paid_until
+                                    ? `оплачено до ${String(editingPaymentUser.paid_until).slice(0, 10)}`
+                                    : 'не оплачено'}.
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-slate-700">Быстрый выбор</div>
+                                <div className="flex gap-2">
+                                    {[['1m', 1], ['3m', 3], ['6m', 6]].map(([code, m]) => (
+                                        <button key={code} type="button" onClick={() => applyPreset(code, m)}
+                                            className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${paymentForm.planCode === code ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300'}`}>
+                                            +{m} мес
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-slate-700 mb-1 block">Оплачено до <span className="text-rose-500">*</span></label>
+                                <input type="date" value={paymentForm.until}
+                                    min={new Date().toISOString().slice(0, 10)}
+                                    onChange={(e) => setPaymentForm((f) => ({ ...f, until: e.target.value }))}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 text-slate-700 text-sm" />
+                                <div className="text-xs text-slate-400 mt-1">Источник истины. Пресеты подставляют дату, но её можно поправить.</div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700 mb-1 block">Сумма, ₽</label>
+                                    <input type="number" min="0" value={paymentForm.amount} placeholder="напр. 2000"
+                                        onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-sky-500 text-slate-700 text-sm" />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700 mb-1 block">Дата оплаты</label>
+                                    <input type="date" value={paymentForm.paymentDate}
+                                        onChange={(e) => setPaymentForm((f) => ({ ...f, paymentDate: e.target.value }))}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-sky-500 text-slate-700 text-sm" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-slate-700 mb-1 block">Комментарий</label>
+                                <textarea value={paymentForm.note}
+                                    onChange={(e) => setPaymentForm((f) => ({ ...f, note: e.target.value }))}
+                                    placeholder="перевод на карту, наличные..."
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 outline-none h-20 resize-none text-sm focus:border-sky-500" />
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <Button variant="secondary" onClick={() => setEditingPaymentUser(null)} className="flex-1" disabled={savingPayment}>
+                                    Отмена
+                                </Button>
+                                <Button
+                                    onClick={async () => {
+                                        if (savingPayment) return;
+                                        if (!paymentForm.until) { onNotify('Укажите дату «оплачено до»'); return; }
+                                        setSavingPayment(true);
+                                        try {
+                                            const res = await api.adminMarkPaid(editingPaymentUser.id, {
+                                                untilDate: paymentForm.until,
+                                                months: paymentForm.months ? Number(paymentForm.months) : null,
+                                                planCode: paymentForm.planCode || null,
+                                                amount: paymentForm.amount ? Number(paymentForm.amount) : null,
+                                                paymentDate: paymentForm.paymentDate || null,
+                                                note: paymentForm.note || null,
+                                                idempotencyKey: paymentForm.idemKey
+                                            });
+                                            if (res?.duplicate) {
+                                                onNotify('Уже отмечено (повторный клик)');
+                                            } else {
+                                                if (onUserPatched) onUserPatched({ ...editingPaymentUser, paid_until: res?.paid_until || paymentForm.until, subscription_status: 'active' });
+                                                onNotify('Оплата отмечена');
+                                            }
+                                            setEditingPaymentUser(null);
+                                        } catch (e) {
+                                            onNotify('Ошибка: ' + (e?.message || 'неизвестная'));
+                                        } finally {
+                                            setSavingPayment(false);
+                                        }
+                                    }}
+                                    className="flex-1"
+                                    disabled={savingPayment}
+                                >
+                                    {savingPayment ? 'Сохранение…' : 'Отметить оплату'}
+                                </Button>
+                            </div>
+                        </div>
                     );
                 })()}
             </ModalShell>

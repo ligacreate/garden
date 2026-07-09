@@ -51,8 +51,10 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
     </button>
 );
 
-const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onProfileRefresh, onSendRay, onMarkAsRead }) => {
+const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onProfileRefresh, onSendRay, onMarkAsRead, paidReturn = false }) => {
     const [view, setView] = useState(() => (user?.role || '').toLowerCase() === ROLES.APPLICANT ? 'library' : 'dashboard');
+    // ФАЗА 1d — возврат с оплаты (?paid=1) приземляет на «Мою подписку» (ProfileView).
+    useEffect(() => { if (paidReturn) setView('profile'); }, [paidReturn]);
     const [practices, setPractices] = useState([]);
     const [meetings, setMeetings] = useState([]);
     const [timeline, setTimeline] = useState([]);
@@ -1098,6 +1100,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                             onOpenLeaderPage={() => handleOpenLeader(user)}
                             onEnablePushNotifications={handleEnablePushNotifications}
                             pushStatus={pushStatus}
+                            paidReturn={paidReturn}
                         />
                     )}
                 </div>

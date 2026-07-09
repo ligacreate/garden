@@ -35,7 +35,7 @@ const {
   YOOKASSA_LIVE_ENABLED = '',             // '1' → разрешить боевой YooKassa-вызов (осознанный самоплатёж). По умолчанию выкл.
   YOOKASSA_TEST_SHOP_ID = '',             // тест-магазина у нас НЕТ — ветка инертна
   YOOKASSA_TEST_SECRET_KEY = '',
-  YOOKASSA_RETURN_URL = 'https://liga.skrebeyko.ru/#/subscription?status=ok',
+  YOOKASSA_RETURN_URL = 'https://liga.skrebeyko.ru/?paid=1',
   PRODAMUS_PAYFORM_URL = ''               // https://skrebeyko.payform.ru
 } = process.env;
 

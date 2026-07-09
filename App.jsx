@@ -23,6 +23,20 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [librarySettings, setLibrarySettings] = useState({ hiddenCourses: [], materialOrder: {} });
     const [accessBlock, setAccessBlock] = useState(null);
+    // ФАЗА 1d — возврат с оплаты (?paid=1): приземляем на «Мою подписку» + авто-опрос.
+    const [paidReturn, setPaidReturn] = useState(false);
+    useEffect(() => {
+        try {
+            const sp = new URLSearchParams(window.location.search);
+            if (sp.get('paid') === '1') {
+                setPaidReturn(true);
+                // чистим URL, чтобы обновление страницы не ретриггерило
+                sp.delete('paid');
+                const q = sp.toString();
+                window.history.replaceState({}, '', window.location.pathname + (q ? `?${q}` : '') + window.location.hash);
+            }
+        } catch { /* no-op */ }
+    }, []);
     const [maintenanceBanner, setMaintenanceBanner] = useState(null);
     // { reason: 'POSTGREST_JWT_MISCONFIG' | 'PARTIAL_DEGRADATION', detail?: string }
     const [hiddenGardenUserIds, setHiddenGardenUserIds] = useState(() => {
@@ -609,7 +623,7 @@ export default function App() {
                     )
                 )
                     : (currentUser.role === 'admin' && viewMode !== 'app') ? <Suspense fallback={<ViewLoading label="Загружаем админку…" />}><AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={handleRefreshUsers} onUserPatched={handleUserPatched} onAddContent={handleAddContent} onNormalizeKnowledgeContent={handleNormalizeKnowledgeContent} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={handleAddNews} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
-                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onProfileRefresh={handleProfileRefresh} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} />}
+                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onProfileRefresh={handleProfileRefresh} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} paidReturn={paidReturn} />}
             </div>
         </div>
     );

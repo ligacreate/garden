@@ -1799,6 +1799,20 @@ class RemoteApiService {
     }
 
     /**
+     * ФАЗА 1d: инициировать оплату подписки. Возвращает { url } — хостед-форма
+     * Prodamus (юзер выбирает способ: СБП / РФ-карта / зарубеж на форме).
+     * user_id/сумму бэк берёт из JWT+billing_plans (anti-tamper).
+     * @param {string} planCode — '1m' | '3m' | '6m'
+     */
+    async createCheckout(planCode) {
+        const res = await pushFetch('/api/billing/checkout', {
+            method: 'POST',
+            body: { plan_code: planCode, provider: 'prodamus' }
+        });
+        return res; // { ok, order_id, url, ... }
+    }
+
+    /**
      * ФАЗА 1e: ручная отметка оплаты (админ). Пишет через push-server
      * (payment_orders server-write-only). Идёт под JWT админа → бэк проверяет role='admin'.
      *

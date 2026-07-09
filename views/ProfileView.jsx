@@ -131,7 +131,7 @@ const TagsInput = ({ label, value = [], onChange, placeholder = "Добавит�
     );
 };
 
-const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage }) => {
+const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDeleteAccount, onNotify, skillOptions = [], onOpenLeaderPage, paidReturn = false }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [passwordForm, setPasswordForm] = useState({ next: '', confirm: '', loading: false });
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -319,6 +319,76 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
     const [tgUnlinkConfirm, setTgUnlinkConfirm] = useState(false);
     const [tgUnlinkLoading, setTgUnlinkLoading] = useState(false);
     const [tgCodeCopied, setTgCodeCopied] = useState(false);
+
+    // ФАЗА 1d — «Моя подписка».
+    const [subPlans, setSubPlans] = useState([]);
+    const [subSelected, setSubSelected] = useState(null);
+    const [subCheckoutLoading, setSubCheckoutLoading] = useState(false);
+    const [subPolling, setSubPolling] = useState(paidReturn);   // авто-опрос после возврата с оплаты
+    // Замороженный baseline paid_until на маунте — успех poll'а = РОСТ (не «в будущем»),
+    // чтобы продление (baseline уже будущий) детектилось по увеличению даты.
+    // Новая оплата: baseline=0 (null/прошлое) → любая будущая дата пройдёт.
+    const paidBaselineRef = useRef(user.paid_until ? new Date(user.paid_until).getTime() : 0);
+
+    useEffect(() => {
+        let alive = true;
+        api.getBillingPlans().then((p) => { if (alive) { setSubPlans(p); setSubSelected((s) => s || (p[0]?.code ?? null)); } }).catch(() => {});
+        return () => { alive = false; };
+    }, []);
+
+    // Активна ли подписка сейчас (derive-on-read из одного paid_until).
+    const paidUntilDate = user.paid_until ? new Date(user.paid_until) : null;
+    const subActive = !!(paidUntilDate && paidUntilDate.getTime() > Date.now());
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+
+    // Авто-poll после возврата с оплаты: getCurrentUser каждые 3с, до 5 попыток
+    // или пока paid_until не «перещёлкнется» в будущее. Ручная кнопка — fallback.
+    useEffect(() => {
+        if (!paidReturn) return;
+        let attempts = 0, alive = true, timer = null;
+        const tick = async () => {
+            if (!alive) return;
+            attempts += 1;
+            try {
+                const fresh = await api.getCurrentUser();
+                if (fresh && onProfileRefresh) onProfileRefresh(fresh);
+                const freshMs = fresh?.paid_until ? new Date(fresh.paid_until).getTime() : 0;
+                if (freshMs > paidBaselineRef.current || attempts >= 5) { setSubPolling(false); return; }
+            } catch { /* игнор, продолжаем попытки */ }
+            timer = setTimeout(tick, 3000);
+        };
+        timer = setTimeout(tick, 1500);
+        return () => { alive = false; if (timer) clearTimeout(timer); };
+    }, [paidReturn]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleRefreshSubStatus = async () => {
+        setSubPolling(true);
+        try {
+            const fresh = await api.getCurrentUser();
+            if (fresh && onProfileRefresh) onProfileRefresh(fresh);
+        } catch (e) {
+            onNotify(e?.message || 'Не удалось обновить статус');
+        } finally {
+            setSubPolling(false);
+        }
+    };
+
+    const handleCheckout = async () => {
+        if (subCheckoutLoading || !subSelected) return;
+        setSubCheckoutLoading(true);
+        try {
+            const res = await api.createCheckout(subSelected);
+            if (res?.url) {
+                window.location.href = res.url;   // редирект на хостед-форму Prodamus
+            } else {
+                onNotify('Не удалось создать оплату');
+                setSubCheckoutLoading(false);
+            }
+        } catch (e) {
+            onNotify(e?.message || 'Ошибка оплаты');
+            setSubCheckoutLoading(false);
+        }
+    };
 
     const handleGenerateTgLinkCode = async () => {
         try {
@@ -541,6 +611,57 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
 
                     {/* Forms Grid */}
                     <div className="grid gap-6">
+                        {/* ФАЗА 1d — Моя подписка */}
+                        <Card title="Моя подписка" className="!rounded-[2rem]">
+                            {subPolling ? (
+                                <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-center gap-3">
+                                    <div className="h-4 w-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
+                                    <div className="text-sm text-amber-800">Обрабатываем оплату… статус обновится автоматически.</div>
+                                </div>
+                            ) : (
+                                <div className={`p-4 rounded-2xl border ${subActive ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
+                                    <div className="text-sm font-semibold text-slate-800">
+                                        {subActive ? 'Подписка активна' : (paidUntilDate ? 'Подписка истекла' : 'Подписка не оплачена')}
+                                    </div>
+                                    <div className="text-xs text-slate-500 mt-0.5">
+                                        {paidUntilDate ? `Оплачено до ${fmtDate(paidUntilDate)}` : 'Выберите план и оплатите доступ к Лиге.'}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-4 space-y-3">
+                                <div className="text-sm font-medium text-slate-700">{subActive ? 'Продлить' : 'Выбрать план'}</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    {subPlans.map((p) => (
+                                        <button
+                                            key={p.code}
+                                            type="button"
+                                            onClick={() => setSubSelected(p.code)}
+                                            className={`p-3 rounded-2xl border text-left transition-all ${subSelected === p.code ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/40' : 'border-slate-200 hover:border-emerald-300'}`}
+                                        >
+                                            <div className="text-sm font-semibold text-slate-800">{p.title}</div>
+                                            <div className="text-lg font-bold text-slate-900 mt-1">{p.amount_rub} ₽</div>
+                                        </button>
+                                    ))}
+                                </div>
+                                <Button
+                                    onClick={handleCheckout}
+                                    disabled={subCheckoutLoading || !subSelected || subPlans.length === 0}
+                                    className="w-full !rounded-xl"
+                                >
+                                    {subCheckoutLoading ? 'Переходим к оплате…' : (subActive ? 'Продлить подписку' : 'Оплатить')}
+                                </Button>
+                                {paidReturn && !subPolling && (
+                                    <button type="button" onClick={handleRefreshSubStatus} className="w-full text-xs text-slate-400 hover:text-slate-600 py-1">
+                                        Обновить статус вручную
+                                    </button>
+                                )}
+                                <div className="text-[11px] text-slate-400 leading-relaxed">
+                                    Оплата через Prodamus — на форме доступны СБП, карты РФ и зарубежные. Без автопродления.
+                                </div>
+                            </div>
+                        </Card>
+
                         <Card title="Личные данные" className="!rounded-[2rem]">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                                 {isEditing ? (

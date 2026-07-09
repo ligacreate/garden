@@ -107,13 +107,15 @@ export const buildYooKassaPayload = ({ orderId, userId, plan, amountRub, email, 
 };
 
 // ── Prodamus payform-ссылка с embedded order_id (+ demo_mode=1 в песочнице).
-// order_id round-trip'ит в вебхук (resolveExternalId читает order_id).
-// _param_user_id — belt-and-suspenders (Prodamus эхо-возвращает кастомные поля).
+// ВАЖНО (по recon реального payload): Prodamus ПЕРЕЗАПИСЫВАЕТ нативный order_id
+// своим внутренним номером. Поэтому наш order_id кладём в КАСТОМ-параметр
+// `_param_order_id` — кастомные `_param_*` эхо-возвращаются в вебхук (доказано:
+// TargetHunter'ский `_param_custom` вернулся как есть). Матч в 1c — по _param_order_id.
 export const buildProdamusUrl = ({ domain, orderId, userId, plan, amountRub, email, returnUrl, sandbox }) => {
   const base = String(domain || '').replace(/\/+$/, '');
   const u = new URL(base.startsWith('http') ? base : `https://${base}`);
   const q = u.searchParams;
-  q.set('order_id', String(orderId));
+  q.set('order_id', String(orderId));            // нативный (Prodamus перезапишет) — оставляем для читаемости
   q.set('products[0][name]', plan.title);
   q.set('products[0][price]', String(amountRub));
   q.set('products[0][quantity]', '1');
@@ -122,7 +124,8 @@ export const buildProdamusUrl = ({ domain, orderId, userId, plan, amountRub, ema
     q.set('urlReturn', returnUrl);
     q.set('urlSuccess', returnUrl);
   }
-  q.set('_param_user_id', String(userId));
+  q.set('_param_order_id', String(orderId));     // ← источник истины матча вебхука (round-trip)
+  q.set('_param_user_id', String(userId));       // belt-and-suspenders
   q.set('_param_plan', String(plan.code));
   q.set('do', 'pay');
   if (sandbox) q.set('demo_mode', '1');

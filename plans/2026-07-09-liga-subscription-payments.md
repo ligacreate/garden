@@ -15,8 +15,12 @@
 
 ## Утверждённая модель (зафиксировано 2026-07-09)
 
-- **Провайдеры:** YooKassa (РФ-карты) + Prodamus (зарубежные). Юзер выбирает
-  «российская / зарубежная карта» → провайдер.
+- **Провайдер: Prodamus-only** (решение 2026-07-09). Prodamus закрывает И РФ-карты/СБП,
+  И зарубежные — юзер выбирает способ оплаты на форме Prodamus. Одна интеграция, один
+  вебхук, одна сверка. **YooKassa-код написан, но спит** (gated off `YOOKASSA_LIVE_ENABLED`) —
+  оставлен как запасной, фронт его не предлагает. Причина отказа от двух платёжек:
+  простота перевешивает; Prodamus уже живой; разница РФ-комиссии невелика.
+  - ~~YooKassa (РФ) + Prodamus (зарубеж), выбор карты~~ — отменено.
 - **Планы и цены** (в `billing_plans`, для всех одинаково, правятся без деплоя):
   - `1m` — 1 мес — **2000 ₽**
   - `3m` — 3 мес — **5500 ₽**
@@ -73,15 +77,15 @@ push-server Prodamus/BotHunter webhook-логику.
 - **НУЖНЫ sandbox-креды:** YooKassa test `shopId`+`secretKey`; Prodamus payform-домен + demo-режим.
   Env: `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`, `YOOKASSA_RETURN_URL`, `PRODAMUS_PAYFORM_URL`.
 
-### Phase 1c — вебхуки [ ]
-- **Prodamus** (расширить существующий `/webhooks/prodamus`): если есть `order_id` → находим
-  `payment_orders`, берём `user_id`+`months` из заказа (не из payload/email). Подпись — существующий
-  `verifyProdamusSignature`. Обратная совместимость: нет order_id → старый recurring-путь.
-- **YooKassa** (`/webhooks/yookassa`, новый): `payment.succeeded`, `metadata.order_id`. Верификация:
-  IP-allowlist + обратный `GET /v3/payments/{id}` (подписи нет).
-- **Apply платежа** (общий): `paid_until = max(now, paid_until)+N мес`, `access_status=active`,
-  `subscription_status=active`, `payment_orders.status=paid/paid_at`, запись в `subscriptions`.
-  Идемпотентность — `billing_webhook_logs` + partial-unique заказа + advisory-lock по order_id.
+### Phase 1c — вебхук (Prodamus-only) [дифф на ревью, не задеплоен]
+- **Prodamus** (расширен `/webhooks/prodamus`): матч по `_param_order_id` (наш order_id;
+  нативный `order_id` Prodamus перезаписывает — recon реального payload). Находим `payment_orders`,
+  берём `user_id`+`months` из заказа + billing_plans (не из payload/email). `applyPlanPayment`:
+  `paid_until = max(now, paid_until) + N мес`, access/subscription active, order→paid,
+  запись в `subscriptions`. Обратная совместимость: нет `_param_order_id` → старый recurring/fuzzy путь.
+- **Идемпотентность:** billing_webhook_logs dedup (external_id=Prodamus order_id) + guard order.status='paid' + advisory-lock.
+- ~~YooKassa `/webhooks/yookassa`~~ — не делаем (Prodamus-only).
+- **К проверке на 1-м реальном платеже:** round-trip'ит ли `_param_order_id` (доказан только `_param_custom`).
 
 ### Phase 1d — UI «Моя подписка» [ ]
 - Карточка в [`views/ProfileView.jsx`](../views/ProfileView.jsx): статус (активна до DD.MM / истекла) + «Продлить».

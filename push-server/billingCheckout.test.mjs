@@ -108,6 +108,7 @@ test('buildProdamusUrl: sandbox → demo_mode=1 + order_id embedded', () => {
   });
   const u = new URL(url);
   assert.equal(u.origin, 'https://skrebeyko.payform.ru');
+  assert.equal(u.searchParams.get('_param_order_id'), 'ord-9');  // источник истины матча
   assert.equal(u.searchParams.get('order_id'), 'ord-9');
   assert.equal(u.searchParams.get('_param_user_id'), 'u-9');
   assert.equal(u.searchParams.get('products[0][price]'), '2000');

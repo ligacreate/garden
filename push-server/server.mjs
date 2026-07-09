@@ -359,6 +359,62 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
   }
 };
 
+// ── ФАЗА 1c: apply платформо-инициированного плана (детерминированно по order_id).
+// paid_until продлевается СТОПКОЙ: max(now, paid_until) + N месяцев плана.
+// Идемпотентность: (а) billing_webhook_logs dedup по external_id (Prodamus order_id),
+// (б) guard order.status='paid' (повторный apply не двигает paid_until второй раз).
+const applyPlanPayment = async (db, orderId, payload) => {
+  let q;
+  try {
+    q = await db.query(
+      `select po.id, po.user_id, po.status, po.plan_code, bp.months
+         from public.payment_orders po
+         join public.billing_plans bp on bp.code = po.plan_code
+        where po.id = $1`,
+      [orderId]
+    );
+  } catch {
+    return { reason: 'order_not_found' };   // невалидный uuid → трактуем как «не найден»
+  }
+  if (q.rowCount === 0) return { reason: 'order_not_found' };
+  const order = q.rows[0];
+  if (order.status === 'paid') {
+    return { note: 'already_paid', info: { duplicate: true, user_id: order.user_id } };
+  }
+  const months = Number(order.months);
+  const extPay = String(payload.order_id || payload.payment_id || payload.transaction_id || '').trim() || null;
+
+  const upd = await db.query(
+    `update public.profiles p
+        set paid_until = greatest(now(), coalesce(p.paid_until, now())) + make_interval(months => $2),
+            access_status = case when p.access_status = 'paused_manual' then 'paused_manual' else 'active' end,
+            subscription_status = 'active',
+            last_payment_at = now(),
+            last_prodamus_event = 'plan_payment',
+            last_prodamus_payload = $3::jsonb
+      where p.id = $1
+      returning paid_until, access_status`,
+    [order.user_id, months, JSON.stringify(payload || {})]
+  );
+  if (upd.rowCount === 0) return { reason: 'order_not_found' };  // профиль исчез — считаем заказ невалидным
+  const paidUntil = upd.rows[0].paid_until;
+
+  await db.query(
+    `update public.payment_orders set status='paid', paid_at=now(), external_payment_id=$2 where id=$1 and status <> 'paid'`,
+    [order.id, extPay]
+  );
+
+  await db.query(
+    `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
+     values ($1, 'prodamus', $2, 'active', $3, now(), null, now())
+     on conflict (provider, provider_subscription_id) where provider_subscription_id is not null
+     do update set status='active', paid_until=excluded.paid_until, last_payment_at=now(), ended_at=null, updated_at=now()`,
+    [order.user_id, String(order.id), paidUntil]
+  );
+
+  return { info: { user_id: order.user_id, plan: order.plan_code, months, paid_until: paidUntil, access_status: upd.rows[0].access_status } };
+};
+
 const handleProdamusWebhook = async (req, res) => {
   if (!webhookEnabled) return res.status(503).json({ error: 'Webhook disabled' });
   if (!PRODAMUS_SECRET_KEY) return res.status(500).json({ error: 'PRODAMUS_SECRET_KEY is not set' });
@@ -396,6 +452,24 @@ const handleProdamusWebhook = async (req, res) => {
     if (log?.is_processed) {
       await client.query('commit');
       return res.json({ ok: true, duplicate: true });
+    }
+
+    // ── ФАЗА 1c: платформо-инициированный план — детерминированный матч по
+    // нашему order_id (кладём в _param_order_id, т.к. нативный order_id Prodamus
+    // перезаписывает). Если параметр есть и это оплата — идём план-путём
+    // (paid_until += N мес из billing_plans), БЕЗ fuzzy-матча по email.
+    const orderRef = String(payload._param_order_id || payload.param_order_id || '').trim();
+    if (orderRef && (eventName === 'payment_success' || eventName === 'auto_payment')) {
+      const applied = await applyPlanPayment(client, orderRef, payload);
+      if (applied.reason === 'order_not_found') {
+        // заказа нет (мог не создаться / чужой order_id) — replayable, без fuzzy.
+        await markWebhookLogState(client, log.id, { processed: false, errorText: `plan_order_not_found:${orderRef} (replayable)` });
+        await client.query('commit');
+        return res.status(202).json({ ok: true, processed: false, reason: 'plan_order_not_found', order_id: orderRef });
+      }
+      await markWebhookLogState(client, log.id, { processed: true, errorText: applied.note || null });
+      await client.query('commit');
+      return res.json({ ok: true, processed: true, path: 'plan_order', order_id: orderRef, ...(applied.info || {}) });
     }
 
     const customer = resolveCustomer(payload);

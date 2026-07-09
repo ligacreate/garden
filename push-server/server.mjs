@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
 import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
+import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled, buildYooKassaPayload, buildProdamusUrl } from './billingCheckout.mjs';
 
 const { Pool } = pkg;
 
@@ -25,7 +26,17 @@ const {
   DEFAULT_BOT_RENEW_URL = '',
   BILLING_TIMEZONE = 'Europe/Warsaw',
   BOTHUNTER_WEBHOOK_TOKEN = '',
-  BOTHUNTER_PROVIDER_NAME = 'bothunter'
+  BOTHUNTER_PROVIDER_NAME = 'bothunter',
+  // ФАЗА 1b — checkout
+  GARDEN_JWT_SECRET = '',                 // = garden-auth JWT_SECRET (HS256), для verify user_id
+  YOOKASSA_API_URL = 'https://api.yookassa.ru/v3/payments',
+  YOOKASSA_SHOP_ID = '',                  // live 1100657
+  YOOKASSA_SECRET_KEY = '',               // live
+  YOOKASSA_LIVE_ENABLED = '',             // '1' → разрешить боевой YooKassa-вызов (осознанный самоплатёж). По умолчанию выкл.
+  YOOKASSA_TEST_SHOP_ID = '',             // тест-магазина у нас НЕТ — ветка инертна
+  YOOKASSA_TEST_SECRET_KEY = '',
+  YOOKASSA_RETURN_URL = 'https://liga.skrebeyko.ru/#/subscription?status=ok',
+  PRODAMUS_PAYFORM_URL = ''               // https://skrebeyko.payform.ru
 } = process.env;
 
 if (!DATABASE_URL) {
@@ -606,10 +617,121 @@ const runNightlyExpiryReconcile = async () => {
   }
 };
 
+// ────────────────────────────────────────────────────────────────────
+// ФАЗА 1b — POST /api/billing/checkout
+// Auth: JWT (Bearer) → user_id из sub (anti-tamper: не из тела).
+// Сумма — из billing_plans (не из тела). order_id (uuid) кладём в заказ
+// провайдера → вебхук (1c) матчит детерминированно.
+// Fail-safe песочницы: см. billingCheckout.mjs resolveYooKassaCreds/isSandbox.
+// ────────────────────────────────────────────────────────────────────
+const SANDBOX = isSandbox(process.env);
+
+const handleBillingCheckout = async (req, res) => {
+  // 1. Auth
+  const token = bearerToken(req.headers.authorization);
+  const claims = verifyJwtHS256(token, GARDEN_JWT_SECRET);
+  if (!claims) return res.status(401).json({ error: 'unauthorized' });
+  const userId = String(claims.sub);
+
+  // 2. Валидация входа
+  const planCode = String(req.body?.plan_code || '').trim();
+  const provider = String(req.body?.provider || '').trim().toLowerCase();
+  if (!['yookassa', 'prodamus'].includes(provider)) {
+    return res.status(400).json({ error: 'bad_provider', detail: 'provider must be yookassa|prodamus' });
+  }
+
+  const client = await pool.connect();
+  try {
+    // 3. План из БД (источник цены; active)
+    const planQ = await client.query(
+      `select code, title, months, amount_rub from public.billing_plans where code = $1 and active = true`,
+      [planCode]
+    );
+    if (planQ.rowCount === 0) return res.status(400).json({ error: 'plan_not_found' });
+    const plan = planQ.rows[0];
+    const amountRub = Number(plan.amount_rub);
+
+    // 4. Профиль (email для чека / customer)
+    const profQ = await client.query(`select email from public.profiles where id = $1`, [userId]);
+    if (profQ.rowCount === 0) return res.status(404).json({ error: 'profile_not_found' });
+    const email = String(profQ.rows[0].email || '').trim();
+
+    // 5. Проверка доступности провайдера ДО создания заказа (не плодим orphan)
+    let ykCreds = null;
+    if (provider === 'yookassa') {
+      ykCreds = resolveYooKassaCreds(process.env, SANDBOX);
+      if (!ykCreds) {
+        // YooKassa live выключена (YOOKASSA_LIVE_ENABLED≠1) — боевой вызов только
+        // на осознанный самоплатёж. Тест-магазина нет. Live в дев-режиме не трогаем.
+        return res.status(503).json({
+          error: 'yookassa_disabled',
+          detail: 'YooKassa live выключена: YOOKASSA_LIVE_ENABLED≠1 (боевой вызов включается явно под реальный платёж), тест-магазин отсутствует.'
+        });
+      }
+      if (!email) return res.status(400).json({ error: 'email_required_for_receipt' });
+    } else if (provider === 'prodamus') {
+      if (!PRODAMUS_PAYFORM_URL) return res.status(503).json({ error: 'prodamus_unavailable', detail: 'PRODAMUS_PAYFORM_URL не задан' });
+    }
+
+    // 6. Создаём заказ (order_id = источник истины матча вебхука)
+    const orderQ = await client.query(
+      `insert into public.payment_orders(user_id, plan_code, provider, amount, status)
+       values ($1, $2, $3, $4, 'created') returning id`,
+      [userId, plan.code, provider, amountRub]
+    );
+    const orderId = orderQ.rows[0].id;
+
+    // 7. Инициация у провайдера
+    if (provider === 'yookassa') {
+      const payload = buildYooKassaPayload({ orderId, userId, plan, amountRub, email, returnUrl: YOOKASSA_RETURN_URL });
+      let resp, data;
+      try {
+        resp = await fetch(YOOKASSA_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotence-Key': String(orderId),
+            Authorization: 'Basic ' + Buffer.from(`${ykCreds.shopId}:${ykCreds.secret}`).toString('base64')
+          },
+          body: JSON.stringify(payload)
+        });
+        data = await resp.json().catch(() => ({}));
+      } catch (e) {
+        await client.query(`update public.payment_orders set status='failed' where id=$1`, [orderId]);
+        return res.status(502).json({ error: 'yookassa_request_failed', detail: e?.message || 'network' });
+      }
+      const confirmationUrl = data?.confirmation?.confirmation_url;
+      if (!resp.ok || !confirmationUrl) {
+        await client.query(`update public.payment_orders set status='failed' where id=$1`, [orderId]);
+        return res.status(502).json({ error: 'yookassa_error', detail: data?.description || `http_${resp.status}` });
+      }
+      await client.query(`update public.payment_orders set external_payment_id=$2 where id=$1`, [orderId, String(data.id)]);
+      return res.json({ ok: true, order_id: orderId, provider, sandbox: SANDBOX, live: ykCreds.live, url: confirmationUrl });
+    }
+
+    // prodamus
+    const url = buildProdamusUrl({
+      domain: PRODAMUS_PAYFORM_URL, orderId, userId, plan, amountRub, email,
+      returnUrl: YOOKASSA_RETURN_URL, sandbox: SANDBOX
+    });
+    return res.json({ ok: true, order_id: orderId, provider, sandbox: SANDBOX, demo: SANDBOX, url });
+  } catch (e) {
+    return res.status(500).json({ error: 'checkout_failed', detail: e?.message || 'unknown' });
+  } finally {
+    client.release();
+  }
+};
+
+app.post('/api/billing/checkout', handleBillingCheckout);
+
 // run once on startup and then every night
 runNightlyExpiryReconcile();
 setInterval(runNightlyExpiryReconcile, 24 * 60 * 60 * 1000);
 
 app.listen(Number(PORT), () => {
-  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'})`);
+  const yk = resolveYooKassaCreds(process.env, SANDBOX)
+    ? (yooKassaLiveEnabled(process.env) ? 'LIVE-armed' : 'test')
+    : 'off';
+  const checkout = `checkout[sandbox=${SANDBOX}, jwt=${GARDEN_JWT_SECRET ? 'on' : 'OFF'}, yk=${yk}, prodamus=${PRODAMUS_PAYFORM_URL ? 'on(demo=' + SANDBOX + ')' : 'off'}]`;
+  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'}, ${checkout})`);
 });

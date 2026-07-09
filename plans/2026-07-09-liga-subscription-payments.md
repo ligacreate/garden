@@ -62,7 +62,7 @@ push-server Prodamus/BotHunter webhook-логику.
 - Миграция: [`database/pvl/migrations/2026-07-09_phase45_billing_plans_orders.sql`](../database/pvl/migrations/2026-07-09_phase45_billing_plans_orders.sql).
   Diff-review: `_session/217`. Verify V1–V8 зелёные.
 
-### Phase 1b — checkout-endpoint [ ]
+### Phase 1b — checkout-endpoint ✅ DONE (2026-07-09, задеплоен)
 - `POST /api/billing/checkout` на push-server. Auth: JWT юзера → `user_id` берём из токена (anti-tamper).
 - Body `{ plan_code, provider }`. Валидируем план из `billing_plans`, создаём `payment_orders` (status=created).
 - **YooKassa:** `POST /v3/payments` (Basic shopId:secret), `metadata={user_id,order_id,plan_code,months}`,
@@ -113,7 +113,7 @@ push-server Prodamus/BotHunter webhook-логику.
 
 ## Статус фаз
 - [x] 1a — БД (2026-07-09)
-- [ ] 1b — checkout
+- [x] 1b — checkout (2026-07-09, задеплоен + smoke)
 - [ ] 1c — вебхуки
 - [ ] 1d — UI
 - [ ] 1e — ручная отметка

@@ -285,14 +285,11 @@ const markWebhookLogState = async (client, logId, { processed, errorText }) => {
 };
 
 const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME, eventName, paidUntil, payload, customerIds }) => {
-  const isManualPaused = String(profile?.access_status || '').toLowerCase() === 'paused_manual';
-  // phase30: автопауза не применяется к admin/applicant независимо от флага.
-  // Флаг auto_pause_exempt — для индивидуальных исключений (бартеры) среди платящих ролей.
-  const autoPauseExempt = Boolean(profile?.auto_pause_exempt) || isExemptRole(profile?.role);
+  // В1: deactivation/finish больше не трогают access_status (Лига-доступ = subActive),
+  // поэтому exempt/manual-логика паузы здесь не нужна — mutation.access_status может быть null.
   const mutation = deriveAccessMutation({
     eventName,
-    currentAccessStatus: profile?.access_status || null,
-    autoPauseExempt
+    currentAccessStatus: profile?.access_status || null
   });
   const payloadJson = JSON.stringify(payload || {});
   const subscriptionId = String(customerIds.subscriptionId || '').trim() || null;
@@ -333,7 +330,7 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
     await db.query(
       `update public.profiles
          set subscription_status = $2,
-             access_status = $3,
+             access_status = coalesce($3, access_status),
              paid_until = coalesce($4::timestamptz, paid_until),
              last_prodamus_event = $5,
              last_prodamus_payload = $6::jsonb,
@@ -356,14 +353,8 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
       [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, paidUntil ? paidUntil.toISOString() : null]
     );
 
-    if (!isManualPaused) {
-      // Best effort logout in auth-service.
-      await fetch(`${process.env.AUTH_URL || 'https://auth.skrebeyko.ru'}/auth/logout-all`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-service-secret': process.env.AUTH_SERVICE_SECRET || '' },
-        body: JSON.stringify({ user_id: profile.id, reason: 'subscription_blocked' })
-      }).catch(() => {});
-    }
+    // В1: finish/deactivation больше НЕ отзывает платформенный доступ → logout не нужен.
+    // Лига-замок реализуется через subActive (paid_until) на Лига-поверхностях, не через сессию.
   }
 };
 
@@ -717,23 +708,23 @@ const runNightlyExpiryReconcile = async () => {
       console.info(`[reconcile ${BILLING_TIMEZONE}] auto_pause_exempt expired: ${expired.rows.length} profiles`);
     }
 
-    // FEAT-015 Path C step 2: existing overdue → paused_expired,
-    // НО игнорировать exempt-профили (они защищены от автопаузы по дизайну).
+    // В1 (кабинет-первый): истёкшая Лига-подписка помечается subscription_status='overdue'
+    // (репортинг для напоминаний 1f), но access_status НЕ трогается — платформенный доступ
+    // и курс не режем. Лига-замок реализуется через subActive (paid_until) на Лига-поверхностях.
+    // Idempotent-guard: не переписываем уже помеченных overdue (иначе returning шумит каждую ночь).
     const { rows } = await pool.query(
       `update public.profiles
-          set subscription_status = case when subscription_status = 'active' then 'overdue' else subscription_status end,
-              access_status = case when access_status = 'active' then 'paused_expired' else access_status end,
-              last_prodamus_event = coalesce(last_prodamus_event, 'nightly_reconcile_overdue'),
-              session_version = case when access_status = 'active' then session_version + 1 else session_version end
+          set subscription_status = 'overdue',
+              last_prodamus_event = coalesce(last_prodamus_event, 'nightly_reconcile_overdue')
         where role not in ('admin', 'applicant')
           and coalesce(auto_pause_exempt, false) = false
-          and coalesce(access_status, 'active') = 'active'
+          and subscription_status = 'active'
           and paid_until is not null
           and paid_until < now()
        returning id`
     );
     if ((rows || []).length > 0) {
-      console.info(`[billing-reconcile ${BILLING_TIMEZONE}] blocked overdue users: ${rows.length}`);
+      console.info(`[billing-reconcile ${BILLING_TIMEZONE}] marked overdue (access NOT paused, В1): ${rows.length}`);
     }
   } catch (e) {
     console.error('[billing-reconcile] failed', e);

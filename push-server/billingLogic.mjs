@@ -38,7 +38,7 @@ export const normalizeTelegramUsername = (input) => {
 };
 
 // BotHunter событие → внутреннее eventName биллинг-логики.
-// 'expired' → 'finish' (paused_expired, если нет paused_manual/exempt).
+// 'expired' → 'finish' (В1: помечает subscription_status='finished', access_status НЕ трогает).
 // 'active'  → 'payment_success' (открывает доступ, paid_until +31д).
 export const mapBotHunterEvent = (event) => {
   const e = String(event ?? '').trim().toLowerCase();
@@ -47,14 +47,12 @@ export const mapBotHunterEvent = (event) => {
   return null;
 };
 
-export const deriveAccessMutation = ({ eventName, currentAccessStatus, autoPauseExempt = false }) => {
+export const deriveAccessMutation = ({ eventName, currentAccessStatus }) => {
   const isManualPaused = String(currentAccessStatus || '').toLowerCase() === 'paused_manual';
 
-  // FEAT-015 Path C: auto_pause_exempt — иммунитет к webhook-автопаузе.
-  // Платёж (success/auto_payment) проходит как обычно, exempt не мешает.
-  // Деактивация (deactivation/finish) логируется в subscription_status,
-  // но access_status остаётся 'active'. Стандартный приоритет:
-  // exempt > paused_manual > paused_expired.
+  // В1 (кабинет-первый): Лига-неоплата больше НЕ трогает access_status, поэтому
+  // auto_pause_exempt здесь неактуален (нечего «исключать» — паузы по подписке нет).
+  // Платёж (success/auto_payment) открывает доступ и уважает paused_manual.
 
   if (eventName === 'payment_success' || eventName === 'auto_payment') {
     return {
@@ -63,22 +61,22 @@ export const deriveAccessMutation = ({ eventName, currentAccessStatus, autoPause
       bumpSessionVersion: false
     };
   }
+  // В1 (кабинет-первый): платформенный доступ (access_status) НЕ зависит от
+  // Лига-неоплаты. Лига-доступ = subActive (paid_until). deactivation/finish
+  // обновляют только subscription_status (репортинг для напоминаний 1f);
+  // access_status: null = «не менять» (SQL применяет coalesce), logout не шлём.
   if (eventName === 'deactivation') {
     return {
       subscription_status: 'deactivated',
-      access_status: autoPauseExempt
-        ? 'active'
-        : (isManualPaused ? 'paused_manual' : 'paused_expired'),
-      bumpSessionVersion: !autoPauseExempt && !isManualPaused
+      access_status: null,
+      bumpSessionVersion: false
     };
   }
   if (eventName === 'finish') {
     return {
       subscription_status: 'finished',
-      access_status: autoPauseExempt
-        ? 'active'
-        : (isManualPaused ? 'paused_manual' : 'paused_expired'),
-      bumpSessionVersion: !autoPauseExempt && !isManualPaused
+      access_status: null,
+      bumpSessionVersion: false
     };
   }
   return null;

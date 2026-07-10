@@ -2,7 +2,17 @@
 
 **Дата:** 2026-07-10
 **Автор:** codeexec (VS Code)
-**Статус:** 🔴 код в рабочем дереве, НЕ закоммичен/НЕ задеплоен/НЕ применён. Все 5 файлов `node --check` OK.
+**Статус:** 🔴 код в рабочем дереве, НЕ закоммичен/НЕ задеплоен/НЕ применён. `node --check` + runtime-import smoke OK.
+
+## Обновление (по замечанию Оли + найденный баг)
+- **TOCTOU-перепроверка перед KICK** (`kickRecheck` в `executeActions`): перед каждым `kickChatMember`
+  перечитываем ЖИВУЮ БД (`paid_until`, `access_status`, `auto_pause_exempt`) **и** делаем свежий
+  `getChatMember`. Кикаем ТОЛЬКО если всё ещё: `paid_until < now` И не exempt И не paused_manual И реально в ресурсе.
+  Иначе → `status='skipped'` + `tg_response.recheck_skip = paid|became_exempt|became_paused_manual|left_resource|no_profile`.
+  Действует на ОБА пути (confirm обязательно; в nightly-autoKick окна нет, но проверка безвредна — состояние свежее).
+- **Фикс латентного бага:** мой первый импл создавал **циклический импорт** `reconcile ↔ actions` с
+  использованием константы на этапе eval → TDZ-краш при рантайме (node --check это не ловит).
+  Вынес константы в новый `tgAccessConst.mjs`. Проверил **рантайм-импортом** всех модулей — OK.
 **Дизайн:** [`_session/239`](2026-07-10_239_codeexec_phase3_live_step_design.md) (🟢 одобрен).
 **Гейт:** `TG_ACCESS_MODE=off` по умолчанию → полный no-op. Без токена модуль спит.
 
@@ -11,8 +21,9 @@
 ## Изменения (uncommitted)
 | Файл | | Что |
 |---|---|---|
+| `push-server/tgAccessConst.mjs` | **new** | константы (ids/roles/resources) — вынесены, чтобы разорвать цикл reconcile↔actions |
 | `push-server/tgAccessClient.mjs` | M | + мутирующие методы (ban/unban/approve/decline/createInviteLink) + `kickChatMember`=ban+unban + `getUpdates` |
-| `push-server/tgAccessActions.mjs` | **new** | `dedupKey`, `upsertPlanned`, `executeActions` (единственная точка мутаций) |
+| `push-server/tgAccessActions.mjs` | **new** | `dedupKey`, `upsertPlanned`, `executeActions` (единственная точка мутаций) + `kickRecheck` (TOCTOU) |
 | `push-server/tgAccessReconcile.mjs` | M | live-режим: материализация плана + исполнение ADMIT + gated KICK |
 | `push-server/tgAccessJoinPoller.mjs` | **new** | long-poll `chat_join_request` → авто-approve известного оплаченного |
 | `push-server/server.mjs` | M (+60/-2) | env-переменные, nightly-подключение, poller-старт, 3 admin-эндпоинта, лог |
@@ -54,6 +65,7 @@ KICK исполняется только (а) в nightly при `mode=live && TG
 ## Ревью-чеклист
 - [ ] мутации только в `executeActions`; shadow туда не заходит.
 - [ ] KICK не исполняется вне `live+autoKick`/`confirm-kicks`.
+- [ ] **KICK-recheck: перед kick перечитывается живой paid_until/exempt/manual + getChatMember; оплатил/ушёл/exempt → skip.**
 - [ ] dedup: повтор в одном эпизоде оплаты блокируется.
 - [ ] poller approve-условие (exempt/paid, не manual, не unknown).
 - [ ] эндпоинты под `requireAdmin`; ручной run не авто-кикает.

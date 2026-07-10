@@ -83,3 +83,21 @@ export const deriveAccessMutation = ({ eventName, currentAccessStatus, autoPause
   }
   return null;
 };
+
+// ── Товаро-дискриминация Лиги в payload Prodamus (Фаза 3, корневой фикс) ──
+// Лига-доступ выдаём ТОЛЬКО за Лига-товар. Все варианты названия содержат
+// подстроку «Лига развивающих практиков» (базовый / 30 дней / пропущенные 30 дней).
+// Не-Лига («12 месяцев», «Неделя заботы», ПВЛ, книги, Орбита…) её не содержат.
+const LIGA_NAME_RE = /лига развивающих практиков/i;
+
+export const isLigaProduct = (payload = {}) =>
+  Array.isArray(payload.products) &&
+  payload.products.some((p) => LIGA_NAME_RE.test(String(p?.name || '')));
+
+// Похоже ли на Лига-СУММУ (цены планов 1m/3m/6m) — для заметного сигнала, если
+// пропускаем платёж с Лига-суммой без совпадения по имени → возможно переименование товара.
+const LIGA_PRICES = new Set([2000, 5500, 10000]);
+export const looksLikeLigaSum = (payload = {}) => {
+  const s = Number(String(payload.sum ?? '').replace(',', '.'));
+  return Number.isFinite(s) && LIGA_PRICES.has(Math.round(s));
+};

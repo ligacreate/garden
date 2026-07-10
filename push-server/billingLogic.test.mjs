@@ -1,6 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent } from './billingLogic.mjs';
+import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent, isLigaProduct, looksLikeLigaSum } from './billingLogic.mjs';
+
+test('isLigaProduct: все Лига-варианты матчатся (ci), не-Лига — нет', () => {
+  assert.equal(isLigaProduct({ products: [{ name: 'Лига развивающих практиков' }] }), true);
+  assert.equal(isLigaProduct({ products: [{ name: 'Лига развивающих практиков Skrebeyko, 30 дней' }] }), true);
+  assert.equal(isLigaProduct({ products: [{ name: 'Лига развивающих практиков Skrebeyko, пропущенные 30 дней' }] }), true);
+  assert.equal(isLigaProduct({ products: [{ name: 'ЛИГА РАЗВИВАЮЩИХ ПРАКТИКОВ' }] }), true); // ci
+  assert.equal(isLigaProduct({ products: [{ name: '12 месяцев' }] }), false);
+  assert.equal(isLigaProduct({ products: [{ name: 'Неделя заботы о себе' }] }), false);
+  assert.equal(isLigaProduct({ products: [{ name: 'Пиши, веди, люби' }] }), false);
+  assert.equal(isLigaProduct({ products: [{ name: 'книга' }, { name: 'Лига развивающих практиков' }] }), true); // корзина
+  assert.equal(isLigaProduct({}), false);              // нет products
+  assert.equal(isLigaProduct({ products: [] }), false);
+  assert.equal(isLigaProduct({ products: [{}] }), false);
+  assert.equal(isLigaProduct({ products: 'нет' }), false);
+});
+
+test('looksLikeLigaSum: цены планов 1m/3m/6m', () => {
+  assert.equal(looksLikeLigaSum({ sum: '2000.00' }), true);
+  assert.equal(looksLikeLigaSum({ sum: '5500' }), true);
+  assert.equal(looksLikeLigaSum({ sum: '10000.00' }), true);
+  assert.equal(looksLikeLigaSum({ sum: '750.00' }), false); // Старостина «12 месяцев»
+  assert.equal(looksLikeLigaSum({ sum: '' }), false);
+  assert.equal(looksLikeLigaSum({}), false);
+});
 
 test('payment_success opens access', () => {
   const mutation = deriveAccessMutation({ eventName: 'payment_success', currentAccessStatus: 'paused_expired' });

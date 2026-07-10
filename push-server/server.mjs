@@ -5,7 +5,7 @@ import webpush from 'web-push';
 import pkg from 'pg';
 import crypto from 'crypto';
 import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
-import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent } from './billingLogic.mjs';
+import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent, isLigaProduct, looksLikeLigaSum } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
 import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled, buildYooKassaPayload, buildProdamusUrl } from './billingCheckout.mjs';
 import { makeTgAccessClient } from './tgAccessClient.mjs';
@@ -497,6 +497,28 @@ const handleProdamusWebhook = async (req, res) => {
       await markWebhookLogState(client, log.id, { processed: true, errorText: applied.note || null });
       await client.query('commit');
       return res.json({ ok: true, processed: true, path: 'plan_order', order_id: orderRef, ...(applied.info || {}) });
+    }
+
+    // ── ТОВАРО-ГЕЙТ (Фаза 3): в «диком» пути Лига-доступ выдаём ТОЛЬКО за Лига-товар.
+    //    Плановый путь (1c, выше) — по plan_code, сюда не доходит. Pause-события (finish/
+    //    deactivation) не про товар — пропускаем гейт. Нет products → трактуем как не-Лига.
+    const isGrant = eventName === 'payment_success' || eventName === 'auto_payment';
+    if (isGrant && !isLigaProduct(payload)) {
+      const names = Array.isArray(payload.products) ? payload.products.map((p) => p?.name).filter(Boolean) : [];
+      const base = names.length ? `SKIPPED_NON_LIGA_PRODUCT:${names.join('|')}` : 'SKIPPED_NON_LIGA_NO_PRODUCTS';
+      const ligaSum = looksLikeLigaSum(payload);
+      if (ligaSum) {
+        // Лига-сумма, но имя не совпало → возможно ПЕРЕИМЕНОВАЛИ товар. Заметный сигнал.
+        console.warn(`[prodamus] ⚠ SKIP grant с ЛИГА-СУММОЙ (проверить переименование товара): sum=${payload.sum} products=${JSON.stringify(names)} ext=${externalId}`);
+      } else {
+        console.info(`[prodamus] skip non-liga grant: ${base} ext=${externalId}`);
+      }
+      await markWebhookLogState(client, log.id, {
+        processed: true,
+        errorText: (ligaSum ? 'LIGA_SUM_NAME_MISMATCH ' : '') + base.slice(0, 480)
+      });
+      await client.query('commit');
+      return res.json({ ok: true, processed: true, skipped: 'non_liga_product', liga_sum: ligaSum });
     }
 
     const customer = resolveCustomer(payload);

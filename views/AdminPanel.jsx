@@ -532,6 +532,14 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
         api.getBillingPlans().then((p) => { if (alive) setBillingPlans(p); }).catch(() => {});
         return () => { alive = false; };
     }, [editingPaymentUser]);
+    // Статистика оплат по месяцам (RPC phase47) — грузим при открытии таба «Статистика».
+    const [payStats, setPayStats] = useState([]);
+    useEffect(() => {
+        if (tab !== 'stats') return;
+        let alive = true;
+        api.getPaymentStatsByMonth().then((r) => { if (alive) setPayStats(r); }).catch(() => {});
+        return () => { alive = false; };
+    }, [tab]);
     // UI-PENDING-APPROVAL-LIST: per-user выбранная роль для approve-dropdown'а.
     // {userId: 'applicant'|'intern'|'leader'|'mentor'}. Default — applicant (90%+ кейсов).
     const [approvalRoles, setApprovalRoles] = useState({});
@@ -801,7 +809,45 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                 </div>
 
                 {tab === 'stats' && (
-                    <AdminStatsDashboard meetings={allMeetings} users={users} />
+                    <>
+                        <AdminStatsDashboard meetings={allMeetings} users={users} />
+                        <div className="surface-card p-6 mt-6">
+                            <h3 className="font-display font-semibold text-slate-900 mb-1">Оплаты подписки Лиги по месяцам</h3>
+                            <p className="text-xs text-slate-400 mb-4">
+                                Учитываются оплаты через платформу с июля 2026. Прежние платежи Prodamus (до запуска) здесь не отражены.
+                            </p>
+                            {payStats.length === 0 ? (
+                                <div className="text-sm text-slate-400">Пока нет оплат.</div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-left text-slate-400 border-b border-slate-100">
+                                                <th className="py-2 pr-4 font-medium">Месяц</th>
+                                                <th className="py-2 pr-4 font-medium text-right">Собрано, ₽</th>
+                                                <th className="py-2 pr-4 font-medium text-right">Платежей</th>
+                                                <th className="py-2 pr-4 font-medium text-right">1м / 3м / 6м</th>
+                                                <th className="py-2 font-medium text-right">Prodamus / вручную</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {payStats.map((r) => (
+                                                <tr key={r.month} className="border-b border-slate-50">
+                                                    <td className="py-2 pr-4 text-slate-700">
+                                                        {new Date(r.month).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                                                    </td>
+                                                    <td className="py-2 pr-4 text-right font-semibold text-slate-900">{Number(r.collected_rub).toLocaleString('ru-RU')}</td>
+                                                    <td className="py-2 pr-4 text-right text-slate-700">{r.payments}</td>
+                                                    <td className="py-2 pr-4 text-right text-slate-500">{r.plan_1m} / {r.plan_3m} / {r.plan_6m}</td>
+                                                    <td className="py-2 text-right text-slate-500">{r.ch_prodamus} / {r.ch_manual}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </>
                 )}
 
                 {tab === 'pvl-progress' && (

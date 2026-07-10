@@ -11,6 +11,11 @@ import { normalizeSkills } from '../utils/skills';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
 
+// Standing invite-ссылки в Лига-сообщество. Клик → заявка chat_join_request →
+// join-поллер авто-approve оплаченного (матч по telegram_user_id/@username). Уже на проде.
+const LIGA_TG_CHANNEL_URL = 'https://t.me/+dVRWs_cl2VA3OTVi';
+const LIGA_TG_CHAT_URL = 'https://t.me/+GH0sjSaUzOc2N2Zi';
+
 const TagsInput = ({ label, value = [], onChange, placeholder = "Добавить...", options = [] }) => {
     const [input, setInput] = useState('');
 
@@ -625,6 +630,33 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                     </div>
                                     <div className="text-xs text-slate-500 mt-0.5">
                                         {paidUntilDate ? `Оплачено до ${fmtDate(paidUntilDate)}` : 'Выберите план и оплатите доступ к Лиге.'}
+                                    </div>
+                                </div>
+                            )}
+
+                            {subActive && (
+                                <div className="mt-4 space-y-2">
+                                    <div className="text-sm font-medium text-slate-700">Доступ в сообщество Лиги</div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <a
+                                            href={LIGA_TG_CHANNEL_URL}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-center gap-2 p-3 rounded-2xl border border-emerald-500 bg-emerald-50/40 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 transition-all"
+                                        >
+                                            <Send className="w-4 h-4" /> Вступить в канал Лиги
+                                        </a>
+                                        <a
+                                            href={LIGA_TG_CHAT_URL}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-center gap-2 p-3 rounded-2xl border border-emerald-500 bg-emerald-50/40 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 transition-all"
+                                        >
+                                            <Send className="w-4 h-4" /> Вступить в чат Лиги
+                                        </a>
+                                    </div>
+                                    <div className="text-[11px] text-slate-400 leading-relaxed">
+                                        По ссылке отправится заявка — бот одобрит её автоматически, если ваш Telegram привязан к профилю. Если вы уже участник — ссылка просто откроет канал/чат.
                                     </div>
                                 </div>
                             )}

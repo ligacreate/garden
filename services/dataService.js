@@ -1799,6 +1799,20 @@ class RemoteApiService {
     }
 
     /**
+     * Статистика оплат по месяцам (admin). RPC admin_payment_stats_by_month (phase47,
+     * SECURITY DEFINER + is_admin()-guard). Агрегат payment_orders(status='paid').
+     * Возвращает [{ month, collected_rub, payments, plan_1m, plan_3m, plan_6m, ch_manual, ch_prodamus }].
+     * Охват: только оплаты через платформу (с июля 2026). Прежние Prodamus-платежи не отражены.
+     */
+    async getPaymentStatsByMonth() {
+        const { data } = await postgrestFetch('rpc/admin_payment_stats_by_month', {}, {
+            method: 'POST',
+            body: {}
+        });
+        return Array.isArray(data) ? data : [];
+    }
+
+    /**
      * ФАЗА 1d: инициировать оплату подписки. Возвращает { url } — хостед-форма
      * Prodamus (юзер выбирает способ: СБП / РФ-карта / зарубеж на форме).
      * user_id/сумму бэк берёт из JWT+billing_plans (anti-tamper).

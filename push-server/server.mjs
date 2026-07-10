@@ -8,6 +8,10 @@ import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.m
 import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
 import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled, buildYooKassaPayload, buildProdamusUrl } from './billingCheckout.mjs';
+import { makeTgAccessClient } from './tgAccessClient.mjs';
+import { runTgAccessReconcile } from './tgAccessReconcile.mjs';
+import { executeActions } from './tgAccessActions.mjs';
+import { startJoinPoller } from './tgAccessJoinPoller.mjs';
 
 const { Pool } = pkg;
 
@@ -36,7 +40,11 @@ const {
   YOOKASSA_TEST_SHOP_ID = '',             // тест-магазина у нас НЕТ — ветка инертна
   YOOKASSA_TEST_SECRET_KEY = '',
   YOOKASSA_RETURN_URL = 'https://liga.skrebeyko.ru/?paid=1',
-  PRODAMUS_PAYFORM_URL = ''               // https://skrebeyko.payform.ru
+  PRODAMUS_PAYFORM_URL = '',               // https://skrebeyko.payform.ru
+  // ФАЗА 3 — TG-доступ (по умолчанию ВЫКЛ: без токена/при mode=off модуль спит)
+  TG_ACCESS_BOT_TOKEN = '',                // @ligagardenbot; пусто → модуль не активен
+  TG_ACCESS_MODE = 'off',                  // off | shadow | admit | live
+  TG_ACCESS_AUTOKICK = ''                  // '1' → авто-исполнять KICK в nightly (после 1-го confirm-батча)
 } = process.env;
 
 if (!DATABASE_URL) {
@@ -902,10 +910,60 @@ app.post('/api/billing/admin/mark-paid', requireAdmin, handleAdminMarkPaid);
 runNightlyExpiryReconcile();
 setInterval(runNightlyExpiryReconcile, 24 * 60 * 60 * 1000);
 
+// ── ФАЗА 3 — TG-доступ (gated by TG_ACCESS_MODE; off/пустой токен → полный no-op) ──
+const tgAccessClient = TG_ACCESS_BOT_TOKEN ? makeTgAccessClient(TG_ACCESS_BOT_TOKEN) : null;
+const tgAccessEnabled = Boolean(tgAccessClient) && TG_ACCESS_MODE !== 'off';
+const tgAutoKick = String(TG_ACCESS_AUTOKICK) === '1';
+
+const runTgAccess = async () => {
+  if (!tgAccessEnabled) return;
+  try {
+    // paid_until<now вычисляется тут же — не зависит от порядка с expiry-reconcile
+    const r = await runTgAccessReconcile({ mode: TG_ACCESS_MODE, pool, tg: tgAccessClient, autoKick: tgAutoKick });
+    console.info(`[tg-access ${TG_ACCESS_MODE}] ` + JSON.stringify(r.counts));
+  } catch (e) { console.error('[tg-access] failed', e); }
+};
+if (tgAccessEnabled) runTgAccess();
+setInterval(runTgAccess, 24 * 60 * 60 * 1000);
+
+// approve-on-request poller (стартует только при admit/live)
+let tgJoinPoller = { stop() {} };
+if (tgAccessEnabled) tgJoinPoller = startJoinPoller({ pool, tg: tgAccessClient, mode: TG_ACCESS_MODE });
+
+// admin-эндпоинты (requireAdmin, HS256). Ручной run НЕ авто-кикает — только план + ADMIT.
+app.post('/api/tg-access/run', requireAdmin, async (req, res) => {
+  if (!tgAccessClient) return res.status(503).json({ error: 'tg_access_token_missing' });
+  const mode = ['shadow', 'admit', 'live'].includes(req.query.mode) ? req.query.mode : TG_ACCESS_MODE;
+  try {
+    const r = await runTgAccessReconcile({ mode, pool, tg: tgAccessClient, autoKick: false });
+    return res.json({ ok: true, mode, batch_id: r.batch_id, counts: r.counts, kick: r.kick, admit: r.admit });
+  } catch (e) { return res.status(500).json({ error: 'run_failed', detail: e?.message }); }
+});
+app.get('/api/tg-access/planned', requireAdmin, async (req, res) => {
+  const batchId = String(req.query.batch_id || '');
+  const base = `select a.id, a.telegram_user_id, a.resource, a.action, a.reason, a.paid_until_snap, a.batch_id, p.name
+                  from public.tg_access_actions a left join public.profiles p on p.id = a.profile_id
+                 where a.status='planned'`;
+  const q = batchId
+    ? await pool.query(base + ` and a.batch_id=$1 order by a.id`, [batchId])
+    : await pool.query(base + ` order by a.id`);
+  return res.json({ planned: q.rows });
+});
+app.post('/api/tg-access/confirm-kicks', requireAdmin, async (req, res) => {
+  if (!tgAccessClient) return res.status(503).json({ error: 'tg_access_token_missing' });
+  const batchId = String((req.body || {}).batch_id || '');
+  if (!batchId) return res.status(400).json({ error: 'batch_id_required' });
+  try {
+    const done = await executeActions(pool, tgAccessClient, { filter: 'kick', batchId });
+    return res.json({ ok: true, batch_id: batchId, executed: done });
+  } catch (e) { return res.status(500).json({ error: 'confirm_failed', detail: e?.message }); }
+});
+
 app.listen(Number(PORT), () => {
   const yk = resolveYooKassaCreds(process.env, SANDBOX)
     ? (yooKassaLiveEnabled(process.env) ? 'LIVE-armed' : 'test')
     : 'off';
   const checkout = `checkout[sandbox=${SANDBOX}, jwt=${GARDEN_JWT_SECRET ? 'on' : 'OFF'}, yk=${yk}, prodamus=${PRODAMUS_PAYFORM_URL ? 'on(demo=' + SANDBOX + ')' : 'off'}]`;
-  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'}, ${checkout})`);
+  const tgacc = `tg-access[${TG_ACCESS_MODE === 'off' ? 'off' : (TG_ACCESS_BOT_TOKEN ? TG_ACCESS_MODE : 'no-token')}${tgAutoKick ? ',autokick' : ''}]`;
+  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'}, ${checkout}, ${tgacc})`);
 });

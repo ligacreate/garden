@@ -23,16 +23,44 @@ async function tgGet(token, method, params) {
 }
 
 /**
- * Клиент доступа. Только чтение. Мутирующих методов нет by design.
+ * Клиент доступа.
+ *   - READ (всегда): getMe, getChat, getChatMember, getUpdates.
+ *   - MUTATING (вызываются ТОЛЬКО из executor'а при mode∈{admit,live}, см. tgAccessReconcile):
+ *     banChatMember, unbanChatMember, kickChatMember(=ban+unban), approveChatJoinRequest,
+ *     declineChatJoinRequest, createChatInviteLink.
+ * Мутирующие методы физически недоступны, пока mode=off/shadow (executor их не зовёт).
  */
 export function makeTgAccessClient(token) {
   if (!token) throw new Error('TG_ACCESS_BOT_TOKEN не задан');
-  return {
+  const client = {
+    // ── READ ──
     getMe: () => tgGet(token, 'getMe', {}),
     getChat: (chatId) => tgGet(token, 'getChat', { chat_id: chatId }),
     getChatMember: (chatId, userId) =>
       tgGet(token, 'getChatMember', { chat_id: chatId, user_id: userId }),
+    getUpdates: (params = {}) => tgGet(token, 'getUpdates', params), // для poller'а заявок
+
+    // ── MUTATING ──
+    banChatMember: (chatId, userId) =>
+      tgGet(token, 'banChatMember', { chat_id: chatId, user_id: userId }),
+    unbanChatMember: (chatId, userId) =>
+      tgGet(token, 'unbanChatMember', { chat_id: chatId, user_id: userId, only_if_banned: true }),
+    approveChatJoinRequest: (chatId, userId) =>
+      tgGet(token, 'approveChatJoinRequest', { chat_id: chatId, user_id: userId }),
+    declineChatJoinRequest: (chatId, userId) =>
+      tgGet(token, 'declineChatJoinRequest', { chat_id: chatId, user_id: userId }),
+    createChatInviteLink: (chatId, opts = {}) =>
+      tgGet(token, 'createChatInviteLink', { chat_id: chatId, ...opts }),
+
+    // KICK = ban + unban: удалить, но НЕ в чёрный список (по оплате сможет вернуться).
+    async kickChatMember(chatId, userId) {
+      const ban = await this.banChatMember(chatId, userId);
+      if (!ban.ok) return { ok: false, step: 'ban', ban };
+      const unban = await this.unbanChatMember(chatId, userId);
+      return { ok: unban.ok, step: unban.ok ? 'done' : 'unban', ban, unban };
+    },
   };
+  return client;
 }
 
 // Статусы участника, означающие «реально в чате/канале».

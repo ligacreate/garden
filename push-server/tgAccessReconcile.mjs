@@ -12,14 +12,11 @@
 //   - оба ресурса: канал -1002377682177 и чат -1002432957741, решение на каждый отдельно.
 
 import { isInChat } from './tgAccessClient.mjs';
+import { upsertPlanned, executeActions } from './tgAccessActions.mjs';
+import { TG_CHANNEL_ID, TG_CHAT_ID, LIGA_ROLES, RESOURCES } from './tgAccessConst.mjs';
 
-export const TG_CHANNEL_ID = -1002377682177;
-export const TG_CHAT_ID = -1002432957741;
-export const LIGA_ROLES = ['intern', 'leader', 'mentor'];
-export const RESOURCES = [
-  { key: 'channel', id: TG_CHANNEL_ID },
-  { key: 'chat', id: TG_CHAT_ID },
-];
+// re-export для обратной совместимости (кто импортировал из reconcile)
+export { TG_CHANNEL_ID, TG_CHAT_ID, LIGA_ROLES, RESOURCES } from './tgAccessConst.mjs';
 
 /**
  * @param {object}   o
@@ -30,9 +27,9 @@ export const RESOURCES = [
  *                              (для списка «незнакомцев в чате без профиля»; Bot API их не перечислит)
  * @param {Date}     o.now
  */
-export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster = null, now = new Date(), logger = console }) {
-  if (mode !== 'shadow') {
-    throw new Error(`runTgAccessReconcile: mode='${mode}' не поддержан (пока только shadow)`);
+export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster = null, now = new Date(), autoKick = false, logger = console }) {
+  if (!['shadow', 'admit', 'live'].includes(mode)) {
+    throw new Error(`runTgAccessReconcile: mode='${mode}' неизвестен`);
   }
 
   // 1. Известные профили (enforce-скоуп).
@@ -103,6 +100,28 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     }
   }
 
+  // ── ADMIT/LIVE: материализуем план в tg_access_actions + исполняем ──
+  //    shadow → сюда не заходим (ноль записей, ноль мутаций).
+  let batch_id = null;
+  const executed = { admit: [], kick: [] };
+  if (mode !== 'shadow') {
+    batch_id = `tgacc-${now.toISOString().replace(/[:.]/g, '').slice(0, 15)}`;
+    for (const d of admit) {
+      await upsertPlanned(pool, { profile_id: d.id, telegram_user_id: Number(d.uid), resource: d.resource,
+        action: 'admit_invite', reason: 'paid_not_in_resource', paid_until: d.paid_until, batch_id });
+    }
+    for (const d of kick) {
+      await upsertPlanned(pool, { profile_id: d.id, telegram_user_id: Number(d.uid), resource: d.resource,
+        action: 'kick', reason: 'expired', paid_until: d.paid_until, batch_id });
+    }
+    // ADMIT исполняем сразу (admit и live) — впуск оплаченного безопасен.
+    executed.admit = await executeActions(pool, tg, { filter: 'admit', batchId: batch_id, now });
+    // KICK — ТОЛЬКО live И autoKick. Иначе остаётся planned → ждёт confirm-эндпоинта (первый батч).
+    if (mode === 'live' && autoKick) {
+      executed.kick = await executeActions(pool, tg, { filter: 'kick', batchId: batch_id, now });
+    }
+  }
+
   const counts = {
     known: known.length,
     kick: kick.length,
@@ -112,12 +131,14 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     skip_unknown_paid: skip_unknown_paid.length,
     skip_unknown_members: skip_unknown_members.length,
     errors: errors.length,
+    executed_admit: executed.admit.length,
+    executed_kick: executed.kick.length,
   };
   logger?.info?.(`[tg-access-reconcile ${mode}] ` + JSON.stringify(counts));
 
   return {
-    mode, now: now.toISOString(), counts,
+    mode, now: now.toISOString(), batch_id, counts,
     kick, admit, skip_exempt, skip_manual, skip_unknown_paid, skip_unknown_members,
-    errors, membership,
+    errors, membership, executed,
   };
 }

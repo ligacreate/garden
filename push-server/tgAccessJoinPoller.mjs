@@ -10,16 +10,40 @@ import { dedupKey } from './tgAccessActions.mjs';
 
 const RES_BY_ID = { [String(TG_CHANNEL_ID)]: 'channel', [String(TG_CHAT_ID)]: 'chat' };
 
-async function shouldAdmit(pool, uid) {
-  const { rows } = await pool.query(
-    `select id, role, paid_until, access_status, coalesce(auto_pause_exempt,false) as exempt
-       from public.profiles where telegram_user_id = $1 limit 1`, [uid]);
-  const p = rows[0];
-  if (!p) return { ok: false, why: 'unknown', profile: null };
-  if (p.access_status === 'paused_manual') return { ok: false, why: 'paused_manual', profile: p };
+const PROFILE_COLS = `id, role, paid_until, access_status, coalesce(auto_pause_exempt,false) as exempt, telegram_user_id`;
+
+// Нормализация profiles.telegram → голый handle (снять https://t.me/ , @ , хвостовой /). Для username-матча.
+const TG_NORM = `lower(regexp_replace(regexp_replace(telegram, '^(https?://)?(www\\.)?(t\\.me/|telegram\\.me/)?@?', '', 'i'), '/+$', ''))`;
+
+async function findProfile(pool, uid, username) {
+  // 1) по числовому id (привязанные)
+  let r = await pool.query(`select ${PROFILE_COLS} from public.profiles where telegram_user_id = $1 limit 1`, [uid]);
+  if (r.rows[0]) return { p: r.rows[0], matchedBy: 'telegram_user_id' };
+  // 2) по @username (непривязанные): точное case-insensitive совпадение telegram-хендла
+  if (username) {
+    r = await pool.query(
+      `select ${PROFILE_COLS} from public.profiles
+        where telegram <> '' and ${TG_NORM} = lower($1) limit 1`, [username]);
+    if (r.rows[0]) return { p: r.rows[0], matchedBy: 'username' };
+  }
+  return { p: null, matchedBy: null };
+}
+
+async function shouldAdmit(pool, uid, username) {
+  const { p, matchedBy } = await findProfile(pool, uid, username);
+  if (!p) return { ok: false, why: 'unknown', profile: null, matchedBy: null };
+  if (p.access_status === 'paused_manual') return { ok: false, why: 'paused_manual', profile: p, matchedBy };
   const paid = p.paid_until && new Date(p.paid_until) >= new Date();
-  if (p.exempt || paid) return { ok: true, why: p.exempt ? 'exempt' : 'paid', profile: p };
-  return { ok: false, why: 'expired_or_unpaid', profile: p };
+  if (p.exempt || paid) return { ok: true, why: p.exempt ? 'exempt' : 'paid', profile: p, matchedBy };
+  return { ok: false, why: 'expired_or_unpaid', profile: p, matchedBy };
+}
+
+// Бэкфилл telegram_user_id из from.id при username-матче (если был пуст и uid никем не занят).
+async function backfillUid(pool, profileId, uid) {
+  const taken = await pool.query(`select 1 from public.profiles where telegram_user_id=$1 and id<>$2 limit 1`, [uid, profileId]);
+  if (taken.rowCount) return false; // коллизия — не трогаем
+  const r = await pool.query(`update public.profiles set telegram_user_id=$1 where id=$2 and telegram_user_id is null`, [uid, profileId]);
+  return r.rowCount > 0;
 }
 
 export function startJoinPoller({ pool, tg, mode, logger = console }) {
@@ -38,15 +62,21 @@ export function startJoinPoller({ pool, tg, mode, logger = console }) {
           const req = u.chat_join_request;
           if (!req) continue;
           const uid = req.from?.id;
+          const username = req.from?.username || null;
           const resource = RES_BY_ID[String(req.chat?.id)];
           if (!uid || !resource) continue;
-          const verdict = await shouldAdmit(pool, uid);
+          const verdict = await shouldAdmit(pool, uid, username);
           if (verdict.ok) {
             const res = await tg.approveChatJoinRequest(req.chat.id, uid);
+            let backfilled = false;
+            // при username-матче и пустом telegram_user_id — привяжем числовой id из заявки
+            if (res.ok && verdict.matchedBy === 'username' && !verdict.profile.telegram_user_id) {
+              backfilled = await backfillUid(pool, verdict.profile.id, uid);
+            }
             await logApprove(pool, { profile: verdict.profile, uid, resource, ok: res.ok, res });
-            logger.info?.(`[join-poller] approve ${uid}@${resource} (${verdict.why}) ok=${res.ok}`);
+            logger.info?.(`[join-poller] approve ${uid}@${resource} (${verdict.why}, by=${verdict.matchedBy}${backfilled ? ',uid-backfilled' : ''}) ok=${res.ok}`);
           } else {
-            logger.info?.(`[join-poller] SKIP ${uid}@${resource} (${verdict.why}) — заявка висит`);
+            logger.info?.(`[join-poller] SKIP ${uid}(@${username || '—'})@${resource} (${verdict.why}) — заявка висит`);
           }
         }
       } catch (e) {

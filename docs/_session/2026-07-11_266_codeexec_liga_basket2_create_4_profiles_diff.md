@@ -142,7 +142,12 @@ SELECT count(*) FROM public.pvl_students WHERE id IN (:UID1,:UID2,:UID3,:UID4); 
 
 ## ✅ ПРИМЕНЕНО 2026-07-11 — 4/4 approved
 
-- **G1** SMTP-тест → `request-reset` на skrebeyko@proton.me = **HTTP 200**, без throw.
+- **G1** SMTP-тест:
+  - ⚠ Первый прогон на `skrebeyko@proton.me` дал HTTP 200, но письмо **не ушло** — этот email не в
+    `users_auth`, `request-reset` отдал silent-ok (анти-энумерация). 200 тут ≠ «отправлено».
+  - Аккаунт Оли на платформе — **olga@skrebeyko.com**. Повторный `request-reset` на него: HTTP 200,
+    в логе **нет** `unknown email` (дошёл до `sendMail`), **письмо доставлено — Оля подтвердила получение.**
+  - Вывод: SMTP жив end-to-end (`mail.skrebeyko.ru:465`, FROM `ilove@skrebeyko.ru`). G1 закрыт.
 - **register ×4** (throwaway pw, не логировался) → UID:
   - Елена Сулименко `25aea53f-7729-45f9-af85-f88808556668`
   - Мария Павлиш `4e4239ea-db7d-4eef-98ab-308904b9767a`

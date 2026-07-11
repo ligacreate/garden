@@ -193,3 +193,16 @@ curl -sS -X POST https://auth.skrebeyko.ru/auth/request-reset -H 'Content-Type: 
 проверка `sent_at` в очереди + 200 на reset → отчёт.
 
 **Профили заведены. Рассылка (A+B) НА ПАУЗЕ до «шли».**
+
+---
+
+## ✅ ОТПРАВЛЕНО 2026-07-11 (по сигналу «шли», автосписания погашены)
+
+- **A — welcome ×4** в `email_notifications_queue` (`INSERT 0 4`). Консюмер отработал:
+  все 4 `sent_at=22:57:10`, `attempt_count=1`, `dead_letter=null`, `last_error=null`. Доставлено системой.
+- **B — request-reset ×4** (lena17@bk.ru, leslie-maria@yandex.ru, evantipina@ya.ru, ksu.shik@mail.ru):
+  все **HTTP 200**, в логе нет `unknown email` / `request-reset error` → set-password ссылка ушла каждому.
+- Оля руками ничего не слала. Self-serve «Забыли пароль?» на месте — если 30-мин токен протухнет,
+  человек запросит новую ссылку сам.
+
+**Задача закрыта: 4 профиля заведены (4/4 approved) + welcome + set-password разосланы автоматом.**

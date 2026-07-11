@@ -12,6 +12,7 @@ import { makeTgAccessClient } from './tgAccessClient.mjs';
 import { runTgAccessReconcile } from './tgAccessReconcile.mjs';
 import { executeActions } from './tgAccessActions.mjs';
 import { startJoinPoller } from './tgAccessJoinPoller.mjs';
+import { runReminders } from './reminders.mjs';
 
 const { Pool } = pkg;
 
@@ -726,6 +727,46 @@ const runNightlyExpiryReconcile = async () => {
     if ((rows || []).length > 0) {
       console.info(`[billing-reconcile ${BILLING_TIMEZONE}] marked overdue (access NOT paused, В1): ${rows.length}`);
     }
+
+    // ── Абитуриенты: авто-пауза по истечении доступа (cohort.end_date + 3мес) ──
+    // Дата — из pvl_cohorts.end_date через shared PK (profiles.id=pvl_students.id).
+    // Гард access_status='active': paused_manual НЕ трогаем (админ-бан выше), pending не перетираем.
+    // Без когорты (нет строки в EXISTS) → не истекает. Идемпотентно: повтор не найдёт уже paused_expired.
+    const applicantExpired = await pool.query(
+      `update public.profiles p
+          set access_status = 'paused_expired'
+        where p.role = 'applicant'
+          and p.access_status = 'active'
+          and exists (
+            select 1
+              from public.pvl_students s
+              join public.pvl_cohorts  c on c.id = s.cohort_id
+             where s.id = p.id
+               and (c.end_date + interval '3 months')::date < current_date
+          )
+       returning id`
+    );
+    for (const row of applicantExpired.rows || []) {
+      // Аудит причины — billing_webhook_logs (тот же паттерн, что auto_pause_exempt_expired выше).
+      await pool.query(
+        `insert into public.billing_webhook_logs(
+           provider, event_name, external_id, payload_json, signature_valid, is_processed
+         )
+         values ($1, 'applicant_access_expired', $2, $3::jsonb, true, true)
+         on conflict (provider, external_id) where external_id is not null do nothing`,
+        [
+          PRODAMUS_PROVIDER_NAME,
+          `applicant_expired:${row.id}:${new Date().toISOString().slice(0, 10)}`,
+          JSON.stringify({ profile_id: row.id, source: 'nightly_reconcile', reason: 'cohort_end_plus_3m' })
+        ]
+      );
+    }
+    if ((applicantExpired.rows || []).length > 0) {
+      console.info(`[applicant-reconcile ${BILLING_TIMEZONE}] paused_expired: ${applicantExpired.rows.length} applicants`);
+    }
+
+    // Напоминания (T-5 абитуриенты + задел под 1f) — общий движок, идемпотентный.
+    await runReminders(pool);
   } catch (e) {
     console.error('[billing-reconcile] failed', e);
   }

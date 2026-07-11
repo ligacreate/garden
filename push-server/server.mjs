@@ -11,6 +11,7 @@ import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaL
 import { makeTgAccessClient } from './tgAccessClient.mjs';
 import { runTgAccessReconcile } from './tgAccessReconcile.mjs';
 import { executeActions } from './tgAccessActions.mjs';
+import { GRACE_DAYS } from './tgAccessConst.mjs';
 import { startJoinPoller } from './tgAccessJoinPoller.mjs';
 import { runReminders } from './reminders.mjs';
 
@@ -733,6 +734,42 @@ const runNightlyExpiryReconcile = async () => {
     );
     if ((rows || []).length > 0) {
       console.info(`[billing-reconcile ${BILLING_TIMEZONE}] marked overdue (access NOT paused, В1): ${rows.length}`);
+    }
+
+    // ── Жёсткий замок Лиги: неоплата > grace → закрыть платформенный доступ ──
+    // Решение Оли (разворот В1): кабинет = привилегия Лиги. access_status='paused_expired'
+    // → bridge-триггер ставит status='suspended', RLS has_platform_access режет данные,
+    // фронт (dataService._assertActive) кидает SUBSCRIPTION_EXPIRED → экран продления.
+    // Реактивация — webhook оплаты вернёт access_status='active' (billingLogic handle_payment).
+    // Grace единый с TG-киком (GRACE_DAYS) — платформа и чат закрываются синхронно.
+    // Скоуп: leader/mentor/intern. Абитуриенты — своя модель (cohort+3мес, ниже). Exempt/manual не трогаем.
+    // Идемпотентно: guard access_status='active' — повтор не перезапишет уже закрытых.
+    const ligaLocked = await pool.query(
+      `update public.profiles
+          set access_status = 'paused_expired'
+        where role in ('leader','mentor','intern')
+          and access_status = 'active'
+          and coalesce(auto_pause_exempt, false) = false
+          and paid_until is not null
+          and paid_until < now() - ($1 || ' days')::interval
+       returning id, name`,
+      [String(GRACE_DAYS)]
+    );
+    for (const row of ligaLocked.rows || []) {
+      await pool.query(
+        `insert into public.billing_webhook_logs
+           (provider, event_name, external_id, payload_json, signature_valid, is_processed)
+         values ($1, 'liga_access_expired', $2, $3::jsonb, true, true)
+         on conflict (provider, external_id) where external_id is not null do nothing`,
+        [
+          PRODAMUS_PROVIDER_NAME,
+          `liga_expired:${row.id}:${new Date().toISOString().slice(0, 10)}`,
+          JSON.stringify({ profile_id: row.id, name: row.name, source: 'nightly_reconcile_hardlock' })
+        ]
+      );
+    }
+    if ((ligaLocked.rows || []).length > 0) {
+      console.info(`[billing-reconcile ${BILLING_TIMEZONE}] LIGA HARD-LOCK paused_expired: ${ligaLocked.rows.length}`);
     }
 
     // ── Абитуриенты: авто-пауза по истечении доступа (cohort.end_date + 3мес) ──

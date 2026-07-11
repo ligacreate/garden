@@ -1240,7 +1240,22 @@ class RemoteApiService {
     }
 
     _assertActive(profile) {
-        // Temporary open access mode: do not block login by subscription status.
+        // Жёсткий замок Лиги: неоплата (paused_expired) / админ-пауза (paused_manual)
+        // → блок платформы (кабинет = привилегия Лиги). Downstream уже проведён:
+        // App.jsx ловит SUBSCRIPTION_EXPIRED/ACCESS_PAUSED_MANUAL → экран продления
+        // (accessBlock) на init/login + 60-сек авто-логаут. Админов не трогаем.
+        if (!profile || profile.role === 'admin') return profile;
+        if (profile.access_status === ACCESS_STATUS.PAUSED_EXPIRED) {
+            const err = new Error('Доступ к Лиге приостановлен — продлите подписку, чтобы вернуться.');
+            err.code = 'SUBSCRIPTION_EXPIRED';
+            err.botRenewUrl = profile.bot_renew_url || null;
+            throw err;
+        }
+        if (profile.access_status === ACCESS_STATUS.PAUSED_MANUAL) {
+            const err = new Error('Доступ приостановлен администратором.');
+            err.code = 'ACCESS_PAUSED_MANUAL';
+            throw err;
+        }
         return profile;
     }
 

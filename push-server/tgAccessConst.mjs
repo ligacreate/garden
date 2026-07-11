@@ -9,3 +9,9 @@ export const RESOURCES = [
   { key: 'chat', id: TG_CHAT_ID },
 ];
 export const RESOURCE_ID = { channel: TG_CHANNEL_ID, chat: TG_CHAT_ID };
+
+// Grace-период: сколько дней ПОСЛЕ истечения paid_until ещё НЕ кикаем.
+// Единый для всех ролей. 1f успевает предупредить → человек продлевает → иначе кик после grace.
+// Env-override для тюнинга без передеплоя.
+export const GRACE_DAYS = Number(process.env.TG_ACCESS_GRACE_DAYS || 3);
+export const graceCutoff = (now) => new Date(now.getTime() - GRACE_DAYS * 24 * 60 * 60 * 1000);

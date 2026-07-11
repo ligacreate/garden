@@ -13,7 +13,7 @@
 
 import { isInChat } from './tgAccessClient.mjs';
 import { upsertPlanned, executeActions } from './tgAccessActions.mjs';
-import { TG_CHANNEL_ID, TG_CHAT_ID, LIGA_ROLES, RESOURCES } from './tgAccessConst.mjs';
+import { TG_CHANNEL_ID, TG_CHAT_ID, LIGA_ROLES, RESOURCES, graceCutoff } from './tgAccessConst.mjs';
 
 // re-export для обратной совместимости (кто импортировал из reconcile)
 export { TG_CHANNEL_ID, TG_CHAT_ID, LIGA_ROLES, RESOURCES } from './tgAccessConst.mjs';
@@ -52,6 +52,7 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
   const skip_exempt = [];
   const skip_manual = [];
   const skip_unknown_paid = []; // известный, но paid_until NULL → не трогаем
+  const skip_grace = [];        // истёк, но в пределах grace → пока НЕ кикаем
   const errors = [];
   const membership = []; // полная матрица для отчёта/аудита
 
@@ -59,6 +60,8 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     const uid = String(p.telegram_user_id);
     const paidUntil = p.paid_until ? new Date(p.paid_until) : null;
     const paid = paidUntil ? paidUntil >= now : null; // null = неизвестно (paid_until пусто)
+    // Кик — только если истёк ДОЛЬШЕ grace: paid_until < now - GRACE_DAYS.
+    const expiredBeyondGrace = paidUntil !== null && paidUntil < graceCutoff(now);
     const exempt = p.exempt === true;
     const manual = p.access_status === 'paused_manual';
 
@@ -85,7 +88,8 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
       if (exempt) { skip_exempt.push(base); continue; }
       if (manual) { skip_manual.push(base); continue; }
       if (paid === null) { skip_unknown_paid.push(base); continue; } // paid_until NULL → не кикать
-      if (paid === false && inChat) { kick.push(base); }             // истёк + в ресурсе → KICK
+      if (expiredBeyondGrace && inChat) { kick.push(base); }         // истёк дольше grace + в ресурсе → KICK
+      else if (paid === false && inChat) { skip_grace.push(base); }  // истёк, но в grace → щадим
       else if (paid === true && !inChat) { admit.push(base); }       // оплачен + не в ресурсе → ADMIT
     }
   }
@@ -129,6 +133,7 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     skip_exempt: skip_exempt.length,
     skip_manual: skip_manual.length,
     skip_unknown_paid: skip_unknown_paid.length,
+    skip_grace: skip_grace.length,
     skip_unknown_members: skip_unknown_members.length,
     errors: errors.length,
     executed_admit: executed.admit.length,
@@ -139,6 +144,7 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
   return {
     mode, now: now.toISOString(), batch_id, counts,
     kick, admit, skip_exempt, skip_manual, skip_unknown_paid, skip_unknown_members,
+    skip_grace,
     errors, membership, executed,
   };
 }

@@ -2,7 +2,7 @@
 // Все мутации TG проходят ТОЛЬКО здесь (executeActions). Таблица public.tg_access_actions
 // (миграция phase46) — журнал «что решили / что сделали». dedup по эпизоду оплаты.
 
-import { RESOURCE_ID } from './tgAccessConst.mjs';
+import { RESOURCE_ID, graceCutoff } from './tgAccessConst.mjs';
 import { isInChat } from './tgAccessClient.mjs';
 
 /** action:uid:resource:эпизод(paid_until YYYY-MM-DD). Смена оплаты → новый эпизод → снова можно действовать. */
@@ -117,7 +117,8 @@ async function kickRecheck(pool, tg, a, chatId, now) {
   if (!p) return 'no_profile';
   if (p.exempt) return 'became_exempt';
   if (p.access_status === 'paused_manual') return 'became_paused_manual';
-  if (!p.paid_until || new Date(p.paid_until) >= now) return 'paid'; // оплатил / paid_until больше не в прошлом
+  // Grace-симметрия с reconcile: щадим и тех, кто истёк, но в пределах GRACE_DAYS.
+  if (!p.paid_until || new Date(p.paid_until) >= graceCutoff(now)) return 'paid_or_grace';
   try {
     const mem = await tg.getChatMember(chatId, Number(a.telegram_user_id));
     if (!(mem?.ok && isInChat(mem.result))) return 'left_resource';

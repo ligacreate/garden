@@ -709,6 +709,13 @@ const runNightlyExpiryReconcile = async () => {
       console.info(`[reconcile ${BILLING_TIMEZONE}] auto_pause_exempt expired: ${expired.rows.length} profiles`);
     }
 
+    // Напоминания (T-5 абитуриенты + 1f биллинг) — ДО мутаций статуса ниже.
+    // Движок читает свежий active-срез: billing день-0 (Текст-2) должен уйти, пока
+    // подписка ещё subscription_status='active', ДО того как В1-блок ниже пометит её
+    // overdue. runReminders НЕ мутирует subscription_status (только reminders_sent +
+    // письмо в очередь) → В1 следом отрабатывает как обычно. На T-5 и пороги 7/3 не влияет.
+    await runReminders(pool);
+
     // В1 (кабинет-первый): истёкшая Лига-подписка помечается subscription_status='overdue'
     // (репортинг для напоминаний 1f), но access_status НЕ трогается — платформенный доступ
     // и курс не режем. Лига-замок реализуется через subActive (paid_until) на Лига-поверхностях.
@@ -764,9 +771,6 @@ const runNightlyExpiryReconcile = async () => {
     if ((applicantExpired.rows || []).length > 0) {
       console.info(`[applicant-reconcile ${BILLING_TIMEZONE}] paused_expired: ${applicantExpired.rows.length} applicants`);
     }
-
-    // Напоминания (T-5 абитуриенты + задел под 1f) — общий движок, идемпотентный.
-    await runReminders(pool);
   } catch (e) {
     console.error('[billing-reconcile] failed', e);
   }

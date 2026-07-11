@@ -10,16 +10,45 @@
 // TG нет — это первый TG-клиент. Не путать с TG_NOTIFICATIONS_BOT_TOKEN
 // (garden-auth, уведомления о ДЗ) — другой бот, другая задача.
 
-const api = (token, method) => `https://api.telegram.org/bot${token}/${method}`;
+import https from 'node:https';
 
-async function tgGet(token, method, params) {
-  const res = await fetch(api(token, method), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(params),
+const TG_HOST = 'api.telegram.org';
+
+// IPv4-only (family:4): IPv6 к api.telegram.org с этого сервера = ENETUNREACH.
+// Голый fetch через happy-eyeballs Node 20 иногда шёл по IPv6 → 'fetch failed'
+// (флак long-poll getUpdates). Тот же обход, что garden-auth httpsPostJson.
+// Контракт прежний: резолвит распарсенный JSON { ok:true, result } |
+// { ok:false, error_code, description }; на сети/таймауте — reject (как fetch).
+function tgGet(token, method, params) {
+  const body = JSON.stringify(params);
+  // getUpdates — long-poll: держим сокет чуть дольше его timeout; прочие — быстрые.
+  const timeoutMs = method === 'getUpdates'
+    ? (Number(params?.timeout) || 30) * 1000 + 5000
+    : 15000;
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: TG_HOST,
+      path: `/bot${token}/${method}`,
+      method: 'POST',
+      family: 4,
+      timeout: timeoutMs,
+      headers: {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error(`TG ${method} bad JSON: ${e.message}`)); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error(`TG ${method} timeout`)));
+    req.write(body);
+    req.end();
   });
-  // Telegram всегда отдаёт JSON: { ok:true, result } | { ok:false, error_code, description }
-  return res.json();
 }
 
 /**

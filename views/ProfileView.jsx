@@ -9,6 +9,7 @@ import { getRoleLabel } from '../data/data';
 import { getDruidTree } from '../utils/druidHoroscope';
 import { normalizeSkills } from '../utils/skills';
 import ConfirmationModal from '../components/ConfirmationModal';
+import SubscriptionCheckout from '../components/SubscriptionCheckout';
 import { api } from '../services/dataService';
 
 // Standing invite-ссылки в Лига-сообщество. Клик → заявка chat_join_request →
@@ -325,21 +326,13 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
     const [tgUnlinkLoading, setTgUnlinkLoading] = useState(false);
     const [tgCodeCopied, setTgCodeCopied] = useState(false);
 
-    // ФАЗА 1d — «Моя подписка».
-    const [subPlans, setSubPlans] = useState([]);
-    const [subSelected, setSubSelected] = useState(null);
-    const [subCheckoutLoading, setSubCheckoutLoading] = useState(false);
+    // ФАЗА 1d — «Моя подписка». Выбор плана + checkout вынесены в общий
+    // <SubscriptionCheckout/> (переиспользуется на экране продления).
     const [subPolling, setSubPolling] = useState(paidReturn);   // авто-опрос после возврата с оплаты
     // Замороженный baseline paid_until на маунте — успех poll'а = РОСТ (не «в будущем»),
     // чтобы продление (baseline уже будущий) детектилось по увеличению даты.
     // Новая оплата: baseline=0 (null/прошлое) → любая будущая дата пройдёт.
     const paidBaselineRef = useRef(user.paid_until ? new Date(user.paid_until).getTime() : 0);
-
-    useEffect(() => {
-        let alive = true;
-        api.getBillingPlans().then((p) => { if (alive) { setSubPlans(p); setSubSelected((s) => s || (p[0]?.code ?? null)); } }).catch(() => {});
-        return () => { alive = false; };
-    }, []);
 
     // Активна ли подписка сейчас (derive-on-read из одного paid_until).
     const paidUntilDate = user.paid_until ? new Date(user.paid_until) : null;
@@ -375,23 +368,6 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
             onNotify(e?.message || 'Не удалось обновить статус');
         } finally {
             setSubPolling(false);
-        }
-    };
-
-    const handleCheckout = async () => {
-        if (subCheckoutLoading || !subSelected) return;
-        setSubCheckoutLoading(true);
-        try {
-            const res = await api.createCheckout(subSelected);
-            if (res?.url) {
-                window.location.href = res.url;   // редирект на хостед-форму Prodamus
-            } else {
-                onNotify('Не удалось создать оплату');
-                setSubCheckoutLoading(false);
-            }
-        } catch (e) {
-            onNotify(e?.message || 'Ошибка оплаты');
-            setSubCheckoutLoading(false);
         }
     };
 
@@ -661,37 +637,16 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                 </div>
                             )}
 
-                            <div className="mt-4 space-y-3">
-                                <div className="text-sm font-medium text-slate-700">{subActive ? 'Продлить' : 'Выбрать план'}</div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    {subPlans.map((p) => (
-                                        <button
-                                            key={p.code}
-                                            type="button"
-                                            onClick={() => setSubSelected(p.code)}
-                                            className={`p-3 rounded-2xl border text-left transition-all ${subSelected === p.code ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/40' : 'border-slate-200 hover:border-emerald-300'}`}
-                                        >
-                                            <div className="text-sm font-semibold text-slate-800">{p.title}</div>
-                                            <div className="text-lg font-bold text-slate-900 mt-1">{p.amount_rub} ₽</div>
-                                        </button>
-                                    ))}
-                                </div>
-                                <Button
-                                    onClick={handleCheckout}
-                                    disabled={subCheckoutLoading || !subSelected || subPlans.length === 0}
-                                    className="w-full !rounded-xl"
-                                >
-                                    {subCheckoutLoading ? 'Переходим к оплате…' : (subActive ? 'Продлить подписку' : 'Оплатить')}
-                                </Button>
-                                {paidReturn && !subPolling && (
+                            <SubscriptionCheckout
+                                heading={subActive ? 'Продлить' : 'Выбрать план'}
+                                ctaLabel={subActive ? 'Продлить подписку' : 'Оплатить'}
+                                onNotify={onNotify}
+                                footer={paidReturn && !subPolling ? (
                                     <button type="button" onClick={handleRefreshSubStatus} className="w-full text-xs text-slate-400 hover:text-slate-600 py-1">
                                         Обновить статус вручную
                                     </button>
-                                )}
-                                <div className="text-[11px] text-slate-400 leading-relaxed">
-                                    Оплата через Prodamus — на форме доступны СБП, карты РФ и зарубежные. Без автопродления.
-                                </div>
-                            </div>
+                                ) : null}
+                            />
                         </Card>
 
                         <Card title="Личные данные" className="!rounded-[2rem]">

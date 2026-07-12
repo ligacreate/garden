@@ -218,7 +218,12 @@ export default function App() {
                 await api.getCurrentUser();
             } catch (e) {
                 if (e?.code === 'SUBSCRIPTION_EXPIRED' || e?.code === 'ACCESS_PAUSED_MANUAL') {
-                    await api.logout();
+                    // SUBSCRIPTION_EXPIRED: НЕ разлогиниваем — JWT нужен для checkout на
+                    // экране продления (getBillingPlans + createCheckout). Данные всё равно
+                    // режет серверный RLS has_platform_access (проверено: у paused_expired
+                    // 0 строк во всех гейтнутых таблицах). ACCESS_PAUSED_MANUAL: logout как
+                    // прежде — оплатой не решается.
+                    if (e.code === 'ACCESS_PAUSED_MANUAL') await api.logout();
                     setCurrentUser(null);
                     setViewMode('default');
                     setAccessBlock({
@@ -601,8 +606,7 @@ export default function App() {
                 ) : !currentUser ? (
                     accessBlock?.code === 'SUBSCRIPTION_EXPIRED' ? (
                         <SubscriptionExpiredScreen
-                            renewUrl={accessBlock.botRenewUrl || import.meta.env.VITE_DEFAULT_BOT_RENEW_URL || ''}
-                            message={accessBlock.message}
+                            onNotify={showNotification}
                             onRetry={async () => {
                                 try {
                                     const user = await api.getCurrentUser();

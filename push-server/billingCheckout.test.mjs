@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'crypto';
 import {
   isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled,
-  buildYooKassaPayload, buildProdamusUrl
+  buildYooKassaPayload, buildProdamusUrl, grantPaidUntilExpr
 } from './billingCheckout.mjs';
 
 const signJwt = (payload, secret) => {
@@ -120,4 +120,15 @@ test('buildProdamusUrl: prod → без demo_mode', () => {
     plan: { code: '6m', title: 'Лига — 6 месяцев', months: 6 }, amountRub: 10000, email: '', returnUrl: '', sandbox: false
   });
   assert.equal(new URL(url).searchParams.get('demo_mode'), null);
+});
+
+// ── grantPaidUntilExpr: payform-стопка vs явная дата (фикс #270) ──
+test('grantPaidUntilExpr: payload с датой → перезапись $4::timestamptz (кейс C)', () => {
+  assert.equal(grantPaidUntilExpr(true), '$4::timestamptz');
+});
+test('grantPaidUntilExpr: без даты → СТОПКА greatest+make_interval 1 мес (кейсы A/B/D)', () => {
+  assert.match(
+    grantPaidUntilExpr(false),
+    /greatest\(now\(\), coalesce\(paid_until, now\(\)\)\) \+ make_interval\(months => 1\)/
+  );
 });

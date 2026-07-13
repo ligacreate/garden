@@ -49,6 +49,15 @@ export const bearerToken = (authHeader) => {
   return raw.startsWith('Bearer ') ? raw.slice(7).trim() : '';
 };
 
+// Грант-начисление доступа (payform/подписка). Явная дата из пейлоада → ставим её ($4).
+// Иначе СТОПКА: greatest(now, paid_until) + 1 мес (payform-товар = 1 мес), как в applyPayment.
+// Неквалифицированный paid_until в правой части SET = старое (до-апдейтное) значение строки.
+// Свойство: результат всегда >= текущего paid_until → доступ только ДОБАВЛЯЕТСЯ, не отнимается.
+export const grantPaidUntilExpr = (hasExplicitPaidUntil) =>
+  hasExplicitPaidUntil
+    ? `$4::timestamptz`
+    : `greatest(now(), coalesce(paid_until, now())) + make_interval(months => 1)`;
+
 // ── Выбор YooKassa-кредов с fail-safe. Возвращает {shopId, secret, live} или null.
 //
 // Модель (тест-магазина у Ольги НЕТ; live дёргаем только на осознанный клик):

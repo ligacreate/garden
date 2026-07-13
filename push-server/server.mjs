@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
 import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent, isLigaProduct, looksLikeLigaSum } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
-import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled, buildYooKassaPayload, buildProdamusUrl } from './billingCheckout.mjs';
+import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled, buildYooKassaPayload, buildProdamusUrl, grantPaidUntilExpr } from './billingCheckout.mjs';
 import { makeTgAccessClient } from './tgAccessClient.mjs';
 import { runTgAccessReconcile } from './tgAccessReconcile.mjs';
 import { executeActions } from './tgAccessActions.mjs';
@@ -298,21 +298,28 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
   const customerId = String(customerIds.customerId || '').trim() || null;
 
   if (mutation && (eventName === 'payment_success' || eventName === 'auto_payment')) {
-    const effectivePaidUntil = paidUntil || new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
-    await db.query(
+    // Payform-товар (Лига, 1 мес) не шлёт paid_until → раньше падали в перезапись now()+31д,
+    // что ОБНУЛЯЛО остаток досрочному плательщику. Теперь СТОПКА (зеркало applyPayment):
+    // greatest(now, paid_until) + 1 мес. Явный paidUntil (подписка Prodamus) = авторитетная дата
+    // след. списания → оставляем перезаписью. Фикс только ДОБАВЛЯЕТ дни, никогда не отнимает.
+    const paidUntilExpr = grantPaidUntilExpr(Boolean(paidUntil));
+    const paidUntilParam = paidUntil ? paidUntil.toISOString() : null;
+    const upd = await db.query(
       `update public.profiles
          set subscription_status = $2,
              access_status = $3,
-             paid_until = $4,
+             paid_until = ${paidUntilExpr},
              last_payment_at = now(),
              last_prodamus_event = $5,
              last_prodamus_payload = $6::jsonb,
              prodamus_subscription_id = coalesce($7, prodamus_subscription_id),
              prodamus_customer_id = coalesce($8, prodamus_customer_id),
              bot_renew_url = coalesce(bot_renew_url, $9)
-       where id = $1`,
-      [profile.id, mutation.subscription_status, mutation.access_status, effectivePaidUntil.toISOString(), eventName, payloadJson, subscriptionId, customerId, DEFAULT_BOT_RENEW_URL || null]
+       where id = $1
+       returning paid_until`,
+      [profile.id, mutation.subscription_status, mutation.access_status, paidUntilParam, eventName, payloadJson, subscriptionId, customerId, DEFAULT_BOT_RENEW_URL || null]
     );
+    const effectivePaidUntil = upd.rows[0]?.paid_until || null;
 
     await db.query(
       `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
@@ -323,7 +330,7 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
              last_payment_at = now(),
              ended_at = null,
              updated_at = now()`,
-      [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, effectivePaidUntil.toISOString()]
+      [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, effectivePaidUntil]
     );
     return;
   }

@@ -53,6 +53,16 @@ export const isMeetingPast = (meeting, now = new Date()) => {
     return meetingDay < startOfToday;
 };
 
+// «Ждёт результата»: встреча запланирована, но её момент уже в прошлом —
+// ведущей нужно внести итог (перевести в completed). ЕДИНЫЙ derive-источник,
+// используется в MeetingCard, календаре-точках и сортировке MeetingsView,
+// а также в напоминалке на входе в кабинет (UserApp). Не дублировать условие.
+export const isMeetingPending = (meeting, now = new Date()) =>
+    meeting?.status === 'planned' && isMeetingPast(meeting, now);
+
+export const getPendingMeetings = (meetings = [], now = new Date()) =>
+    (Array.isArray(meetings) ? meetings : []).filter(m => isMeetingPending(m, now));
+
 // Удалять можно только «без последствий»: встреча не завершена и по ней не
 // начислены семена за проведение (+25). Покрывает planned/pending/cancelled.
 // Завершённые (completed) — это история/аудит, их не удаляем (см.

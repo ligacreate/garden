@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Edit2, AlertCircle, Trash2, Copy } from 'lucide-react';
 import Button from './Button';
-import { getMeetingInstant, getMeetingTimezone, isMeetingPast, isMeetingDeletable } from '../utils/meetingTime';
+import { getMeetingInstant, getMeetingTimezone, isMeetingPending, isMeetingDeletable } from '../utils/meetingTime';
 
 const MeetingCard = ({
     meeting,
@@ -16,12 +16,8 @@ const MeetingCard = ({
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Helpers
-    const isPast = isMeetingPast(meeting);
-    const isPlanned = meeting.status === 'planned';
-
-    // Auto-detect "Pending" state for UI: Planned but date passed
-    const isPending = isPlanned && isPast;
+    // «Ждёт результата»: прошла, но осталась planned (единый derive)
+    const isPending = isMeetingPending(meeting);
 
     // Effective status for UI rendering
     const status = isPending ? 'pending' : (meeting.status || 'planned');

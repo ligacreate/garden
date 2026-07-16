@@ -28,6 +28,7 @@ import { INITIAL_PRACTICES, INITIAL_CLIENTS } from '../data/data';
 import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
 import { api } from '../services/dataService';
+import { getPendingMeetings } from '../utils/meetingTime';
 
 // Sidebar Item Component
 const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
@@ -62,6 +63,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [goals, setGoals] = useState([]);
     const [clients, setClients] = useState(INITIAL_CLIENTS);
     const [notificationModal, setNotificationModal] = useState(null);
+    const [resultReminder, setResultReminder] = useState(null); // массив pending-встреч или null
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [courseSidebar, setCourseSidebar] = useState({ enabled: false, title: 'Курс', items: [], activeKey: null });
     const gardenPvlBridgeRef = useRef(null);
@@ -536,6 +538,27 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
             onMarkAsRead(notificationModal.id);
             setNotificationModal(null);
         }
+    };
+
+    // Напоминание «внести результат»: на входе ловим прошедшие planned-встречи
+    // (getPendingMeetings — единый derive). Один раз за сессию, чтобы не мешать
+    // работе и не всплывать повторно после сохранения одного итога.
+    useEffect(() => {
+        if (!user?.id) return;
+        const dismissKey = `garden_result_reminder_dismissed_${user.id}`;
+        if (sessionStorage.getItem(dismissKey)) return;
+        const pending = getPendingMeetings(meetings);
+        if (pending.length > 0) setResultReminder(pending);
+    }, [meetings, user?.id]);
+
+    const dismissResultReminder = () => {
+        if (user?.id) sessionStorage.setItem(`garden_result_reminder_dismissed_${user.id}`, '1');
+        setResultReminder(null);
+    };
+
+    const handleGoToMeetingsFromReminder = () => {
+        dismissResultReminder();
+        setView('meetings');
     };
 
     const handleScenarioAdded = (isPublic) => {
@@ -1230,6 +1253,27 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         <p className="text-slate-500 mb-6">От: <span className="font-medium text-slate-800">{notificationModal.from}</span></p>
                         <p className="text-sm text-slate-600 italic mb-8 bg-slate-50/80 p-4 rounded-2xl">"{notificationModal.message}"</p>
                         <Button onClick={handleCloseNotification} className="w-full py-4 text-base shadow-[0_18px_30px_-18px_rgba(47,111,84,0.6)]">Принять с благодарностью</Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Напоминание внести результат встречи */}
+            {resultReminder && resultReminder.length > 0 && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="surface-card p-8 w-full max-w-sm text-center relative animate-in zoom-in-95 duration-300 ring-1 ring-black/5">
+                        <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <CalendarCheck2 size={32} className="text-amber-500" />
+                        </div>
+                        <h3 className="text-xl font-display font-semibold text-slate-900 mb-2">
+                            Пожалуйста, внеси результат встречи
+                        </h3>
+                        <p className="text-slate-500 mb-8">
+                            Давай отпразднуем завтрак! Впиши итоги, сделай рефлексию, поставь цели. Ты великолепна!
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            <Button onClick={handleGoToMeetingsFromReminder} className="w-full py-4 text-base">Внести результат</Button>
+                            <button onClick={dismissResultReminder} className="w-full py-2 text-sm text-slate-400 hover:text-slate-600 transition">Позже</button>
+                        </div>
                     </div>
                 </div>
             )}

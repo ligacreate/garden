@@ -4,7 +4,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import MeetingCard from '../components/MeetingCard';
 import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
-import { isMeetingPast } from '../utils/meetingTime';
+import { isMeetingPending } from '../utils/meetingTime';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { api } from '../services/dataService';
 import { getCostAmount, getCostCurrency } from '../utils/cost';
@@ -60,10 +60,7 @@ const CalendarWidget = ({ meetings, onPlanClick, currentDate, setCurrentDate, sh
         if (dayMeetings.length === 0) return null;
 
         // Priority: Pending (Red) > Planned (Blue) > Completed (Green)
-        const hasPending = dayMeetings.some(m => {
-            const isPast = isMeetingPast(m);
-            return (m.status === 'planned' && isPast) || m.status === 'pending';
-        });
+        const hasPending = dayMeetings.some(m => isMeetingPending(m) || m.status === 'pending');
         if (hasPending) return 'bg-amber-400';
 
         const hasPlanned = dayMeetings.some(m => m.status === 'planned');
@@ -218,8 +215,7 @@ const MeetingsTab = ({
     const sortedMeetings = [...filteredMeetings].sort((a, b) => {
         const statusPriority = { pending: 0, planned: 1, completed: 2, cancelled: 3 };
         const getStatus = (m) => {
-            const isPast = isMeetingPast(m);
-            if (m.status === 'planned' && isPast) return 'pending';
+            if (isMeetingPending(m)) return 'pending';
             return m.status || 'planned';
         };
         const statA = getStatus(a);

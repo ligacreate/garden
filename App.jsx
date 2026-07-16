@@ -302,9 +302,12 @@ export default function App() {
             let msg = e.message || "Ошибка входа";
             const normalizedMsg = String(msg).toLowerCase();
             if (normalizedMsg.includes("invalid login credentials") || normalizedMsg === "invalid" || normalizedMsg.includes("invalid credentials")) {
-                msg = "Неверные данные, либо ваша почта не подтверждена. Проверьте пароль, найдите письмо подтверждения или попробуйте 'Создать аккаунт'.";
-            } else if (msg.includes("Email not confirmed")) {
-                msg = "Ваша почта не подтверждена. Пожалуйста, найдите письмо от сервиса авторизации (проверьте спам) и перейдите по ссылке. Или зарегистрируйтесь с другой почтой.";
+                // garden-auth отдаёт 401 «Invalid credentials» и на неизвестный email,
+                // и на неверный пароль. Подтверждения почты в сервисе НЕТ — не отправляем
+                // человека искать несуществующее письмо (старый текст был от Supabase).
+                msg = "Неверный email или пароль. Проверьте раскладку клавиатуры и регистр букв. Если не помните пароль — нажмите «Забыли пароль?» ниже.";
+            } else if (normalizedMsg.includes("account suspended")) {
+                msg = "Доступ к аккаунту приостановлен. Напишите нам — поможем восстановить доступ.";
             }
             alert(msg);
             return false;

@@ -1893,7 +1893,13 @@ related_docs:
   admin/mentor/intern в pvl_students).
 
 ### BUG-PDF-EXPORT-OKLAB-FAIL: экспорт PDF в Builder падает «unsupported color function oklab»
-- **Статус:** 🔴 TODO
+- **Статус:** ✅ DONE (2026-07-18, вариант A — `html2canvas` → `html2canvas-pro`).
+  Своп в `BuilderView.jsx:246` (workbook/scenario/material) и `LeaderPageView.jsx:316`
+  (PNG-карточка отзыва — параллельный баг того же типа). Верифицировано на живом
+  oklch-DOM в реальном Chrome (старый lib бросает `oklch`, `-pro` рендерит).
+  Урок: `docs/lessons/2026-07-18-pdf-export-oklch-html2canvas-pro.md`.
+  Хвост: неиспользуемая прямая зависимость `html2pdf.js` тянет старый html2canvas
+  транзитивно — кандидат на удаление отдельным заходом.
 - **Приоритет:** P2
 - **Создано:** 2026-05-11 (фиксация по скриншоту Ольги 10 мая;
   bug проявляется в BuilderView → «Экспортировать PDF»)

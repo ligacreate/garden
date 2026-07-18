@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// Phase 2A — html2canvas, Phase 2B — jspdf: оба грузим lazy при экспорте PDF (см. handleExportPdf).
+// Phase 2A — html2canvas-pro (oklch-safe форк), Phase 2B — jspdf: оба грузим lazy при экспорте PDF (см. handleExportPdf).
 import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, GripVertical, PenLine, Upload } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
@@ -243,7 +243,7 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
             });
             document.body.appendChild(nodeForExport);
 
-            const { default: html2canvas } = await import('html2canvas');
+            const { default: html2canvas } = await import('html2canvas-pro');
             const canvas = await html2canvas(nodeForExport, {
                 scale: 2,
                 useCORS: true,
@@ -1062,7 +1062,8 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
                                                                         value={item.description || ''}
                                                                         onChange={(e) => updateTimelineItem(item.uniqueId, { description: e.target.value })}
                                                                         placeholder="Описание шага (опционально)"
-                                                                        className="w-full h-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-200 resize-none"
+                                                                        rows={6}
+                                                                        className="w-full min-h-[9rem] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-blue-200 resize-y"
                                                                     />
                                                                     <div className="grid grid-cols-2 gap-2">
                                                                         <input

@@ -313,7 +313,7 @@ const LeaderPageView = ({ leader, currentUser, onBack, onUpdateProfile, onNotify
     const handleDownloadReviewCard = async (review) => {
         let host = null;
         try {
-            const { default: html2canvas } = await import('html2canvas');
+            const { default: html2canvas } = await import('html2canvas-pro');
             host = document.createElement('div');
             host.style.position = 'fixed';
             host.style.left = '-10000px';

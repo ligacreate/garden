@@ -410,6 +410,22 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                             className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-sm text-slate-600 leading-relaxed prose prose-slate max-w-none clean-rich-text [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:my-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:my-3 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:my-2 [&_h4]:font-semibold [&_h4]:my-2 [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_div]:my-2 [&_div]:leading-relaxed [&_li]:my-1"
                                             dangerouslySetInnerHTML={{ __html: formatMaterialContent(item.description || 'Нет описания для этой практики.') }}
                                         />
+                                        {(item.reflection_questions || item.sharing_prompt) && (
+                                            <div className="mt-3 space-y-3">
+                                                {item.reflection_questions && (
+                                                    <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-4">
+                                                        <div className="text-[10px] uppercase tracking-wider text-amber-600 font-bold mb-1">Рефлексивный отклик</div>
+                                                        <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{item.reflection_questions}</div>
+                                                    </div>
+                                                )}
+                                                {item.sharing_prompt && (
+                                                    <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-4">
+                                                        <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold mb-1">Шеринг</div>
+                                                        <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{item.sharing_prompt}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -417,6 +433,7 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                             <div className="mt-8 pt-8 border-t-2 border-slate-100">
                                 <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4 border-b pb-2 flex justify-between"><span>Завершение встречи</span><span>20 мин</span></h3>
                                 <CheckBoxLine text="Рефлексивный отклик по завтраку (письменно/устно)" />
+                                <CheckBoxLine text="Финальный шеринг" />
                                 <CheckBoxLine text="Формулирование намерений (2–3 шага)" />
                                 <CheckBoxLine text="Сбор отзывов (устно, письменно, видео)" />
                                 <CheckBoxLine text="Сделать общее фото (если все согласны)" />

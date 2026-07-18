@@ -819,7 +819,7 @@ class LocalStorageService {
     async addPractice(practice) {
         const practices = await this.getPractices();
         const sanitized = this._sanitizeFields(practice, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'sharing_prompt', 'time', 'type', 'icon']
         });
         const newPractice = { ...sanitized, id: Date.now() };
         practices.unshift(newPractice);
@@ -832,7 +832,7 @@ class LocalStorageService {
         const index = practices.findIndex(p => p.id === practice.id);
         if (index !== -1) {
             const sanitized = this._sanitizeFields(practice, {
-                plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
+                plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'sharing_prompt', 'time', 'type', 'icon']
             });
             practices[index] = { ...practices[index], ...sanitized };
             localStorage.setItem('garden_practices', JSON.stringify(practices));
@@ -861,6 +861,7 @@ class LocalStorageService {
             instruction_short: original.instruction_short,
             instruction_full: original.instruction_full,
             reflection_questions: original.reflection_questions,
+            sharing_prompt: original.sharing_prompt,
             type: original.type,
             time: original.time,
             duration_minutes: original.duration_minutes,
@@ -2344,7 +2345,7 @@ class RemoteApiService {
         // OR we can keep using BIGINT if we want. Let's let DB handle it.
         const { id, ...rest } = practice;
         const sanitized = this._sanitizeFields(rest, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'sharing_prompt', 'time', 'type', 'icon']
         });
         const { data } = await postgrestFetch('practices', {}, {
             method: 'POST',
@@ -2357,7 +2358,7 @@ class RemoteApiService {
     async updatePractice(practice) {
         const { id, ...rest } = practice;
         const sanitized = this._sanitizeFields(rest, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'sharing_prompt', 'time', 'type', 'icon']
         });
         const { data } = await postgrestFetch('practices', { id: `eq.${id}` }, {
             method: 'PATCH',
@@ -2409,11 +2410,12 @@ class RemoteApiService {
             instruction_short: original.instruction_short,
             instruction_full: original.instruction_full,
             reflection_questions: original.reflection_questions,
+            sharing_prompt: original.sharing_prompt,
             type: original.type,
             time: original.time,
             icon: original.icon
         }, {
-            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'time', 'type', 'icon']
+            plain: ['title', 'description', 'short_goal', 'instruction_short', 'instruction_full', 'reflection_questions', 'sharing_prompt', 'time', 'type', 'icon']
         });
 
         const payload = {

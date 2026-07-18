@@ -15,6 +15,7 @@ const buildEmpty = (defaultIsPublished) => ({
     instruction_short: '',
     instruction_full: '',
     reflection_questions: '',
+    sharing_prompt: '',
     description: '',
     icon: '📄',
     is_published: !!defaultIsPublished
@@ -146,6 +147,15 @@ const PracticeFormModal = ({
                         placeholder="По одному вопросу на строку"
                         value={formData.reflection_questions}
                         onChange={e => setFormData({ ...formData, reflection_questions: e.target.value })}
+                    />
+                </div>
+                <div>
+                    <label className="text-sm font-medium text-slate-700 mb-2 block">Шеринг (вопрос для обмена в группе)</label>
+                    <textarea
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none h-28 resize-y text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                        placeholder="Подводка/вопрос, с которым ведущая запускает шеринг"
+                        value={formData.sharing_prompt}
+                        onChange={e => setFormData({ ...formData, sharing_prompt: e.target.value })}
                     />
                 </div>
                 <div>

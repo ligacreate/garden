@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Phase 2A — html2canvas-pro (oklch-safe форк), Phase 2B — jspdf: оба грузим lazy при экспорте PDF (см. handleExportPdf).
-import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, GripVertical, PenLine, Upload } from 'lucide-react';
+import { FileText, Download, Plus, X, Printer, Leaf, ArrowUp, ArrowDown, Save, FolderOpen, Trash2, Globe, Layout, GripVertical, PenLine, Upload, Info } from 'lucide-react';
 import Button from '../components/Button';
 import { api } from '../services/dataService';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -195,7 +195,7 @@ const formatMaterialContent = (content) => {
     });
 };
 
-const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, extraAction, materialContentHtml }) => {
+const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, extraAction, materialContentHtml, usageNote }) => {
     const getExportSourceNode = () => {
         const exportId = type === 'material' ? 'preview-export-content' : 'preview-content';
         return document.getElementById(exportId);
@@ -360,6 +360,15 @@ const DocumentPreviewModal = ({ type, timeline, title, user, onClose, onNotify, 
                                     <div className="text-xs uppercase tracking-wider text-slate-400">Сценарии лиги</div>
                                     <div className="text-2xl font-medium text-slate-900">{title || 'Без названия'}</div>
                                 </div>
+                                {usageNote && (
+                                    <div className="mb-6 flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4">
+                                        <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
+                                        <div className="text-sm text-slate-700 leading-relaxed">
+                                            <div className="text-[10px] uppercase tracking-wider text-blue-700 font-bold mb-1">От автора</div>
+                                            {usageNote}
+                                        </div>
+                                    </div>
+                                )}
                                 <div
                                     className="prose prose-slate max-w-none text-sm clean-rich-text [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:leading-tight [&_h1]:my-4 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight [&_h2]:my-4 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-3 [&_h4]:text-base [&_h4]:font-semibold [&_h4]:my-3 [&_a]:text-blue-700 [&_a]:underline [&_a]:break-all [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_div]:my-3 [&_div]:leading-relaxed [&_li]:my-1 [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-2xl [&_img]:my-4 [&_img]:border [&_img]:border-slate-200"
                                     dangerouslySetInnerHTML={{ __html: materialContentHtml || '<p>Материал в процессе подготовки.</p>' }}
@@ -502,6 +511,15 @@ const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage, comp
                 <div key={s.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group h-full">
                     <div onClick={() => onLoad(s)} className="cursor-pointer flex-1">
                         <h3 className="font-medium text-lg text-slate-800 mb-2 group-hover:text-blue-600 transition-colors line-clamp-2">{s.title || 'Без названия'}</h3>
+                        {variant === 'league' && s.usage_note && (
+                            <div className="mb-3 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-2xl px-3 py-2.5">
+                                <Info size={15} className="text-blue-600 shrink-0 mt-0.5" />
+                                <div className="text-xs text-slate-600 leading-relaxed">
+                                    <div className="text-[10px] uppercase tracking-wider text-blue-700 font-bold mb-0.5">От автора</div>
+                                    {s.usage_note}
+                                </div>
+                            </div>
+                        )}
                         {variant !== 'league' && (
                             <div className="flex flex-wrap gap-2 text-xs text-slate-400 mb-4">
                                 <span>{new Date(s.created_at).toLocaleDateString()}</span>
@@ -1145,6 +1163,15 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
                 ) : (
                     <div className="flex-1 overflow-y-auto animate-in fade-in duration-300">
                         {leagueScenarios.length > 0 && (
+                            <div className="mb-5 flex items-start gap-3 bg-slate-100 border border-slate-200 rounded-2xl px-5 py-4">
+                                <Info size={18} className="text-slate-400 shrink-0 mt-0.5" />
+                                <div className="text-sm text-slate-600 leading-relaxed space-y-2">
+                                    <p>Сценарии этого раздела являются интеллектуальной собственностью ведущих Лиги и распространяются в учебных целях в качестве примера.</p>
+                                    <p>Использование данных сценариев возможно лишь частично в формате идей и отдельных практик, без полного повторения сценария, и предполагает обязательное упоминание имени ведущей.</p>
+                                </div>
+                            </div>
+                        )}
+                        {leagueScenarios.length > 0 && (
                             <div className="mb-4 text-xs text-slate-500">
                                 Прогресс: изучено {completedLeagueScenariosCount} из {leagueScenarios.length}
                             </div>
@@ -1166,6 +1193,7 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
                     type="material"
                     timeline={Array.isArray(leaguePreviewScenario.timeline) ? leaguePreviewScenario.timeline : []}
                     title={leaguePreviewScenario.title}
+                    usageNote={leaguePreviewScenario.usage_note}
                     user={user}
                     onClose={() => setLeaguePreviewScenario(null)}
                     onNotify={onNotify}

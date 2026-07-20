@@ -46,19 +46,71 @@ async function backfillUid(pool, profileId, uid) {
   return r.rowCount > 0;
 }
 
+// Тег-триггер. Unicode-aware: НЕ ловим #новостью/#новости — только ровно #новость.
+const NEWS_TAG_RE = /#новость(?![\p{L}\p{N}_])/iu;
+
+// Текст поста канала с #новость → { title, body }. Тег вырезаем (служебный).
+// title = первая непустая строка остатка, body = остальное. Картинки не переносим,
+// но текст подписи медиа-поста берём (вызов передаёт text || caption).
+function parseChannelNews(text) {
+  const raw = String(text || '');
+  if (!NEWS_TAG_RE.test(raw)) return null;                 // нет тега → не новость
+  const stripped = raw.replace(NEWS_TAG_RE, '').replace(/[ \t]+\n/g, '\n').trim();
+  if (!stripped) return null;                              // пост состоял только из тега
+  const lines = stripped.split('\n');
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;        // пропустить пустые строки до заголовка
+  const title = (lines[i] || '').trim();
+  if (!title) return null;
+  const body = lines.slice(i + 1).join('\n').trim();       // может быть пустым (пост в одну строку)
+  return { title, body };
+}
+
+// Идемпотентная запись канальной новости. ON CONFLICT по частичному uidx (см. миграцию).
+// Вернёт id новой строки либо null, если такой message_id уже был (дубль).
+async function insertChannelNews(pool, { messageId, title, body }) {
+  const r = await pool.query(
+    `insert into public.news (title, body, type, tg_message_id, image_url, author_id)
+     values ($1, $2, 'channel', $3, null, null)
+     on conflict (tg_message_id) where tg_message_id is not null do nothing
+     returning id`,
+    [title, body || '', messageId]
+  );
+  return r.rows[0]?.id || null;
+}
+
 export function startJoinPoller({ pool, tg, mode, logger = console }) {
   if (!['admit', 'live'].includes(mode)) { logger.info?.(`[join-poller] mode=${mode} → не стартуем`); return { stop() {} }; }
   let offset = 0;
   let running = true;
-  logger.info?.('[join-poller] старт (allowed_updates=chat_join_request)');
+  logger.info?.('[join-poller] старт (allowed_updates=chat_join_request,channel_post)');
 
   (async function loop() {
     while (running) {
       try {
-        const upd = await tg.getUpdates({ offset, timeout: 30, allowed_updates: ['chat_join_request'] });
+        const upd = await tg.getUpdates({ offset, timeout: 30, allowed_updates: ['chat_join_request', 'channel_post'] });
         if (!upd?.ok) { await sleep(3000); continue; }
         for (const u of upd.result) {
           offset = u.update_id + 1;
+          // ── Канальный пост из канала Лиги с #новость → новость на платформе ──
+          // Изолировано в свой try/catch: сбой разбора поста НЕ должен мешать впуску заявок.
+          const post = u.channel_post;
+          if (post) {
+            try {
+              if (String(post.chat?.id) === String(TG_CHANNEL_ID)) {
+                const parsed = parseChannelNews(post.text || post.caption); // текст поста или подпись медиа; картинку не переносим
+                if (parsed) {
+                  const newsId = await insertChannelNews(pool, { messageId: post.message_id, ...parsed });
+                  logger.info?.(newsId
+                    ? `[join-poller] news+ msg=${post.message_id} → news#${newsId} "${parsed.title.slice(0, 40)}"`
+                    : `[join-poller] news dup msg=${post.message_id} — пропуск (уже был)`);
+                }
+              }
+            } catch (e) {
+              logger.error?.('[join-poller] channel_post error', e?.message);
+            }
+            continue; // channel_post — не заявка, дальше не идём
+          }
           const req = u.chat_join_request;
           if (!req) continue;
           const uid = req.from?.id;

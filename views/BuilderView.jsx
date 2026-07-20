@@ -511,15 +511,6 @@ const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage, comp
                 <div key={s.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group h-full">
                     <div onClick={() => onLoad(s)} className="cursor-pointer flex-1">
                         <h3 className="font-medium text-lg text-slate-800 mb-2 group-hover:text-blue-600 transition-colors line-clamp-2">{s.title || 'Без названия'}</h3>
-                        {variant === 'league' && s.usage_note && (
-                            <div className="mb-3 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-2xl px-3 py-2.5">
-                                <Info size={15} className="text-blue-600 shrink-0 mt-0.5" />
-                                <div className="text-xs text-slate-600 leading-relaxed">
-                                    <div className="text-[10px] uppercase tracking-wider text-blue-700 font-bold mb-0.5">От автора</div>
-                                    {s.usage_note}
-                                </div>
-                            </div>
-                        )}
                         {variant !== 'league' && (
                             <div className="flex flex-wrap gap-2 text-xs text-slate-400 mb-4">
                                 <span>{new Date(s.created_at).toLocaleDateString()}</span>
@@ -528,10 +519,17 @@ const ScenarioList = ({ scenarios, variant, onLoad, onDelete, emptyMessage, comp
                             </div>
                         )}
                         {variant === 'league' && (
-                            <div className="mb-4">
-                                <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${completedIds.has(String(s.id)) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                            <div className="mb-4 flex items-center gap-2 min-w-0">
+                                <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${completedIds.has(String(s.id)) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                                     {completedIds.has(String(s.id)) ? 'Изучено' : 'Не изучено'}
                                 </span>
+                                {s.usage_note && (
+                                    <span className="min-w-0 flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full" title={s.usage_note}>
+                                        <Info size={11} className="shrink-0" />
+                                        <span className="font-bold uppercase tracking-wider shrink-0">От автора</span>
+                                        <span className="text-slate-500 line-clamp-1 min-w-0">{s.usage_note}</span>
+                                    </span>
+                                )}
                             </div>
                         )}
                         {variant !== 'league' && (
@@ -1167,7 +1165,7 @@ const BuilderView = ({ practices, timeline, setTimeline, onNotify, user, onSave,
                                 <Info size={18} className="text-slate-400 shrink-0 mt-0.5" />
                                 <div className="text-sm text-slate-600 leading-relaxed space-y-2">
                                     <p>Сценарии этого раздела являются интеллектуальной собственностью ведущих Лиги и распространяются в учебных целях в качестве примера.</p>
-                                    <p>Использование данных сценариев возможно лишь частично в формате идей и отдельных практик, без полного повторения сценария, и предполагает обязательное упоминание имени ведущей.</p>
+                                    <p>Проводить встречу по чужому сценарию целиком нельзя — если автор прямо не разрешил это в заметке к сценарию. Использование возможно частично, в формате идей и отдельных практик, и предполагает обязательное упоминание имени ведущей.</p>
                                 </div>
                             </div>
                         )}

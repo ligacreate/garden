@@ -938,6 +938,13 @@ class LocalStorageService {
             .sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
 
+    // LOCAL_DB parity: минимальные моки для методов, которые есть только в
+    // RemoteApiService. Без них UserApp.loadData / BuilderView падают в dev
+    // (VITE_USE_LOCAL_DB=true). Прод не затрагивает — там RemoteApiService.
+    async getGoals() { return []; }
+    async getClients() { return []; }
+    async getCourseProgress() { return []; }
+
     async getPublicScenarios() {
         const allScenarios = JSON.parse(localStorage.getItem('garden_scenarios')) || [];
         return allScenarios

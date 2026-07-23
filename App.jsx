@@ -404,7 +404,7 @@ export default function App() {
             showNotification("Новость обновлена");
         } catch (e) {
             console.error(e);
-            showNotification("Ошибка обновления новости");
+            showNotification(e?.code === 'NO_ROWS_AFFECTED' ? e.message : "Ошибка обновления новости");
         }
     };
 
@@ -415,7 +415,7 @@ export default function App() {
             showNotification("Новость удалена");
         } catch (e) {
             console.error(e);
-            showNotification("Ошибка удаления новости");
+            showNotification(e?.code === 'NO_ROWS_AFFECTED' ? e.message : "Ошибка удаления новости");
         }
     };
 

@@ -2509,13 +2509,30 @@ class RemoteApiService {
     async updateNews(item) {
         const { id, ...rest } = item;
         const sanitized = this._sanitizeFields(rest, { plain: ['title'], rich: ['body'] });
-        await postgrestFetch('news', { id: `eq.${id}` }, { method: 'PATCH', body: sanitized, returnRepresentation: true });
+        const { data } = await postgrestFetch('news', { id: `eq.${id}` }, { method: 'PATCH', body: sanitized, returnRepresentation: true });
+        // RLS может «успешно» вернуть 0 строк (нет прав / записи нет). PostgREST
+        // при этом не отдаёт ошибку — ловим ложный успех сами, чтобы фронт не
+        // рапортовал «обновлено», когда ничего не изменилось.
+        const affected = Array.isArray(data) ? data.length : (data ? 1 : 0);
+        if (!affected) {
+            const err = new Error('Новость не обновлена: недостаточно прав или запись не найдена (0 строк затронуто).');
+            err.code = 'NO_ROWS_AFFECTED';
+            throw err;
+        }
         this._invalidateCache('news');
         return true;
     }
 
     async deleteNews(newsId) {
-        await postgrestFetch('news', { id: `eq.${newsId}` }, { method: 'DELETE', returnRepresentation: true });
+        const { data } = await postgrestFetch('news', { id: `eq.${newsId}` }, { method: 'DELETE', returnRepresentation: true });
+        // Тот же ложный успех, что и в updateNews: если RLS/фильтр удалили 0 строк,
+        // PostgREST молча вернёт пустой representation. Не выдаём это за успех.
+        const affected = Array.isArray(data) ? data.length : (data ? 1 : 0);
+        if (!affected) {
+            const err = new Error('Новость не удалена: недостаточно прав или запись не найдена (0 строк затронуто).');
+            err.code = 'NO_ROWS_AFFECTED';
+            throw err;
+        }
         this._invalidateCache('news');
         return true;
     }

@@ -5,7 +5,7 @@ import AuthScreen from './views/AuthScreen';
 import UserApp from './views/UserApp';
 import SubscriptionExpiredScreen from './views/SubscriptionExpiredScreen';
 import { INITIAL_KNOWLEDGE } from './data/data';
-import { api } from './services/dataService';
+import { api, ACCESS_STATUS } from './services/dataService';
 
 // Phase 2A — lazy admin chunk: AdminPanel (с вложенным
 // AdminPvlProgress) грузится только при заходе админа.
@@ -582,6 +582,12 @@ export default function App() {
     const gardenUsers = (users || []).filter((u) => {
         if (!u) return false;
         if (currentUser && String(u.id) === String(currentUser.id)) return true;
+        // Заблокированные (неоплата → paused_expired, админ-пауза → paused_manual)
+        // не видны в общем Саду: убираем из данных, а не прячем карточку на рендере,
+        // чтобы их не было ни в списке/карте, ни в поиске, ни в счётчике «Всего
+        // садовников». Админка ветвится от raw `users` (см. AdminPanel ниже) —
+        // там paused-профили остаются видны для управления.
+        if (u.access_status === ACCESS_STATUS.PAUSED_EXPIRED || u.access_status === ACCESS_STATUS.PAUSED_MANUAL) return false;
         return !isHiddenInGarden(u.id);
     });
 

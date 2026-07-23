@@ -130,8 +130,9 @@ const MapView = ({ users, currentUser, onOpenLeader }) => {
                 s === selectedSkillKey || s.includes(selectedSkillKey) || selectedSkillKey.includes(s)
             );
 
-            // Also exclude suspended/deleted if needed, but current dataService handles that mostly.
-            // Let's hide users without names or "ghosts"
+            // Заблокированные (paused_expired/paused_manual) сюда уже не доходят —
+            // отфильтрованы на уровне данных в App.jsx (gardenUsers). Здесь только
+            // прячем «призраков» без имени.
             if (!user.name) return false;
 
             return matchSearch && matchCity && matchSkill;

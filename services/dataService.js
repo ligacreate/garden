@@ -390,7 +390,7 @@ const isCourseProgressAccessError = (error) => {
     return false;
 };
 
-const ACCESS_STATUS = {
+export const ACCESS_STATUS = {
     ACTIVE: 'active',
     PAUSED_EXPIRED: 'paused_expired',
     PAUSED_MANUAL: 'paused_manual'

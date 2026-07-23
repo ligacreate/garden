@@ -28,6 +28,11 @@ import { ROLES, hasAccess, getRoleLabel } from '../utils/roles';
 import { normalizeSkills } from '../utils/skills';
 import { api } from '../services/dataService';
 import { getPendingMeetings } from '../utils/meetingTime';
+import {
+    shouldShowProfileReminder,
+    getMissingProfileLabels,
+    PROFILE_REMINDER_COPY
+} from '../utils/profileCompleteness';
 
 // Sidebar Item Component
 const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
@@ -63,6 +68,9 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const [clients, setClients] = useState(INITIAL_CLIENTS);
     const [notificationModal, setNotificationModal] = useState(null);
     const [resultReminder, setResultReminder] = useState(null); // массив pending-встреч или null
+    const [profileReminder, setProfileReminder] = useState(null); // подписи незаполненных полей или null
+    /** Показываем напоминалку один раз за сессию, иначе она вернётся после «Заполнить профиль». */
+    const profileReminderShownRef = useRef(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [courseSidebar, setCourseSidebar] = useState({ enabled: false, title: 'Курс', items: [], activeKey: null });
     const gardenPvlBridgeRef = useRef(null);
@@ -552,6 +560,36 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
     const dismissResultReminder = () => {
         if (user?.id) sessionStorage.setItem(`garden_result_reminder_dismissed_${user.id}`, '1');
         setResultReminder(null);
+    };
+
+    /**
+     * Напоминалка о незаполненном профиле — при входе на платформу.
+     * Показываем один раз за сессию: закрыл или ушёл заполнять — до следующего
+     * входа не возвращаем. Насовсем гасит только «Больше не показывать»
+     * (флаг profile_reminder_dismissed_at в profiles).
+     */
+    useEffect(() => {
+        if (profileReminderShownRef.current) return;
+        if (!shouldShowProfileReminder(user)) return;
+        profileReminderShownRef.current = true;
+        setProfileReminder(getMissingProfileLabels(user));
+    }, [user]);
+
+    const handleGoToProfileFromReminder = () => {
+        setProfileReminder(null);
+        handleViewChange('profile');
+    };
+
+    const handleDismissProfileReminder = async () => {
+        setProfileReminder(null);
+        try {
+            await api.dismissProfileReminder(user.id);
+            onProfileRefresh?.();
+        } catch (e) {
+            console.error(e);
+            // Не удалось сохранить — честно говорим: настройка не запомнилась.
+            onNotify('Не удалось сохранить «больше не показывать» — напоминание вернётся при следующем входе');
+        }
     };
 
     const handleGoToMeetingsFromReminder = () => {
@@ -1249,6 +1287,43 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                         <div className="flex flex-col gap-2">
                             <Button onClick={handleGoToMeetingsFromReminder} className="w-full py-4 text-base">Внести результат</Button>
                             <button onClick={dismissResultReminder} className="w-full py-2 text-sm text-slate-400 hover:text-slate-600 transition">Позже</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Напоминание заполнить профиль. ТЕКСТ — ЧЕРНОВИК, финальные формулировки в utils/profileCompleteness.js */}
+            {profileReminder && profileReminder.length > 0 && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="surface-card p-8 w-full max-w-sm text-center relative animate-in zoom-in-95 duration-300 ring-1 ring-black/5">
+                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Info size={32} className="text-blue-600" />
+                        </div>
+                        <h3 className="text-xl font-display font-semibold text-slate-900 mb-2">
+                            {PROFILE_REMINDER_COPY.title}
+                        </h3>
+                        <p className="text-slate-500 mb-5">{PROFILE_REMINDER_COPY.intro}</p>
+                        <div className="text-left bg-slate-50/80 p-4 rounded-2xl mb-8">
+                            <p className="text-sm font-medium text-slate-700 mb-2">{PROFILE_REMINDER_COPY.missingIntro}</p>
+                            <ul className="text-sm text-slate-600 space-y-1">
+                                {profileReminder.map((label) => (
+                                    <li key={label} className="flex items-start gap-2">
+                                        <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                        <span>{label}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Button onClick={handleGoToProfileFromReminder} className="w-full py-4 text-base">
+                                {PROFILE_REMINDER_COPY.primaryAction}
+                            </Button>
+                            <button
+                                onClick={handleDismissProfileReminder}
+                                className="w-full py-2 text-sm text-slate-400 hover:text-slate-600 transition"
+                            >
+                                {PROFILE_REMINDER_COPY.dismissAction}
+                            </button>
                         </div>
                     </div>
                 </div>

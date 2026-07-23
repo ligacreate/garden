@@ -1048,6 +1048,11 @@ class LocalStorageService {
         return allScenarios[index];
     }
 
+    /** LOCAL_DB-паритет: в моке профиль в localStorage, флаг просто подтверждаем. */
+    async dismissProfileReminder() {
+        return true;
+    }
+
     async getPushStatus() {
         const permission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
         return {
@@ -2757,6 +2762,27 @@ class RemoteApiService {
         return true;
     }
 
+    /**
+     * «Больше не показывать» в напоминалке о незаполненном профиле.
+     * Флаг живёт в profiles (не в localStorage), чтобы не слетал при смене
+     * устройства. Пишется своей же строкой — проходит по profiles_update_own.
+     */
+    async dismissProfileReminder(userId) {
+        const { data } = await postgrestFetch('profiles', { id: `eq.${userId}` }, {
+            method: 'PATCH',
+            body: { profile_reminder_dismissed_at: new Date().toISOString() },
+            returnRepresentation: true
+        });
+        const affected = Array.isArray(data) ? data.length : (data ? 1 : 0);
+        if (!affected) {
+            const err = new Error('Не удалось сохранить «больше не показывать» (0 строк затронуто).');
+            err.code = 'NO_ROWS_AFFECTED';
+            throw err;
+        }
+        this._invalidateCache('users');
+        return true;
+    }
+
     _normalizeProfile(profile) {
         if (!profile) return null;
         const data = { ...profile };
@@ -2780,6 +2806,8 @@ class RemoteApiService {
             telegram: data.telegram || '',
             vk: data.vk || '',
             join_date: data.join_date,
+            /** Напоминалка о незаполненном профиле: NULL = ещё не закрывал. */
+            profile_reminder_dismissed_at: data.profile_reminder_dismissed_at || null,
             access_status: data.access_status || ACCESS_STATUS.ACTIVE,
             subscription_status: data.subscription_status || SUBSCRIPTION_STATUS.ACTIVE,
             paid_until: data.paid_until || null,

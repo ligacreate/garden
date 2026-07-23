@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'rea
 import {
     Shield, LogOut, X, BookOpen, Sparkles, Users,
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
-    GraduationCap, MessagesSquare, Bell, Info, Languages, Library,
+    GraduationCap, Bell, Info, Languages, Library,
     Route, CalendarCheck2, BarChart3, BadgeCheck, MessageCircleQuestion,
     CornerUpLeft, MessageCircle, ShoppingBag, Gem
 } from 'lucide-react';
@@ -20,7 +20,6 @@ const BuilderView = lazy(() => import('./BuilderView'));
 const MeetingsView = lazy(() => import('./MeetingsView'));
 const MarketView = lazy(() => import('./MarketView'));
 const LeaderPageView = lazy(() => import('./LeaderPageView'));
-const CommunicationsView = lazy(() => import('./CommunicationsView'));
 import CRMView from './CRMView';
 import MapView from './MapView';
 import ProfileView from './ProfileView';
@@ -282,7 +281,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         'Библиотека': Library,
         'Трекер': Route,
         Календарь: CalendarCheck2,
-        Коммуникации: MessageCircle,
         'Результаты': BarChart3,
         'Сертификация': BadgeCheck,
         'FAQ': MessageCircleQuestion,
@@ -840,18 +838,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                             onClick={() => handleViewChange('market')}
                                         />
                                     )}
-                                    {/* «Коммуникации» временно скрыты из навигации (2026-07-23).
-                                        CommunicationsView и роут view==='communications' сохранены —
-                                        вернуть пункт можно, раскомментировав блок.
-                                    {isAdmin && (
-                                        <SidebarItem
-                                            icon={MessagesSquare}
-                                            label="Коммуникации"
-                                            active={view === 'communications'}
-                                            onClick={() => handleViewChange('communications')}
-                                        />
-                                    )}
-                                    */}
                                     {hasAccess(normalizedRole, 'intern') && (
                                         <>
                                             <SidebarItem
@@ -998,11 +984,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                                 <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
                                 {!isApplicant && <SidebarItem icon={ShoppingBag} label="Магазин" active={view === 'market'} onClick={() => handleViewChange('market')} />}
-                                {/* «Коммуникации» временно скрыты из навигации (2026-07-23) — view и роут сохранены, вернуть = раскомментировать.
-                                {isAdmin && (
-                                    <SidebarItem icon={MessagesSquare} label="Коммуникации" active={view === 'communications'} onClick={() => handleViewChange('communications')} />
-                                )}
-                                */}
                                 {hasAccess(normalizedRole, 'intern') && (
                                     <SidebarItem icon={Users} label="Люди CRM" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
                                 )}
@@ -1103,17 +1084,6 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 onBack={() => setView('map')}
                                 onUpdateProfile={handleUpdateProfile}
                                 onNotify={onNotify}
-                            />
-                        </Suspense>
-                    )}
-                    {view === 'communications' && isAdmin && (
-                        <Suspense fallback={<ViewLoading label="Открываем сообщения…" />}>
-                            <CommunicationsView
-                                user={user}
-                                users={mergedUsers}
-                                channelItems={news}
-                                onNotify={onNotify}
-                                onOpenProfile={handleOpenLeader}
                             />
                         </Suspense>
                     )}

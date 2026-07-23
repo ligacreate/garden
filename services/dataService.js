@@ -268,8 +268,6 @@ const resolveStorageSign = async (body) => {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const LIBRARY_SETTINGS_STORAGE_KEY = 'garden_library_settings';
 const DEFAULT_LIBRARY_SETTINGS = { hiddenCourses: [], materialOrder: {} };
-const CHAT_MESSAGES_STORAGE_KEY = 'garden_chat_messages';
-const MAX_CHAT_MESSAGE_LENGTH = 2000;
 const PUSH_SUBSCRIPTION_STORAGE_KEY = 'garden_push_enabled';
 const IS_DEV_MODE = Boolean(import.meta.env?.DEV);
 
@@ -367,8 +365,6 @@ const normalizeImportedScenarioInput = (input, index) => {
     };
 };
 
-const loadLocalMessages = () => JSON.parse(localStorage.getItem(CHAT_MESSAGES_STORAGE_KEY) || '[]');
-const saveLocalMessages = (items) => localStorage.setItem(CHAT_MESSAGES_STORAGE_KEY, JSON.stringify(items || []));
 const logCourseProgressDebug = (message, payload = null) => {
     if (!IS_DEV_MODE) return;
     if (payload && typeof payload === 'object') {
@@ -1050,81 +1046,6 @@ class LocalStorageService {
         };
         localStorage.setItem('garden_scenarios', JSON.stringify(allScenarios));
         return allScenarios[index];
-    }
-
-    // Chat messages
-    async getMessages(options = {}) {
-        const limit = Number(options?.limit) > 0 ? Number(options.limit) : 200;
-        const before = options?.before ? new Date(options.before).getTime() : null;
-        const all = loadLocalMessages()
-            .filter((m) => !m.deleted_at)
-            .filter((m) => {
-                if (!before || !Number.isFinite(before)) return true;
-                const createdMs = new Date(m.created_at || 0).getTime();
-                return Number.isFinite(createdMs) && createdMs < before;
-            })
-            .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
-        if (all.length <= limit) return all;
-        return all.slice(all.length - limit);
-    }
-
-    async addMessage(message) {
-        const text = this._sanitize(String(message?.text || ''));
-        const imageUrl = this._sanitize(String(message?.image_url || message?.imageUrl || ''));
-        const normalizedText = text.trim();
-        if (!normalizedText && !imageUrl) throw new Error('Сообщение пустое');
-        if (normalizedText.length > MAX_CHAT_MESSAGE_LENGTH) {
-            throw new Error(`Сообщение слишком длинное (максимум ${MAX_CHAT_MESSAGE_LENGTH} символов)`);
-        }
-        const all = loadLocalMessages();
-        const created = {
-            id: Date.now(),
-            author_id: message?.author_id || null,
-            author_name: this._sanitize(message?.author_name || 'Участник'),
-            text: normalizedText,
-            image_url: imageUrl || null,
-            created_at: new Date().toISOString(),
-            edited_at: null,
-            deleted_at: null
-        };
-        all.push(created);
-        saveLocalMessages(all);
-        return created;
-    }
-
-    async updateMessage(messageId, patch = {}) {
-        const all = loadLocalMessages();
-        const index = all.findIndex((m) => String(m.id) === String(messageId));
-        if (index === -1) throw new Error('Сообщение не найдено');
-        const text = this._sanitize(String(patch?.text || '')).trim();
-        if (!text) throw new Error('Пустое сообщение');
-        if (text.length > MAX_CHAT_MESSAGE_LENGTH) {
-            throw new Error(`Сообщение слишком длинное (максимум ${MAX_CHAT_MESSAGE_LENGTH} символов)`);
-        }
-        all[index] = {
-            ...all[index],
-            text,
-            edited_at: new Date().toISOString()
-        };
-        saveLocalMessages(all);
-        return all[index];
-    }
-
-    async deleteMessage(messageId) {
-        const all = loadLocalMessages();
-        const index = all.findIndex((m) => String(m.id) === String(messageId));
-        if (index === -1) return true;
-        all[index] = {
-            ...all[index],
-            deleted_at: new Date().toISOString()
-        };
-        saveLocalMessages(all);
-        return true;
-    }
-
-    async uploadChatImage(file) {
-        if (!file) return null;
-        return this.uploadAvatar(file);
     }
 
     async getPushStatus() {
@@ -2694,92 +2615,6 @@ class RemoteApiService {
             returnRepresentation: true
         });
         return Array.isArray(data) ? data[0] : data;
-    }
-
-    // Chat messages
-    async getMessages(options = {}) {
-        const limit = Number(options?.limit) > 0 ? Number(options.limit) : 200;
-        const params = {
-            select: '*',
-            deleted_at: 'is.null',
-            order: 'created_at.desc',
-            limit: String(limit)
-        };
-        if (options?.before) params.created_at = `lt.${String(options.before)}`;
-        const { data } = await postgrestFetch('messages', params);
-        // Keep UI chronological while requesting latest N rows.
-        return (data || []).slice().reverse();
-    }
-
-    async addMessage(message) {
-        const text = this._sanitize(String(message?.text || ''));
-        const imageUrl = this._sanitizeIfString(message?.image_url || message?.imageUrl || '');
-        const normalizedText = text.trim();
-        if (!normalizedText && !imageUrl) throw new Error('Сообщение пустое');
-        if (normalizedText.length > MAX_CHAT_MESSAGE_LENGTH) {
-            throw new Error(`Сообщение слишком длинное (максимум ${MAX_CHAT_MESSAGE_LENGTH} символов)`);
-        }
-        const payload = this._sanitizeFields({
-            author_id: message?.author_id || null,
-            author_name: message?.author_name || 'Участник',
-            text: normalizedText,
-            image_url: imageUrl || null
-        }, { plain: ['author_name', 'text'] });
-
-        try {
-            const { data } = await postgrestFetch('messages', {}, {
-                method: 'POST',
-                body: [payload],
-                returnRepresentation: true
-            });
-            return Array.isArray(data) ? data[0] : data;
-        } catch (error) {
-            if (!isMissingColumnError(error, 'messages', 'image_url')) throw error;
-            const fallbackPayload = { ...payload };
-            delete fallbackPayload.image_url;
-            if (imageUrl) {
-                throw new Error('Не найдено поле image_url в таблице messages. Выполните миграцию 18_messages_add_image_url.sql');
-            }
-            const { data } = await postgrestFetch('messages', {}, {
-                method: 'POST',
-                body: [fallbackPayload],
-                returnRepresentation: true
-            });
-            return Array.isArray(data) ? data[0] : data;
-        }
-    }
-
-    async updateMessage(messageId, patch = {}) {
-        const text = this._sanitize(String(patch?.text || '')).trim();
-        if (!text) throw new Error('Пустое сообщение');
-        if (text.length > MAX_CHAT_MESSAGE_LENGTH) {
-            throw new Error(`Сообщение слишком длинное (максимум ${MAX_CHAT_MESSAGE_LENGTH} символов)`);
-        }
-        const payload = this._sanitizeFields({
-            text,
-            edited_at: new Date().toISOString()
-        }, { plain: ['text'] });
-        const { data } = await postgrestFetch('messages', { id: `eq.${messageId}` }, {
-            method: 'PATCH',
-            body: payload,
-            returnRepresentation: true
-        });
-        return Array.isArray(data) ? data[0] : data;
-    }
-
-    async deleteMessage(messageId) {
-        const { data } = await postgrestFetch('messages', { id: `eq.${messageId}` }, {
-            method: 'PATCH',
-            body: { deleted_at: new Date().toISOString() },
-            returnRepresentation: true
-        });
-        return Array.isArray(data) ? data[0] : data;
-    }
-
-    async uploadChatImage(file) {
-        if (!file) return null;
-        const fileToUpload = await this.compressMeetingImage(file);
-        return await this._uploadToS3(fileToUpload, 'chat-images');
     }
 
     async getPushStatus() {

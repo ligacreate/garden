@@ -11,6 +11,7 @@ import { normalizeSkills } from '../utils/skills';
 import ConfirmationModal from '../components/ConfirmationModal';
 import SubscriptionCheckout from '../components/SubscriptionCheckout';
 import { api } from '../services/dataService';
+import { getProfileCompletionPercent } from '../utils/profileCompleteness';
 
 // Standing invite-ссылки в Лига-сообщество. Клик → заявка chat_join_request →
 // join-поллер авто-approve оплаченного (матч по telegram_user_id/@username). Уже на проде.
@@ -195,21 +196,10 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
         }));
     }, [user, isEditing, avatarPickPending]);
 
-    // Calculate Progress
-    const calculateProgress = () => {
-        let completed = 0;
-        const total = 7; // Name, City, Avatar, Skills, Offer, Unique, JoinDate
-        if (user.name) completed++;
-        if (user.city) completed++;
-        if (user.avatar) completed++;
-        if (user.skills && user.skills.length > 0) completed++;
-        if (user.offer) completed++;
-        if (user.unique_abilities) completed++;
-        if (user.join_date) completed++;
-        return Math.round((completed / total) * 100);
-    };
-
-    const progress = calculateProgress();
+    // Заполненность считаем тем же единым источником, что и напоминалка о
+    // незаполненном профиле (utils/profileCompleteness). Раньше здесь был свой
+    // набор из 7 полей — он противоречил тексту напоминалки.
+    const progress = getProfileCompletionPercent(user);
 
     // Druid Horoscope Logic
     const druidTree = user.dob ? getDruidTree(user.dob) : null;

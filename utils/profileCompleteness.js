@@ -1,12 +1,14 @@
 /**
- * Единый источник правды: какие поля профиля обязательны и чего не хватает
- * конкретному человеку. Используется напоминалкой о незаполненном профиле.
+ * Единый источник правды: какие поля профиля обязательны, чего не хватает
+ * конкретному человеку и насколько профиль заполнен.
  *
- * ВНИМАНИЕ про рассинхрон: в ProfileView есть свой calculateProgress() с ДРУГИМ
- * набором полей (там ещё unique_abilities и join_date, но нет telegram_user_id).
- * Наборы разные намеренно — прогресс-бар в этой задаче не трогали. Если решим
- * свести к одному источнику, прогресс-бар должен переиспользовать
- * getRequiredFields() отсюда, а не считать свой список.
+ * Отсюда питаются ОБА места, где это видно пользователю:
+ *   • напоминалка о незаполненном профиле (UserApp) — getMissingProfileLabels
+ *   • процент заполненности в профиле (ProfileView) — getProfileCompletionPercent
+ * Раньше ProfileView считал свой набор из 7 полей (с unique_abilities и
+ * join_date, но без telegram_user_id) и мог показать «заполнен на 100%» рядом с
+ * «не хватает привязки Telegram». Новые поля добавлять только здесь, иначе
+ * рассинхрон вернётся.
  */
 import { ROLES } from './roles';
 
@@ -62,3 +64,17 @@ export const getMissingProfileLabels = (user) =>
 /** Показывать ли напоминалку: чего-то не хватает и человек её ещё не закрывал. */
 export const shouldShowProfileReminder = (user) =>
     Boolean(user) && !user.profile_reminder_dismissed_at && getMissingProfileFields(user).length > 0;
+
+/**
+ * Процент заполненности профиля — считается по ТЕМ ЖЕ обязательным полям, что и
+ * напоминалка. Раньше ProfileView считал свой набор (с unique_abilities и
+ * join_date, без telegram_user_id), из-за чего можно было увидеть «заполнен на
+ * 100%» рядом с «не хватает привязки Telegram». Два числа, противоречащих друг
+ * другу, обесценивают оба — поэтому источник один.
+ */
+export const getProfileCompletionPercent = (user) => {
+    const required = getRequiredFields(user?.role);
+    if (!user || required.length === 0) return 0;
+    const filled = required.filter((field) => isFilled(user, field)).length;
+    return Math.round((filled / required.length) * 100);
+};

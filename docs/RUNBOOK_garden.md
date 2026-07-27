@@ -140,9 +140,26 @@ PART 1 → counts должны выйти на 158/4. Это первый защ
 ```bash
 ssh root@5.129.251.56 /opt/garden-monitor/recover_grants.sh
 # или:
-ssh root@5.129.251.56 'set -a && . /opt/garden-auth/.env && set +a && \
-  PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
-  -c "SELECT public.ensure_garden_grants();"'
+ssh root@5.129.251.56 '/opt/garden-monitor/pq.sh -c "SELECT public.ensure_garden_grants();"'
+```
+
+**Как вообще попасть в psql (2026-07-27).** Прежняя однострочка из этого
+руководства (`psql -h "$DB_HOST" …`) больше не соединяется: имя хоста
+резолвится в публичный адрес `85.239.33.223`, туда база не пускает, коннект
+висит до таймаута. Живой путь — приватный адрес `192.168.0.4` (по нему же
+ходит push-server), при этом имя хоста должно остаться в строке подключения,
+иначе не сойдётся сертификат при `sslmode=verify-full`:
+
+```bash
+psql "host=$DB_HOST hostaddr=192.168.0.4 port=5432 user=$DB_USER dbname=$DB_NAME sslmode=$DB_SSLMODE"
+```
+
+Обёртка с этим внутри лежит на сервере — `/opt/garden-monitor/pq.sh`, сама
+подтягивает `/opt/garden-auth/.env` и пробрасывает аргументы в `psql`:
+
+```bash
+ssh root@5.129.251.56 '/opt/garden-monitor/pq.sh -X -f /tmp/миграция.sql'
+ssh root@5.129.251.56 '/opt/garden-monitor/pq.sh -X -A -t -c "select count(*) from profiles"'
 ```
 
 **Связано:**

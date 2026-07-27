@@ -883,7 +883,11 @@ const MeetingsView = ({
             const meetingData = {
                 ...formData,
                 user_id: user.id,
-                status: 'planned',
+                // Статус сохраняем, а не переписываем на 'planned': из этой же формы
+                // теперь правят завершённую встречу (город, название), и жёсткое
+                // 'planned' откатывало бы её в незавершённые вместе с итогами.
+                // Для копии и переноса статус уже выставлен в buildDraftFromMeeting.
+                status: formData.status || 'planned',
                 city: finalCity,
                 city_key: cityKey,
                 meeting_format: meetingFormat,
@@ -1239,6 +1243,39 @@ const MeetingsView = ({
                                             Выберите новую дату: без неё копия встречи не сохранится.
                                         </div>
                                     )}
+
+                                    {/* Формат и город — у любой встречи, не только у публичной.
+                                        Раньше жили внутри блока «Публичное расписание»: у непубличной
+                                        встречи город было негде указать, а от него зависит часовой пояс. */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Формат встречи</label>
+                                            <select
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none"
+                                                value={normalizeMeetingFormat(formData)}
+                                                onChange={(e) => {
+                                                    const nextFormat = e.target.value;
+                                                    setFormData({
+                                                        ...formData,
+                                                        meeting_format: nextFormat,
+                                                        city: nextFormat === 'online' ? 'Онлайн' : (formData.city === 'Онлайн' ? '' : formData.city),
+                                                        online_visibility: nextFormat === 'online' ? (formData.online_visibility || 'online_only') : null
+                                                    });
+                                                }}
+                                            >
+                                                <option value="offline">Офлайн</option>
+                                                <option value="online">Онлайн</option>
+                                                <option value="hybrid">Гибрид</option>
+                                            </select>
+                                        </div>
+                                        <Input
+                                            label="Город"
+                                            value={normalizeMeetingFormat(formData) === 'online' ? 'Онлайн' : (formData.city || '')}
+                                            onChange={e => setFormData({ ...formData, city: e.target.value })}
+                                            placeholder={normalizeMeetingFormat(formData) === 'online' ? 'Онлайн' : 'Москва, Бали...'}
+                                            disabled={normalizeMeetingFormat(formData) === 'online'}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Co-hosts */}
@@ -1412,33 +1449,6 @@ const MeetingsView = ({
                                             )}
 
                                             <div className="space-y-4">
-                                                <div>
-                                                    <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Формат встречи</label>
-                                                    <select
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none"
-                                                        value={normalizeMeetingFormat(formData)}
-                                                        onChange={(e) => {
-                                                            const nextFormat = e.target.value;
-                                                            setFormData({
-                                                                ...formData,
-                                                                meeting_format: nextFormat,
-                                                                city: nextFormat === 'online' ? 'Онлайн' : (formData.city === 'Онлайн' ? '' : formData.city),
-                                                                online_visibility: nextFormat === 'online' ? (formData.online_visibility || 'online_only') : null
-                                                            });
-                                                        }}
-                                                    >
-                                                        <option value="offline">Офлайн</option>
-                                                        <option value="online">Онлайн</option>
-                                                        <option value="hybrid">Гибрид</option>
-                                                    </select>
-                                                </div>
-                                                <Input
-                                                    label="Город"
-                                                    value={normalizeMeetingFormat(formData) === 'online' ? 'Онлайн' : (formData.city || '')}
-                                                    onChange={e => setFormData({ ...formData, city: e.target.value })}
-                                                    placeholder={normalizeMeetingFormat(formData) === 'online' ? 'Онлайн' : 'Москва, Бали...'}
-                                                    disabled={normalizeMeetingFormat(formData) === 'online'}
-                                                />
                                                 {normalizeMeetingFormat(formData) === 'online' && (
                                                     <div>
                                                         <label className="block text-sm font-bold text-slate-700 mb-2 ml-1">Показывать онлайн-встречу</label>

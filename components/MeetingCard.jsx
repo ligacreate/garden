@@ -294,12 +294,21 @@ const MeetingCard = ({
                                 </p>
                             </div>
 
-                            <div className="flex gap-3 mt-4">
+                            <div className="flex flex-wrap gap-3 mt-4">
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onResult(meeting); }}
                                     className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-2"
                                 >
                                     <Edit2 size={14} /> Изменить итоги
+                                </button>
+                                {/* Завершённой встрече тоже нужно править базовое — город, название,
+                                    дату. Раньше после завершения оставались только итоги, и опечатка
+                                    в городе оставалась навсегда. Статус при сохранении не меняется. */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onEdit(meeting); }}
+                                    className="text-slate-600 text-sm font-medium hover:underline flex items-center gap-2"
+                                >
+                                    <Edit2 size={14} /> Редактировать встречу
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onDuplicate?.(meeting); }}

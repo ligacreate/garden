@@ -5,6 +5,7 @@ import { getDruidTree } from '../utils/druidHoroscope';
 import { getTreeStage } from '../utils/treeStages';
 import { getTenureParts } from '../utils/tenure';
 import UserAvatar from '../components/UserAvatar';
+import LigaCommunityEntry from '../components/LigaCommunityEntry';
 
 const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients = [], practices = [], scenarios = [], goals = [], onNavigate, onOpenLeaderPage, newsItems = [] }) => {
     const decodeEntities = (value) => {
@@ -83,6 +84,15 @@ const StatsDashboardView = ({ user, meetings = [], knowledgeBase = [], clients =
                         <h1 className="text-3xl sm:text-4xl font-display font-semibold text-slate-900 tracking-tight">Мой сад</h1>
                     </div>
                 </div>
+
+            {/* Вход в канал и чат Лиги — на видном месте, а не только в профиле.
+                Непривязанный Telegram уводит на привязку: заявка без неё повиснет. */}
+            <LigaCommunityEntry
+                user={user}
+                onNeedTelegram={() => onNavigate('profile')}
+                needTelegramLabel="Привязать в профиле"
+                className="mb-4 sm:mb-6 animate-in fade-in duration-700"
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 

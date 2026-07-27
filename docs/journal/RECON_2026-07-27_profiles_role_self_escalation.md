@@ -3,7 +3,7 @@
 **Дата:** 2026-07-27
 **Автор:** codeexec
 **Тип:** уязвимость прав доступа, подтверждена на проде
-**Статус:** ⚠️ ДЫРА ЕСТЬ, НЕ ЗАКРЫТА. Только отчёт, фикс ждёт согласования.
+**Статус:** ✅ ЗАКРЫТА 2026-07-27 — триггер-гвард `trg_profiles_privileged_write_guard` на проде (`migrations/2026-07-27_profiles_privileged_write_guard.sql`, отчёт о накате — `docs/_session/2026-07-27_codeexec_profiles_privileged_guard_diff.md`). Под гвардом: `role`, `access_status`, `subscription_status`, `paid_until`, `auto_pause_exempt`, `email`, `telegram_user_id`. Вне гварда пока `seeds` — начисление живёт на клиенте, перенос отдельной задачей (`plans/2026-07-27-семена-на-сервер.md`), там же дыра с RPC `increment_user_seeds` без проверки прав.
 **Как проверял:** read-only, все записи внутри транзакции с `ROLLBACK`. Прод не изменён — сверено после отката.
 
 ## Короткий ответ

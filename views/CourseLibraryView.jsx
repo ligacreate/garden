@@ -20,6 +20,14 @@ import {
 // Trade-off: initial load +~550KB, но гарантированно работает.
 import PvlPrototypeApp from './PvlPrototypeApp';
 
+/**
+ * Название курса «Кубик ведущей». Оно же — значение knowledge_base.category
+ * (привязка материала к курсу идёт по совпадению текста), оно же в COURSE_TITLES
+ * админки и в RLS-политике knowledge_base_cube_course_gate. Переименование —
+ * во всех четырёх местах разом, иначе материалы отвяжутся или откроются всем.
+ */
+export const CUBE_COURSE_TITLE = 'Кубик ведущей';
+
 const COURSES = [
     {
         id: 0,
@@ -84,6 +92,18 @@ const COURSES = [
         tag: "Курсы",
         minRole: ROLES.APPLICANT,
         hideWhenEmpty: true
+    },
+    {
+        id: 8,
+        title: CUBE_COURSE_TITLE,
+        description: "Шесть недель про то, как ведущая собирает свой почерк, круг и ритм. Каждая неделя — грань кубика: девять квадратов, добытых действием.",
+        image: "https://images.unsplash.com/photo-1509909756405-be0199881695?auto=format&fit=crop&q=80&w=800",
+        tag: "Курсы",
+        minRole: ROLES.APPLICANT,
+        pinned: true,
+        hideWhenEmpty: false,
+        /** Закрытый курс: карточку и материалы видят только отмеченные участницы. */
+        cubeOnly: true
     },
     {
         id: 6,
@@ -210,7 +230,9 @@ const CourseLibraryView = ({
     onCourseSidebarChange,
     gardenPvlBridgeRef,
     resetToken = 0,
-    openPvlRequest = 0
+    openPvlRequest = 0,
+    isCubeParticipant = false,
+    onOpenCube
 }) => {
     const [selectedFilter, setSelectedFilter] = useState('Все');
     const [selectedCourseId, setSelectedCourseId] = useState(null);
@@ -391,6 +413,10 @@ const CourseLibraryView = ({
             });
 
         return COURSES.filter((course) => {
+            // Закрытый курс: не отмечена — карточки нет. Материалы дополнительно
+            // закрыты на стороне базы (knowledge_base_cube_course_gate), это не
+            // только UI-скрытие.
+            if (course.cubeOnly && !isCubeParticipant) return false;
             if (course.id === PVL_ENTRY_COURSE_ID && !canSeePvlCourse) return false;
             if (!hasAccess(role, course.minRole)) return false;
             if (hiddenCourses.includes(course.title)) return false;
@@ -398,7 +424,7 @@ const CourseLibraryView = ({
             if (!course.hideWhenEmpty) return true;
             return (materialsCountByCourse.get(course.title) || 0) > 0;
         });
-    }, [canSeePvlCourse, hiddenCourses, knowledgeBase, role]);
+    }, [canSeePvlCourse, hiddenCourses, isCubeParticipant, knowledgeBase, role]);
 
     const filteredCourses = useMemo(() => {
         return availableCourses
@@ -723,7 +749,10 @@ const CourseLibraryView = ({
             </div>
 
             {selectedCourse && selectedCourse.id !== PVL_ENTRY_COURSE_ID && (
-                <div className="mb-6 flex flex-wrap justify-end gap-2">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+                    {selectedCourse.cubeOnly && onOpenCube ? (
+                        <Button variant="primary" onClick={onOpenCube}>Открыть мой кубик</Button>
+                    ) : <span />}
                     <Button variant="secondary" onClick={() => { setSelectedCourseId(null); setSelectedTag('Все'); setSelectedMaterial(null); }}>Назад к курсам</Button>
                 </div>
             )}

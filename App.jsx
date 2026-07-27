@@ -23,6 +23,8 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [librarySettings, setLibrarySettings] = useState({ hiddenCourses: [], materialOrder: {} });
     const [accessBlock, setAccessBlock] = useState(null);
+    /** Курс «Кубик ведущей» закрытый: карточку, материалы и кубик видят только отмеченные. */
+    const [isCubeParticipant, setIsCubeParticipant] = useState(false);
     // ФАЗА 1d — возврат с оплаты (?paid=1): приземляем на «Мою подписку» + авто-опрос.
     const [paidReturn, setPaidReturn] = useState(false);
     useEffect(() => {
@@ -165,6 +167,13 @@ export default function App() {
                     return;
                 }
                 setCurrentUser(user);
+
+                // Отдельным запросом, а не в общей пачке: пачка грузится до того,
+                // как известен пользователь, а отметка участницы — про него лично.
+                // Падение не должно ронять вход — тогда курс просто не показывается.
+                api.isCubeParticipant(user.id)
+                    .then((flag) => setIsCubeParticipant(!!flag))
+                    .catch((e) => console.error('isCubeParticipant failed:', e));
 
                 const { jwtMisconfig, has401, allFailed } = await loadAndApplyInitialData();
 
@@ -453,6 +462,18 @@ export default function App() {
         });
     };
 
+    /**
+     * Отметка «участница Кубика». Ошибку не глотаем: молчаливый провал здесь
+     * означал бы, что админ считает доступ выданным, а женщина курса не видит.
+     */
+    const handleSetCubeParticipant = async (userId, isParticipant) => {
+        await api.setCubeParticipant(userId, isParticipant, currentUser?.id || null);
+        if (currentUser?.id && String(currentUser.id) === String(userId)) {
+            setIsCubeParticipant(isParticipant);
+        }
+        return true;
+    };
+
     const handleGetLeagueScenarios = async () => {
         try {
             return await api.getPublicScenarios();
@@ -635,8 +656,8 @@ export default function App() {
                         <AuthScreen onLogin={handleLogin} onResetPassword={handleResetWithToken} onNotify={showNotification} />
                     )
                 )
-                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <Suspense fallback={<ViewLoading label="Загружаем админку…" />}><AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={handleRefreshUsers} onUserPatched={handleUserPatched} onAddContent={handleAddContent} onNormalizeKnowledgeContent={handleNormalizeKnowledgeContent} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={handleAddNews} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
-                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onProfileRefresh={handleProfileRefresh} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} paidReturn={paidReturn} />}
+                    : (currentUser.role === 'admin' && viewMode !== 'app') ? <Suspense fallback={<ViewLoading label="Загружаем админку…" />}><AdminPanel users={users} hiddenGardenUserIds={hiddenGardenUserIds} onToggleUserVisibilityInGarden={handleToggleUserVisibilityInGarden} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} onSetCourseVisible={handleSetCourseVisible} onReorderCourseMaterials={handleReorderCourseMaterials} onUpdateUserRole={updateUserRole} onRefreshUsers={handleRefreshUsers} onUserPatched={handleUserPatched} onAddContent={handleAddContent} onNormalizeKnowledgeContent={handleNormalizeKnowledgeContent} onGetLeagueScenarios={handleGetLeagueScenarios} onImportLeagueScenarios={handleImportLeagueScenarios} onDeleteLeagueScenario={handleDeleteLeagueScenario} onUpdateLeagueScenario={handleUpdateLeagueScenario} onAddNews={handleAddNews} onUpdateNews={handleUpdateNews} onDeleteNews={handleDeleteNews} onGetAllMeetings={() => api.getAllMeetings()} onGetAllEvents={() => api.getAllEvents()} onUpdateEvent={(e) => api.updateEvent(e)} onDeleteEvent={(id) => api.deleteEvent(id)} onGetCubeParticipants={() => api.getCubeParticipantIds()} onSetCubeParticipant={handleSetCubeParticipant} onExit={handleLogout} onNotify={showNotification} onSwitchToApp={() => setViewMode('app')} /></Suspense>
+                        : <UserApp user={currentUser} users={gardenUsers} knowledgeBase={knowledgeBase} news={news} librarySettings={librarySettings} isCubeParticipant={isCubeParticipant} onLogout={handleLogout} onNotify={showNotification} onSwitchToAdmin={() => setViewMode('default')} onUpdateUser={handleUpdateUser} onProfileRefresh={handleProfileRefresh} onSendRay={handleSendRay} onMarkAsRead={handleMarkAsRead} paidReturn={paidReturn} />}
             </div>
         </div>
     );

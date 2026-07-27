@@ -4,7 +4,7 @@ import {
     Leaf, LayoutGrid, Map as MapIcon, Settings, Menu, CalendarRange,
     GraduationCap, Bell, Info, Languages, Library,
     Route, CalendarCheck2, BarChart3, BadgeCheck, MessageCircleQuestion,
-    CornerUpLeft, MessageCircle, ShoppingBag, Gem
+    CornerUpLeft, MessageCircle, ShoppingBag, Gem, Box
 } from 'lucide-react';
 import Button from '../components/Button';
 import UserAvatar from '../components/UserAvatar';
@@ -20,6 +20,8 @@ const BuilderView = lazy(() => import('./BuilderView'));
 const MeetingsView = lazy(() => import('./MeetingsView'));
 const MarketView = lazy(() => import('./MarketView'));
 const LeaderPageView = lazy(() => import('./LeaderPageView'));
+/** Кубик ведущей — отдельный чанк: раздел видят только участницы курса. */
+const CubeView = lazy(() => import('./CubeView'));
 import CRMView from './CRMView';
 import MapView from './MapView';
 import ProfileView from './ProfileView';
@@ -56,7 +58,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, badge }) => (
     </button>
 );
 
-const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onProfileRefresh, onSendRay, onMarkAsRead, paidReturn = false }) => {
+const UserApp = ({ user, users, knowledgeBase, news, librarySettings, isCubeParticipant = false, onLogout, onNotify, onSwitchToAdmin, onUpdateUser, onProfileRefresh, onSendRay, onMarkAsRead, paidReturn = false }) => {
     const [view, setView] = useState(() => (user?.role || '').toLowerCase() === ROLES.APPLICANT ? 'library' : 'dashboard');
     // ФАЗА 1d — возврат с оплаты (?paid=1) приземляет на «Мою подписку» (ProfileView).
     useEffect(() => { if (paidReturn) setView('profile'); }, [paidReturn]);
@@ -296,6 +298,11 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
         'Вернуться в сад': CornerUpLeft,
     };
     const isCourseSidebarMode = view === 'library' && courseSidebar.enabled;
+
+    /** Сняли отметку участницы, пока раздел открыт — уводим домой, а не в пустой экран. */
+    useEffect(() => {
+        if (view === 'cube' && !isCubeParticipant) setView(homeView);
+    }, [view, isCubeParticipant, homeView]);
 
     const handleOpenLeader = (leader) => {
         if (!leader) return;
@@ -868,6 +875,14 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                         active={view === 'library'}
                                         onClick={() => handleViewChange('library')}
                                     />
+                                    {isCubeParticipant && (
+                                        <SidebarItem
+                                            icon={Box}
+                                            label="Кубик"
+                                            active={view === 'cube'}
+                                            onClick={() => handleViewChange('cube')}
+                                        />
+                                    )}
                                     {!isApplicant && (
                                         <SidebarItem
                                             icon={ShoppingBag}
@@ -1021,6 +1036,7 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 <SidebarItem icon={Gem} label="Сокровищница" active={view === 'treasury'} onClick={() => handleViewChange('treasury')} />
                                 <SidebarItem icon={Sparkles} label="Сценарии" active={view === 'builder'} onClick={() => handleViewChange('builder')} />
                                 <SidebarItem icon={GraduationCap} label="Библиотека" active={view === 'library'} onClick={() => handleViewChange('library')} />
+                                {isCubeParticipant && <SidebarItem icon={Box} label="Кубик" active={view === 'cube'} onClick={() => handleViewChange('cube')} />}
                                 {!isApplicant && <SidebarItem icon={ShoppingBag} label="Магазин" active={view === 'market'} onClick={() => handleViewChange('market')} />}
                                 {hasAccess(normalizedRole, 'intern') && (
                                     <SidebarItem icon={Users} label="Люди CRM" active={view === 'crm'} onClick={() => handleViewChange('crm')} />
@@ -1093,7 +1109,14 @@ const UserApp = ({ user, users, knowledgeBase, news, librarySettings, onLogout, 
                                 onCourseSidebarChange={setCourseSidebar}
                                 gardenPvlBridgeRef={gardenPvlBridgeRef}
                                 resetToken={libraryResetToken}
+                                isCubeParticipant={isCubeParticipant}
+                                onOpenCube={() => handleViewChange('cube')}
                             />
+                        </Suspense>
+                    )}
+                    {view === 'cube' && isCubeParticipant && (
+                        <Suspense fallback={<ViewLoading label="Открываем кубик…" />}>
+                            <CubeView user={user} />
                         </Suspense>
                     )}
                     {view === 'builder' && (

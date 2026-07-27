@@ -11,6 +11,8 @@ import { api } from '../services/dataService';
 import { getMeetingInstant } from '../utils/meetingTime';
 import { DEFAULT_TIMEZONE, resolveCityTimezone } from '../utils/timezone';
 
+// Порядок и тексты должны совпадать с COURSES в views/CourseLibraryView.jsx:
+// материал привязывается к курсу совпадением knowledge_base.category с названием.
 const COURSE_TITLES = [
     "Инструкции",
     "Пиши, веди, люби",
@@ -18,7 +20,8 @@ const COURSE_TITLES = [
     "Расти",
     "Промты, ассистенты, лайфхаки",
     "Менторский курс",
-    "Социальная психология"
+    "Социальная психология",
+    "Кубик ведущей"
 ];
 
 const AdminStatsDashboard = ({ meetings = [], users = [] }) => {
@@ -500,7 +503,7 @@ const ShopAdmin = ({ onNotify }) => {
     );
 };
 
-const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent, onUserPatched }) => {
+const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInGarden, knowledgeBase, news = [], librarySettings, onSetCourseVisible, onReorderCourseMaterials, onUpdateUserRole, onRefreshUsers, onAddContent, onNormalizeKnowledgeContent, onGetLeagueScenarios, onImportLeagueScenarios, onDeleteLeagueScenario, onUpdateLeagueScenario, onAddNews, onUpdateNews, onDeleteNews, onExit, onNotify, onSwitchToApp, onGetAllMeetings, onGetAllEvents, onUpdateEvent, onDeleteEvent, onGetCubeParticipants, onSetCubeParticipant, onUserPatched }) => {
     const [tab, setTab] = useState(() => sessionStorage.getItem('adminTab') || 'stats');
     const [contentTab, setContentTab] = useState(() => sessionStorage.getItem('adminContentTab') || 'library');
     const [newContent, setNewContent] = useState({ title: '', role: 'all', type: 'Статья', tags: '', video_link: '', file_link: '', embed_code: '' });
@@ -516,6 +519,9 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
     const [sendPushOnNews, setSendPushOnNews] = useState(true);
     const [editingMaterialId, setEditingMaterialId] = useState(null);
     const [isNormalizingKnowledge, setIsNormalizingKnowledge] = useState(false);
+    /** Курс «Кубик ведущей» — закрытый вход, отмечает администратор вручную. */
+    const [cubeParticipantIds, setCubeParticipantIds] = useState([]);
+    const [cubeBusyUserId, setCubeBusyUserId] = useState(null);
     // FEAT-015 Path C / phase30 — модалка «Льгота» (auto_pause_exempt).
     // editingExemptUser = объект user из props.users; null = модалка закрыта.
     const [editingExemptUser, setEditingExemptUser] = useState(null);
@@ -567,6 +573,32 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
             setLeagueScenarios(Array.isArray(items) ? items : []);
         });
     }, [tab, contentTab, onGetLeagueScenarios]);
+
+    useEffect(() => {
+        if (tab !== 'users' || !onGetCubeParticipants) return;
+        onGetCubeParticipants()
+            .then((ids) => setCubeParticipantIds(Array.isArray(ids) ? ids.map(String) : []))
+            .catch((e) => console.error('getCubeParticipants failed:', e));
+    }, [tab, onGetCubeParticipants]);
+
+    const handleToggleCubeParticipant = async (targetUser) => {
+        if (!onSetCubeParticipant || cubeBusyUserId) return;
+        const id = String(targetUser.id);
+        const next = !cubeParticipantIds.includes(id);
+        setCubeBusyUserId(id);
+        try {
+            await onSetCubeParticipant(targetUser.id, next);
+            setCubeParticipantIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)));
+            onNotify(next
+                ? `${targetUser.name || 'Участница'} добавлена в курс «Кубик ведущей»`
+                : `${targetUser.name || 'Участница'} убрана из курса «Кубик ведущей»`);
+        } catch (e) {
+            // Список не трогаем: показать отметку, которой нет в базе, хуже, чем ошибка.
+            onNotify(e?.message || 'Не удалось изменить отметку');
+        } finally {
+            setCubeBusyUserId(null);
+        }
+    };
 
     // Modal State
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => { }, variant: 'primary' });
@@ -1352,6 +1384,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                     <th className="pb-4 pl-2">Пользователь</th>
                                     <th className="pb-4">Роль</th>
                                     <th className="pb-4">Видимость</th>
+                                    <th className="pb-4">Кубик</th>
                                     <th className="pb-4">Действия</th>
                                 </tr>
                             </thead>
@@ -1372,6 +1405,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                         return Number.isFinite(idNum) && idNum > 1000 && (Date.now() - idNum) < 24 * 60 * 60 * 1000;
                                     })();
                                     const isHiddenInGarden = hiddenGardenUserIds.includes(String(u.id));
+                                    const isCubeParticipant = cubeParticipantIds.includes(String(u.id));
                                     return (
                                         <tr key={u.id} className={isNew ? "bg-blue-50/30" : ""}>
                                             <td className="py-4 pl-2">
@@ -1403,6 +1437,22 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                                 >
                                                     {isHiddenInGarden ? <EyeOff size={14} /> : <Eye size={14} />}
                                                     {isHiddenInGarden ? 'Скрыт' : 'Виден'}
+                                                </button>
+                                            </td>
+                                            <td className="py-4">
+                                                <button
+                                                    type="button"
+                                                    disabled={cubeBusyUserId === String(u.id)}
+                                                    onClick={() => handleToggleCubeParticipant(u)}
+                                                    className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors disabled:opacity-50 ${isCubeParticipant
+                                                        ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                                        : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                                                        }`}
+                                                    title={isCubeParticipant
+                                                        ? 'Убрать из курса «Кубик ведущей»'
+                                                        : 'Открыть курс «Кубик ведущей»'}
+                                                >
+                                                    {isCubeParticipant ? 'Участница' : 'Нет'}
                                                 </button>
                                             </td>
                                             <td className="py-4">
@@ -1685,6 +1735,7 @@ const AdminPanel = ({ users, hiddenGardenUserIds = [], onToggleUserVisibilityInG
                                             <option value="Промты, ассистенты, лайфхаки">Промты, ассистенты, лайфхаки</option>
                                             <option value="Менторский курс">Менторский курс</option>
                                             <option value="Социальная психология">Социальная психология</option>
+                                            <option value="Кубик ведущей">Кубик ведущей</option>
                                         </select>
                                     </div>
                                 </div>

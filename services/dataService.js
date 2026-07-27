@@ -50,6 +50,10 @@ const postgrestFetch = async (path, params = {}, options = {}) => {
         method: options.method || 'GET',
         headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
+        // keepalive: запрос переживает закрытие вкладки. Нужен автосохранению
+        // кубика на pagehide — иначе последний набранный текст не доедет.
+        // Браузерный лимит тела ~64 КБ, для одной ячейки с запасом.
+        keepalive: options.keepalive === true,
     });
 
     if (!response.ok) {
@@ -670,6 +674,58 @@ class LocalStorageService {
             updated += 1;
         }
         return { updated };
+    }
+
+    // Кубик ведущей (локальный режим — то же хранилище, что и остальной mock)
+    _readLocal(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
+    async getCubeParticipantIds() {
+        return this._readLocal('garden_cubeParticipants', []).map(String);
+    }
+
+    async isCubeParticipant(userId) {
+        if (!userId) return false;
+        const ids = await this.getCubeParticipantIds();
+        return ids.includes(String(userId));
+    }
+
+    async setCubeParticipant(userId, isParticipant) {
+        const ids = new Set(await this.getCubeParticipantIds());
+        if (isParticipant) ids.add(String(userId));
+        else ids.delete(String(userId));
+        localStorage.setItem('garden_cubeParticipants', JSON.stringify([...ids]));
+        return true;
+    }
+
+    async getCubeCells(userId) {
+        return this._readLocal(`garden_cubeCells_${userId}`, []);
+    }
+
+    async saveCubeCell({ userId, face, pos, title = '', body = '' }) {
+        const cells = await this.getCubeCells(userId);
+        const idx = cells.findIndex((c) => Number(c.face) === Number(face) && Number(c.pos) === Number(pos));
+        const now = new Date().toISOString();
+        const hasContent = String(title).trim() !== '' || String(body).trim() !== '';
+        if (idx === -1) {
+            cells.push({ user_id: userId, face, pos, title, body, filled_at: hasContent ? now : null, updated_at: now });
+        } else {
+            cells[idx] = {
+                ...cells[idx],
+                title,
+                body,
+                filled_at: cells[idx].filled_at || (hasContent ? now : null),
+                updated_at: now
+            };
+        }
+        localStorage.setItem(`garden_cubeCells_${userId}`, JSON.stringify(cells));
+        return true;
     }
 
     async getLibrarySettings() {
@@ -1875,6 +1931,86 @@ class RemoteApiService {
     async deleteKnowledge(id) {
         await postgrestFetch('knowledge_base', { id: `eq.${id}` }, { method: 'DELETE', returnRepresentation: true });
         this._invalidateCache('knowledgeBase');
+        return true;
+    }
+
+    // ── Кубик ведущей ───────────────────────────────────────────────────────
+    // Доступ к курсу — строка в cube_participants. Отдельная таблица, а не флаг
+    // в profiles: свою строку профиля пользователь может патчить сам
+    // (profiles_update_own), то есть флаг был бы самоназначаемым.
+
+    /** Список участниц. Свою строку видит каждая, весь список — куратор/ментор/админ. */
+    async getCubeParticipantIds() {
+        const { data } = await postgrestFetch('cube_participants', { select: 'user_id' });
+        return (data || []).map((row) => String(row.user_id));
+    }
+
+    /** Участница ли текущий пользователь. RLS отдаёт свою строку — этого достаточно. */
+    async isCubeParticipant(userId) {
+        if (!userId) return false;
+        const { data } = await postgrestFetch('cube_participants', {
+            user_id: `eq.${userId}`,
+            select: 'user_id'
+        });
+        return (data || []).length > 0;
+    }
+
+    /** Отметить или снять участницу. Пишет только администратор — гарантия в RLS. */
+    async setCubeParticipant(userId, isParticipant, addedBy = null) {
+        if (!userId) throw new Error('Не указан пользователь');
+        if (isParticipant) {
+            const { data } = await postgrestFetch('cube_participants', {}, {
+                method: 'POST',
+                body: [{ user_id: userId, added_by: addedBy || null }],
+                // merge-duplicates: повторное нажатие не должно падать на конфликте PK.
+                // Prefer задаём через headers — options.returnRepresentation его перезатирает.
+                headers: { Prefer: 'resolution=merge-duplicates,return=representation' }
+            });
+            // RLS-ловушка: без permissive-политики запись «проходит» и трогает 0 строк.
+            // Пустое представление здесь = отметка не поставлена, молчать об этом нельзя.
+            if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('Отметка не сохранилась — нет прав на запись в список участниц');
+            }
+        } else {
+            const { data } = await postgrestFetch('cube_participants', { user_id: `eq.${userId}` }, {
+                method: 'DELETE',
+                returnRepresentation: true
+            });
+            if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('Отметка не снялась — нет прав или участницы нет в списке');
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Ячейки кубика. Без userId — свои (RLS сам ограничит).
+     * С userId — конкретной участницы, это путь куратора и ментора.
+     */
+    async getCubeCells(userId) {
+        const params = { select: 'face,pos,title,body,filled_at,updated_at', order: 'face.asc,pos.asc' };
+        if (userId) params.user_id = `eq.${userId}`;
+        const { data } = await postgrestFetch('cube_cells', params);
+        return data || [];
+    }
+
+    /**
+     * Сохранить одну ячейку. Upsert по первичному ключу (user_id, face, pos).
+     * keepalive — для сохранения в момент ухода со страницы.
+     */
+    async saveCubeCell({ userId, face, pos, title = '', body = '', keepalive = false }) {
+        if (!userId) throw new Error('Не указан пользователь');
+        const { data } = await postgrestFetch('cube_cells', {}, {
+            method: 'POST',
+            body: [{ user_id: userId, face: Number(face), pos: Number(pos), title, body }],
+            headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+            keepalive
+        });
+        // keepalive-запрос на выходе со страницы ответ разобрать уже не успевает —
+        // там пустой data не признак провала. В обычном сохранении — признак.
+        if (!keepalive && (!Array.isArray(data) || data.length === 0)) {
+            throw new Error('Текст не сохранился на сервере');
+        }
         return true;
     }
 

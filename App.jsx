@@ -347,7 +347,7 @@ export default function App() {
         if (!userToUpdate) return;
 
         try {
-            await api.updateUser({ id, role });
+            await api.setUserRole(id, role);
             const updated = { ...userToUpdate, role };
             setUsers(users.map(u => u.id === id ? updated : u));
             if (currentUser?.id === id) setCurrentUser(updated);

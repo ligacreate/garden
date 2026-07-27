@@ -598,8 +598,14 @@ class LocalStorageService {
 
     async updateUser(updatedUser) {
         const sanitizeIfString = (val) => (typeof val === 'string' ? this._sanitize(val) : val);
+        // Роль и статус сохранение профиля не меняет — как и в реальном режиме
+        // (см. RemoteApiService.updateUser). Берём их из уже сохранённой записи,
+        // чтобы локальный режим не прятал баг, который в проде отбивает гвард.
+        const stored = this.users.find(u => u.id === updatedUser.id);
         const sanitizedUser = {
             ...updatedUser,
+            role: stored ? stored.role : updatedUser.role,
+            status: stored ? stored.status : updatedUser.status,
             name: sanitizeIfString(updatedUser.name),
             city: sanitizeIfString(updatedUser.city),
             offer: sanitizeIfString(updatedUser.offer),
@@ -621,6 +627,17 @@ class LocalStorageService {
             localStorage.setItem('garden_currentUser', JSON.stringify(sanitizedUser));
         }
         return sanitizedUser;
+    }
+
+    /** Пара к RemoteApiService.setUserRole — админская смена роли в локальном режиме. */
+    async setUserRole(userId, role) {
+        this.users = this.users.map(u => (u.id === userId ? { ...u, role } : u));
+        this._saveUsers();
+        const current = await this.getCurrentUser();
+        if (current && current.id === userId) {
+            localStorage.setItem('garden_currentUser', JSON.stringify({ ...current, role }));
+        }
+        return this.users.find(u => u.id === userId) || null;
     }
 
     async incrementUserSeeds() {
@@ -1640,25 +1657,16 @@ class RemoteApiService {
             avatar_url: this._sanitizeIfString(updatedUser.avatar_url)
         };
 
-        // 1. Update role/status first
-        try {
-            const roleStatusUpdate = {};
-            if (hasField(updatedUser, 'role')) roleStatusUpdate.role = updatedUser.role;
-            if (hasField(updatedUser, 'status')) roleStatusUpdate.status = updatedUser.status;
-
-            if (Object.keys(roleStatusUpdate).length > 0) {
-                await postgrestFetch('profiles', { id: `eq.${updatedUser.id}` }, {
-                    method: 'PATCH',
-                    body: roleStatusUpdate,
-                    returnRepresentation: true
-                });
-            }
-        } catch (e) {
-            console.warn("Role/status update failed:", e);
-            throw e;
-        }
-
-        // 2. Update profile fields
+        // Роль и статус здесь НЕ трогаем. Раньше сохранение профиля первым шагом
+        // патчило `role`/`status` значениями из клиентского объекта — при том, что
+        // ни одно поле формы их не редактирует. Владелец этих колонок — админка
+        // (setUserRole, toggleUserStatus) и бэкенд, поэтому self-save шлёт только
+        // пользовательские поля. Пока клиентский объект совпадал с БД, лишний PATCH
+        // был не виден; стоило им разойтись (роль сменили в админке, а вкладка
+        // участницы этого ещё не знает) — и клиент тихо возвращал БД прежнюю роль,
+        // а после гварда привилегированных колонок тот же PATCH стал отбиваться
+        // с 42501 и ронять всё сохранение целиком, включая имя и город.
+        // Разбор: docs/lessons/2026-07-27-профиль-не-сохраняется-роль-в-self-save.md
         try {
             const dbUser = { id: updatedUser.id };
             if (hasField(updatedUser, 'name')) dbUser.name = clean.name;
@@ -1715,6 +1723,26 @@ class RemoteApiService {
         // Return the full object so UI updates optimistically
         this._invalidateCache('users');
         return updatedUser;
+    }
+
+    /**
+     * Смена роли участницы — админская операция, отдельный от сохранения профиля путь.
+     * Идёт под JWT админа, `is_admin()` истинно → гвард привилегированных колонок
+     * (trg_profiles_privileged_write_guard) пропускает. Раньше админка ходила сюда
+     * через `updateUser({ id, role })`, из-за чего тот же PATCH-код обслуживал и
+     * self-save участницы — см. комментарий в updateUser.
+     * @param {string} userId
+     * @param {string} role
+     */
+    async setUserRole(userId, role) {
+        const { data } = await postgrestFetch('profiles', { id: `eq.${userId}` }, {
+            method: 'PATCH',
+            body: { role },
+            returnRepresentation: true
+        });
+        this._invalidateCache('users');
+        const row = Array.isArray(data) ? data[0] : data;
+        return row ? this._normalizeProfile(row) : null;
     }
 
     async deleteUser(userId) {

@@ -15,6 +15,16 @@ class ErrorBoundary extends React.Component {
         const msg = String(error?.message || '');
         const isChunkLoadError = /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg);
 
+        // Текст ошибки кладём в state ДО возможной перезагрузки. Раньше ветка
+        // chunk-ошибки делала reload и выходила по return, не дойдя до setState,
+        // в расчёте на то, что экран никто не увидит. Если перезагрузка не
+        // случается (2026-07-28, долгая вкладка в Chrome на iOS), человек
+        // остаётся с пустым чёрным блоком: `state.error` null, показывать нечего.
+        // Отладочную информацию терять нельзя именно в тот момент, когда
+        // страховка не сработала.
+        this.setState({ error, errorInfo });
+        console.error("Uncaught error:", error, errorInfo);
+
         if (isChunkLoadError) {
             reportClientError({
                 message: 'ChunkLoadError → auto-reload',
@@ -43,9 +53,6 @@ class ErrorBoundary extends React.Component {
                 extra: { componentStack: errorInfo?.componentStack },
             });
         }
-
-        this.setState({ error, errorInfo });
-        console.error("Uncaught error:", error, errorInfo);
     }
 
     render() {

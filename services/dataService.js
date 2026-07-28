@@ -1697,14 +1697,21 @@ class RemoteApiService {
                 }
                 dbUser.telegram = normalizedTg;
             }
+            // ВК — необязательное поле, и нераспознанный ввод не должен рушить
+            // сохранение всего профиля. Раньше здесь был throw: из-за кириллицы или
+            // пробела в поле ВК не сохранялись ни имя, ни город, ни фото, ни
+            // компетенции. UserApp при этом успевал показать новые значения
+            // оптимистично, поэтому потеря обнаруживалась только после перезагрузки.
+            // Тем же throw'ом ломалось сохранение отзывов со страницы ведущей
+            // (LeaderPageView шлёт весь объект профиля, включая vk из БД) — то есть
+            // одна старая некорректная строка блокировала человеку и её.
+            // Теперь непонятную ссылку просто не пишем: прежнее значение в БД
+            // остаётся, остальные поля уходят штатно. Пустая строка валидна
+            // (isValidVk('') === true), поэтому очистить поле по-прежнему можно.
+            // Предупреждает человека форма — views/ProfileView.jsx, ещё до «Сохранить».
             if (hasField(updatedUser, 'vk')) {
                 const normalizedVk = normalizeVk(clean.vk);
-                if (normalizedVk && !isValidVk(normalizedVk)) {
-                    const err = new Error('VK должен быть в формате https://vk.me/username');
-                    err.userFacing = true;
-                    throw err;
-                }
-                dbUser.vk = normalizedVk;
+                if (isValidVk(normalizedVk)) dbUser.vk = normalizedVk;
             }
             if (safeJoinDate !== undefined) dbUser.join_date = safeJoinDate;
             if (safeAvatarFocusX !== undefined) dbUser.avatar_focus_x = Math.max(0, Math.min(100, safeAvatarFocusX));

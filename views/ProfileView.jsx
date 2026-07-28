@@ -13,6 +13,7 @@ import SubscriptionCheckout from '../components/SubscriptionCheckout';
 import { api } from '../services/dataService';
 import { getProfileCompletionPercent } from '../utils/profileCompleteness';
 import LigaCommunityEntry from '../components/LigaCommunityEntry';
+import { normalizeVk, isValidVk } from '../lib/contactNormalize';
 
 const TagsInput = ({ label, value = [], onChange, placeholder = "Добавить...", options = [] }) => {
     const [input, setInput] = useState('');
@@ -207,6 +208,11 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
         (isEditing && (user.avatar || user.avatar_url)) || Boolean(avatarPickPending);
     const useFormAvatarFocus = isEditing || Boolean(avatarPickPending);
 
+    // ВК необязателен, но нераспознанную ссылку мы не сохраняем. Считаем это
+    // прямо во время ввода, чтобы человек увидел подсказку до нажатия «Сохранить»,
+    // а не потерял правки молча.
+    const vkInputInvalid = Boolean(String(form.vk || '').trim()) && !isValidVk(normalizeVk(form.vk));
+
     const handleSave = () => {
         if (!form.telegram || !form.telegram.trim()) {
             onNotify && onNotify('Telegram обязателен. Заполните поле «Ссылка на Telegram».');
@@ -219,6 +225,9 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
         onUpdateProfile({
             ...user,
             ...form,
+            // Нераспознанную ссылку ВК не отправляем: иначе оптимистичное обновление
+            // в UserApp покажет её в профиле, хотя в базу она не уйдёт. Оставляем прежнюю.
+            vk: vkInputInvalid ? (user.vk || '') : form.vk,
             skills: normalizeSkills(form.skills),
             avatar_focus_x: form.avatar_focus_x,
             avatar_focus_y: form.avatar_focus_y,
@@ -781,9 +790,15 @@ const ProfileView = ({ user, onUpdateProfile, onProfileRefresh, onLogout, onDele
                                                 onChange={e => setForm({ ...form, vk: e.target.value })}
                                                 placeholder="https://vk.me/username или vk.com/id123"
                                             />
-                                            <p className="text-[11px] text-slate-400">
-                                                Если у вас есть ВК — это альтернативный канал связи в публичных встречах. Можно ввести как https://vk.com/username, мы автоматически приведём к ссылке на личку.
-                                            </p>
+                                            {vkInputInvalid ? (
+                                                <p className="text-[11px] text-amber-600">
+                                                    Это не похоже на ссылку ВКонтакте, поэтому мы её не сохраним — остальной профиль сохранится как обычно. Нужен адрес вида https://vk.com/username латиницей. Поле можно оставить пустым.
+                                                </p>
+                                            ) : (
+                                                <p className="text-[11px] text-slate-400">
+                                                    Если у вас есть ВК — это альтернативный канал связи в публичных встречах. Можно ввести как https://vk.com/username, мы автоматически приведём к ссылке на личку.
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700">Что я хочу, чтобы вы про меня знали</label>

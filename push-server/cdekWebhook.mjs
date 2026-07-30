@@ -71,6 +71,7 @@ export function resolveCdekConfig(env = {}) {
     waitingStatuses: list(env.CDEK_WAITING_STATUSES, WAITING_STATUSES_DEFAULT),
     closedStatuses: list(env.CDEK_CLOSED_STATUSES, CLOSED_STATUSES_DEFAULT),
     waitingHours: Number(env.CDEK_WAITING_HOURS || 24),
+    newOrderMaxAgeHours: Number(env.CDEK_NEW_ORDER_MAX_AGE_HOURS || 24),
     scanMinutes: Number(env.CDEK_SCAN_MINUTES || 60),
     storePath: String(env.CDEK_STORE_PATH || './cdek-orders.json'),
   };
@@ -83,13 +84,6 @@ export function tokenMatches(given, expected) {
   const b = Buffer.from(String(expected), 'utf8');
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
-}
-
-/** Уведомляем о создании заказа. Движение посылки не шлём, его слишком много. */
-export function shouldNotify(payload, statuses) {
-  if (!payload || payload.type !== 'ORDER_STATUS') return false;
-  const code = payload.attributes && payload.attributes.status_code;
-  return statuses.includes(code);
 }
 
 /** Достаёт из ответа СДЭК то немногое, что нужно для обоих сообщений. */
@@ -214,66 +208,75 @@ async function sendTelegram(cfg, fetchImpl, text) {
 }
 
 /**
+ * Что состояние заказа значит для нас — по истории статусов из ответа СДЭК.
+ *
+ * Смотрим всю историю, а не последний статус: событие вебхука может прийти
+ * с опозданием или не прийти вовсе (сервис лежал), а история в API полная.
+ * `statuses` СДЭК отдаёт от свежих к старым, поэтому find берёт последний
+ * подходящий.
+ */
+export function digestStatuses(order = {}, config, now = Date.now()) {
+  const statuses = Array.isArray(order.statuses) ? order.statuses : [];
+  const newEntry = statuses.find((s) => config.statuses.includes(s.code));
+  const waitingEntry = statuses.find((s) => config.waitingStatuses.includes(s.code));
+  const closedEntry = statuses.find((s) => config.closedStatuses.includes(s.code));
+
+  // «Новый заказ» — про новизну. Заказ, созданный неделю назад, о котором мы
+  // впервые услышали только сейчас, уведомлением не заслуживает.
+  const createdAt = newEntry ? Date.parse(newEntry.date_time) : NaN;
+  const isNew = Boolean(newEntry) && now - createdAt <= config.newOrderMaxAgeHours * 60 * 60 * 1000;
+
+  return {
+    status: statuses[0] ? statuses[0].code : '',
+    isNew,
+    closed: Boolean(closedEntry),
+    // Час, когда посылка легла в пункт выдачи, берём у СДЭК, а не по времени
+    // прихода вебхука: точнее и переживает простои сервиса.
+    waitingSince: waitingEntry ? new Date(Date.parse(waitingEntry.date_time)).toISOString() : null,
+  };
+}
+
+/**
  * Разбор события. Вызывается после того, как СДЭКу отдан 200: ответ не должен
  * ждать похода в API СДЭК и в Telegram.
+ *
+ * `attributes.status_code` из вебхука мы НЕ используем для решений: СДЭК шлёт
+ * там числовой код старого справочника (12, 9), а не строковый код из API.
+ * Вебхук для нас — только сигнал «по заказу что-то произошло»; истину о
+ * статусе берём запросом к API, где коды строковые и документированные.
  */
 export async function processCdekEvent(payload, { config, fetchImpl, store, logger = console, now = Date.now() }) {
   if (!payload || payload.type !== 'ORDER_STATUS') return { sent: false, reason: 'not_order_status' };
 
   const attrs = payload.attributes || {};
-  const status = attrs.status_code || '';
   const key = attrs.cdek_number || payload.uuid || '';
   if (!key) return { sent: false, reason: 'no_key' };
 
-  // Коды статусов пишем всегда: так видно живой словарь СДЭК и можно уточнить
-  // список «лежит в пункте выдачи», не гадая по документации.
-  logger.info(`[cdek] событие ${key}: ${status}`);
+  logger.info(`[cdek] событие ${key}: сырой код ${attrs.status_code}`);
 
-  const isNew = config.statuses.includes(status);
-  const isWaiting = config.waitingStatuses.includes(status);
-  const isClosed = config.closedStatuses.includes(status);
   const stored = store.get(key) || {};
   const stamp = new Date(now).toISOString();
 
-  let facts = null;
-  // За деталями ходим только когда они нужны: на каждое движение посылки —
-  // не ходим.
-  if ((isNew || isWaiting) && (!stored.recipient || !stored.items)) {
-    try {
-      facts = extractOrderFacts(await fetchOrder(config, fetchImpl, { cdekNumber: attrs.cdek_number, uuid: payload.uuid }));
-    } catch (e) {
-      logger.error(`[cdek] не удалось забрать заказ ${key}`, e);
-      if (isNew) {
-        await sendTelegram(
-          config,
-          fetchImpl,
-          'Пришёл вебхук СДЭК, но собрать уведомление не вышло.\n' +
-            `Ошибка: ${e && e.message ? e.message : e}\n` +
-            `Данные: ${JSON.stringify(payload).slice(0, 700)}`
-        ).catch((sendErr) => logger.error('[cdek] и в Telegram не ушло', sendErr));
-        return { sent: false, reason: 'error' };
-      }
-    }
+  let order;
+  try {
+    order = await fetchOrder(config, fetchImpl, { cdekNumber: attrs.cdek_number, uuid: payload.uuid });
+  } catch (e) {
+    // Не кричим Ольге на каждый сбой сети: помечаем запись и пробуем снова
+    // на ближайшем проходе сканера.
+    logger.error(`[cdek] не удалось забрать заказ ${key}, повторим на проходе`, e);
+    store.upsert(key, { updatedAt: stamp, createdAt: stored.createdAt || stamp, needsRefresh: true });
+    return { sent: false, reason: 'error' };
   }
 
-  const record = store.upsert(key, {
-    ...(facts || {}),
-    track: (facts && facts.track) || stored.track || attrs.cdek_number || key,
-    status,
-    updatedAt: stamp,
-    createdAt: stored.createdAt || stamp,
-    closed: isClosed || Boolean(stored.closed),
-    // Часы пошли с первого попадания в пункт выдачи; повторное событие того же
-    // типа их не сбрасывает.
-    waitingSince: isWaiting ? stored.waitingSince || stamp : stored.waitingSince || null,
-    notifiedNew: stored.notifiedNew || false,
-    notifiedWaiting: isClosed ? true : stored.notifiedWaiting || false,
-  });
+  const record = applyOrder(key, order, { config, store, stored, now, stamp });
+  logger.info(`[cdek] заказ ${key}: ${record.status}${record.waitingSince ? ' (лежит в пункте выдачи)' : ''}`);
 
-  if (!isNew || record.notifiedNew) return { sent: false, reason: record.notifiedNew ? 'duplicate' : 'not_notifiable' };
+  if (!record.isNewOrder || record.notifiedNew) {
+    return { sent: false, reason: record.notifiedNew ? 'duplicate' : 'not_notifiable' };
+  }
 
   try {
-    await sendTelegram(config, fetchImpl, formatOrderMessage(factsToOrder(facts || record), attrs));
+    await sendTelegram(config, fetchImpl, formatOrderMessage(order, attrs));
     store.upsert(key, { notifiedNew: true });
     logger.info(`[cdek] уведомление о новом заказе отправлено: ${key}`);
     return { sent: true };
@@ -283,17 +286,32 @@ export async function processCdekEvent(payload, { config, fetchImpl, store, logg
   }
 }
 
-/** Обратная сборка: formatOrderMessage работает с ответом СДЭК, тут — с записью. */
-function factsToOrder(facts = {}) {
-  return {
-    cdek_number: facts.track || '',
-    packages: [{ items: (facts.items || []).map((line) => ({ name: line, amount: 1 })) }],
-  };
+/** Раскладывает ответ СДЭК по записи реестра. */
+function applyOrder(key, order, { config, store, stored = {}, now, stamp }) {
+  const facts = extractOrderFacts(order);
+  const digest = digestStatuses(order, config, now);
+  const record = store.upsert(key, {
+    ...facts,
+    track: facts.track || stored.track || key,
+    status: digest.status,
+    updatedAt: stamp,
+    createdAt: stored.createdAt || stamp,
+    closed: digest.closed,
+    waitingSince: digest.waitingSince,
+    notifiedNew: stored.notifiedNew || false,
+    // Забрали или вернули — напоминать больше не о чем.
+    notifiedWaiting: digest.closed ? true : stored.notifiedWaiting || false,
+    needsRefresh: false,
+  });
+  record.isNewOrder = digest.isNew;
+  return record;
 }
 
 /**
  * Проход по реестру: кто лежит в пункте выдачи дольше порога и до сих пор не
  * забран. Уведомление по каждому заказу одно — дальше Ольга решает сама.
+ *
+ * Заодно дочитывает записи, по которым в прошлый раз не прошёл запрос к СДЭК.
  */
 export async function scanWaitingOrders({ config, fetchImpl, store, logger = console, now = Date.now() }) {
   const edge = now - config.waitingHours * 60 * 60 * 1000;
@@ -302,26 +320,24 @@ export async function scanWaitingOrders({ config, fetchImpl, store, logger = con
   // сработал проход или молча не случился.
   logger.info(`[cdek] проход по реестру: записей ${store.all().length}`);
 
+  for (const stale of store.all()) {
+    if (!stale.needsRefresh) continue;
+    try {
+      const order = await fetchOrder(config, fetchImpl, { cdekNumber: stale.track || stale.key });
+      applyOrder(stale.key, order, { config, store, stored: stale, now, stamp: new Date(now).toISOString() });
+      logger.info(`[cdek] заказ ${stale.key} дочитан`);
+    } catch (e) {
+      logger.error(`[cdek] заказ ${stale.key} снова не читается`, e);
+    }
+  }
+
   for (const record of store.all()) {
     if (record.closed || record.notifiedWaiting || !record.waitingSince) continue;
     const since = Date.parse(record.waitingSince);
     if (!since || since > edge) continue;
 
-    // Без имени и телефона напоминание бесполезно — добираем, если в прошлый
-    // раз запрос к СДЭК не прошёл.
-    let full = record;
-    if (!record.recipient || !record.phone) {
-      try {
-        const facts = extractOrderFacts(await fetchOrder(config, fetchImpl, { cdekNumber: record.track || record.key }));
-        full = store.upsert(record.key, facts);
-        full.key = record.key;
-      } catch (e) {
-        logger.error(`[cdek] детали по ${record.key} не добрались, шлём что есть`, e);
-      }
-    }
-
     try {
-      await sendTelegram(config, fetchImpl, formatWaitingMessage(full, now));
+      await sendTelegram(config, fetchImpl, formatWaitingMessage(record, now));
       store.upsert(record.key, { notifiedWaiting: true });
       notified += 1;
       logger.info(`[cdek] напоминание о незабранном заказе: ${record.key}`);

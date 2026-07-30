@@ -4,7 +4,7 @@ import {
   createCdekWebhookHandler,
   resolveCdekConfig,
   tokenMatches,
-  shouldNotify,
+  digestStatuses,
   extractOrderFacts,
   formatOrderMessage,
   stripCustomsTranslation,
@@ -29,8 +29,18 @@ const ORDER = {
   to_location: { city: 'Фергана' },
   packages: [
     { items: [{ name: 'Блокнот бумажный «Женщины разумной» / Paper notebook', amount: 1 }] }
+  ],
+  // СДЭК отдаёт статусы от свежих к старым.
+  statuses: [
+    { code: 'CREATED', date_time: '2026-07-30T08:30:00+0000' },
+    { code: 'ACCEPTED', date_time: '2026-07-30T08:29:58+0000' }
   ]
 };
+
+/** Заказ с произвольной историей — statuses задаются от свежих к старым. */
+function orderWith(...statuses) {
+  return { ...ORDER, statuses };
+}
 
 const DAY = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-07-30T09:00:00Z');
@@ -63,14 +73,55 @@ test('токен в пути сверяется точно', () => {
   assert.equal(tokenMatches('', ''), false);
 });
 
-test('шлём создание заказа, молчим на движении посылки', () => {
-  const statuses = ['CREATED'];
-  const evt = (code) => ({ type: 'ORDER_STATUS', attributes: { status_code: code } });
-  assert.equal(shouldNotify(evt('CREATED'), statuses), true);
-  assert.equal(shouldNotify(evt('ACCEPTED'), statuses), false);
-  assert.equal(shouldNotify(evt('RECEIVED_AT_SHIPMENT_WAREHOUSE'), statuses), false);
-  assert.equal(shouldNotify({ type: 'PRINT_FORM', attributes: { status_code: 'CREATED' } }, statuses), false);
-  assert.equal(shouldNotify(null, statuses), false);
+test('состояние читается по истории статусов, а не по последнему', () => {
+  const cfg = resolveCdekConfig(FULL_ENV);
+  // Живая история заказа 10286887892 (30.07): доехал и лёг в пункт выдачи.
+  const digest = digestStatuses(
+    orderWith(
+      { code: 'ACCEPTED_AT_PICK_UP_POINT', date_time: '2026-07-30T07:59:51+0000' },
+      { code: 'ACCEPTED_IN_RECIPIENT_CITY', date_time: '2026-07-30T07:09:12+0000' },
+      { code: 'SENT_TO_RECIPIENT_CITY', date_time: '2026-07-30T05:52:11+0000' },
+      { code: 'CREATED', date_time: '2026-07-30T05:00:00+0000' }
+    ),
+    cfg,
+    T0
+  );
+  assert.equal(digest.status, 'ACCEPTED_AT_PICK_UP_POINT');
+  assert.equal(digest.closed, false);
+  assert.equal(digest.isNew, true);
+  // Час лежания взят у СДЭК, а не по времени прихода вебхука.
+  assert.equal(digest.waitingSince, '2026-07-30T07:59:51.000Z');
+});
+
+test('движение посылки не делает заказ новым и не запускает часы', () => {
+  const digest = digestStatuses(
+    orderWith({ code: 'SENT_TO_RECIPIENT_CITY', date_time: '2026-07-30T05:52:11+0000' }),
+    resolveCdekConfig(FULL_ENV),
+    T0
+  );
+  assert.equal(digest.isNew, false);
+  assert.equal(digest.waitingSince, null);
+  assert.equal(digest.closed, false);
+});
+
+test('старый заказ, впервые увиденный сейчас, новым не считается', () => {
+  const cfg = resolveCdekConfig(FULL_ENV);
+  const свежий = digestStatuses(orderWith({ code: 'CREATED', date_time: '2026-07-30T05:00:00+0000' }), cfg, T0);
+  const давний = digestStatuses(orderWith({ code: 'CREATED', date_time: '2026-07-18T17:40:29+0000' }), cfg, T0);
+  assert.equal(свежий.isNew, true);
+  assert.equal(давний.isNew, false);
+});
+
+test('забранный заказ закрыт, даже если в истории есть пункт выдачи', () => {
+  const digest = digestStatuses(
+    orderWith(
+      { code: 'DELIVERED', date_time: '2026-07-30T08:00:00+0000' },
+      { code: 'ACCEPTED_AT_PICK_UP_POINT', date_time: '2026-07-29T08:00:00+0000' }
+    ),
+    resolveCdekConfig(FULL_ENV),
+    T0
+  );
+  assert.equal(digest.closed, true);
 });
 
 test('из ответа СДЭК достаём получателя, телефон и состав', () => {
@@ -177,27 +228,26 @@ test('новый заказ: уведомление уходит, повтор �
 test('движение посылки в реестр пишется, но Ольгу не тревожит', async () => {
   const sent = [];
   const store = memoryStore();
-  const ctx = { config: resolveCdekConfig(FULL_ENV), fetchImpl: fakeFetch(sent), store, logger: quiet, now: T0 };
+  const fetchImpl = fakeFetch(sent, orderWith({ code: 'SENT_TO_RECIPIENT_CITY', date_time: '2026-07-30T05:52:11+0000' }));
 
-  await processCdekEvent(event('SENT_TO_RECIPIENT_CITY', '10296250133'), ctx);
+  await processCdekEvent(event(9), { config: resolveCdekConfig(FULL_ENV), fetchImpl, store, logger: quiet, now: T0 });
 
   assert.equal(sent.length, 0);
   assert.equal(store.get('10296250133').status, 'SENT_TO_RECIPIENT_CITY');
   assert.equal(store.get('10296250133').waitingSince, null);
 });
 
-test('попадание в пункт выдачи запускает часы и не сбрасывает их повтором', async () => {
+test('часы берутся у СДЭК и не сбрасываются повторным событием', async () => {
   const sent = [];
   const store = memoryStore();
   const cfg = resolveCdekConfig(FULL_ENV);
-  const fetchImpl = fakeFetch(sent);
+  const fetchImpl = fakeFetch(sent, ПВЗ);
 
-  await processCdekEvent(event('ACCEPTED_AT_PICK_UP_POINT', '10296250133'), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
-  const firstStamp = store.get('10296250133').waitingSince;
-  await processCdekEvent(event('ACCEPTED_AT_PICK_UP_POINT', '10296250133'), { config: cfg, fetchImpl, store, logger: quiet, now: T0 + DAY });
+  await processCdekEvent(event(12), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
+  await processCdekEvent(event(12), { config: cfg, fetchImpl, store, logger: quiet, now: T0 + DAY });
 
-  assert.equal(store.get('10296250133').waitingSince, firstStamp);
-  // Детали подтянулись из СДЭК — они нужны для напоминания.
+  // Не время прихода вебхука, а дата статуса из ответа СДЭК.
+  assert.equal(store.get('10296250133').waitingSince, '2026-07-30T07:59:51.000Z');
   assert.equal(store.get('10296250133').phone, '+998902720438');
   assert.equal(sent.length, 0);
 });
@@ -206,13 +256,14 @@ test('сутки в пункте выдачи — приходит напоми�
   const sent = [];
   const store = memoryStore();
   const cfg = resolveCdekConfig(FULL_ENV);
-  const fetchImpl = fakeFetch(sent);
+  const fetchImpl = fakeFetch(sent, ПВЗ);
+  const ПВЗ_ЧАС = Date.parse('2026-07-30T07:59:51Z');
 
-  await processCdekEvent(event('ACCEPTED_AT_PICK_UP_POINT', '10296250133'), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
+  await processCdekEvent(event(12), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
 
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: T0 + DAY / 2 }), { notified: 0 });
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: T0 + DAY }), { notified: 1 });
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: T0 + 3 * DAY }), { notified: 0 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + DAY / 2 }), { notified: 0 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + DAY }), { notified: 1 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 3 * DAY }), { notified: 0 });
 
   assert.equal(sent.length, 1);
   assert.match(sent[0], /^Не забирают заказ/);
@@ -223,34 +274,37 @@ test('забрали до порога — напоминание не прих�
   const sent = [];
   const store = memoryStore();
   const cfg = resolveCdekConfig(FULL_ENV);
-  const fetchImpl = fakeFetch(sent);
 
-  await processCdekEvent(event('ACCEPTED_AT_PICK_UP_POINT', '10296250133'), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
-  await processCdekEvent(event('DELIVERED', '10296250133'), { config: cfg, fetchImpl, store, logger: quiet, now: T0 + DAY / 2 });
+  await processCdekEvent(event(12), { config: cfg, fetchImpl: fakeFetch(sent, ПВЗ), store, logger: quiet, now: T0 });
+  const забран = fakeFetch(sent, orderWith(
+    { code: 'DELIVERED', date_time: '2026-07-30T12:00:00+0000' },
+    { code: 'ACCEPTED_AT_PICK_UP_POINT', date_time: '2026-07-30T07:59:51+0000' }
+  ));
+  await processCdekEvent(event(4), { config: cfg, fetchImpl: забран, store, logger: quiet, now: T0 + DAY / 2 });
 
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: T0 + 5 * DAY }), { notified: 0 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl: забран, store, logger: quiet, now: T0 + 5 * DAY }), { notified: 0 });
   assert.equal(store.get('10296250133').closed, true);
   assert.equal(sent.length, 0);
 });
 
-test('упавший запрос к СДЭК всё равно доносит новый заказ до Ольги', async () => {
+test('сбой запроса к СДЭК не теряет заказ: дочитываем на проходе', async () => {
   const sent = [];
-  const fetchImpl = async (url, init) => {
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+  const упавший = async (url, init) => {
     if (url.includes('/orders')) return { ok: false, status: 502, json: async () => ({}) };
-    return fakeFetch(sent)(url, init);
+    return fakeFetch(sent, ПВЗ)(url, init);
   };
-  const res = await processCdekEvent(created('777'), {
-    config: resolveCdekConfig(FULL_ENV),
-    fetchImpl,
-    store: memoryStore(),
-    logger: quiet,
-    now: T0
-  });
 
+  const res = await processCdekEvent(event(12), { config: cfg, fetchImpl: упавший, store, logger: quiet, now: T0 });
   assert.deepEqual(res, { sent: false, reason: 'error' });
-  assert.equal(sent.length, 1);
-  assert.match(sent[0], /HTTP 502/);
-  assert.match(sent[0], /777/);
+  assert.equal(store.get('10296250133').needsRefresh, true);
+  // Ольгу сетевым сбоем не тревожим.
+  assert.equal(sent.length, 0);
+
+  await scanWaitingOrders({ config: cfg, fetchImpl: fakeFetch(sent, ПВЗ), store, logger: quiet, now: T0 + 60 * 60 * 1000 });
+  assert.equal(store.get('10296250133').needsRefresh, false);
+  assert.equal(store.get('10296250133').waitingSince, '2026-07-30T07:59:51.000Z');
 });
 
 test('чужой токен в пути — 404, ничего не шлём', async () => {
@@ -289,13 +343,21 @@ test('несконфигурированный модуль отвечает 200
 
 const quiet = { info() {}, warn() {}, error() {} };
 
-function event(code, cdekNumber) {
-  return { type: 'ORDER_STATUS', uuid: 'u-1', attributes: { status_code: code, cdek_number: cdekNumber } };
+/** Вебхук СДЭК шлёт числовой код старого справочника — 12 это пункт выдачи. */
+function event(rawCode, cdekNumber = '10296250133') {
+  return { type: 'ORDER_STATUS', uuid: 'u-1', attributes: { status_code: rawCode, cdek_number: cdekNumber } };
 }
 
 function created(cdekNumber) {
-  return event('CREATED', cdekNumber);
+  return event(1, cdekNumber);
 }
+
+/** Живая история заказа 10286887892: доехал и лёг в пункт выдачи 30.07 в 07:59. */
+const ПВЗ = orderWith(
+  { code: 'ACCEPTED_AT_PICK_UP_POINT', date_time: '2026-07-30T07:59:51+0000' },
+  { code: 'ACCEPTED_IN_RECIPIENT_CITY', date_time: '2026-07-30T07:09:12+0000' },
+  { code: 'CREATED', date_time: '2026-07-18T17:40:29+0000' }
+);
 
 /** Реестр в памяти — тот же контракт, что у файлового cdekStore. */
 function memoryStore() {
@@ -331,13 +393,13 @@ function fakeRes() {
 }
 
 /** Заглушка fetch: собирает тексты, ушедшие в Telegram. */
-function fakeFetch(sentTexts) {
+function fakeFetch(sentTexts, order = ORDER) {
   return async (url, init = {}) => {
     if (url.includes('/oauth/token')) {
       return { ok: true, status: 200, json: async () => ({ access_token: 'tok' }) };
     }
     if (url.includes('/orders')) {
-      return { ok: true, status: 200, json: async () => ({ entity: ORDER }) };
+      return { ok: true, status: 200, json: async () => ({ entity: order }) };
     }
     if (url.includes('api.telegram.org')) {
       sentTexts.push(JSON.parse(init.body).text);

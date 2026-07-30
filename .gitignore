@@ -18,3 +18,7 @@ artifacts-*.png
 Supabase*.csv
 .business/
 database/pvl/diagnostics/
+
+# Реестр заказов СДЭК — рабочие данные сервиса, не код
+push-server/cdek-orders.json
+push-server/cdek-orders.json.tmp

@@ -14,6 +14,7 @@ import { executeActions } from './tgAccessActions.mjs';
 import { GRACE_DAYS } from './tgAccessConst.mjs';
 import { startJoinPoller } from './tgAccessJoinPoller.mjs';
 import { runReminders } from './reminders.mjs';
+import { createCdekWebhookHandler } from './cdekWebhook.mjs';
 
 const { Pool } = pkg;
 
@@ -681,6 +682,17 @@ const handleBotHunterWebhook = async (req, res) => {
 
 app.post('/webhooks/bothunter', handleBotHunterWebhook);
 
+// ────────────────────────────────────────────────────────────────────
+// Вебхуки СДЭК → уведомления Ольге в Telegram: новый заказ и посылка,
+// которую не забирают дольше суток. Модуль изолирован: в базу не ходит,
+// наружу не бросает, без CDEK_WEBHOOK_TOKEN спит. Токен — сегментом пути,
+// заголовков авторизации СДЭК не шлёт.
+// План: vault «00 стратегия», plans/2026-07-20-сдэк-вебхуки-уведомления.md
+// ────────────────────────────────────────────────────────────────────
+const handleCdekWebhook = createCdekWebhookHandler();
+app.post('/webhooks/cdek/:token', handleCdekWebhook);
+handleCdekWebhook.startWatcher();
+
 const runNightlyExpiryReconcile = async () => {
   try {
     // FEAT-015 Path C step 1: auto-expire auto_pause_exempt_until.
@@ -1067,5 +1079,6 @@ app.listen(Number(PORT), () => {
     : 'off';
   const checkout = `checkout[sandbox=${SANDBOX}, jwt=${GARDEN_JWT_SECRET ? 'on' : 'OFF'}, yk=${yk}, prodamus=${PRODAMUS_PAYFORM_URL ? 'on(demo=' + SANDBOX + ')' : 'off'}]`;
   const tgacc = `tg-access[${TG_ACCESS_MODE === 'off' ? 'off' : (TG_ACCESS_BOT_TOKEN ? TG_ACCESS_MODE : 'no-token')}${tgAutoKick ? ',autokick' : ''}]`;
-  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'}, ${checkout}, ${tgacc})`);
+  const cdek = `cdek=${handleCdekWebhook.config.enabled ? 'on' : 'off'}`;
+  console.log(`Server started on :${PORT} (push=${pushEnabled ? 'on' : 'off'}, prodamus=${webhookEnabled ? 'on' : 'off'}, bothunter=${bothunterEnabled ? 'on' : 'off'}, ${cdek}, ${checkout}, ${tgacc})`);
 });

@@ -27,10 +27,9 @@ const CDEK_BASE_DEFAULT = 'https://api.cdek.ru/v2';
 const NOTIFY_STATUSES_DEFAULT = 'CREATED';
 
 /**
- * Посылка доехала и ждёт получателя. Коды из словаря СДЭК; на живых заказах
- * издательства эти статусы ещё не встречались (все предзаказы пока на складе
- * отправителя), поэтому список вынесен в настройку — уточняется без правки кода.
- * Все приходящие коды пишутся в лог, свериться можно там.
+ * Посылка доехала и ждёт получателя. Подтверждено на живых заказах 30.07:
+ * вебхук с сырым кодом 12 приходит ровно на ACCEPTED_AT_PICK_UP_POINT.
+ * Список всё равно в настройке — словарь СДЭК может пополниться.
  */
 const WAITING_STATUSES_DEFAULT = 'ACCEPTED_AT_PICK_UP_POINT,POSTOMAT_POSTED';
 
@@ -72,6 +71,11 @@ export function resolveCdekConfig(env = {}) {
     closedStatuses: list(env.CDEK_CLOSED_STATUSES, CLOSED_STATUSES_DEFAULT),
     waitingHours: Number(env.CDEK_WAITING_HOURS || 24),
     newOrderMaxAgeHours: Number(env.CDEK_NEW_ORDER_MAX_AGE_HOURS || 24),
+    // Как часто перечитывать незакрытый заказ из API, даже если событий нет.
+    refreshHours: Number(env.CDEK_REFRESH_HOURS || 12),
+    // Потолок перечитываний за один проход — чтобы разросшийся реестр не
+    // устроил залп запросов к СДЭК. Остальные подождут следующего прохода.
+    refreshLimit: Number(env.CDEK_REFRESH_LIMIT || 50),
     scanMinutes: Number(env.CDEK_SCAN_MINUTES || 60),
     storePath: String(env.CDEK_STORE_PATH || './cdek-orders.json'),
   };
@@ -302,6 +306,7 @@ function applyOrder(key, order, { config, store, stored = {}, now, stamp }) {
     // Забрали или вернули — напоминать больше не о чем.
     notifiedWaiting: digest.closed ? true : stored.notifiedWaiting || false,
     needsRefresh: false,
+    refreshedAt: stamp,
   });
   record.isNewOrder = digest.isNew;
   return record;
@@ -320,14 +325,31 @@ export async function scanWaitingOrders({ config, fetchImpl, store, logger = con
   // сработал проход или молча не случился.
   logger.info(`[cdek] проход по реестру: записей ${store.all().length}`);
 
-  for (const stale of store.all()) {
-    if (!stale.needsRefresh) continue;
+  // Освежаем незакрытые заказы, даже если по ним не было событий. Иначе
+  // потерянный вебхук о попадании в пункт выдачи означал бы, что часы не
+  // пойдут никогда — ровно в том случае, ради которого всё и написано.
+  // А лежащая посылка статус не меняет: следующего события можно не дождаться.
+  const refreshEdge = now - config.refreshHours * 60 * 60 * 1000;
+  let refreshed = 0;
+  for (const record of store.all()) {
+    if (refreshed >= config.refreshLimit) break;
+    const seenLongAgo = !record.refreshedAt || Date.parse(record.refreshedAt) < refreshEdge;
+    if (!record.needsRefresh && (record.closed || !seenLongAgo)) continue;
+
     try {
-      const order = await fetchOrder(config, fetchImpl, { cdekNumber: stale.track || stale.key });
-      applyOrder(stale.key, order, { config, store, stored: stale, now, stamp: new Date(now).toISOString() });
-      logger.info(`[cdek] заказ ${stale.key} дочитан`);
+      const order = await fetchOrder(config, fetchImpl, { cdekNumber: record.track || record.key });
+      const fresh = applyOrder(record.key, order, { config, store, stored: record, now, stamp: new Date(now).toISOString() });
+      refreshed += 1;
+      logger.info(`[cdek] заказ ${record.key} перечитан: ${fresh.status}`);
+
+      // Если вебхук о создании потерялся, уведомление придёт отсюда.
+      if (fresh.isNewOrder && !fresh.notifiedNew) {
+        await sendTelegram(config, fetchImpl, formatOrderMessage(order, {}));
+        store.upsert(record.key, { notifiedNew: true });
+        logger.info(`[cdek] уведомление о новом заказе отправлено с прохода: ${record.key}`);
+      }
     } catch (e) {
-      logger.error(`[cdek] заказ ${stale.key} снова не читается`, e);
+      logger.error(`[cdek] заказ ${record.key} перечитать не вышло`, e);
     }
   }
 

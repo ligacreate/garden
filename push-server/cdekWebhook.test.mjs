@@ -307,6 +307,53 @@ test('сбой запроса к СДЭК не теряет заказ: дочи
   assert.equal(store.get('10296250133').waitingSince, '2026-07-30T07:59:51.000Z');
 });
 
+test('запись, оставшаяся от старой версии, чинится сама на проходе', async () => {
+  const sent = [];
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+
+  // Ровно то, что осталось в проде от кода до перехода на статусы из API:
+  // числовой статус, без часов и без пометки на дочитывание.
+  store.upsert('10286887892', { status: '12', track: '10286887892', waitingSince: null, closed: false });
+
+  await scanWaitingOrders({ config: cfg, fetchImpl: fakeFetch(sent, ПВЗ), store, logger: quiet, now: T0 });
+
+  const fixed = store.get('10286887892');
+  assert.equal(fixed.status, 'ACCEPTED_AT_PICK_UP_POINT');
+  assert.equal(fixed.waitingSince, '2026-07-30T07:59:51.000Z');
+  assert.equal(fixed.phone, '+998902720438');
+});
+
+test('незакрытый заказ перечитывается, даже когда событий по нему нет', async () => {
+  const sent = [];
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+  const fetchImpl = fakeFetch(sent, ПВЗ);
+
+  await processCdekEvent(event(9), { config: cfg, fetchImpl: fakeFetch(sent, orderWith({ code: 'SENT_TO_RECIPIENT_CITY', date_time: '2026-07-30T05:00:00+0000' })), store, logger: quiet, now: T0 });
+  assert.equal(store.get('10296250133').waitingSince, null);
+
+  // Вебхук о попадании в пункт выдачи потерялся — часы всё равно пойдут.
+  await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: T0 + 13 * 60 * 60 * 1000 });
+  assert.equal(store.get('10296250133').waitingSince, '2026-07-30T07:59:51.000Z');
+});
+
+test('закрытый заказ впустую не перечитывается', async () => {
+  const sent = [];
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+  let orderCalls = 0;
+  const счётчик = async (url, init) => {
+    if (url.includes('/orders')) orderCalls += 1;
+    return fakeFetch(sent, ПВЗ)(url, init);
+  };
+
+  store.upsert('забран', { status: 'DELIVERED', closed: true, track: 'забран', refreshedAt: '2026-01-01T00:00:00.000Z' });
+  await scanWaitingOrders({ config: cfg, fetchImpl: счётчик, store, logger: quiet, now: T0 });
+
+  assert.equal(orderCalls, 0);
+});
+
 test('чужой токен в пути — 404, ничего не шлём', async () => {
   const sent = [];
   const handler = createCdekWebhookHandler({ env: FULL_ENV, fetchImpl: fakeFetch(sent), logger: quiet, store: memoryStore() });

@@ -354,6 +354,46 @@ test('закрытый заказ впустую не перечитываетс
   assert.equal(orderCalls, 0);
 });
 
+test('заказ, которого СДЭК не знает, перестаём спрашивать', async () => {
+  const sent = [];
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+  let orderCalls = 0;
+  // Так СДЭК отвечает на запись smoke из смоука, на удалённый в ЛК заказ и на
+  // опечатку в треке.
+  const четырёхсотый = async (url, init) => {
+    if (url.includes('/orders')) { orderCalls += 1; return { ok: false, status: 400, json: async () => ({}) }; }
+    return fakeFetch(sent, ПВЗ)(url, init);
+  };
+
+  store.upsert('smoke', { status: 'SENT_TO_RECIPIENT_CITY', track: 'smoke', closed: false });
+  await scanWaitingOrders({ config: cfg, fetchImpl: четырёхсотый, store, logger: quiet, now: T0 });
+
+  assert.equal(store.get('smoke').closed, true);
+  assert.equal(store.get('smoke').unknownToCdek, true);
+  assert.equal(orderCalls, 1);
+
+  // Следующий проход в неё уже не стучится — журнал не зарастает.
+  await scanWaitingOrders({ config: cfg, fetchImpl: четырёхсотый, store, logger: quiet, now: T0 + 13 * 60 * 60 * 1000 });
+  assert.equal(orderCalls, 1);
+  assert.equal(sent.length, 0);
+});
+
+test('сетевой сбой заказ не хоронит — только 400 и 404', async () => {
+  const sent = [];
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+  const пятисотый = async (url, init) => {
+    if (url.includes('/orders')) return { ok: false, status: 502, json: async () => ({}) };
+    return fakeFetch(sent, ПВЗ)(url, init);
+  };
+
+  const res = await processCdekEvent(event(12), { config: cfg, fetchImpl: пятисотый, store, logger: quiet, now: T0 });
+  assert.deepEqual(res, { sent: false, reason: 'error' });
+  assert.equal(store.get('10296250133').closed, false);
+  assert.equal(store.get('10296250133').needsRefresh, true);
+});
+
 test('чужой токен в пути — 404, ничего не шлём', async () => {
   const sent = [];
   const handler = createCdekWebhookHandler({ env: FULL_ENV, fetchImpl: fakeFetch(sent), logger: quiet, store: memoryStore() });

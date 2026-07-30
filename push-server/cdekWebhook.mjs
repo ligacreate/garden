@@ -197,7 +197,11 @@ async function fetchOrder(cfg, fetchImpl, { cdekNumber, uuid }) {
   const res = await fetchImpl(`${cfg.base}${path}`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`CDEK GET ${path} HTTP ${res.status}`);
+  if (!res.ok) {
+    const e = new Error(`CDEK GET ${path} HTTP ${res.status}`);
+    e.status = res.status;
+    throw e;
+  }
   const data = await res.json();
   return data.entity || {};
 }
@@ -267,8 +271,18 @@ export async function processCdekEvent(payload, { config, fetchImpl, store, logg
   } catch (e) {
     // Не кричим Ольге на каждый сбой сети: помечаем запись и пробуем снова
     // на ближайшем проходе сканера.
+    if (isUnknownOrder(e)) {
+      logger.warn(`[cdek] СДЭК не знает заказ ${key} (HTTP ${e.status}) — больше не спрашиваем`);
+      store.upsert(key, { updatedAt: stamp, createdAt: stored.createdAt || stamp, closed: true, unknownToCdek: true, needsRefresh: false });
+      return { sent: false, reason: 'unknown_order' };
+    }
     logger.error(`[cdek] не удалось забрать заказ ${key}, повторим на проходе`, e);
-    store.upsert(key, { updatedAt: stamp, createdAt: stored.createdAt || stamp, needsRefresh: true });
+    store.upsert(key, {
+      updatedAt: stamp,
+      createdAt: stored.createdAt || stamp,
+      closed: Boolean(stored.closed),
+      needsRefresh: true,
+    });
     return { sent: false, reason: 'error' };
   }
 
@@ -288,6 +302,16 @@ export async function processCdekEvent(payload, { config, fetchImpl, store, logg
     logger.error('[cdek] уведомление о новом заказе не ушло', e);
     return { sent: false, reason: 'error' };
   }
+}
+
+/**
+ * СДЭК ответил «такого заказа нет» — это окончательный ответ, а не сбой связи.
+ * Так бывает с удалённым в ЛК заказом, опечаткой в треке или тестовой записью.
+ * Долбиться в неё каждый час нельзя: журнал зарастёт, а настоящие сбои чтения
+ * потеряются в этом шуме.
+ */
+function isUnknownOrder(e) {
+  return e && (e.status === 400 || e.status === 404);
 }
 
 /** Раскладывает ответ СДЭК по записи реестра. */
@@ -349,6 +373,11 @@ export async function scanWaitingOrders({ config, fetchImpl, store, logger = con
         logger.info(`[cdek] уведомление о новом заказе отправлено с прохода: ${record.key}`);
       }
     } catch (e) {
+      if (isUnknownOrder(e)) {
+        logger.warn(`[cdek] СДЭК не знает заказ ${record.key} (HTTP ${e.status}) — больше не спрашиваем`);
+        store.upsert(record.key, { closed: true, unknownToCdek: true, needsRefresh: false, updatedAt: new Date(now).toISOString() });
+        continue;
+      }
       logger.error(`[cdek] заказ ${record.key} перечитать не вышло`, e);
     }
   }

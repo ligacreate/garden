@@ -46,8 +46,8 @@ test('битый файл не мешает сервису стартовать'
   assert.equal(createCdekStore({ filePath, logger: quiet }).get('1').status, 'CREATED');
 });
 
-test('чистка убирает только закрытые и только старые', () => {
-  const store = createCdekStore({ filePath: tempFile(), keepDays: 90, logger: quiet });
+test('чистка убирает закрытые старше keepDays, открытые оставляет', () => {
+  const store = createCdekStore({ filePath: tempFile(), keepDays: 90, staleDays: 180, logger: quiet });
   const now = Date.parse('2026-07-30T09:00:00Z');
   const old = new Date(now - 100 * DAY).toISOString();
   const fresh = new Date(now - 2 * DAY).toISOString();
@@ -60,6 +60,18 @@ test('чистка убирает только закрытые и только 
   assert.equal(store.get('старый-закрытый'), null);
   assert.equal(store.get('старый-открытый').closed, false);
   assert.ok(store.get('свежий-закрытый'));
+});
+
+test('замолчавший заказ не висит вечно, даже если не закрыт', () => {
+  const store = createCdekStore({ filePath: tempFile(), keepDays: 90, staleDays: 180, logger: quiet });
+  const now = Date.parse('2026-07-30T09:00:00Z');
+
+  store.upsert('молчит-полгода', { closed: false, updatedAt: new Date(now - 200 * DAY).toISOString() });
+  store.upsert('молчит-месяц', { closed: false, updatedAt: new Date(now - 30 * DAY).toISOString() });
+
+  assert.equal(store.prune(now), 1);
+  assert.equal(store.get('молчит-полгода'), null);
+  assert.ok(store.get('молчит-месяц'));
 });
 
 test('файл реестра не читается посторонними', () => {

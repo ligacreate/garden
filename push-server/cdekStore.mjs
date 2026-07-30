@@ -12,10 +12,17 @@
 import fs from 'fs';
 import path from 'path';
 
-/** Заказы старше этого срока выбрасываем: доставленные и возвращённые не нужны. */
+/** Закрытые заказы старше этого срока выбрасываем: доставленные и возвращённые не нужны. */
 const KEEP_DAYS_DEFAULT = 90;
 
-export function createCdekStore({ filePath, keepDays = KEEP_DAYS_DEFAULT, logger = console } = {}) {
+/**
+ * Незакрытые заказы старше этого срока — тоже. Заказ, по которому полгода не
+ * пришло ни одного события, доехал мимо нас: удалён в ЛК, отменён, потерян.
+ * Без второго порога такие записи копились бы вечно.
+ */
+const STALE_DAYS_DEFAULT = 180;
+
+export function createCdekStore({ filePath, keepDays = KEEP_DAYS_DEFAULT, staleDays = STALE_DAYS_DEFAULT, logger = console } = {}) {
   let orders = load(filePath, logger);
 
   const persist = () => {
@@ -42,13 +49,15 @@ export function createCdekStore({ filePath, keepDays = KEEP_DAYS_DEFAULT, logger
       persist();
       return orders[key];
     },
-    /** Чистка: закрытые заказы старше keepDays. Вызывается сканером. */
+    /** Чистка: закрытые старше keepDays и любые молчащие дольше staleDays. */
     prune(now = Date.now()) {
-      const edge = now - keepDays * 24 * 60 * 60 * 1000;
+      const closedEdge = now - keepDays * 24 * 60 * 60 * 1000;
+      const staleEdge = now - staleDays * 24 * 60 * 60 * 1000;
       let removed = 0;
       for (const [key, order] of Object.entries(orders)) {
         const stamp = Date.parse(order.updatedAt || order.createdAt || '') || 0;
-        if (order.closed && stamp && stamp < edge) {
+        if (!stamp) continue;
+        if (stamp < staleEdge || (order.closed && stamp < closedEdge)) {
           delete orders[key];
           removed += 1;
         }

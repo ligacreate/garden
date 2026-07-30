@@ -360,11 +360,14 @@ export function createCdekWebhookHandler({ env = process.env, fetchImpl = fetch,
   /** Периодическая проверка незабранных. Возвращает функцию остановки. */
   handler.startWatcher = () => {
     if (!config.enabled) return () => {};
-    const timer = setInterval(() => {
+    const run = () =>
       scanWaitingOrders({ config, fetchImpl, store: orders, logger }).catch((e) =>
         logger.error('[cdek] проход по незабранным заказам сорвался', e)
       );
-    }, Math.max(1, config.scanMinutes) * 60 * 1000);
+    // Первый проход сразу: иначе рестарт сервиса создаёт слепой час, а частые
+    // рестарты не дали бы проходу случиться вовсе.
+    run();
+    const timer = setInterval(run, Math.max(1, config.scanMinutes) * 60 * 1000);
     timer.unref();
     return () => clearInterval(timer);
   };

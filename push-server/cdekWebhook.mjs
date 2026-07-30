@@ -298,6 +298,9 @@ function factsToOrder(facts = {}) {
 export async function scanWaitingOrders({ config, fetchImpl, store, logger = console, now = Date.now() }) {
   const edge = now - config.waitingHours * 60 * 60 * 1000;
   let notified = 0;
+  // Строка есть всегда, даже когда реестр пуст: иначе после рестарта не видно,
+  // сработал проход или молча не случился.
+  logger.info(`[cdek] проход по реестру: записей ${store.all().length}`);
 
   for (const record of store.all()) {
     if (record.closed || record.notifiedWaiting || !record.waitingSince) continue;

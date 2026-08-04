@@ -110,6 +110,7 @@ test('rowToUpcomingItem: соберём JSON-shape по контракту', () 
     host_name: 'Яна Соболева',
     host_role: 'intern',
     host_photo: 'https://garden-media.s3.twcstorage.ru/avatars/x.jpg',
+    host_telegram: 'https://t.me/yana_soboleva',
     recurring_cnt: '3'
   };
   assert.deepEqual(rowToUpcomingItem(row), {
@@ -124,9 +125,31 @@ test('rowToUpcomingItem: соберём JSON-shape по контракту', () 
     host: {
       name: 'Яна Соболева',
       role: 'Стажёр',
-      photo_url: 'https://garden-media.s3.twcstorage.ru/avatars/x.jpg'
+      photo_url: 'https://garden-media.s3.twcstorage.ru/avatars/x.jpg',
+      telegram: 'https://t.me/yana_soboleva'
     }
   });
+});
+
+test('rowToUpcomingItem: host.telegram — нет ссылки → null, не пустая строка', () => {
+  const base = {
+    id: 7, starts_at_iso: '2026-05-06T19:00:00+03:00', title: 'T',
+    description: null, meeting_format: 'online', city: null, price: null,
+    host_name: 'A', host_role: 'leader', host_photo: null, recurring_cnt: 1
+  };
+  assert.equal(rowToUpcomingItem({ ...base }).host.telegram, null, 'поля нет вовсе');
+  assert.equal(rowToUpcomingItem({ ...base, host_telegram: null }).host.telegram, null);
+  assert.equal(rowToUpcomingItem({ ...base, host_telegram: '' }).host.telegram, null);
+  assert.equal(
+    rowToUpcomingItem({ ...base, host_telegram: '   ' }).host.telegram,
+    null,
+    'whitespace-only → null'
+  );
+  assert.equal(
+    rowToUpcomingItem({ ...base, host_telegram: '  https://t.me/olga  ' }).host.telegram,
+    'https://t.me/olga',
+    'ссылку тримим'
+  );
 });
 
 test('rowToUpcomingItem: пустое description → null', () => {
@@ -158,6 +181,11 @@ test('rowToUpcomingItem: offline + город + одна серия → is_recur
   assert.equal(item.is_recurring, false);
   assert.equal(item.host.role, 'Ведущая');
   assert.equal(item.host.photo_url, null);
+  assert.deepEqual(
+    Object.keys(item.host),
+    ['name', 'role', 'photo_url', 'telegram'],
+    'форма host зафиксирована контрактом'
+  );
 });
 
 test('UPCOMING_SQL: содержит ключевые узлы', () => {
@@ -167,6 +195,8 @@ test('UPCOMING_SQL: содержит ключевые узлы', () => {
   assert.match(UPCOMING_SQL, /AT TIME ZONE 'Europe\/Moscow'/);
   assert.match(UPCOMING_SQL, /ORDER BY we\.starts_at ASC/);
   assert.match(UPCOMING_SQL, /JOIN public\.profiles p ON p\.id = m\.user_id/);
+  assert.match(UPCOMING_SQL, /p\.telegram AS host_telegram/, 'ссылка на TG ведущей едет в выборке');
+  assert.match(UPCOMING_SQL, /we\.host_telegram/, 'и пробрасывается наружу из window_events');
 });
 
 test('createUpcomingHandler: 400 на невалидный from', async () => {

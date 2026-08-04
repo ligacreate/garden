@@ -84,6 +84,7 @@ export const UPCOMING_SQL = `
       p.name AS host_name,
       p.role AS host_role,
       p.avatar_url AS host_photo,
+      p.telegram AS host_telegram,
       to_char(e.starts_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD"T"HH24:MI:SS') || '+03:00' AS starts_at_iso,
       lower(btrim(coalesce(e.title, ''))) AS title_norm,
       extract(dow from e.starts_at AT TIME ZONE 'Europe/Moscow')::int AS dow,
@@ -118,6 +119,7 @@ export const UPCOMING_SQL = `
     we.host_name,
     we.host_role,
     we.host_photo,
+    we.host_telegram,
     coalesce(rg.cnt, 1) AS recurring_cnt
   FROM window_events we
   LEFT JOIN recurring_groups rg
@@ -130,6 +132,7 @@ export const UPCOMING_SQL = `
 
 export const rowToUpcomingItem = (row) => {
   const format = normalizeFormat(row.meeting_format);
+  const telegram = String(row.host_telegram ?? '').trim();
   return {
     id: `evt_${row.id}`,
     starts_at: row.starts_at_iso,
@@ -142,7 +145,8 @@ export const rowToUpcomingItem = (row) => {
     host: {
       name: row.host_name || '',
       role: formatRoleLabel(row.host_role),
-      photo_url: row.host_photo || null
+      photo_url: row.host_photo || null,
+      telegram: telegram || null
     }
   };
 };

@@ -27,6 +27,7 @@
     "id": "evt_123",
     "starts_at": "2026-05-06T19:00:00+03:00",
     "title": "Мой апрель: пиши, чувствуй, сохраняй",
+    "description": "Первый абзац.\n\nВторой абзац.",
     "format": "online",
     "city": "Москва",
     "price_rub": 700,
@@ -34,7 +35,8 @@
     "host": {
       "name": "Яна Соболева",
       "role": "Стажёр",
-      "photo_url": "https://garden-media.s3.twcstorage.ru/avatars/..."
+      "photo_url": "https://garden-media.s3.twcstorage.ru/avatars/...",
+      "telegram": "https://t.me/yana_soboleva"
     }
   }
 ]
@@ -46,6 +48,10 @@
 - Server-side cache 5 мин (key = `${from}|${days}`).
 - `photo_url` — исходник из `profiles.avatar_url` (в проекте только один
   размер, без thumbnail-вариантов).
+- Необязательные поля (`description`, `city`, `host.photo_url`,
+  `host.telegram`) при отсутствии значения отдаются как `null`, никогда
+  как пустая строка: пустая строка на стороне потребителя проходит
+  проверку «поле есть» и превращается в битую ссылку или пустой блок.
 
 ## Маппинг полей
 
@@ -54,6 +60,7 @@
 | `id`              | `'evt_' \|\| events.id::text`                                 |
 | `starts_at`       | `events.starts_at` → ISO в Europe/Moscow                      |
 | `title`           | `events.title`                                                |
+| `description`     | `events.description`, trim; пусто → `null`                    |
 | `format`          | `events.meeting_format`: `online`/`offline` (hybrid → offline)|
 | `city`            | `events.city`, для `online` → `null`                          |
 | `price_rub`       | `events.price`: парсим число из текста; нет цифр → `0`        |
@@ -61,6 +68,7 @@
 | `host.name`       | `profiles.name` (по `meetings.user_id` через `events.garden_id`)|
 | `host.role`       | `profiles.role` → `Стажёр`/`Ведущая`/`Ментор`/...             |
 | `host.photo_url`  | `profiles.avatar_url`                                         |
+| `host.telegram`   | `profiles.telegram` — ссылка `https://t.me/…` из профиля ведущей, НЕ `profiles.telegram_user_id`; нет ссылки → `null` |
 
 ### `is_recurring` (эвристика)
 
@@ -89,6 +97,10 @@ backlog как `FEAT-014: явный признак повторяемости �
 - [x] **Фаза 4 — handover.** Записать в папку проекта карточек файл
   `garden-api-handover.md` с финальным URL, списком файлов, инструкцией
   по тестированию.
+- [x] **Фаза 5 — `host.telegram` (2026-08-04).** Добавить в `host` ссылку
+  на Telegram ведущей из `profiles.telegram`. Выкачен на прод rsync'ом
+  с рестартом push-server (рестарт обязателен — иначе поток до пяти минут
+  отдаёт старую форму из кеша `UPCOMING_CACHE_TTL_MS`).
 
 ## Деплой
 
@@ -110,6 +122,7 @@ push-server:8787`.
 ## Итог
 
 Реализовано целиком: эндпоинт, кеш 5 мин, эвристика recurring,
-handover-файл. Не реализовано (намеренно отложено): явная колонка
-`is_recurring` в схеме (FEAT-014, backlog), отдельный домен
-`api.skrebeyko.ru` (вопрос инфры).
+handover-файл, `host.telegram` (фаза 5). Не реализовано (намеренно
+отложено): явная колонка `is_recurring` в схеме (FEAT-014, backlog),
+отдельный домен `api.skrebeyko.ru` (вопрос инфры), поле `host.vk` —
+на него потребитель потока не заявлялся.

@@ -20,6 +20,7 @@
  */
 import crypto from 'crypto';
 import { createCdekStore } from './cdekStore.mjs';
+import { resolveClientMailConfig, formatArrivalEmail, sendArrivalEmail } from './cdekClientMail.mjs';
 
 const CDEK_BASE_DEFAULT = 'https://api.cdek.ru/v2';
 
@@ -69,7 +70,9 @@ export function resolveCdekConfig(env = {}) {
     statuses: list(env.CDEK_NOTIFY_STATUSES, NOTIFY_STATUSES_DEFAULT),
     waitingStatuses: list(env.CDEK_WAITING_STATUSES, WAITING_STATUSES_DEFAULT),
     closedStatuses: list(env.CDEK_CLOSED_STATUSES, CLOSED_STATUSES_DEFAULT),
-    waitingHours: Number(env.CDEK_WAITING_HOURS || 24),
+    // Трое суток, а не одни: письмо клиенту о прибытии уходит сразу, и сутки
+    // на то, чтобы он до пункта дошёл, — это ещё не повод дёргать Ольгу.
+    waitingHours: Number(env.CDEK_WAITING_HOURS || 72),
     newOrderMaxAgeHours: Number(env.CDEK_NEW_ORDER_MAX_AGE_HOURS || 24),
     // Как часто перечитывать незакрытый заказ из API, даже если событий нет.
     refreshHours: Number(env.CDEK_REFRESH_HOURS || 12),
@@ -78,6 +81,9 @@ export function resolveCdekConfig(env = {}) {
     refreshLimit: Number(env.CDEK_REFRESH_LIMIT || 50),
     scanMinutes: Number(env.CDEK_SCAN_MINUTES || 60),
     storePath: String(env.CDEK_STORE_PATH || './cdek-orders.json'),
+    // Письмо клиенту о прибытии посылки. Своя настройка и свой включатель:
+    // модуль уведомлений Ольге работает и без писем наружу.
+    clientMail: resolveClientMailConfig(env),
   };
 }
 
@@ -105,7 +111,13 @@ export function extractOrderFacts(order = {}) {
   return {
     recipient: (recipient.name || recipient.company || '').trim(),
     phone: normalizePhone(phones[0] && phones[0].number),
+    // Почта нужна одному письму — о прибытии посылки. У ручных заказов её
+    // часто нет: поле в ЛК не заполняли. Тогда пишем Ольге в Telegram.
+    email: String(recipient.email || '').trim().toLowerCase(),
     city: (order.to_location && order.to_location.city) || '',
+    // Код пункта выдачи. Есть только у доставки до ПВЗ — по нему берём адрес
+    // и часы работы, чтобы человеку не пришлось искать их самому.
+    deliveryPoint: String(order.delivery_point || '').trim(),
     items,
     track: order.cdek_number || '',
   };
@@ -206,6 +218,79 @@ async function fetchOrder(cfg, fetchImpl, { cdekNumber, uuid }) {
   return data.entity || {};
 }
 
+/**
+ * Адрес и часы работы пункта выдачи. Отдельный запрос: в заказе лежит только
+ * код пункта. Сбой не роняет письмо — оно уйдёт без адреса, с одним треком.
+ */
+async function fetchDeliveryPoint(cfg, fetchImpl, code) {
+  if (!code) return {};
+  const token = await cdekToken(cfg, fetchImpl);
+  const res = await fetchImpl(`${cfg.base}/deliverypoints?code=${encodeURIComponent(code)}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`CDEK GET /deliverypoints HTTP ${res.status}`);
+  const data = await res.json();
+  return (Array.isArray(data) ? data[0] : data && data.entity) || {};
+}
+
+/**
+ * Посылка легла в пункт выдачи — пишем клиенту. Одно письмо на заказ.
+ *
+ * Почты нет — зовём Ольгу: она напишет по телефону. Молча пропустить нельзя,
+ * ради этих людей функция и написана.
+ *
+ * Отметку `notifiedArrived` ставим и после письма, и после сообщения Ольге:
+ * в обоих случаях человека уже позвали, второй раз не нужно.
+ */
+async function notifyArrival(key, record, { config, fetchImpl, store, logger }) {
+  if (!config.clientMail.enabled) return { sent: false, reason: 'disabled' };
+  if (record.closed || record.notifiedArrived || !record.waitingSince) {
+    return { sent: false, reason: 'not_applicable' };
+  }
+
+  if (!record.email) {
+    try {
+      await sendTelegram(
+        config,
+        fetchImpl,
+        [
+          'Посылка приехала, у клиента нет почты — черкни по телефону:',
+          record.recipient || 'получатель неизвестен',
+          record.phone || 'телефон не пришёл',
+          record.track || 'трек неизвестен',
+        ].join('\n')
+      );
+      store.upsert(key, { notifiedArrived: true });
+      logger.info(`[cdek] почты нет, позвали Ольгу: ${key}`);
+      return { sent: false, reason: 'no_email' };
+    } catch (e) {
+      logger.error(`[cdek] не смогли позвать Ольгу по заказу ${key}`, e);
+      return { sent: false, reason: 'error' };
+    }
+  }
+
+  let point = {};
+  try {
+    point = await fetchDeliveryPoint(config, fetchImpl, record.deliveryPoint);
+  } catch (e) {
+    // Адрес — украшение письма, а не его смысл. Трек есть, письмо уйдёт.
+    logger.warn(`[cdek] пункт выдачи ${record.deliveryPoint} не прочитался, пишем без адреса`, e);
+  }
+
+  const result = await sendArrivalEmail({
+    config: config.clientMail,
+    fetchImpl,
+    to: record.email,
+    letter: formatArrivalEmail(record, point),
+    logger,
+  });
+  if (result.sent) {
+    store.upsert(key, { notifiedArrived: true });
+    logger.info(`[cdek] письмо о прибытии отправлено: ${key}`);
+  }
+  return result;
+}
+
 async function sendTelegram(cfg, fetchImpl, text) {
   const res = await fetchImpl(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
     method: 'POST',
@@ -289,6 +374,10 @@ export async function processCdekEvent(payload, { config, fetchImpl, store, logg
   const record = applyOrder(key, order, { config, store, stored, now, stamp });
   logger.info(`[cdek] заказ ${key}: ${record.status}${record.waitingSince ? ' (лежит в пункте выдачи)' : ''}`);
 
+  // Письмо клиенту уходит здесь же, а не на проходе сканера: посылка приехала,
+  // и час ожидания человеку ни к чему.
+  await notifyArrival(key, record, { config, fetchImpl, store, logger });
+
   if (!record.isNewOrder || record.notifiedNew) {
     return { sent: false, reason: record.notifiedNew ? 'duplicate' : 'not_notifiable' };
   }
@@ -329,6 +418,9 @@ function applyOrder(key, order, { config, store, stored = {}, now, stamp }) {
     notifiedNew: stored.notifiedNew || false,
     // Забрали или вернули — напоминать больше не о чем.
     notifiedWaiting: digest.closed ? true : stored.notifiedWaiting || false,
+    // Письмо клиенту о прибытии. Закрытому заказу оно уже не нужно: человек
+    // забрал посылку сам, звать его некуда.
+    notifiedArrived: digest.closed ? true : stored.notifiedArrived || false,
     needsRefresh: false,
     refreshedAt: stamp,
   });
@@ -380,6 +472,12 @@ export async function scanWaitingOrders({ config, fetchImpl, store, logger = con
       }
       logger.error(`[cdek] заказ ${record.key} перечитать не вышло`, e);
     }
+  }
+
+  // Догоняем письма о прибытии: если событие потерялось или сервис лежал,
+  // человек узнает о посылке здесь, а не из напоминания через сутки.
+  for (const record of store.all()) {
+    await notifyArrival(record.key, record, { config, fetchImpl, store, logger });
   }
 
   for (const record of store.all()) {

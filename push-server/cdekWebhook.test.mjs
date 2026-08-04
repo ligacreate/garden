@@ -55,7 +55,7 @@ test('пороги и списки статусов по умолчанию', ()
   const cfg = resolveCdekConfig(FULL_ENV);
   assert.deepEqual(cfg.statuses, ['CREATED']);
   assert.deepEqual(cfg.waitingStatuses, ['ACCEPTED_AT_PICK_UP_POINT', 'POSTOMAT_POSTED']);
-  assert.equal(cfg.waitingHours, 24);
+  assert.equal(cfg.waitingHours, 72);
   assert.ok(cfg.closedStatuses.includes('DELIVERED'));
   // Списки уточняются настройкой, без правки кода.
   assert.deepEqual(
@@ -128,10 +128,25 @@ test('из ответа СДЭК достаём получателя, телеф
   assert.deepEqual(extractOrderFacts(ORDER), {
     recipient: 'Эргашева Дилсуз Илхомовна',
     phone: '+998902720438',
+    // У этого заказа почты и пункта выдачи нет — так приходит большинство
+    // ручных заказов. Письмо клиенту по ним не уйдёт, позовём Ольгу.
+    email: '',
     city: 'Фергана',
+    deliveryPoint: '',
     items: ['Блокнот бумажный «Женщины разумной»'],
     track: '10296250133'
   });
+});
+
+test('почта получателя и пункт выдачи достаются, когда они есть', () => {
+  const facts = extractOrderFacts({
+    ...ORDER,
+    recipient: { ...ORDER.recipient, email: ' Marina@Example.COM ' },
+    delivery_point: 'SPB123'
+  });
+  // Почту приводим к нижнему регистру: она уходит в отправку как есть.
+  assert.equal(facts.email, 'marina@example.com');
+  assert.equal(facts.deliveryPoint, 'SPB123');
 });
 
 test('таможенный перевод из названия убирается', () => {
@@ -252,7 +267,7 @@ test('часы берутся у СДЭК и не сбрасываются по�
   assert.equal(sent.length, 0);
 });
 
-test('сутки в пункте выдачи — приходит напоминание, и только одно', async () => {
+test('трое суток в пункте выдачи — приходит напоминание, и только одно', async () => {
   const sent = [];
   const store = memoryStore();
   const cfg = resolveCdekConfig(FULL_ENV);
@@ -261,12 +276,15 @@ test('сутки в пункте выдачи — приходит напоми�
 
   await processCdekEvent(event(12), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
 
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + DAY / 2 }), { notified: 0 });
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + DAY }), { notified: 1 });
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 3 * DAY }), { notified: 0 });
+  // Первые двое суток молчим: клиенту уже ушло письмо о прибытии, пусть дойдёт.
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + DAY }), { notified: 0 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 2 * DAY }), { notified: 0 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 3 * DAY }), { notified: 1 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 5 * DAY }), { notified: 0 });
 
   assert.equal(sent.length, 1);
   assert.match(sent[0], /^Не забирают заказ/);
+  assert.match(sent[0], /3 дня/);
   assert.match(sent[0], /\+998902720438/);
 });
 
@@ -405,7 +423,11 @@ test('чужой токен в пути — 404, ничего не шлём', as
 
 test('свой токен — 200 сразу, уведомление уходит следом', async () => {
   const sent = [];
-  const handler = createCdekWebhookHandler({ env: FULL_ENV, fetchImpl: fakeFetch(sent), logger: quiet, store: memoryStore() });
+  // Дату создания берём сегодняшнюю: «новый заказ» — про новизну, и заказ
+  // старше суток уведомления не заслуживает. С прибитой к календарю датой
+  // тест начинал падать через сутки после написания.
+  const свежий = orderWith({ code: 'CREATED', date_time: new Date().toISOString() });
+  const handler = createCdekWebhookHandler({ env: FULL_ENV, fetchImpl: fakeFetch(sent, свежий), logger: quiet, store: memoryStore() });
   const res = fakeRes();
   await handler({ params: { token: 'secret-path' }, body: created('10296250133') }, res);
   assert.equal(res.statusCode, 200);
@@ -495,3 +517,109 @@ function fakeFetch(sentTexts, order = ORDER) {
     throw new Error(`неожиданный запрос: ${url}`);
   };
 }
+
+// ─── Ф8: письмо клиенту, когда посылка приехала в пункт выдачи ───────────────
+
+const MAIL_ENV = { ...FULL_ENV, NOTISEND_API_KEY: 'key-123', CDEK_CLIENT_MAIL: 'on' };
+
+/** Заказ до ПВЗ с почтой получателя — по такому письмо и уходит. */
+const ПВЗ_С_ПОЧТОЙ = {
+  ...ПВЗ,
+  recipient: { ...ORDER.recipient, email: 'marina@example.com' },
+  delivery_point: 'SPB123'
+};
+
+/** Стенд, который умеет отвечать и за СДЭК, и за NotiSend. */
+function mailFetch(log, order) {
+  return async (url, init = {}) => {
+    if (url.includes('/oauth/token')) return { ok: true, json: async () => ({ access_token: 'tok' }) };
+    if (url.includes('/deliverypoints')) {
+      return {
+        ok: true,
+        json: async () => [{ location: { address_full: 'Санкт-Петербург, Невский проспект, 100' }, work_time: 'Пн-Пт 10:00-20:00' }]
+      };
+    }
+    if (url.includes('/orders')) return { ok: true, json: async () => ({ entity: order }) };
+    if (url.includes('api.telegram.org')) {
+      log.push({ kind: 'tg', text: JSON.parse(init.body).text });
+      return { ok: true, json: async () => ({ ok: true }) };
+    }
+    if (url.includes('notisend.ru')) {
+      log.push({ kind: 'mail', body: JSON.parse(init.body) });
+      return { ok: true, json: async () => ({ status: 'ok' }) };
+    }
+    throw new Error(`неожиданный запрос: ${url}`);
+  };
+}
+
+test('без включателя письмо клиенту не уходит — только уведомления Ольге', async () => {
+  const log = [];
+  const store = memoryStore();
+  await processCdekEvent(event(12, '10286887892'), {
+    config: resolveCdekConfig(FULL_ENV), fetchImpl: mailFetch(log, ПВЗ_С_ПОЧТОЙ), store, logger: quiet, now: T0
+  });
+  assert.equal(log.filter((x) => x.kind === 'mail').length, 0);
+});
+
+test('посылка приехала — клиенту уходит письмо с адресом и треком', async () => {
+  const log = [];
+  const store = memoryStore();
+  await processCdekEvent(event(12, '10286887892'), {
+    config: resolveCdekConfig(MAIL_ENV), fetchImpl: mailFetch(log, ПВЗ_С_ПОЧТОЙ), store, logger: quiet, now: T0
+  });
+  const mails = log.filter((x) => x.kind === 'mail');
+  assert.equal(mails.length, 1);
+  assert.equal(mails[0].body.to, 'marina@example.com');
+  assert.match(mails[0].body.text, /Ваш заказ приехал/);
+  assert.match(mails[0].body.text, /Невский проспект, 100/);
+  assert.match(mails[0].body.text, /Номер для получения: 10296250133/);
+  assert.equal(store.get('10286887892').notifiedArrived, true);
+});
+
+test('второй раз письмо не уходит', async () => {
+  const log = [];
+  const store = memoryStore();
+  const opts = { config: resolveCdekConfig(MAIL_ENV), fetchImpl: mailFetch(log, ПВЗ_С_ПОЧТОЙ), store, logger: quiet, now: T0 };
+  await processCdekEvent(event(12, '10286887892'), opts);
+  await processCdekEvent(event(12, '10286887892'), opts);
+  assert.equal(log.filter((x) => x.kind === 'mail').length, 1);
+});
+
+test('почты нет — зовём Ольгу, а не молчим', async () => {
+  const log = [];
+  const store = memoryStore();
+  await processCdekEvent(event(12, '10286887892'), {
+    config: resolveCdekConfig(MAIL_ENV), fetchImpl: mailFetch(log, ПВЗ), store, logger: quiet, now: T0
+  });
+  assert.equal(log.filter((x) => x.kind === 'mail').length, 0);
+  const tg = log.filter((x) => x.kind === 'tg').map((x) => x.text).join('\n');
+  assert.match(tg, /у клиента нет почты/);
+  assert.match(tg, /Эргашева Дилсуз Илхомовна/);
+  assert.equal(store.get('10286887892').notifiedArrived, true);
+});
+
+test('пункт выдачи не прочитался — письмо всё равно уходит, с треком', async () => {
+  const log = [];
+  const store = memoryStore();
+  const broken = async (url, init = {}) => {
+    if (url.includes('/deliverypoints')) return { ok: false, status: 500 };
+    return mailFetch(log, ПВЗ_С_ПОЧТОЙ)(url, init);
+  };
+  await processCdekEvent(event(12, '10286887892'), {
+    config: resolveCdekConfig(MAIL_ENV), fetchImpl: broken, store, logger: quiet, now: T0
+  });
+  const mails = log.filter((x) => x.kind === 'mail');
+  assert.equal(mails.length, 1);
+  assert.doesNotMatch(mails[0].body.text, /Адрес:/);
+  assert.match(mails[0].body.text, /Номер для получения:/);
+});
+
+test('заказ забрали — письмо о прибытии уже не нужно', async () => {
+  const log = [];
+  const store = memoryStore();
+  const забрали = { ...ПВЗ_С_ПОЧТОЙ, statuses: [{ code: 'DELIVERED', date_time: '2026-07-31T10:00:00+0000' }, ...ПВЗ.statuses] };
+  await processCdekEvent(event(4, '10286887892'), {
+    config: resolveCdekConfig(MAIL_ENV), fetchImpl: mailFetch(log, забрали), store, logger: quiet, now: T0
+  });
+  assert.equal(log.filter((x) => x.kind === 'mail').length, 0);
+});

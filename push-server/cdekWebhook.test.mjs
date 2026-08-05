@@ -134,8 +134,15 @@ test('из ответа СДЭК достаём получателя, телеф
     city: 'Фергана',
     deliveryPoint: '',
     items: ['Блокнот бумажный «Женщины разумной»'],
-    track: '10296250133'
+    track: '10296250133',
+    // Срок хранения СДЭК даёт, только когда посылка доехала до пункта.
+    keepFreeUntil: ''
   });
+});
+
+test('срок бесплатного хранения берём у СДЭК', () => {
+  const facts = extractOrderFacts({ ...ORDER, keep_free_until: '2026-08-06T20:59:59Z' });
+  assert.equal(facts.keepFreeUntil, '2026-08-06T20:59:59Z');
 });
 
 test('почта получателя и пункт выдачи достаются, когда они есть', () => {
@@ -267,25 +274,23 @@ test('часы берутся у СДЭК и не сбрасываются по�
   assert.equal(sent.length, 0);
 });
 
-test('трое суток в пункте выдачи — приходит напоминание, и только одно', async () => {
+test('запасной таймер: без срока от СДЭК зовём через трое суток', async () => {
   const sent = [];
   const store = memoryStore();
   const cfg = resolveCdekConfig(FULL_ENV);
-  const fetchImpl = fakeFetch(sent, ПВЗ);
+  // Тот же заказ, но СДЭК срока хранения не дал.
+  const безСрока = { ...ПВЗ, keep_free_until: '' };
+  const fetchImpl = fakeFetch(sent, безСрока);
   const ПВЗ_ЧАС = Date.parse('2026-07-30T07:59:51Z');
 
   await processCdekEvent(event(12), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
 
-  // Первые двое суток молчим: клиенту уже ушло письмо о прибытии, пусть дойдёт.
-  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + DAY }), { notified: 0 });
   assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 2 * DAY }), { notified: 0 });
   assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 3 * DAY }), { notified: 1 });
   assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ПВЗ_ЧАС + 5 * DAY }), { notified: 0 });
 
   assert.equal(sent.length, 1);
-  assert.match(sent[0], /^Не забирают заказ/);
-  assert.match(sent[0], /3 дня/);
-  assert.match(sent[0], /\+998902720438/);
+  assert.match(sent[0], /^Не забирают заказ, 3 дня в пункте выдачи:/);
 });
 
 test('забрали до порога — напоминание не приходит', async () => {
@@ -412,6 +417,40 @@ test('сетевой сбой заказ не хоронит — только 40
   assert.equal(store.get('10296250133').needsRefresh, true);
 });
 
+test('срок хранения из СДЭК главнее нашего таймера', async () => {
+  const sent = [];
+  const store = memoryStore();
+  const cfg = resolveCdekConfig(FULL_ENV);
+  const fetchImpl = fakeFetch(sent, ПВЗ);
+  const ИСТЕКАЕТ = Date.parse('2026-08-06T20:59:59Z');
+
+  await processCdekEvent(event(12), { config: cfg, fetchImpl, store, logger: quiet, now: T0 });
+  assert.equal(store.get('10296250133').keepFreeUntil, '2026-08-06T20:59:59Z');
+
+  // Посылка лежит уже неделю — но хранение до 6 августа, дёргать рано.
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ИСТЕКАЕТ - 5 * DAY }), { notified: 0 });
+  // За двое суток до конца — пора.
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ИСТЕКАЕТ - 2 * DAY }), { notified: 1 });
+  assert.deepEqual(await scanWaitingOrders({ config: cfg, fetchImpl, store, logger: quiet, now: ИСТЕКАЕТ - DAY }), { notified: 0 });
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /^Срок хранения истекает 6 августа — заказ не забрали:/);
+  assert.match(sent[0], /\+998902720438/);
+  assert.match(sent[0], /10296250133/);
+});
+
+test('без срока от СДЭК работает запасной таймер', () => {
+  const cfg = resolveCdekConfig(FULL_ENV);
+  const без = { track: '777', waitingSince: new Date(T0 - 4 * DAY).toISOString() };
+  assert.match(formatWaitingMessage(без, T0), /^Не забирают заказ, 4 дня в пункте выдачи:/);
+});
+
+test('дата в заголовке — словами и без года', () => {
+  const rec = { track: '1', keepFreeUntil: '2026-08-06T20:59:59Z' };
+  assert.match(formatWaitingMessage(rec, T0), /истекает 6 августа/);
+  assert.match(formatWaitingMessage({ ...rec, keepFreeUntil: '2026-12-01T20:59:59Z' }, T0), /истекает 1 декабря/);
+});
+
 test('чужой токен в пути — 404, ничего не шлём', async () => {
   const sent = [];
   const handler = createCdekWebhookHandler({ env: FULL_ENV, fetchImpl: fakeFetch(sent), logger: quiet, store: memoryStore() });
@@ -462,11 +501,11 @@ function created(cdekNumber) {
 }
 
 /** Живая история заказа 10286887892: доехал и лёг в пункт выдачи 30.07 в 07:59. */
-const ПВЗ = orderWith(
+const ПВЗ = { ...orderWith(
   { code: 'ACCEPTED_AT_PICK_UP_POINT', date_time: '2026-07-30T07:59:51+0000' },
   { code: 'ACCEPTED_IN_RECIPIENT_CITY', date_time: '2026-07-30T07:09:12+0000' },
   { code: 'CREATED', date_time: '2026-07-18T17:40:29+0000' }
-);
+), keep_free_until: '2026-08-06T20:59:59Z' };
 
 /** Реестр в памяти — тот же контракт, что у файлового cdekStore. */
 function memoryStore() {

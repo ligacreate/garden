@@ -73,6 +73,9 @@ export function resolveCdekConfig(env = {}) {
     // Трое суток, а не одни: письмо клиенту о прибытии уходит сразу, и сутки
     // на то, чтобы он до пункта дошёл, — это ещё не повод дёргать Ольгу.
     waitingHours: Number(env.CDEK_WAITING_HOURS || 72),
+    // За сколько часов до конца бесплатного хранения звать Ольгу. Два дня:
+    // есть запас написать человеку, и он успеет дойти.
+    expiryWarnHours: Number(env.CDEK_EXPIRY_WARN_HOURS || 48),
     newOrderMaxAgeHours: Number(env.CDEK_NEW_ORDER_MAX_AGE_HOURS || 24),
     // Как часто перечитывать незакрытый заказ из API, даже если событий нет.
     refreshHours: Number(env.CDEK_REFRESH_HOURS || 12),
@@ -120,6 +123,10 @@ export function extractOrderFacts(order = {}) {
     deliveryPoint: String(order.delivery_point || '').trim(),
     items,
     track: order.cdek_number || '',
+    // СДЭК сам знает, до какого числа хранит посылку бесплатно, и сроки
+    // разные: у одной семь дней, у другой четырнадцать. Своим таймером это
+    // не угадать — берём у него.
+    keepFreeUntil: String(order.keep_free_until || ''),
   };
 }
 
@@ -162,19 +169,36 @@ export function formatOrderMessage(order = {}, attrs = {}) {
   ].join('\n');
 }
 
-/** Посылка лежит и её не забирают. Здесь нужны и получатель, и телефон. */
+/**
+ * Посылку не забирают, и бесплатное хранение кончается. Здесь нужны получатель
+ * и телефон: Ольга по ним пишет или звонит.
+ *
+ * Дату называем словами и без года — сообщение читают сегодня, а не в архиве.
+ */
 export function formatWaitingMessage(record = {}, now = Date.now()) {
-  const since = Date.parse(record.waitingSince || '');
-  const days = since ? Math.max(1, Math.floor((now - since) / (24 * 60 * 60 * 1000))) : 1;
   const items = Array.isArray(record.items) && record.items.length ? record.items : ['состав не пришёл'];
-
   return [
-    `Не забирают заказ, ${days} ${plural(days, 'день', 'дня', 'дней')} в пункте выдачи:`,
+    waitingHeadline(record, now),
     record.recipient || 'получатель неизвестен',
     record.phone || 'телефон не пришёл',
     ...items,
     record.track || 'трек неизвестен',
   ].join('\n');
+}
+
+const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+
+function waitingHeadline(record, now) {
+  const until = Date.parse(record.keepFreeUntil || '');
+  if (until) {
+    const d = new Date(until);
+    return `Срок хранения истекает ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} — заказ не забрали:`;
+  }
+  // Срока СДЭК не дал (бывает, пока посылка не доехала до пункта) — считаем
+  // сами от попадания в пункт выдачи, как раньше.
+  const since = Date.parse(record.waitingSince || '');
+  const days = since ? Math.max(1, Math.floor((now - since) / (24 * 60 * 60 * 1000))) : 1;
+  return `Не забирают заказ, ${days} ${plural(days, 'день', 'дня', 'дней')} в пункте выдачи:`;
 }
 
 function plural(n, one, few, many) {
@@ -429,8 +453,21 @@ function applyOrder(key, order, { config, store, stored = {}, now, stamp }) {
 }
 
 /**
- * Проход по реестру: кто лежит в пункте выдачи дольше порога и до сих пор не
- * забран. Уведомление по каждому заказу одно — дальше Ольга решает сама.
+ * Пора ли звать Ольгу по этому заказу.
+ *
+ * Главный признак — конец бесплатного хранения, который СДЭК считает сам.
+ * Свой таймер остаётся запасным: срок приходит не всегда и не сразу.
+ */
+function timeToWarn(record, config, now, edge) {
+  const until = Date.parse(record.keepFreeUntil || '');
+  if (until) return until - now <= config.expiryWarnHours * 60 * 60 * 1000;
+  const since = Date.parse(record.waitingSince || '');
+  return Boolean(since) && since <= edge;
+}
+
+/**
+ * Проход по реестру: кому пора напомнить о посылке. Уведомление по каждому
+ * заказу одно — дальше Ольга решает сама.
  *
  * Заодно дочитывает записи, по которым в прошлый раз не прошёл запрос к СДЭК.
  */
@@ -482,8 +519,7 @@ export async function scanWaitingOrders({ config, fetchImpl, store, logger = con
 
   for (const record of store.all()) {
     if (record.closed || record.notifiedWaiting || !record.waitingSince) continue;
-    const since = Date.parse(record.waitingSince);
-    if (!since || since > edge) continue;
+    if (!timeToWarn(record, config, now, edge)) continue;
 
     try {
       await sendTelegram(config, fetchImpl, formatWaitingMessage(record, now));

@@ -8,6 +8,8 @@ on:
       - 'plans/**'
       - '.business/**'
       - '.claude/**'
+      - 'push-server/**'
+      - '.gitignore'
       - '*.md'
   workflow_dispatch:
 

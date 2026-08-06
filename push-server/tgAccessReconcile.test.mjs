@@ -21,7 +21,7 @@ function makePool(known) {
   return { query, log };
 }
 
-/** Клиент TG, который на заданных ресурсах отвечает ошибкой. */
+/** Клиент TG, который на заданных ресурсах отвечает неудачей. */
 function makeTg(failures = {}) {
   const calls = [];
   return {
@@ -29,11 +29,15 @@ function makeTg(failures = {}) {
     async getChatMember(chatId, uid) {
       calls.push({ chatId, uid });
       const fail = failures[`${chatId}:${uid}`];
+      if (fail === 'throw') throw new Error('socket hang up');
       if (fail) return { ok: false, error_code: fail.code, description: fail.text };
       return { ok: true, result: { status: 'member' } };
     },
   };
 }
+
+const CHANNEL = -1002377682177;
+const CHAT = -1002432957741;
 
 const person = (over = {}) => ({
   id: 'p1', name: 'Елена Соковнина', role: 'leader', telegram_user_id: 339004999,
@@ -50,8 +54,8 @@ test('ошибки пишутся содержимым: имя, uid, ресур�
   const p = person();
   const pool = makePool([p]);
   const tg = makeTg({
-    [`-1002377682177:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests: retry after 5' },
-    [`-1002432957741:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: member not found' },
+    [`${CHANNEL}:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests: retry after 5' },
+    [`${CHAT}:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: chat not found' },
   });
   const logger = makeLogger();
 
@@ -65,7 +69,71 @@ test('ошибки пишутся содержимым: имя, uid, ресур�
   assert.match(line, /channel/);
   assert.match(line, /chat/);
   assert.match(line, /429:Too Many Requests: retry after 5/, 'троттлинг видно текстом');
-  assert.match(line, /400:Bad Request: member not found/, 'и его отличить от «чат не знает человека»');
+  assert.match(line, /400:Bad Request: chat not found/, 'бот потерял канал — тоже сбой');
+});
+
+test('«его тут нет» уходит в absent, а не в errors', async () => {
+  const p = person();
+  const pool = makePool([p]);
+  const tg = makeTg({
+    [`${CHANNEL}:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: member not found' },
+    [`${CHAT}:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: user not found' },
+  });
+  const logger = makeLogger();
+
+  const r = await runTgAccessReconcile({ mode: 'shadow', pool, tg, now: NOW, logger });
+
+  assert.equal(r.counts.errors, 0, 'счётчик ошибок значит «что-то реально сломалось»');
+  assert.equal(r.counts.absent, 2);
+  assert.equal(logger.lines.warn.length, 0, 'строку об ошибках не пишем');
+  assert.deepEqual(
+    r.absent.map((a) => `${a.resource}:${a.answer}`),
+    ['channel:400:Bad Request: member not found', 'chat:400:Bad Request: user not found']
+  );
+});
+
+test('сбой и отсутствие в одном прогоне не смешиваются', async () => {
+  const p = person();
+  const pool = makePool([p]);
+  const tg = makeTg({
+    [`${CHANNEL}:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' },
+    [`${CHAT}:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: member not found' },
+  });
+  const logger = makeLogger();
+
+  const r = await runTgAccessReconcile({ mode: 'shadow', pool, tg, now: NOW, logger });
+
+  assert.equal(r.counts.errors, 1);
+  assert.equal(r.counts.absent, 1);
+  assert.equal(r.errors[0].resource, 'channel');
+  assert.equal(r.absent[0].resource, 'chat');
+  assert.doesNotMatch(logger.lines.warn.join(''), /member not found/, 'в лог ошибок отсутствие не течёт');
+});
+
+test('обрыв связи остаётся ошибкой, а не отсутствием', async () => {
+  const p = person();
+  const pool = makePool([p]);
+  const tg = makeTg({ [`${CHANNEL}:${p.telegram_user_id}`]: 'throw' });
+
+  const r = await runTgAccessReconcile({ mode: 'shadow', pool, tg, now: NOW, logger: makeLogger() });
+
+  assert.equal(r.counts.errors, 1);
+  assert.equal(r.counts.absent, 0);
+  assert.match(r.errors[0].error, /socket hang up/);
+});
+
+test('отсутствие не меняет решения: оплаченный снаружи по-прежнему в admit', async () => {
+  const p = person();
+  const pool = makePool([p]);
+  const tg = makeTg({
+    [`${CHANNEL}:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: member not found' },
+    [`${CHAT}:${p.telegram_user_id}`]: { code: 400, text: 'Bad Request: member not found' },
+  });
+
+  const r = await runTgAccessReconcile({ mode: 'shadow', pool, tg, now: NOW, logger: makeLogger() });
+
+  assert.equal(r.counts.admit, 2, 'оплачен и не в ресурсе — приглашаем, как и раньше');
+  assert.equal(r.counts.kick, 0);
 });
 
 test('чистый прогон не пишет строку об ошибках', async () => {
@@ -75,6 +143,7 @@ test('чистый прогон не пишет строку об ошибках
   const r = await runTgAccessReconcile({ mode: 'shadow', pool, tg: makeTg(), now: NOW, logger });
 
   assert.equal(r.counts.errors, 0);
+  assert.equal(r.counts.absent, 0);
   assert.equal(logger.lines.warn.length, 0);
   assert.equal(logger.lines.info.length, 1, 'счётчики по-прежнему одной строкой');
 });
@@ -82,7 +151,7 @@ test('чистый прогон не пишет строку об ошибках
 test('логгер без warn не роняет прогон — падаем на info', async () => {
   const p = person();
   const pool = makePool([p]);
-  const tg = makeTg({ [`-1002377682177:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' } });
+  const tg = makeTg({ [`${CHANNEL}:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' } });
   const info = [];
 
   await runTgAccessReconcile({ mode: 'shadow', pool, tg, now: NOW, logger: { info: (m) => info.push(m) } });
@@ -106,8 +175,8 @@ test('ошибка getChatMember не превращается в кик: inChat
   const p = person({ paid_until: '2026-07-01T00:00:00.000Z' }); // истёк далеко за grace
   const pool = makePool([p]);
   const tg = makeTg({
-    [`-1002377682177:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' },
-    [`-1002432957741:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' },
+    [`${CHANNEL}:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' },
+    [`${CHAT}:${p.telegram_user_id}`]: { code: 429, text: 'Too Many Requests' },
   });
 
   const r = await runTgAccessReconcile({ mode: 'shadow', pool, tg, now: NOW, logger: { info() {}, warn() {} } });

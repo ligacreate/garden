@@ -105,3 +105,28 @@ export function isInChat(memberResult) {
   if (st === 'restricted') return memberResult.is_member === true;
   return PRESENT.has(st);
 }
+
+// Ответы Telegram, означающие «этого человека здесь нет». Для истёкшего или
+// поставленного на паузу это НОРМАЛЬНЫЙ ответ, а не сбой: он и должен быть
+// снаружи. Считать его ошибкой — значит держать в счётчике ошибок то, что
+// сломанным не является, и прятать за ним настоящие сбои.
+//
+// ЧЕГО ЗДЕСЬ НЕТ И БЫТЬ НЕ ДОЛЖНО: 'chat not found', 'bot is not a member',
+// 'bot was kicked' — это бот потерял доступ к самому каналу. Тоже «not found»
+// по тексту, но поломка настоящая, и она обязана остаться видимой.
+const ABSENT_DESCRIPTIONS = [
+  'member not found',
+  'user not found',
+  'user_not_participant',
+  'participant_id_invalid',
+];
+
+/**
+ * Ответ getChatMember — это «его тут нет» (а не сбой)?
+ * Только на 400: у 429 и 5xx текст ни при чём, там всегда настоящая проблема.
+ */
+export function isAbsentMember(errorCode, description) {
+  if (Number(errorCode) !== 400) return false;
+  const d = String(description || '').toLowerCase();
+  return ABSENT_DESCRIPTIONS.some((s) => d.includes(s));
+}

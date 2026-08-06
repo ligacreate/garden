@@ -11,7 +11,7 @@
 //   - paid_until IS NULL у известного — НЕ кикать (не считаем истёкшим), в «skip».
 //   - оба ресурса: канал -1002377682177 и чат -1002432957741, решение на каждый отдельно.
 
-import { isInChat } from './tgAccessClient.mjs';
+import { isInChat, isAbsentMember } from './tgAccessClient.mjs';
 import { upsertPlanned, executeActions } from './tgAccessActions.mjs';
 import { TG_CHANNEL_ID, TG_CHAT_ID, LIGA_ROLES, RESOURCES, graceCutoff } from './tgAccessConst.mjs';
 
@@ -54,6 +54,7 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
   const skip_unknown_paid = []; // известный, но paid_until NULL → не трогаем
   const skip_grace = [];        // истёк, но в пределах grace → пока НЕ кикаем
   const errors = [];
+  const absent = [];     // Telegram ответил «его тут нет» — ожидаемо, не сбой
   const membership = []; // полная матрица для отчёта/аудита
 
   for (const p of known) {
@@ -68,21 +69,28 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     for (const r of RESOURCES) {
       let inChat = false;
       let memErr = null;
+      let memAbsent = null;
       try {
         const res = await tg.getChatMember(r.id, p.telegram_user_id);
         if (res && res.ok) inChat = isInChat(res.result);
-        else memErr = res ? `${res.error_code}:${res.description}` : 'no_response';
+        else if (res && isAbsentMember(res.error_code, res.description)) {
+          // «его тут нет» — это ответ, а не сбой: inChat=false и идём дальше
+          memAbsent = `${res.error_code}:${res.description}`;
+        } else {
+          memErr = res ? `${res.error_code}:${res.description}` : 'no_response';
+        }
       } catch (e) {
         memErr = e?.message || 'exception';
       }
       if (memErr) errors.push({ name: p.name, uid, resource: r.key, error: memErr });
+      else if (memAbsent) absent.push({ name: p.name, uid, resource: r.key, answer: memAbsent });
 
       const base = {
         id: p.id, name: p.name, role: p.role, uid,
         paid_until: p.paid_until, access_status: p.access_status,
         resource: r.key, inChat,
       };
-      membership.push({ ...base, memErr, exempt, manual, paid });
+      membership.push({ ...base, memErr, memAbsent, exempt, manual, paid });
 
       // Классификация (default-safe порядок):
       if (exempt) { skip_exempt.push(base); continue; }
@@ -135,14 +143,16 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     skip_unknown_paid: skip_unknown_paid.length,
     skip_grace: skip_grace.length,
     skip_unknown_members: skip_unknown_members.length,
+    absent: absent.length,
     errors: errors.length,
     executed_admit: executed.admit.length,
     executed_kick: executed.kick.length,
   };
   logger?.info?.(`[tg-access-reconcile ${mode}] ` + JSON.stringify(counts));
   // Ошибки getChatMember пишем содержимым, а не числом: только по тексту видно,
-  // троттлинг это (`429: Too Many Requests`) или конкретный человек
-  // (`400: Bad Request: member not found`). Одна строка на прогон, чтобы не залить journalctl.
+  // троттлинг это (`429:Too Many Requests`) или что-то другое. Одна строка на
+  // прогон, чтобы не залить journalctl. Сюда попадают ТОЛЬКО настоящие сбои:
+  // «его тут нет» уехало в absent и видно отдельным счётчиком.
   if (errors.length) {
     const logErrors = (logger?.warn || logger?.info)?.bind(logger);
     logErrors?.(`[tg-access-reconcile ${mode}] errors: ` + JSON.stringify(errors));
@@ -152,6 +162,6 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     mode, now: now.toISOString(), batch_id, counts,
     kick, admit, skip_exempt, skip_manual, skip_unknown_paid, skip_unknown_members,
     skip_grace,
-    errors, membership, executed,
+    absent, errors, membership, executed,
   };
 }

@@ -2,33 +2,77 @@
 // Все мутации TG проходят ТОЛЬКО здесь (executeActions). Таблица public.tg_access_actions
 // (миграция phase46) — журнал «что решили / что сделали». dedup по эпизоду оплаты.
 
-import { RESOURCE_ID, graceCutoff } from './tgAccessConst.mjs';
+import { RESOURCE_ID, graceCutoff, INVITE_TTL_DAYS, inviteCutoff } from './tgAccessConst.mjs';
 import { isInChat } from './tgAccessClient.mjs';
 
-/** action:uid:resource:эпизод(paid_until YYYY-MM-DD). Смена оплаты → новый эпизод → снова можно действовать. */
-export function dedupKey(action, uid, resource, paidUntil) {
-  const ep = paidUntil ? new Date(paidUntil).toISOString().slice(0, 10) : 'none';
+const dayStamp = (d) => new Date(d).toISOString().slice(0, 10);
+
+/**
+ * action:uid:resource:эпизод.
+ *
+ * Эпизод зависит от действия, потому что «сделано один раз» значит для них разное:
+ *  - kick / admit_approve — эпизод оплаты (paid_until YYYY-MM-DD). Кик не протухает:
+ *    пока дата оплаты не сдвинулась, повторно кикать незачем.
+ *  - admit_invite — ДЕНЬ ВЫПИСКИ ссылки. Ссылка живёт INVITE_TTL_DAYS и умирает сама,
+ *    поэтому эпизодом оплаты её мерить нельзя: кто не успел войти за неделю, оставался
+ *    заблокирован до следующего платежа. Так Елена Соковнина просидела вне канала
+ *    и чата с 17.07 по 04.08 — ссылки от 10.07 протухли, а новые не выписывались.
+ *    Ключ здесь отвечает только за уникальность строки; «не выписывать вторую, пока
+ *    жива первая» проверяется отдельно — по времени, см. upsertPlanned/hasLiveInvite.
+ */
+export function dedupKey(action, uid, resource, paidUntil, now = new Date()) {
+  const ep = action === 'admit_invite'
+    ? `inv${dayStamp(now)}`
+    : (paidUntil ? dayStamp(paidUntil) : 'none');
   return `${action}:${uid}:${resource}:${ep}`;
 }
 
 /**
- * Кладёт planned-действие, если по этому dedup_key ещё нет ни planned, ни executed.
- * Возвращает id вставленной строки или null (если уже есть).
+ * Кладёт planned-действие, если такое же ещё не запланировано и не сделано.
+ *
+ * «Уже сделано» для admit_invite — это НЕ «когда-то выписывали», а «сейчас на руках
+ * действующая ссылка»: planned-строка либо executed моложе INVITE_TTL_DAYS.
+ * Для остальных действий — прежняя проверка по dedup_key.
+ *
+ * Возвращает id вставленной строки или null (если действие уже есть).
  */
 export async function upsertPlanned(pool, a) {
-  const key = dedupKey(a.action, a.telegram_user_id, a.resource, a.paid_until);
+  const now = a.now || new Date();
+  const key = dedupKey(a.action, a.telegram_user_id, a.resource, a.paid_until, now);
+
+  // Условие «такое действие уже есть» + его параметры, начиная с $9.
+  const exists = a.action === 'admit_invite'
+    ? { sql: `select 1 from public.tg_access_actions
+                where telegram_user_id = $2 and resource = $3 and action = 'admit_invite'
+                  and (status = 'planned'
+                       or (status = 'executed' and coalesce(executed_at, created_at) > $9))`,
+        params: [inviteCutoff(now)] }
+    : { sql: `select 1 from public.tg_access_actions
+                where dedup_key = $7 and status in ('planned','executed')`,
+        params: [] };
+
   const { rows } = await pool.query(
     `insert into public.tg_access_actions
        (profile_id, telegram_user_id, resource, action, reason, paid_until_snap, status, dedup_key, batch_id)
      select $1,$2,$3,$4,$5,$6,'planned',$7,$8
-      where not exists (
-        select 1 from public.tg_access_actions
-         where dedup_key = $7 and status in ('planned','executed'))
+      where not exists (${exists.sql})
      returning id`,
     [a.profile_id || null, a.telegram_user_id, a.resource, a.action, a.reason,
-     a.paid_until || null, key, a.batch_id]
+     a.paid_until || null, key, a.batch_id, ...exists.params]
   );
   return rows[0]?.id || null;
+}
+
+/** Есть ли у человека действующая (не протухшая) выписанная ссылка на этот ресурс? */
+async function hasLiveInvite(pool, { telegram_user_id, resource }, now) {
+  const { rowCount } = await pool.query(
+    `select 1 from public.tg_access_actions
+      where telegram_user_id = $1 and resource = $2 and action = 'admit_invite'
+        and status = 'executed' and coalesce(executed_at, created_at) > $3
+      limit 1`,
+    [telegram_user_id, resource, inviteCutoff(now)]
+  );
+  return rowCount > 0;
 }
 
 /**
@@ -49,10 +93,14 @@ export async function executeActions(pool, tg, { filter, batchId = null, now = n
 
   const done = [];
   for (const a of rows) {
-    // защита от гонок: уже исполнено в этом эпизоде?
-    const dup = await pool.query(
-      `select 1 from public.tg_access_actions where dedup_key=$1 and status='executed' limit 1`, [a.dedup_key]);
-    if (dup.rowCount) {
+    // Защита от гонок: уже исполнено? Критерий тот же, что при планировании —
+    // для admit_invite это «на руках ещё живая ссылка», для остальных — эпизод по ключу.
+    const alreadyDone = a.action === 'admit_invite'
+      ? await hasLiveInvite(pool, a, now)
+      : (await pool.query(
+          `select 1 from public.tg_access_actions where dedup_key=$1 and status='executed' limit 1`,
+          [a.dedup_key])).rowCount > 0;
+    if (alreadyDone) {
       await pool.query(`update public.tg_access_actions set status='skipped', tg_response=$2::jsonb where id=$1`,
         [a.id, JSON.stringify({ skip: 'dedup_executed' })]);
       done.push({ id: a.id, action: a.action, uid: a.telegram_user_id, resource: a.resource, result: 'skipped_dup' });
@@ -80,7 +128,7 @@ export async function executeActions(pool, tg, { filter, batchId = null, now = n
         res = await tg.kickChatMember(chatId, Number(a.telegram_user_id));
       } else if (a.action === 'admit_invite') {
         // одноразовая именная ссылка; TH-ссылки не трогаем
-        const expire = Math.floor(now.getTime() / 1000) + 7 * 24 * 3600;
+        const expire = Math.floor(now.getTime() / 1000) + INVITE_TTL_DAYS * 24 * 3600;
         res = await tg.createChatInviteLink(chatId, {
           member_limit: 1, expire_date: expire, name: `liga-${a.telegram_user_id}`.slice(0, 32),
           creates_join_request: false,

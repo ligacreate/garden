@@ -15,3 +15,10 @@ export const RESOURCE_ID = { channel: TG_CHANNEL_ID, chat: TG_CHAT_ID };
 // Env-override для тюнинга без передеплоя.
 export const GRACE_DAYS = Number(process.env.TG_ACCESS_GRACE_DAYS || 3);
 export const graceCutoff = (now) => new Date(now.getTime() - GRACE_DAYS * 24 * 60 * 60 * 1000);
+
+// Срок жизни пригласительной ссылки. ОДНО число на два места: его же кладём в
+// expire_date при createChatInviteLink и по нему же решаем, действует ли ещё
+// выписанная ссылка. Разъедутся — вернётся баг «протухшая ссылка блокирует новую».
+export const INVITE_TTL_DAYS = 7;
+// Ссылки, выписанные РАНЬШЕ этого момента, уже протухли → можно выписывать новую.
+export const inviteCutoff = (now) => new Date(now.getTime() - INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);

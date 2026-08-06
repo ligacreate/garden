@@ -112,11 +112,11 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     batch_id = `tgacc-${now.toISOString().replace(/[:.]/g, '').slice(0, 15)}`;
     for (const d of admit) {
       await upsertPlanned(pool, { profile_id: d.id, telegram_user_id: Number(d.uid), resource: d.resource,
-        action: 'admit_invite', reason: 'paid_not_in_resource', paid_until: d.paid_until, batch_id });
+        action: 'admit_invite', reason: 'paid_not_in_resource', paid_until: d.paid_until, batch_id, now });
     }
     for (const d of kick) {
       await upsertPlanned(pool, { profile_id: d.id, telegram_user_id: Number(d.uid), resource: d.resource,
-        action: 'kick', reason: 'expired', paid_until: d.paid_until, batch_id });
+        action: 'kick', reason: 'expired', paid_until: d.paid_until, batch_id, now });
     }
     // ADMIT исполняем сразу (admit и live) — впуск оплаченного безопасен.
     executed.admit = await executeActions(pool, tg, { filter: 'admit', batchId: batch_id, now });
@@ -140,6 +140,13 @@ export async function runTgAccessReconcile({ mode = 'shadow', pool, tg, roster =
     executed_kick: executed.kick.length,
   };
   logger?.info?.(`[tg-access-reconcile ${mode}] ` + JSON.stringify(counts));
+  // Ошибки getChatMember пишем содержимым, а не числом: только по тексту видно,
+  // троттлинг это (`429: Too Many Requests`) или конкретный человек
+  // (`400: Bad Request: member not found`). Одна строка на прогон, чтобы не залить journalctl.
+  if (errors.length) {
+    const logErrors = (logger?.warn || logger?.info)?.bind(logger);
+    logErrors?.(`[tg-access-reconcile ${mode}] errors: ` + JSON.stringify(errors));
+  }
 
   return {
     mode, now: now.toISOString(), batch_id, counts,

@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { verifyProdamusSignature, pickSignatureSource } from './prodamusVerify.mjs';
 import { classifyProdamusEvent, deriveAccessMutation, isExemptRole, normalizeTelegramUsername, mapBotHunterEvent, isLigaProduct, looksLikeLigaSum } from './billingLogic.mjs';
 import { createUpcomingHandler } from './upcomingApi.mjs';
+import { recordPayment, closeSubscription } from './subscriptionJournal.mjs';
 import { isSandbox, verifyJwtHS256, bearerToken, resolveYooKassaCreds, yooKassaLiveEnabled, buildYooKassaPayload, buildProdamusUrl, grantPaidUntilExpr } from './billingCheckout.mjs';
 import { makeTgAccessClient } from './tgAccessClient.mjs';
 import { runTgAccessReconcile } from './tgAccessReconcile.mjs';
@@ -322,17 +323,12 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
     );
     const effectivePaidUntil = upd.rows[0]?.paid_until || null;
 
-    await db.query(
-      `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
-       values ($1, $2, $3, $4, $5, now(), null, now())
-       on conflict (provider, provider_subscription_id) where provider_subscription_id is not null do update
-         set status = excluded.status,
-             paid_until = excluded.paid_until,
-             last_payment_at = now(),
-             ended_at = null,
-             updated_at = now()`,
-      [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, effectivePaidUntil]
-    );
+    // Журнал подписок: обновляем действующую строку человека (см. subscriptionJournal.mjs).
+    // subscriptionId кладём как есть — Продамус его не присылает, и подставлять вместо
+    // него profile.id больше не нужно: ключом идентичности служит сам user_id.
+    await recordPayment(db, {
+      userId: profile.id, provider, providerSubscriptionId: subscriptionId, paidUntil: effectivePaidUntil,
+    });
     return;
   }
 
@@ -352,16 +348,13 @@ const applyAccessState = async (db, profile, { provider = PRODAMUS_PROVIDER_NAME
       [profile.id, mutation.subscription_status, mutation.access_status, paidUntil ? paidUntil.toISOString() : null, eventName, payloadJson, subscriptionId, customerId, DEFAULT_BOT_RENEW_URL || null, mutation.bumpSessionVersion]
     );
 
-    await db.query(
-      `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, ended_at, updated_at)
-       values ($1, $2, $3, $4, $5, now(), now())
-       on conflict (provider, provider_subscription_id) where provider_subscription_id is not null do update
-         set status = excluded.status,
-             paid_until = excluded.paid_until,
-             ended_at = now(),
-             updated_at = now()`,
-      [profile.id, provider, subscriptionId || `${profile.id}`, mutation.subscription_status, paidUntil ? paidUntil.toISOString() : null]
-    );
+    // Конец периода закрывает действующую строку человека, кем бы она ни была заведена.
+    // Нет действующей — писать нечего: закрытая строка «в никуда» только мусорит журнал.
+    await closeSubscription(db, {
+      userId: profile.id,
+      status: mutation.subscription_status,
+      paidUntil: paidUntil ? paidUntil.toISOString() : null,
+    });
 
     // В1: finish/deactivation больше НЕ отзывает платформенный доступ → logout не нужен.
     // Лига-замок реализуется через subActive (paid_until) на Лига-поверхностях, не через сессию.
@@ -396,13 +389,12 @@ const applyPayment = async (db, { userId, months = null, until = null, meta = {}
   if (upd.rowCount === 0) return null;
   const paidUntil = upd.rows[0].paid_until;
 
-  await db.query(
-    `insert into public.subscriptions(user_id, provider, provider_subscription_id, status, paid_until, last_payment_at, ended_at, updated_at)
-     values ($1, $2, $3, 'active', $4, now(), null, now())
-     on conflict (provider, provider_subscription_id) where provider_subscription_id is not null
-     do update set status='active', paid_until=excluded.paid_until, last_payment_at=now(), ended_at=null, updated_at=now()`,
-    [userId, meta.provider || 'prodamus', String(meta.orderId), paidUntil]
-  );
+  // id заказа сюда больше не кладём: это не идентификатор подписки, а именно он и
+  // ломал ключ — каждая оплата приносила новое значение, on conflict не срабатывал
+  // и рождалась вторая active-строка. Заказы живут в payment_orders.
+  await recordPayment(db, {
+    userId, provider: meta.provider || 'prodamus', providerSubscriptionId: null, paidUntil,
+  });
   return { paidUntil, accessStatus: upd.rows[0].access_status };
 };
 

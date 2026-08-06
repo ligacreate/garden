@@ -31,9 +31,11 @@
 
 set -euo pipefail
 
-ENV_FILE="/opt/garden-auth/.env"
+# Пути переопределяемы через env — как LOG_FILE. Нужно, чтобы прогонять
+# сценарии («база недоступна», «вернулся мусор») не трогая прод.
+ENV_FILE="${GARDEN_MONITOR_ENV:-/opt/garden-auth/.env}"
 LOG_FILE="${GARDEN_MONITOR_LOG:-/var/log/garden-monitor.log}"
-RECOVERY_SCRIPT="/opt/garden-monitor/recover_grants.sh"
+RECOVERY_SCRIPT="${GARDEN_MONITOR_RECOVERY:-/opt/garden-monitor/recover_grants.sh}"
 AUTH_THRESHOLD=100
 ANON_THRESHOLD=4
 
@@ -73,13 +75,33 @@ fi
 export PGPASSWORD="$DB_PASS"
 
 # Получаем counts одним запросом (минимизируем сетевой round-trip).
-read -r AUTH_CNT ANON_CNT <<<"$(psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -At -F ' ' \
+#
+# Вывод psql держим в переменной ОТДЕЛЬНО от read, иначе код возврата самого
+# psql теряется: раньше здесь стояло `read ... <<<"$(psql ...)" || ...`, и `||`
+# относился к read, а не к запросу. Недоступная база давала пустую строку,
+# read её проглатывал с кодом 0, а дальше пустые значения в [[ -ge ]] считались
+# нулями — монитор рапортовал «WIPE detected: authenticated= web_anon=» и
+# запускал восстановление грантов, которых никто не снимал.
+GRANT_COUNTS=""
+if ! GRANT_COUNTS="$(psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -At -F ' ' \
     -c "SELECT
           (SELECT count(*) FROM information_schema.role_table_grants
             WHERE grantee='authenticated' AND table_schema='public'),
           (SELECT count(*) FROM information_schema.role_table_grants
-            WHERE grantee='web_anon' AND table_schema='public');" 2>>"$LOG_FILE")" \
-    || { log "ERROR: psql query failed"; exit 1; }
+            WHERE grantee='web_anon' AND table_schema='public');" 2>>"$LOG_FILE")"; then
+    log "ERROR: psql query failed — база недоступна. Это НЕ снос грантов, recovery не запускаем"
+    exit 1
+fi
+
+read -r AUTH_CNT ANON_CNT <<<"$GRANT_COUNTS"
+
+# Численность проверяем явно: пустое или нечисловое значение — это сломанный
+# запрос, а не ноль грантов. Разница принципиальная: на ноль мы отвечаем
+# восстановлением, на сломанный запрос отвечать нечем.
+if [[ ! "${AUTH_CNT:-}" =~ ^[0-9]+$ || ! "${ANON_CNT:-}" =~ ^[0-9]+$ ]]; then
+    log "ERROR: psql вернул не число (authenticated='${AUTH_CNT:-}' web_anon='${ANON_CNT:-}') — recovery не запускаем"
+    exit 1
+fi
 
 # Health check OK — silent.
 if [[ "$AUTH_CNT" -ge "$AUTH_THRESHOLD" && "$ANON_CNT" -ge "$ANON_THRESHOLD" ]]; then

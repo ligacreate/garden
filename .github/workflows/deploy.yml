@@ -9,6 +9,8 @@ on:
       - '.business/**'
       - '.claude/**'
       - 'push-server/**'
+      - 'database/**'
+      - 'migrations/**'
       - '.gitignore'
       - '*.md'
   workflow_dispatch:

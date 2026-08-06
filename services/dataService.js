@@ -610,7 +610,6 @@ class LocalStorageService {
             city: sanitizeIfString(updatedUser.city),
             offer: sanitizeIfString(updatedUser.offer),
             unique_abilities: sanitizeIfString(updatedUser.unique_abilities),
-            leader_about: sanitizeIfString(updatedUser.leader_about),
             leader_signature: sanitizeIfString(updatedUser.leader_signature),
             telegram: sanitizeIfString(updatedUser.telegram),
             vk: sanitizeIfString(updatedUser.vk),
@@ -1568,7 +1567,6 @@ class RemoteApiService {
                 skills: Array.isArray(user.skills) ? user.skills : (Array.isArray(meta.skills) ? meta.skills : []),
                 offer: user.offer || meta.offer || null,
                 unique_abilities: user.unique_abilities || meta.unique_abilities || null,
-                leader_about: user.leader_about || meta.leader_about || null,
                 leader_signature: user.leader_signature || meta.leader_signature || null,
                 leader_reviews: Array.isArray(user.leader_reviews) ? user.leader_reviews : (Array.isArray(meta.leader_reviews) ? meta.leader_reviews : []),
                 telegram: user.telegram || meta.telegram || null,
@@ -1646,7 +1644,6 @@ class RemoteApiService {
             city: this._sanitizeIfString(updatedUser.city),
             offer: this._sanitizeIfString(updatedUser.offer),
             unique_abilities: this._sanitizeIfString(updatedUser.unique_abilities),
-            leader_about: this._sanitizeIfString(updatedUser.leader_about),
             leader_signature: this._sanitizeIfString(updatedUser.leader_signature),
             telegram: this._sanitizeIfString(updatedUser.telegram),
             vk: this._sanitizeIfString(updatedUser.vk),
@@ -1685,7 +1682,6 @@ class RemoteApiService {
             if (safeSkills !== undefined) dbUser.skills = safeSkills;
             if (hasField(updatedUser, 'offer')) dbUser.offer = clean.offer;
             if (hasField(updatedUser, 'unique_abilities')) dbUser.unique_abilities = clean.unique_abilities;
-            if (hasField(updatedUser, 'leader_about')) dbUser.leader_about = clean.leader_about;
             if (hasField(updatedUser, 'leader_signature')) dbUser.leader_signature = clean.leader_signature;
             if (hasField(updatedUser, 'leader_reviews')) dbUser.leader_reviews = updatedUser.leader_reviews;
             if (hasField(updatedUser, 'telegram')) {
@@ -2839,25 +2835,19 @@ class RemoteApiService {
             is_pwa: isStandalonePwa()
         };
 
+        // Подписку сохраняет push-server — он же владеет таблицей push_subscriptions
+        // и читает её при рассылке. Запасного пути записи туда напрямую через
+        // PostgREST больше нет: он остался со времён, когда push-server только
+        // поднимали и эндпоинта ещё не существовало. С тех пор /push/subscribe на
+        // месте, а запись из браузера в серверную таблицу давала бы строки, за
+        // которые никто не отвечает.
         try {
             await pushFetch('/push/subscribe', { method: 'POST', body: payload });
-        } catch {
-            // Fallback storage if server endpoint is not ready yet.
-            try {
-                await postgrestFetch('push_subscriptions', {}, {
-                    method: 'POST',
-                    body: [{
-                        user_id: payload.user_id,
-                        endpoint: subscription.endpoint,
-                        keys: subscription.toJSON()?.keys || {},
-                        user_agent: payload.platform,
-                        is_active: true
-                    }],
-                    returnRepresentation: true
-                });
-            } catch {
-                throw new Error('Не удалось сохранить push-подписку. Нужен endpoint /push/subscribe или таблица push_subscriptions.');
-            }
+        } catch (cause) {
+            const err = new Error('Не удалось сохранить push-подписку: сервер уведомлений не ответил.');
+            err.userFacing = true;
+            err.cause = cause;
+            throw err;
         }
 
         localStorage.setItem(PUSH_SUBSCRIPTION_STORAGE_KEY, '1');
@@ -2971,7 +2961,6 @@ class RemoteApiService {
             skills: Array.isArray(data.skills) ? data.skills : [],
             offer: data.offer || '',
             unique_abilities: data.unique_abilities || '',
-            leader_about: data.leader_about || '',
             leader_signature: data.leader_signature || '',
             leader_reviews: Array.isArray(data.leader_reviews) ? data.leader_reviews : [],
             telegram: data.telegram || '',

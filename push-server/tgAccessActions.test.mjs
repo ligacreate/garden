@@ -142,10 +142,10 @@ const plannedAdmit = (pool, batch_id = 'tgacc-test') => upsertPlanned(pool, {
 
 // ─────────────────────────────── dedupKey ───────────────────────────────
 
-test('dedupKey: у admit_invite эпизод — день выписки, у kick — дата оплаты', () => {
+test('dedupKey: у admit_invite эпизод — момент выписки, у kick — дата оплаты', () => {
   assert.equal(
     dedupKey('admit_invite', UID, 'chat', '2026-09-06T00:00:00.000Z', NOW),
-    `admit_invite:${UID}:chat:inv2026-08-06`
+    `admit_invite:${UID}:chat:inv2026-08-06T09:00:00.000Z`
   );
   assert.equal(
     dedupKey('kick', UID, 'chat', '2026-09-06T00:00:00.000Z', NOW),
@@ -159,10 +159,12 @@ test('dedupKey: у admit_invite эпизод — день выписки, у kic
   assert.equal(dedupKey('kick', UID, 'chat', null, NOW), `kick:${UID}:chat:none`);
 });
 
-test('dedupKey: два приглашения в разные дни получают разные ключи', () => {
+test('dedupKey: два приглашения подряд получают разные ключи', () => {
   const first = dedupKey('admit_invite', UID, 'chat', '2026-09-06', NOW);
   const later = dedupKey('admit_invite', UID, 'chat', '2026-09-06', new Date(NOW.getTime() + 8 * DAY));
   assert.notEqual(first, later, 'иначе уникальный индекс по executed не даст выписать вторую');
+  const sameDay = dedupKey('admit_invite', UID, 'chat', '2026-09-06', new Date(NOW.getTime() + 60_000));
+  assert.notEqual(first, sameDay, 'даже в пределах одних суток ключи обязаны расходиться');
 });
 
 // ──────────────────────── планирование приглашений ────────────────────────
@@ -175,7 +177,7 @@ test('ссылка выписана 8 дней назад, человек не �
   assert.ok(id, 'новое приглашение должно быть запланировано');
   const fresh = pool.rows.find((r) => r.id === id);
   assert.equal(fresh.status, 'planned');
-  assert.equal(fresh.dedup_key, `admit_invite:${UID}:chat:inv2026-08-06`);
+  assert.equal(fresh.dedup_key, `admit_invite:${UID}:chat:inv2026-08-06T09:00:00.000Z`);
   assert.notEqual(fresh.dedup_key, pool.rows[0].dedup_key, 'ключ не должен совпасть со старым executed');
 });
 
@@ -252,6 +254,32 @@ test('сквозняк: протухшая ссылка → планируем �
   assert.equal(fresh.status, 'executed');
   assert.equal(pool.rows.filter((r) => r.action === 'admit_invite' && r.status === 'executed').length, 2,
     'старая строка остаётся в журнале, новая ложится рядом');
+});
+
+test('два полных цикла подряд не спотыкаются об уникальный индекс', async () => {
+  // Ровно сценарий Соковниной: выписали, человек не вошёл, ссылка протухла, выписываем снова.
+  const pool = makePool();
+  const tg = makeTg();
+  const later = new Date(NOW.getTime() + (INVITE_TTL_DAYS + 1) * DAY);
+
+  const first = await upsertPlanned(pool, {
+    profile_id: null, telegram_user_id: UID, resource: 'chat', action: 'admit_invite',
+    reason: 'paid_not_in_resource', paid_until: '2026-09-06', batch_id: 'b1', now: NOW,
+  });
+  await executeActions(pool, tg, { filter: 'admit', batchId: 'b1', now: NOW });
+
+  const second = await upsertPlanned(pool, {
+    profile_id: null, telegram_user_id: UID, resource: 'chat', action: 'admit_invite',
+    reason: 'paid_not_in_resource', paid_until: '2026-09-06', batch_id: 'b2', now: later,
+  });
+  assert.ok(second, 'протухла — выписываем новую');
+  // Мини-pool воспроизводит uq_tg_access_actions_dedup и бросит на совпадении ключей.
+  const done = await executeActions(pool, tg, { filter: 'admit', batchId: 'b2', now: later });
+
+  assert.equal(done[0].result, 'executed');
+  const keys = pool.rows.map((r) => r.dedup_key);
+  assert.equal(new Set(keys).size, 2, 'у двух executed-строк ключи разные');
+  assert.equal(pool.rows.find((r) => r.id === first).status, 'executed', 'первая осталась в журнале');
 });
 
 test('исполнение: живая ссылка появилась между планом и запуском → skipped_dup', async () => {

@@ -13,16 +13,20 @@ const dayStamp = (d) => new Date(d).toISOString().slice(0, 10);
  * Эпизод зависит от действия, потому что «сделано один раз» значит для них разное:
  *  - kick / admit_approve — эпизод оплаты (paid_until YYYY-MM-DD). Кик не протухает:
  *    пока дата оплаты не сдвинулась, повторно кикать незачем.
- *  - admit_invite — ДЕНЬ ВЫПИСКИ ссылки. Ссылка живёт INVITE_TTL_DAYS и умирает сама,
+ *  - admit_invite — МОМЕНТ ВЫПИСКИ ссылки. Ссылка живёт INVITE_TTL_DAYS и умирает сама,
  *    поэтому эпизодом оплаты её мерить нельзя: кто не успел войти за неделю, оставался
  *    заблокирован до следующего платежа. Так Елена Соковнина просидела вне канала
  *    и чата с 17.07 по 04.08 — ссылки от 10.07 протухли, а новые не выписывались.
- *    Ключ здесь отвечает только за уникальность строки; «не выписывать вторую, пока
- *    жива первая» проверяется отдельно — по времени, см. upsertPlanned/hasLiveInvite.
+ *
+ * Для admit_invite ключ больше НЕ решает, выписывать ли ссылку — это решают по времени
+ * upsertPlanned/hasLiveInvite. У ключа осталась одна работа: развести строки под частичным
+ * уникальным индексом uq_tg_access_actions_dedup (один executed на ключ). Поэтому момент,
+ * а не день: на дне две ссылки, выписанные в одни сутки, дали бы один ключ и уронили бы
+ * executeActions на unique_violation — а он валит весь батч, не только свою строку.
  */
 export function dedupKey(action, uid, resource, paidUntil, now = new Date()) {
   const ep = action === 'admit_invite'
-    ? `inv${dayStamp(now)}`
+    ? `inv${new Date(now).toISOString()}`
     : (paidUntil ? dayStamp(paidUntil) : 'none');
   return `${action}:${uid}:${resource}:${ep}`;
 }
